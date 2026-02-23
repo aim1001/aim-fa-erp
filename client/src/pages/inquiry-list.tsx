@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -11,11 +11,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Link2, AlertCircle } from "lucide-react";
-import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ko } from "date-fns/locale";
 import { InquiryFormDialog } from "@/pages/inquiry-form";
+import { InquiryDetailDialog } from "@/pages/inquiry-detail";
 import type { Inquiry } from "@shared/schema";
 
 function parseDateString(dateStr: string): Date {
@@ -59,6 +59,28 @@ export default function InquiryList() {
   const [search, setSearch] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const { toast } = useToast();
+
+  const urlParamsInit = new URLSearchParams(searchString);
+  const detailParam = urlParamsInit.get("detail");
+  const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(detailParam);
+
+  useEffect(() => {
+    if (detailParam && detailParam !== selectedInquiryId) {
+      setSelectedInquiryId(detailParam);
+    }
+  }, [detailParam]);
+
+  const handleCloseDetail = useCallback((open: boolean) => {
+    if (!open) {
+      setSelectedInquiryId(null);
+      if (detailParam) {
+        const params = new URLSearchParams(searchString);
+        params.delete("detail");
+        const qs = params.toString();
+        navigate(qs ? `/inquiries?${qs}` : "/inquiries", { replace: true });
+      }
+    }
+  }, [detailParam, searchString, navigate]);
 
   const urlParams = new URLSearchParams(searchString);
   const yearFilter = urlParams.get("year") || "all";
@@ -280,7 +302,7 @@ export default function InquiryList() {
                     <TableRow
                       key={inq.id}
                       className={`cursor-pointer hover-elevate ${statusRowClass[inq.status || "none"] || ""}`}
-                      onClick={() => navigate(`/inquiries/${inq.id}`)}
+                      onClick={() => setSelectedInquiryId(inq.id)}
                       data-testid={`row-inquiry-${inq.id}`}
                     >
                       <TableCell className="font-mono text-sm">{inq.inquiryNumber}</TableCell>
@@ -378,7 +400,7 @@ export default function InquiryList() {
                         </Popover>
                       </TableCell>
                       <TableCell>
-                        <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); navigate(`/inquiries/${inq.id}`); }}>
+                        <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setSelectedInquiryId(inq.id); }}>
                           <ExternalLink className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -396,6 +418,11 @@ export default function InquiryList() {
       </div>
 
       <InquiryFormDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
+      <InquiryDetailDialog
+        inquiryId={selectedInquiryId}
+        open={!!selectedInquiryId}
+        onOpenChange={handleCloseDetail}
+      />
     </div>
   );
 }

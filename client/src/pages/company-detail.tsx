@@ -339,7 +339,7 @@ export default function CompanyDetail() {
           {relatedInquiries.length > 0 ? (
             <div className="space-y-1">
               {relatedInquiries.map((inquiry) => (
-                <Link key={inquiry.id} href={`/inquiries/${inquiry.id}`}>
+                <Link key={inquiry.id} href={`/inquiries?detail=${inquiry.id}`}>
                   <div className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer" data-testid={`inquiry-link-${inquiry.id}`}>
                     <FileText className="h-4 w-4 text-muted-foreground" />
                     <div className="flex-1 min-w-0">

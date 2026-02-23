@@ -1,5 +1,4 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -829,11 +830,13 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   );
 }
 
-export default function InquiryDetail() {
-  const [, params] = useRoute("/inquiries/:id");
-  const [, navigate] = useLocation();
+function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
+  inquiryId: string;
+  onClose?: () => void;
+  onDeleted?: () => void;
+}) {
   const { toast } = useToast();
-  const id = params?.id;
+  const id = inquiryId;
 
   const { data: inquiry, isLoading } = useQuery<Inquiry>({
     queryKey: ["/api/inquiries", id],
@@ -867,7 +870,7 @@ export default function InquiryDetail() {
       toast({ title: "삭제 완료" });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
-      navigate("/inquiries");
+      onDeleted?.();
     },
     onError: (err: Error) => {
       toast({ title: "삭제 실패", description: err.message, variant: "destructive" });
@@ -876,7 +879,7 @@ export default function InquiryDetail() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="space-y-4 p-1">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64" />
         <Skeleton className="h-48" />
@@ -886,24 +889,18 @@ export default function InquiryDetail() {
 
   if (!inquiry) {
     return (
-      <div className="p-6">
+      <div className="p-4 text-center">
         <p className="text-muted-foreground">인콰이어리를 찾을 수 없습니다.</p>
-        <Button asChild variant="secondary" className="mt-4">
-          <Link href="/inquiries">목록으로</Link>
-        </Button>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-4 overflow-auto h-full">
+    <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
-        <Button variant="ghost" size="icon" asChild data-testid="button-back">
-          <Link href="/inquiries"><ArrowLeft /></Link>
-        </Button>
-        <h1 className="text-2xl font-semibold flex-1" data-testid="text-inquiry-title">
+        <h2 className="text-xl font-semibold flex-1" data-testid="text-inquiry-title">
           {inquiry.inquiryNumber} - {inquiry.customerName}
-        </h1>
+        </h2>
         <Button
           variant="destructive"
           size="sm"
@@ -1226,4 +1223,34 @@ export default function InquiryDetail() {
       </Card>
     </div>
   );
+}
+
+export function InquiryDetailDialog({ inquiryId, open, onOpenChange }: {
+  inquiryId: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-2">
+          <DialogTitle className="sr-only">인콰이어리 상세</DialogTitle>
+          <DialogDescription className="sr-only">인콰이어리 상세 정보를 확인하고 수정할 수 있습니다</DialogDescription>
+        </DialogHeader>
+        <ScrollArea className="max-h-[calc(90vh-4rem)] px-6 pb-6">
+          {inquiryId && (
+            <InquiryDetailContent
+              inquiryId={inquiryId}
+              onClose={() => onOpenChange(false)}
+              onDeleted={() => onOpenChange(false)}
+            />
+          )}
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function InquiryDetail() {
+  return null;
 }
