@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Building2, MapPin, Phone, FileText, Plus } from "lucide-react";
+import { Building2, MapPin, Phone, FileText, Plus, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,20 @@ export default function CustomerList() {
     queryKey: ["/api/customers"],
   });
 
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sync-customers");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      toast({ title: data.message || "동기화 완료" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "동기화 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: { companyName: string; businessNumber?: string }) => {
       const res = await apiRequest("POST", "/api/customers", data);
@@ -50,10 +64,22 @@ export default function CustomerList() {
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold" data-testid="text-customer-list-title">고객사 목록</h1>
-        <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-customer">
-          <Plus className="h-4 w-4 mr-1" />
-          고객사 추가
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            data-testid="button-sync-customers"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+            {syncMutation.isPending ? "동기화 중..." : "OneDrive에서 갱신"}
+          </Button>
+          <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-customer">
+            <Plus className="h-4 w-4 mr-1" />
+            고객사 추가
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (

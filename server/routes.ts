@@ -12,7 +12,7 @@ import {
   writeInfoJson,
   createInquiryFolder,
 } from "./onedrive";
-import { parseExcelCustomerInfo } from "./excel-parser";
+import { parseExcelCustomerInfo, parseCustomerListFromOneDrive } from "./excel-parser";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -398,6 +398,56 @@ export async function registerRoutes(
       const contacts = await storage.getCompaniesByCustomerId(req.params.id);
       res.json(contacts);
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/sync-customers", async (_req, res) => {
+    try {
+      const rows = await parseCustomerListFromOneDrive();
+      let created = 0;
+      let updated = 0;
+
+      for (const row of rows) {
+        const existing = row.businessNumber
+          ? await storage.getCustomerByBusinessNumber(row.businessNumber)
+          : await storage.getCustomerByName(row.companyName);
+
+        const data = {
+          companyName: row.companyName,
+          businessNumber: row.businessNumber || null,
+          representative: row.representative || null,
+          address: row.address || null,
+          businessType: row.businessType || null,
+          businessCategory: row.businessCategory || null,
+          mgmtDepartment: row.mgmtDepartment || null,
+          mgmtContactName: row.mgmtContactName || null,
+          mgmtPhone: row.mgmtPhone || null,
+          mgmtMobile: row.mgmtMobile || null,
+          mgmtFax: row.mgmtFax || null,
+          mgmtEmail: row.mgmtEmail || null,
+          notes: row.notes || null,
+          primaryContact: row.primaryContact || null,
+          registrationDate: row.registrationDate || null,
+        };
+
+        if (existing) {
+          await storage.updateCustomer(existing.id, data);
+          updated++;
+        } else {
+          await storage.createCustomer(data);
+          created++;
+        }
+      }
+
+      res.json({
+        message: `고객사 목록 동기화 완료: ${created}개 신규, ${updated}개 업데이트`,
+        total: rows.length,
+        created,
+        updated,
+      });
+    } catch (err: any) {
+      console.error("고객사 동기화 오류:", err);
       res.status(500).json({ message: err.message });
     }
   });

@@ -185,6 +185,19 @@ export async function writeInfoJson(folderId: string, data: Record<string, any>)
   }
 }
 
+export async function downloadFileByPath(path: string): Promise<Buffer> {
+  const client = await getClient();
+  const stream = await client
+    .api(`/me/drive/root:/${path}:/content`)
+    .getStream();
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream as any) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
 export function parseInquiryFolderName(folderName: string, year: number): {
   inquiryNumber: string;
   customerName: string;

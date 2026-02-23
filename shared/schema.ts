@@ -14,6 +14,15 @@ export const customers = pgTable("customers", {
   phone: text("phone"),
   fax: text("fax"),
   memo: text("memo"),
+  mgmtDepartment: text("mgmt_department"),
+  mgmtContactName: text("mgmt_contact_name"),
+  mgmtPhone: text("mgmt_phone"),
+  mgmtMobile: text("mgmt_mobile"),
+  mgmtFax: text("mgmt_fax"),
+  mgmtEmail: text("mgmt_email"),
+  notes: text("notes"),
+  primaryContact: text("primary_contact"),
+  registrationDate: text("registration_date"),
 });
 
 export const companies = pgTable("companies", {

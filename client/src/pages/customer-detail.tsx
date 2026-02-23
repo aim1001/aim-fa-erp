@@ -321,6 +321,42 @@ export default function CustomerDetail() {
 
             <span className="text-muted-foreground">메모</span>
             <InlineField value={customer.memo || ""} field="memo" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">비고</span>
+            <InlineField value={customer.notes || ""} field="notes" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">등록일자</span>
+            <InlineField value={customer.registrationDate || ""} field="registrationDate" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">경영지원 담당자</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 text-sm items-center">
+            <span className="text-muted-foreground">부서명</span>
+            <InlineField value={customer.mgmtDepartment || ""} field="mgmtDepartment" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">성명</span>
+            <InlineField value={customer.mgmtContactName || ""} field="mgmtContactName" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">전화번호</span>
+            <InlineField value={customer.mgmtPhone || ""} field="mgmtPhone" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">휴대전화</span>
+            <InlineField value={customer.mgmtMobile || ""} field="mgmtMobile" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">팩스</span>
+            <InlineField value={customer.mgmtFax || ""} field="mgmtFax" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">이메일</span>
+            <InlineField value={customer.mgmtEmail || ""} field="mgmtEmail" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">주담당자</span>
+            <InlineField value={customer.primaryContact || ""} field="primaryContact" entityId={id!} entityType="customer" placeholder="클릭하여 입력" />
           </div>
         </CardContent>
       </Card>
@@ -328,7 +364,7 @@ export default function CustomerDetail() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">담당자 ({contacts.length}명)</CardTitle>
+            <CardTitle className="text-base">영업 담당자 ({contacts.length}명)</CardTitle>
             <Button size="sm" variant="secondary" onClick={() => setShowAddContact(true)} data-testid="button-add-contact">
               <UserPlus className="h-4 w-4 mr-1" />
               담당자 추가

@@ -48,9 +48,11 @@ export interface IStorage {
   getCustomers(): Promise<Customer[]>;
   getCustomer(id: string): Promise<Customer | undefined>;
   getCustomerByName(name: string): Promise<Customer | undefined>;
+  getCustomerByBusinessNumber(bizNum: string): Promise<Customer | undefined>;
   searchCustomers(query: string): Promise<Customer[]>;
   createCustomer(customer: InsertCustomer): Promise<Customer>;
   updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined>;
+  upsertCustomerByBusinessNumber(customer: InsertCustomer): Promise<Customer>;
   deleteCustomer(id: string): Promise<void>;
 
   getCompanies(): Promise<Company[]>;
@@ -170,6 +172,11 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async getCustomerByBusinessNumber(bizNum: string): Promise<Customer | undefined> {
+    const result = await db.select().from(customers).where(eq(customers.businessNumber, bizNum));
+    return result[0];
+  }
+
   async searchCustomers(query: string): Promise<Customer[]> {
     return db.select().from(customers).where(ilike(customers.companyName, `%${query}%`));
   }
@@ -181,6 +188,18 @@ export class DatabaseStorage implements IStorage {
 
   async updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined> {
     const result = await db.update(customers).set(customer).where(eq(customers.id, id)).returning();
+    return result[0];
+  }
+
+  async upsertCustomerByBusinessNumber(customer: InsertCustomer): Promise<Customer> {
+    if (customer.businessNumber) {
+      const existing = await this.getCustomerByBusinessNumber(customer.businessNumber);
+      if (existing) {
+        const result = await db.update(customers).set(customer).where(eq(customers.id, existing.id)).returning();
+        return result[0];
+      }
+    }
+    const result = await db.insert(customers).values(customer).returning();
     return result[0];
   }
 

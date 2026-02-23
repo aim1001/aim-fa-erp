@@ -1,5 +1,61 @@
 import * as XLSX from "xlsx";
-import { downloadFile, listFolderFiles } from "./onedrive";
+import { downloadFile, listFolderFiles, downloadFileByPath } from "./onedrive";
+
+export interface CustomerListRow {
+  businessNumber: string;
+  companyName: string;
+  representative: string;
+  address: string;
+  businessType: string;
+  businessCategory: string;
+  mgmtDepartment: string;
+  mgmtContactName: string;
+  mgmtPhone: string;
+  mgmtMobile: string;
+  mgmtFax: string;
+  mgmtEmail: string;
+  notes: string;
+  primaryContact: string;
+  registrationDate: string;
+}
+
+export async function parseCustomerListFromOneDrive(): Promise<CustomerListRow[]> {
+  const filePath = "4.경영지원/database/고객사목록.xls";
+  const buffer = await downloadFileByPath(filePath);
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) throw new Error("시트를 찾을 수 없습니다");
+
+  const results: CustomerListRow[] = [];
+  let row = 4; // 0-indexed row 4 = Excel row 5
+  while (true) {
+    const companyName = getCellValue(sheet, 3, row); // D열
+    if (!companyName) break;
+
+    const bizNum = getCellValue(sheet, 1, row); // B열
+
+    results.push({
+      businessNumber: bizNum,
+      companyName,
+      representative: getCellValue(sheet, 4, row), // E열
+      address: getCellValue(sheet, 5, row), // F열
+      businessType: getCellValue(sheet, 6, row), // G열
+      businessCategory: getCellValue(sheet, 7, row), // H열
+      mgmtDepartment: getCellValue(sheet, 8, row), // I열
+      mgmtContactName: getCellValue(sheet, 9, row), // J열
+      mgmtPhone: getCellValue(sheet, 10, row), // K열
+      mgmtMobile: getCellValue(sheet, 11, row), // L열
+      mgmtFax: getCellValue(sheet, 12, row), // M열
+      mgmtEmail: getCellValue(sheet, 13, row), // N열
+      notes: getCellValue(sheet, 14, row), // O열
+      primaryContact: getCellValue(sheet, 15, row), // P열
+      registrationDate: getCellValue(sheet, 16, row), // Q열
+    });
+    row++;
+  }
+
+  return results;
+}
 
 export interface ExcelCustomerInfo {
   sheetName: string;
