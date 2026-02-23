@@ -1,18 +1,43 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, date, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
+export const inquiries = pgTable("inquiries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  inquiryNumber: text("inquiry_number").notNull(),
+  customerName: text("customer_name").notNull(),
+  productInfo: text("product_info"),
+  year: integer("year").notNull(),
+  probability: integer("probability").default(0),
+  expectedDate: text("expected_date"),
+  paymentTerms: text("payment_terms"),
+  memo: text("memo"),
+  status: text("status").default("active"),
+  onedriveFolderId: text("onedrive_folder_id"),
+  onedriveFolderName: text("onedrive_folder_name"),
+  source: text("source").default("onedrive"),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const inquiryFiles = pgTable("inquiry_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inquiryId: varchar("inquiry_id").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type"),
+  onedriveItemId: text("onedrive_item_id"),
+  webUrl: text("web_url"),
+  size: integer("size"),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export const insertInquirySchema = createInsertSchema(inquiries).omit({
+  id: true,
+});
+
+export const insertInquiryFileSchema = createInsertSchema(inquiryFiles).omit({
+  id: true,
+});
+
+export type InsertInquiry = z.infer<typeof insertInquirySchema>;
+export type Inquiry = typeof inquiries.$inferSelect;
+export type InsertInquiryFile = z.infer<typeof insertInquiryFileSchema>;
+export type InquiryFile = typeof inquiryFiles.$inferSelect;

@@ -1,0 +1,194 @@
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { FileText, TrendingUp, Target, Calendar } from "lucide-react";
+import { useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const CHART_COLORS = [
+  "hsl(217, 91%, 60%)",
+  "hsl(160, 60%, 45%)",
+  "hsl(43, 96%, 56%)",
+  "hsl(280, 65%, 60%)",
+  "hsl(0, 84%, 60%)",
+];
+
+export default function Dashboard() {
+  const [selectedYear, setSelectedYear] = useState<string>("all");
+
+  const { data: years } = useQuery<number[]>({
+    queryKey: ["/api/years"],
+  });
+
+  const { data: stats, isLoading } = useQuery<{
+    total: number;
+    byProbability: { range: string; count: number }[];
+    byStatus: { status: string; count: number }[];
+    byYear: { year: number; count: number }[];
+  }>({
+    queryKey: ["/api/dashboard", selectedYear !== "all" ? `?year=${selectedYear}` : ""],
+  });
+
+  const statusLabels: Record<string, string> = {
+    active: "진행중",
+    won: "수주",
+    lost: "실주",
+    pending: "대기",
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Skeleton className="h-80" />
+          <Skeleton className="h-80" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6 overflow-auto h-full">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <h1 className="text-2xl font-semibold" data-testid="text-dashboard-title">영업 대시보드</h1>
+        <Select value={selectedYear} onValueChange={setSelectedYear}>
+          <SelectTrigger className="w-36" data-testid="select-year-filter">
+            <SelectValue placeholder="전체 연도" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 연도</SelectItem>
+            {(years || []).map(y => (
+              <SelectItem key={y} value={String(y)}>{y}년</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">총 인콰이어리</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold" data-testid="text-total-inquiries">{stats?.total || 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">높은 확률 (61%+)</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold" data-testid="text-high-probability">
+              {stats?.byProbability?.filter(p => p.range === "61-80%" || p.range === "81-100%").reduce((a, b) => a + b.count, 0) || 0}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">진행중</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold" data-testid="text-active-count">
+              {stats?.byStatus?.find(s => s.status === "active")?.count || 0}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">연도 수</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold" data-testid="text-year-count">{stats?.byYear?.length || 0}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">확률별 분포</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats?.byProbability || []}>
+                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="건수" radius={[4, 4, 0, 0]}>
+                    {(stats?.byProbability || []).map((_entry, index) => (
+                      <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">상태별 현황</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={(stats?.byStatus || []).map(s => ({
+                      ...s,
+                      name: statusLabels[s.status] || s.status,
+                    }))}
+                    dataKey="count"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    label={({ name, count }) => `${name}: ${count}`}
+                  >
+                    {(stats?.byStatus || []).map((_entry, index) => (
+                      <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {stats?.byYear && stats.byYear.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">연도별 인콰이어리 수</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.byYear}>
+                  <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" name="건수" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
