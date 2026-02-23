@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -152,6 +152,9 @@ export default function PurchaseInvoiceList() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [importYear, setImportYear] = useState("");
+  const [filterYear, setFilterYear] = useState<string>("all");
+  const [periodType, setPeriodType] = useState<string>("all");
+  const [periodValue, setPeriodValue] = useState<string>("all");
   const [newInvoice, setNewInvoice] = useState({ vendorId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
 
   const { data: invoices, isLoading } = useQuery<PurchaseInvoice[]>({
@@ -170,18 +173,63 @@ export default function PurchaseInvoiceList() {
     return map;
   }, [vendorList]);
 
+  const availableYears = useMemo(() => {
+    if (!invoices) return [];
+    const years = new Set<number>();
+    invoices.forEach(inv => {
+      if (inv.issueDate) {
+        const y = parseInt(inv.issueDate.substring(0, 4));
+        if (!isNaN(y)) years.add(y);
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [invoices]);
+
   const filtered = useMemo(() => {
     if (!invoices) return [];
-    if (!search) return invoices;
-    const s = search.toLowerCase();
-    return invoices.filter(inv =>
-      (inv.companyName && inv.companyName.toLowerCase().includes(s)) ||
-      (inv.item && inv.item.toLowerCase().includes(s)) ||
-      (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(s)) ||
-      (inv.businessNumber && inv.businessNumber.includes(s)) ||
-      (inv.vendorId && vendorMap.get(inv.vendorId)?.toLowerCase().includes(s))
-    );
-  }, [invoices, search, vendorMap]);
+    let list = invoices;
+
+    if (filterYear !== "all") {
+      const y = filterYear;
+      list = list.filter(inv => inv.issueDate?.startsWith(y));
+
+      if (periodType === "monthly" && periodValue !== "all") {
+        const m = periodValue.padStart(2, "0");
+        list = list.filter(inv => inv.issueDate?.substring(5, 7) === m);
+      } else if (periodType === "quarterly" && periodValue !== "all") {
+        const q = parseInt(periodValue);
+        const startMonth = (q - 1) * 3 + 1;
+        const endMonth = startMonth + 2;
+        list = list.filter(inv => {
+          const month = parseInt(inv.issueDate?.substring(5, 7) || "0");
+          return month >= startMonth && month <= endMonth;
+        });
+      }
+    }
+
+    if (search) {
+      const s = search.toLowerCase();
+      list = list.filter(inv =>
+        (inv.companyName && inv.companyName.toLowerCase().includes(s)) ||
+        (inv.item && inv.item.toLowerCase().includes(s)) ||
+        (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(s)) ||
+        (inv.businessNumber && inv.businessNumber.includes(s)) ||
+        (inv.vendorId && vendorMap.get(inv.vendorId)?.toLowerCase().includes(s))
+      );
+    }
+
+    return list;
+  }, [invoices, search, vendorMap, filterYear, periodType, periodValue]);
+
+  const totals = useMemo(() => {
+    let supply = 0, tax = 0, total = 0;
+    filtered.forEach(inv => {
+      supply += inv.supplyAmount || 0;
+      tax += inv.taxAmount || 0;
+      total += inv.totalAmount || 0;
+    });
+    return { supply, tax, total };
+  }, [filtered]);
 
   const importMutation = useMutation({
     mutationFn: async (year: number) => {
@@ -254,9 +302,62 @@ export default function PurchaseInvoiceList() {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="상호, 품목, 사업자번호 검색" className="pl-9" data-testid="input-search-purchase-invoices" />
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <Select value={filterYear} onValueChange={v => { setFilterYear(v); setPeriodValue("all"); }}>
+            <SelectTrigger className="w-24" data-testid="select-filter-year-purchase">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체</SelectItem>
+              {availableYears.map(y => <SelectItem key={y} value={String(y)}>{y}년</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {filterYear !== "all" && (
+            <Select value={periodType} onValueChange={v => { setPeriodType(v); setPeriodValue("all"); }}>
+              <SelectTrigger className="w-24" data-testid="select-period-type-purchase">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">연간</SelectItem>
+                <SelectItem value="quarterly">분기별</SelectItem>
+                <SelectItem value="monthly">월별</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          {filterYear !== "all" && periodType === "quarterly" && (
+            <Select value={periodValue} onValueChange={setPeriodValue}>
+              <SelectTrigger className="w-24" data-testid="select-quarter-purchase">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                <SelectItem value="1">1분기</SelectItem>
+                <SelectItem value="2">2분기</SelectItem>
+                <SelectItem value="3">3분기</SelectItem>
+                <SelectItem value="4">4분기</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          {filterYear !== "all" && periodType === "monthly" && (
+            <Select value={periodValue} onValueChange={setPeriodValue}>
+              <SelectTrigger className="w-20" data-testid="select-month-purchase">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                  <SelectItem key={m} value={String(m)}>{m}월</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="상호, 품목, 사업자번호 검색" className="pl-9" data-testid="input-search-purchase-invoices" />
+        </div>
       </div>
 
       {isLoading ? (
@@ -295,7 +396,16 @@ export default function PurchaseInvoiceList() {
         </div>
       )}
 
-      <div className="text-xs text-muted-foreground">{filtered.length > 0 && `총 ${filtered.length}건`}</div>
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-2">
+          <span>총 {filtered.length}건</span>
+          <div className="flex gap-4">
+            <span>공급가액: <strong className="text-foreground">{totals.supply.toLocaleString()}원</strong></span>
+            <span>세액: <strong className="text-foreground">{totals.tax.toLocaleString()}원</strong></span>
+            <span>합계: <strong className="text-foreground">{totals.total.toLocaleString()}원</strong></span>
+          </div>
+        </div>
+      )}
 
       <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null); }}>
         {selectedId && <InvoiceDetailModal invoiceId={selectedId} onClose={() => setSelectedId(null)} />}
