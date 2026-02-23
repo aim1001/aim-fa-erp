@@ -58,8 +58,8 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - `client/src/pages/inquiry-list.tsx` - Inquiry list page
 - `client/src/pages/inquiry-detail.tsx` - Inquiry detail page (includes CustomerInfoSection, ProductImagesSection)
 - `client/src/pages/inquiry-form.tsx` - Add inquiry form (auto-generates inquiry number)
-- `client/src/pages/customer-list.tsx` - Customer list page (사업자등록 기준 공식 고객사)
-- `client/src/pages/customer-detail.tsx` - Customer detail page (사업자 정보 + 담당자 관리)
+- `client/src/pages/customer-list.tsx` - Customer list page (테이블 형태, 클릭 시 모달 편집, optimistic update)
+- `client/src/pages/customer-detail.tsx` - Customer detail page (레거시, 직접 접근 시 사용)
 - `client/src/pages/company-list.tsx` - Contact/Company list page (담당자 목록)
 - `client/src/pages/company-detail.tsx` - Contact detail page (담당자 정보, inline editing)
 - `client/src/components/app-sidebar.tsx` - Sidebar navigation
@@ -84,6 +84,9 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Added product_images table with Ctrl+V paste support (max 5 images, base64)
 - 2026-02-23: Separated customers (사업자등록 기준) from companies (담당자) - 1:N relationship
 - 2026-02-23: Customer pages for official business info, contacts managed under customers
+- 2026-02-23: Dashboard multi-year checkbox filter (2020-2024 unchecked by default)
+- 2026-02-23: Quick view sidebar links (진행중/수주/실주) + clickable dashboard cards
+- 2026-02-23: Customer list converted to table view with modal editing (optimistic updates)
 
 ## User Preferences
 - Korean language UI
