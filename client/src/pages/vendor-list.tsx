@@ -294,6 +294,8 @@ export default function VendorList() {
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자등록번호</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">담당자</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">거래은행</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">계좌번호</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
               </tr>
             </thead>
@@ -323,6 +325,8 @@ export default function VendorList() {
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{vendor.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{vendor.representative || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{vendor.contactName || "-"}</td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden xl:table-cell">{vendor.bankName || "-"}</td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden xl:table-cell">{vendor.bankAccount || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{vendor.lastTransactionDate || "-"}</td>
                 </tr>
               ))}
