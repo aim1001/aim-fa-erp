@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
@@ -68,10 +68,114 @@ function PaymentStatusBadge({ inv }: { inv: SalesInvoiceWithPayment }) {
   );
 }
 
+function PaymentRow({ payment, onUpdate, onDelete, onComplete }: { payment: Payment; onUpdate: (id: string, data: Record<string, any>) => void; onDelete: (id: string) => void; onComplete: (id: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState({
+    plannedDate: payment.plannedDate || "",
+    amount: String(payment.amount || 0),
+    actualDate: payment.actualDate || "",
+    actualAmount: String(payment.actualAmount || ""),
+  });
+
+  const isCompleted = payment.status === "completed" || !!payment.actualDate;
+
+  const handleSave = () => {
+    const patch: Record<string, any> = {
+      plannedDate: editData.plannedDate || null,
+      amount: editData.amount ? parseInt(editData.amount) : 0,
+    };
+    if (editData.actualDate) {
+      patch.actualDate = editData.actualDate;
+      patch.actualAmount = editData.actualAmount ? parseInt(editData.actualAmount) : 0;
+      patch.status = "completed";
+    } else {
+      patch.actualDate = null;
+      patch.actualAmount = null;
+      patch.status = "pending";
+    }
+    onUpdate(payment.id, patch);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="border rounded px-2 py-2 space-y-2 bg-muted/20" data-testid={`payment-edit-${payment.id}`}>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-[10px] text-muted-foreground">예정일</Label>
+            <Input type="date" className="h-7 text-xs" value={editData.plannedDate} onChange={e => setEditData(p => ({ ...p, plannedDate: e.target.value }))} data-testid={`input-planned-date-${payment.id}`} />
+          </div>
+          <div>
+            <Label className="text-[10px] text-muted-foreground">예정금액</Label>
+            <Input type="number" className="h-7 text-xs" value={editData.amount} onChange={e => setEditData(p => ({ ...p, amount: e.target.value }))} data-testid={`input-amount-${payment.id}`} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-[10px] text-muted-foreground">실제지급일</Label>
+            <Input type="date" className="h-7 text-xs" value={editData.actualDate} onChange={e => setEditData(p => ({ ...p, actualDate: e.target.value }))} data-testid={`input-actual-date-${payment.id}`} />
+          </div>
+          <div>
+            <Label className="text-[10px] text-muted-foreground">실제금액</Label>
+            <Input type="number" className="h-7 text-xs" value={editData.actualAmount} onChange={e => setEditData(p => ({ ...p, actualAmount: e.target.value }))} data-testid={`input-actual-amount-${payment.id}`} />
+          </div>
+        </div>
+        <div className="flex items-center gap-1 justify-end">
+          <Button variant="ghost" size="sm" onClick={() => setEditing(false)} data-testid={`button-cancel-edit-${payment.id}`}>
+            <X className="h-3 w-3 mr-1" />취소
+          </Button>
+          <Button size="sm" onClick={handleSave} data-testid={`button-save-edit-${payment.id}`}>
+            <Save className="h-3 w-3 mr-1" />저장
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between text-xs border rounded px-2 py-1.5" data-testid={`payment-row-${payment.id}`}>
+      <div className="flex items-center gap-2">
+        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${isCompleted ? "bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400" : "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"}`}>
+          {isCompleted ? "완료" : "예정"}
+        </span>
+        <span>{payment.plannedDate || "미정"}</span>
+        {payment.splitTotal && payment.splitTotal > 1 && <span className="text-muted-foreground">({payment.splitIndex}/{payment.splitTotal})</span>}
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="font-medium">{formatAmount(payment.amount)}</span>
+        {payment.actualDate && <span className="text-green-600 dark:text-green-400">→ {formatAmount(payment.actualAmount)} ({payment.actualDate})</span>}
+        <div className="flex items-center gap-0.5">
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditData({ plannedDate: payment.plannedDate || "", amount: String(payment.amount || 0), actualDate: payment.actualDate || "", actualAmount: String(payment.actualAmount || "") }); setEditing(true); }} data-testid={`button-edit-${payment.id}`}>
+            <Pencil className="h-3 w-3" />
+          </Button>
+          {!isCompleted && (
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onComplete(payment.id)} data-testid={`button-complete-${payment.id}`}>
+              <Check className="h-3 w-3" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => onDelete(payment.id)} data-testid={`button-delete-payment-${payment.id}`}>
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income" | "expense" }) {
   const { toast } = useToast();
   const [showGenerate, setShowGenerate] = useState(false);
   const [genForm, setGenForm] = useState({ paymentMethod: "end_of_next_month", splitCount: "1" });
+
+  const invalidateKeys = type === "expense"
+    ? ["/api/purchase-invoices-with-payments"]
+    : ["/api/sales-invoices-with-payments"];
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", type, invoiceId] });
+    invalidateKeys.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+  };
 
   const { data: existingPayments } = useQuery<Payment[]>({
     queryKey: ["/api/payments/by-invoice", type, invoiceId],
@@ -92,14 +196,39 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", type, invoiceId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      invalidateAll();
       setShowGenerate(false);
       toast({ title: "결제 계획 생성 완료", description: `${data.created}건 생성` });
     },
     onError: (err: Error) => {
       toast({ title: "생성 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/payments/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast({ title: "결제 계획이 수정되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "수정 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/payments/${id}`);
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast({ title: "결제 계획이 삭제되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "삭제 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -115,9 +244,7 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", type, invoiceId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      invalidateAll();
     },
   });
 
@@ -151,7 +278,7 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
               <Input type="number" min="1" max="12" className="h-7 text-xs" value={genForm.splitCount} onChange={e => setGenForm(p => ({ ...p, splitCount: e.target.value }))} data-testid="input-split-count" />
             </div>
           </div>
-          <Button size="sm" className="w-full h-7 text-xs" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} data-testid="button-confirm-generate">
+          <Button size="sm" className="w-full text-xs" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} data-testid="button-confirm-generate">
             {generateMutation.isPending ? "생성 중..." : "결제 계획 생성"}
           </Button>
         </div>
@@ -160,24 +287,13 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
       {existingPayments && existingPayments.length > 0 ? (
         <div className="space-y-1">
           {existingPayments.map(p => (
-            <div key={p.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5" data-testid={`payment-row-${p.id}`}>
-              <div className="flex items-center gap-2">
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${p.status === "completed" || p.actualDate ? "bg-green-50 text-green-600" : "bg-blue-50 text-blue-600"}`}>
-                  {p.status === "completed" || p.actualDate ? "완료" : "예정"}
-                </span>
-                <span>{p.plannedDate || "미정"}</span>
-                {p.splitTotal && p.splitTotal > 1 && <span className="text-muted-foreground">({p.splitIndex}/{p.splitTotal})</span>}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{formatAmount(p.amount)}</span>
-                {p.actualDate && <span className="text-green-600">→ {formatAmount(p.actualAmount)} ({p.actualDate})</span>}
-                {!p.actualDate && (
-                  <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => completeMutation.mutate(p.id)} data-testid={`button-complete-${p.id}`}>
-                    <Check className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-            </div>
+            <PaymentRow
+              key={p.id}
+              payment={p}
+              onUpdate={(id, data) => updateMutation.mutate({ id, data })}
+              onDelete={(id) => deleteMutation.mutate(id)}
+              onComplete={(id) => completeMutation.mutate(id)}
+            />
           ))}
         </div>
       ) : (
