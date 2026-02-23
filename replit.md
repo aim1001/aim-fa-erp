@@ -48,7 +48,7 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Added 8 product detail fields (productWidth, productDepth, productHeight, weight, material, productType, industry, supplySpeed)
 - 2026-02-23: Replaced edit page with inline editing on detail page (click-to-edit all fields)
 - 2026-02-23: _info.json sync includes product detail fields
-- 2026-02-23: Added contract conditions card (paymentType, ratios, timing, deliveryDate) replacing old paymentTerms text field
+- 2026-02-23: Redesigned contract conditions to per-stage structure: 계약금/중도금/잔금 each with ratio(%), timing type(일수지정/익월말/월말), timing days, and 납품후 flag (mid/final only)
 
 ## User Preferences
 - Korean language UI

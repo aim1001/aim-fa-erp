@@ -23,7 +23,6 @@ const formSchema = z.object({
   year: z.coerce.number().min(2000).max(2099),
   probability: z.coerce.number().min(0).max(5),
   expectedDate: z.string().optional(),
-  paymentTerms: z.string().optional(),
   memo: z.string().optional(),
   status: z.string(),
   productWidth: z.string().optional(),
@@ -34,14 +33,17 @@ const formSchema = z.object({
   productType: z.string().optional(),
   industry: z.string().optional(),
   supplySpeed: z.string().optional(),
-  paymentType: z.string().optional(),
   contractRatio: z.coerce.number().optional(),
+  contractTimingType: z.string().optional(),
+  contractTimingDays: z.coerce.number().optional(),
   midRatio: z.coerce.number().optional(),
+  midAfterDelivery: z.string().optional(),
+  midTimingType: z.string().optional(),
+  midTimingDays: z.coerce.number().optional(),
   finalRatio: z.coerce.number().optional(),
-  paymentTiming: z.string().optional(),
-  contractDueDays: z.coerce.number().optional(),
-  midFinalTiming: z.string().optional(),
-  midFinalDays: z.coerce.number().optional(),
+  finalAfterDelivery: z.string().optional(),
+  finalTimingType: z.string().optional(),
+  finalTimingDays: z.coerce.number().optional(),
   deliveryDate: z.string().optional(),
 });
 
@@ -62,7 +64,6 @@ export default function InquiryForm() {
       year: currentYear,
       probability: 0,
       expectedDate: "",
-      paymentTerms: "",
       memo: "",
       status: "active",
       productWidth: "",
@@ -73,14 +74,17 @@ export default function InquiryForm() {
       productType: "",
       industry: "",
       supplySpeed: "",
-      paymentType: "",
       contractRatio: 0,
+      contractTimingType: "",
+      contractTimingDays: 0,
       midRatio: 0,
+      midAfterDelivery: "",
+      midTimingType: "",
+      midTimingDays: 0,
       finalRatio: 0,
-      paymentTiming: "",
-      contractDueDays: 0,
-      midFinalTiming: "",
-      midFinalDays: 0,
+      finalAfterDelivery: "",
+      finalTimingType: "",
+      finalTimingDays: 0,
       deliveryDate: "",
     },
   });
@@ -91,7 +95,6 @@ export default function InquiryForm() {
         ...values,
         productInfo: values.productInfo || null,
         expectedDate: values.expectedDate || null,
-        paymentTerms: values.paymentTerms || null,
         memo: values.memo || null,
         productWidth: values.productWidth || null,
         productDepth: values.productDepth || null,
@@ -101,14 +104,17 @@ export default function InquiryForm() {
         productType: values.productType || null,
         industry: values.industry && values.industry !== "_none" ? values.industry : null,
         supplySpeed: values.supplySpeed || null,
-        paymentType: values.paymentType && values.paymentType !== "_none" ? values.paymentType : null,
         contractRatio: values.contractRatio || null,
+        contractTimingType: values.contractTimingType && values.contractTimingType !== "_none" ? values.contractTimingType : null,
+        contractTimingDays: values.contractTimingDays || null,
         midRatio: values.midRatio || null,
+        midAfterDelivery: values.midAfterDelivery && values.midAfterDelivery !== "_none" ? values.midAfterDelivery : null,
+        midTimingType: values.midTimingType && values.midTimingType !== "_none" ? values.midTimingType : null,
+        midTimingDays: values.midTimingDays || null,
         finalRatio: values.finalRatio || null,
-        paymentTiming: values.paymentTiming && values.paymentTiming !== "_none" ? values.paymentTiming : null,
-        contractDueDays: values.contractDueDays || null,
-        midFinalTiming: values.midFinalTiming && values.midFinalTiming !== "_none" ? values.midFinalTiming : null,
-        midFinalDays: values.midFinalDays || null,
+        finalAfterDelivery: values.finalAfterDelivery && values.finalAfterDelivery !== "_none" ? values.finalAfterDelivery : null,
+        finalTimingType: values.finalTimingType && values.finalTimingType !== "_none" ? values.finalTimingType : null,
+        finalTimingDays: values.finalTimingDays || null,
         deliveryDate: values.deliveryDate || null,
         source: "manual",
         onedriveFolderId: null,
@@ -432,146 +438,181 @@ export default function InquiryForm() {
               <CardTitle className="text-base">계약조건</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="paymentType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>결제방식</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || "_none"}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-payment-type">
-                            <SelectValue placeholder="결제방식 선택" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="_none">미설정</SelectItem>
-                          <SelectItem value="split">계약금/중도금/잔금</SelectItem>
-                          <SelectItem value="lump">일괄</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="paymentTiming"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>결제시기</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || "_none"}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-payment-timing">
-                            <SelectValue placeholder="결제시기 선택" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="_none">미설정</SelectItem>
-                          <SelectItem value="next_month_end">익월말</SelectItem>
-                          <SelectItem value="within_2weeks">2주이내</SelectItem>
-                          <SelectItem value="month_end">월말</SelectItem>
-                          <SelectItem value="within_30days">30일이내</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {form.watch("paymentType") === "split" && (
-                  <>
+              <div className="space-y-4">
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="grid grid-cols-[80px_1fr_2fr] bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground border-b">
+                    <span>구분</span>
+                    <span>비율</span>
+                    <span>기한</span>
+                  </div>
+
+                  <div className="grid grid-cols-[80px_1fr_2fr] px-3 py-3 items-center border-b gap-2">
+                    <span className="text-sm font-medium">계약금</span>
                     <FormField
                       control={form.control}
                       name="contractRatio"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>계약금 (%)</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="%" {...field} data-testid="input-contract-ratio" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                        <div className="flex items-center gap-1">
+                          <Input type="number" placeholder="%" className="w-20 h-8" {...field} data-testid="input-contract-ratio" />
+                          <span className="text-xs text-muted-foreground">%</span>
+                        </div>
                       )}
                     />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <FormField
+                        control={form.control}
+                        name="contractTimingType"
+                        render={({ field }) => (
+                          <Select onValueChange={field.onChange} value={field.value || "_none"}>
+                            <SelectTrigger className="w-28 h-8" data-testid="select-contract-timing-type">
+                              <SelectValue placeholder="기한" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none">미설정</SelectItem>
+                              <SelectItem value="days">일수지정</SelectItem>
+                              <SelectItem value="next_month_end">익월말</SelectItem>
+                              <SelectItem value="month_end">월말</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {form.watch("contractTimingType") === "days" && (
+                        <FormField
+                          control={form.control}
+                          name="contractTimingDays"
+                          render={({ field }) => (
+                            <div className="flex items-center gap-1">
+                              <Input type="number" placeholder="일" className="w-20 h-8" {...field} data-testid="input-contract-timing-days" />
+                              <span className="text-xs text-muted-foreground">일</span>
+                            </div>
+                          )}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-[80px_1fr_2fr] px-3 py-3 items-center border-b gap-2">
+                    <span className="text-sm font-medium">중도금</span>
                     <FormField
                       control={form.control}
                       name="midRatio"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>중도금 (%)</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="%" {...field} data-testid="input-mid-ratio" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                        <div className="flex items-center gap-1">
+                          <Input type="number" placeholder="%" className="w-20 h-8" {...field} data-testid="input-mid-ratio" />
+                          <span className="text-xs text-muted-foreground">%</span>
+                        </div>
                       )}
                     />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <FormField
+                        control={form.control}
+                        name="midAfterDelivery"
+                        render={({ field }) => (
+                          <Select onValueChange={field.onChange} value={field.value || "_none"}>
+                            <SelectTrigger className="w-24 h-8" data-testid="select-mid-after-delivery">
+                              <SelectValue placeholder="시점" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none">미설정</SelectItem>
+                              <SelectItem value="yes">납품후</SelectItem>
+                              <SelectItem value="no">납품전</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="midTimingType"
+                        render={({ field }) => (
+                          <Select onValueChange={field.onChange} value={field.value || "_none"}>
+                            <SelectTrigger className="w-28 h-8" data-testid="select-mid-timing-type">
+                              <SelectValue placeholder="기한" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none">미설정</SelectItem>
+                              <SelectItem value="days">일수지정</SelectItem>
+                              <SelectItem value="next_month_end">익월말</SelectItem>
+                              <SelectItem value="month_end">월말</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {form.watch("midTimingType") === "days" && (
+                        <FormField
+                          control={form.control}
+                          name="midTimingDays"
+                          render={({ field }) => (
+                            <div className="flex items-center gap-1">
+                              <Input type="number" placeholder="일" className="w-20 h-8" {...field} data-testid="input-mid-timing-days" />
+                              <span className="text-xs text-muted-foreground">일</span>
+                            </div>
+                          )}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-[80px_1fr_2fr] px-3 py-3 items-center gap-2">
+                    <span className="text-sm font-medium">잔금</span>
                     <FormField
                       control={form.control}
                       name="finalRatio"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>잔금 (%)</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="%" {...field} data-testid="input-final-ratio" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                        <div className="flex items-center gap-1">
+                          <Input type="number" placeholder="%" className="w-20 h-8" {...field} data-testid="input-final-ratio" />
+                          <span className="text-xs text-muted-foreground">%</span>
+                        </div>
                       )}
                     />
-                    <FormField
-                      control={form.control}
-                      name="contractDueDays"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>계약금 기한 (예상일자 + 일)</FormLabel>
-                          <FormControl>
-                            <Input type="number" placeholder="일" {...field} data-testid="input-contract-due-days" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="midFinalTiming"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>중도금/잔금 시점</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || "_none"}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-mid-final-timing">
-                                <SelectValue placeholder="시점 선택" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="_none">미설정</SelectItem>
-                              <SelectItem value="on_delivery">납품시</SelectItem>
-                              <SelectItem value="after_delivery">납품후</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    {form.watch("midFinalTiming") === "after_delivery" && (
+                    <div className="flex items-center gap-2 flex-wrap">
                       <FormField
                         control={form.control}
-                        name="midFinalDays"
+                        name="finalAfterDelivery"
                         render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>납품후 (일)</FormLabel>
-                            <FormControl>
-                              <Input type="number" placeholder="일" {...field} data-testid="input-mid-final-days" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
+                          <Select onValueChange={field.onChange} value={field.value || "_none"}>
+                            <SelectTrigger className="w-24 h-8" data-testid="select-final-after-delivery">
+                              <SelectValue placeholder="시점" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none">미설정</SelectItem>
+                              <SelectItem value="yes">납품후</SelectItem>
+                              <SelectItem value="no">납품전</SelectItem>
+                            </SelectContent>
+                          </Select>
                         )}
                       />
-                    )}
-                  </>
-                )}
+                      <FormField
+                        control={form.control}
+                        name="finalTimingType"
+                        render={({ field }) => (
+                          <Select onValueChange={field.onChange} value={field.value || "_none"}>
+                            <SelectTrigger className="w-28 h-8" data-testid="select-final-timing-type">
+                              <SelectValue placeholder="기한" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none">미설정</SelectItem>
+                              <SelectItem value="days">일수지정</SelectItem>
+                              <SelectItem value="next_month_end">익월말</SelectItem>
+                              <SelectItem value="month_end">월말</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      {form.watch("finalTimingType") === "days" && (
+                        <FormField
+                          control={form.control}
+                          name="finalTimingDays"
+                          render={({ field }) => (
+                            <div className="flex items-center gap-1">
+                              <Input type="number" placeholder="일" className="w-20 h-8" {...field} data-testid="input-final-timing-days" />
+                              <span className="text-xs text-muted-foreground">일</span>
+                            </div>
+                          )}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

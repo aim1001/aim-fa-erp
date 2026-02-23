@@ -582,97 +582,114 @@ export default function InquiryDetail() {
           <CardTitle className="text-base">계약조건</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
-            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
-              <span className="text-muted-foreground">결제방식</span>
-              <InlineSelect
-                value={inquiry.paymentType || ""}
-                field="paymentType"
-                inquiryId={id!}
-                options={[
-                  { value: "_none", label: "미설정" },
-                  { value: "split", label: "계약금/중도금/잔금" },
-                  { value: "lump", label: "일괄" },
-                ]}
-              />
+          <div className="space-y-4 text-sm">
+            <div className="border rounded-lg overflow-hidden">
+              <div className="grid grid-cols-[80px_1fr_1fr] bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground border-b">
+                <span>구분</span>
+                <span>비율</span>
+                <span>기한</span>
+              </div>
 
-              {(inquiry.paymentType === "split") && (
-                <>
-                  <span className="text-muted-foreground">계약금</span>
-                  <div className="flex items-center gap-1">
-                    <InlineNumber value={inquiry.contractRatio ?? 0} field="contractRatio" inquiryId={id!} />
-                    <span className="text-muted-foreground text-xs">%</span>
-                  </div>
-
-                  <span className="text-muted-foreground">중도금</span>
-                  <div className="flex items-center gap-1">
-                    <InlineNumber value={inquiry.midRatio ?? 0} field="midRatio" inquiryId={id!} />
-                    <span className="text-muted-foreground text-xs">%</span>
-                  </div>
-
-                  <span className="text-muted-foreground">잔금</span>
-                  <div className="flex items-center gap-1">
-                    <InlineNumber value={inquiry.finalRatio ?? 0} field="finalRatio" inquiryId={id!} />
-                    <span className="text-muted-foreground text-xs">%</span>
-                  </div>
-                </>
-              )}
-
-              {(inquiry.paymentType === "lump") && (
-                <>
-                  <span className="text-muted-foreground">잔금</span>
-                  <span>100%</span>
-                </>
-              )}
-            </div>
-
-            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
-              <span className="text-muted-foreground">결제시기</span>
-              <InlineSelect
-                value={inquiry.paymentTiming || ""}
-                field="paymentTiming"
-                inquiryId={id!}
-                options={[
-                  { value: "_none", label: "미설정" },
-                  { value: "next_month_end", label: "익월말" },
-                  { value: "within_2weeks", label: "2주이내" },
-                  { value: "month_end", label: "월말" },
-                  { value: "within_30days", label: "30일이내" },
-                ]}
-              />
-
-              {(inquiry.paymentType === "split") && (
-                <>
-                  <span className="text-muted-foreground">계약금 기한</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground">예상일자 +</span>
-                    <InlineNumber value={inquiry.contractDueDays ?? 0} field="contractDueDays" inquiryId={id!} />
-                    <span className="text-muted-foreground text-xs">일</span>
-                  </div>
-
-                  <span className="text-muted-foreground">중도금/잔금</span>
+              <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center border-b">
+                <span className="font-medium">계약금</span>
+                <div className="flex items-center gap-1">
+                  <InlineNumber value={inquiry.contractRatio ?? 0} field="contractRatio" inquiryId={id!} />
+                  <span className="text-muted-foreground text-xs">%</span>
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
                   <InlineSelect
-                    value={inquiry.midFinalTiming || ""}
-                    field="midFinalTiming"
+                    value={inquiry.contractTimingType || ""}
+                    field="contractTimingType"
                     inquiryId={id!}
                     options={[
                       { value: "_none", label: "미설정" },
-                      { value: "on_delivery", label: "납품시" },
-                      { value: "after_delivery", label: "납품후" },
+                      { value: "days", label: "일수지정" },
+                      { value: "next_month_end", label: "익월말" },
+                      { value: "month_end", label: "월말" },
                     ]}
                   />
-
-                  {inquiry.midFinalTiming === "after_delivery" && (
-                    <>
-                      <span className="text-muted-foreground">납품후</span>
-                      <div className="flex items-center gap-1">
-                        <InlineNumber value={inquiry.midFinalDays ?? 0} field="midFinalDays" inquiryId={id!} />
-                        <span className="text-muted-foreground text-xs">일</span>
-                      </div>
-                    </>
+                  {inquiry.contractTimingType === "days" && (
+                    <div className="flex items-center gap-1">
+                      <InlineNumber value={inquiry.contractTimingDays ?? 0} field="contractTimingDays" inquiryId={id!} />
+                      <span className="text-muted-foreground text-xs">일</span>
+                    </div>
                   )}
-                </>
-              )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center border-b">
+                <span className="font-medium">중도금</span>
+                <div className="flex items-center gap-1">
+                  <InlineNumber value={inquiry.midRatio ?? 0} field="midRatio" inquiryId={id!} />
+                  <span className="text-muted-foreground text-xs">%</span>
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <InlineSelect
+                    value={inquiry.midAfterDelivery || ""}
+                    field="midAfterDelivery"
+                    inquiryId={id!}
+                    options={[
+                      { value: "_none", label: "미설정" },
+                      { value: "yes", label: "납품후" },
+                      { value: "no", label: "납품전" },
+                    ]}
+                  />
+                  <InlineSelect
+                    value={inquiry.midTimingType || ""}
+                    field="midTimingType"
+                    inquiryId={id!}
+                    options={[
+                      { value: "_none", label: "미설정" },
+                      { value: "days", label: "일수지정" },
+                      { value: "next_month_end", label: "익월말" },
+                      { value: "month_end", label: "월말" },
+                    ]}
+                  />
+                  {inquiry.midTimingType === "days" && (
+                    <div className="flex items-center gap-1">
+                      <InlineNumber value={inquiry.midTimingDays ?? 0} field="midTimingDays" inquiryId={id!} />
+                      <span className="text-muted-foreground text-xs">일</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center">
+                <span className="font-medium">잔금</span>
+                <div className="flex items-center gap-1">
+                  <InlineNumber value={inquiry.finalRatio ?? 0} field="finalRatio" inquiryId={id!} />
+                  <span className="text-muted-foreground text-xs">%</span>
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <InlineSelect
+                    value={inquiry.finalAfterDelivery || ""}
+                    field="finalAfterDelivery"
+                    inquiryId={id!}
+                    options={[
+                      { value: "_none", label: "미설정" },
+                      { value: "yes", label: "납품후" },
+                      { value: "no", label: "납품전" },
+                    ]}
+                  />
+                  <InlineSelect
+                    value={inquiry.finalTimingType || ""}
+                    field="finalTimingType"
+                    inquiryId={id!}
+                    options={[
+                      { value: "_none", label: "미설정" },
+                      { value: "days", label: "일수지정" },
+                      { value: "next_month_end", label: "익월말" },
+                      { value: "month_end", label: "월말" },
+                    ]}
+                  />
+                  {inquiry.finalTimingType === "days" && (
+                    <div className="flex items-center gap-1">
+                      <InlineNumber value={inquiry.finalTimingDays ?? 0} field="finalTimingDays" inquiryId={id!} />
+                      <span className="text-muted-foreground text-xs">일</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>
