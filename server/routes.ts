@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
 import { storage } from "./storage";
@@ -14,10 +14,50 @@ import {
 } from "./onedrive";
 import { parseExcelCustomerInfo, parseCustomerListFromOneDrive } from "./excel-parser";
 
+declare module "express-session" {
+  interface SessionData {
+    authenticated: boolean;
+  }
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.session && req.session.authenticated) {
+    return next();
+  }
+  return res.status(401).json({ message: "Unauthorized" });
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  app.post("/api/login", (req, res) => {
+    const { password } = req.body;
+    const appPassword = process.env.APP_PASSWORD || "aim1001";
+    if (password === appPassword) {
+      req.session.authenticated = true;
+      return res.json({ ok: true });
+    }
+    return res.status(401).json({ message: "비밀번호가 올바르지 않습니다" });
+  });
+
+  app.post("/api/logout", (req, res) => {
+    req.session.destroy(() => {
+      res.json({ ok: true });
+    });
+  });
+
+  app.get("/api/auth/status", (req, res) => {
+    res.json({ authenticated: !!(req.session && req.session.authenticated) });
+  });
+
+  app.use("/api", (req, res, next) => {
+    if (req.path === "/login" || req.path === "/logout" || req.path === "/auth/status") {
+      return next();
+    }
+    return requireAuth(req, res, next);
+  });
 
   app.get("/api/inquiries", async (req, res) => {
     try {

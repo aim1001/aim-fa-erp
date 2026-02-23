@@ -1,6 +1,6 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -12,6 +12,8 @@ import CompanyList from "@/pages/company-list";
 import CompanyDetail from "@/pages/company-detail";
 import CustomerList from "@/pages/customer-list";
 import CustomerDetail from "@/pages/customer-detail";
+import Login from "@/pages/login";
+import { getQueryFn } from "@/lib/queryClient";
 
 function Router() {
   return (
@@ -32,24 +34,51 @@ const sidebarStyle = {
   "--sidebar-width-icon": "3rem",
 };
 
+function AuthenticatedApp() {
+  return (
+    <SidebarProvider style={sidebarStyle as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <AppSidebar />
+        <div className="flex flex-col flex-1">
+          <header className="flex items-center gap-2 p-2 border-b">
+            <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <span className="text-sm font-medium text-muted-foreground">Sales Manager</span>
+          </header>
+          <main className="flex-1 overflow-hidden">
+            <Router />
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+function AppContent() {
+  const { data: authStatus, isLoading, refetch } = useQuery<{ authenticated: boolean }>({
+    queryKey: ["/api/auth/status"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-muted-foreground">로딩 중...</div>
+      </div>
+    );
+  }
+
+  if (!authStatus?.authenticated) {
+    return <Login onSuccess={() => refetch()} />;
+  }
+
+  return <AuthenticatedApp />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-          <div className="flex h-screen w-full">
-            <AppSidebar />
-            <div className="flex flex-col flex-1">
-              <header className="flex items-center gap-2 p-2 border-b">
-                <SidebarTrigger data-testid="button-sidebar-toggle" />
-                <span className="text-sm font-medium text-muted-foreground">Sales Manager</span>
-              </header>
-              <main className="flex-1 overflow-hidden">
-                <Router />
-              </main>
-            </div>
-          </div>
-        </SidebarProvider>
+        <AppContent />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

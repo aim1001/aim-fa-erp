@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, RefreshCw, Building2, Users, Target, Trophy, XCircle } from "lucide-react";
+import { LayoutDashboard, FileText, RefreshCw, Building2, Users, Target, Trophy, XCircle, LogOut } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -151,6 +151,27 @@ export function AppSidebar() {
               >
                 <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
                 <span>{syncMutation.isPending ? "동기화 중..." : "OneDrive 동기화"}</span>
+              </Button>
+            </div>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <div className="px-2">
+              <Button
+                variant="ghost"
+                className="w-full text-muted-foreground"
+                onClick={async () => {
+                  await fetch("/api/logout", { method: "POST", credentials: "include" });
+                  queryClient.setQueryData(["/api/auth/status"], { authenticated: false });
+                  queryClient.clear();
+                  window.location.href = "/";
+                }}
+                data-testid="button-logout"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>로그아웃</span>
               </Button>
             </div>
           </SidebarGroupContent>
