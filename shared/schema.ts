@@ -119,6 +119,7 @@ export const vendors = pgTable("vendors", {
 export const salesInvoices = pgTable("sales_invoices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   customerId: varchar("customer_id"),
+  projectId: varchar("project_id"),
   invoiceNumber: text("invoice_number"),
   issueDate: text("issue_date"),
   writeDate: text("write_date"),
@@ -142,6 +143,7 @@ export const salesInvoices = pgTable("sales_invoices", {
 export const purchaseInvoices = pgTable("purchase_invoices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   vendorId: varchar("vendor_id"),
+  projectId: varchar("project_id"),
   invoiceNumber: text("invoice_number"),
   issueDate: text("issue_date"),
   writeDate: text("write_date"),
@@ -166,6 +168,7 @@ export const payments = pgTable("payments", {
   type: text("type").notNull(),
   salesInvoiceId: varchar("sales_invoice_id"),
   purchaseInvoiceId: varchar("purchase_invoice_id"),
+  projectId: varchar("project_id"),
   companyName: text("company_name"),
   description: text("description"),
   amount: integer("amount"),

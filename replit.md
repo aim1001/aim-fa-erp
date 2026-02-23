@@ -32,8 +32,9 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **inquiries** 테이블: customerId(고객사)와 companyId(담당자) 모두 참조 + 스냅샷 필드로 연결 시점 정보 보존
 - **sales_invoices** 테이블: 매출계산서 (customerId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
-- **payments** 테이블: 결제 계획 (유형, 계산서 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보)
+- **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보)
 - **projects** 테이블: 프로젝트 (프로젝트번호, 고객사명, 내용, 연도, OneDrive 폴더 정보, 상태)
+- 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
 ## Key Features
@@ -51,7 +52,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 엑셀 견적서에서 고객 정보 자동 추출 (X3:Z7 셀 기반)
 - 자금계획 - 월별 입출금 예정/실적 관리 (리스트+캘린더 뷰, 결제 완료 처리)
 - 결제 계획 자동 생성 (계산서에서 익월말/월말/일자지정 + 분할 지원)
-- 프로젝트 관리 - OneDrive `2.공사` 폴더 스캔, 연도별 프로젝트 목록 (폴더명 파싱: 번호_고객사_내용)
+- 프로젝트 관리 - OneDrive `2.공사` 폴더 스캔, 연도별 프로젝트 목록 (폴더명 파싱: 번호_고객사_내용), 매출/매입/수익 요약, 계산서 연결/해제
 - 사이드바: 영업(인콰이어리, 진행중/수주/실주, 프로젝트) / 경영지원(매출계산서, 매입계산서, 자금계획) / 관리(고객사, 공급업체)
 
 ## Excel Customer Info Structure
@@ -126,6 +127,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-23: Payment plan system (payments table, auto-generate from invoices, split payments)
 - 2026-02-23: Payment plan page with list + calendar views, monthly navigation, totals summary
 - 2026-02-23: Invoice detail modals now include payment plan section with generate/complete actions
+- 2026-02-23: Project↔Invoice↔Payment linking (projectId fields added, project detail modal with invoice linking/unlinking, financial summaries per project)
 
 ## User Preferences
 - Korean language UI

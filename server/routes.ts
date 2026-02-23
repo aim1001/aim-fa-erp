@@ -1090,7 +1090,13 @@ export async function registerRoutes(
 
   app.patch("/api/sales-invoices/:id", async (req, res) => {
     try {
-      const data = insertSalesInvoiceSchema.partial().parse(req.body);
+      const body = req.body;
+      if (Object.keys(body).length === 1 && "projectId" in body) {
+        const invoice = await storage.updateSalesInvoice(req.params.id, { projectId: body.projectId });
+        if (!invoice) return res.status(404).json({ message: "매출계산서를 찾을 수 없습니다" });
+        return res.json(invoice);
+      }
+      const data = insertSalesInvoiceSchema.partial().parse(body);
       const invoice = await storage.updateSalesInvoice(req.params.id, data);
       if (!invoice) return res.status(404).json({ message: "매출계산서를 찾을 수 없습니다" });
       res.json(invoice);
@@ -1186,7 +1192,13 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-invoices/:id", async (req, res) => {
     try {
-      const data = insertPurchaseInvoiceSchema.partial().parse(req.body);
+      const body = req.body;
+      if (Object.keys(body).length === 1 && "projectId" in body) {
+        const invoice = await storage.updatePurchaseInvoice(req.params.id, { projectId: body.projectId });
+        if (!invoice) return res.status(404).json({ message: "매입계산서를 찾을 수 없습니다" });
+        return res.json(invoice);
+      }
+      const data = insertPurchaseInvoiceSchema.partial().parse(body);
       const invoice = await storage.updatePurchaseInvoice(req.params.id, data);
       if (!invoice) return res.status(404).json({ message: "매입계산서를 찾을 수 없습니다" });
       res.json(invoice);
@@ -1516,7 +1528,56 @@ export async function registerRoutes(
     try {
       const year = req.query.year ? parseInt(req.query.year as string) : undefined;
       const list = await storage.getProjects(year);
-      res.json(list);
+
+      const salesInvoices = await storage.getSalesInvoices();
+      const purchaseInvoices = await storage.getPurchaseInvoices();
+      const allPayments = await storage.getPayments();
+
+      const enriched = list.map(p => {
+        const sales = salesInvoices.filter(i => i.projectId === p.id);
+        const purchases = purchaseInvoices.filter(i => i.projectId === p.id);
+        const projectPayments = allPayments.filter(pay => pay.projectId === p.id);
+
+        const salesTotal = sales.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
+        const purchaseTotal = purchases.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
+        const profit = salesTotal - purchaseTotal;
+
+        const paidIncome = projectPayments.filter(pay => pay.type === "income" && (pay.status === "completed" || pay.actualDate))
+          .reduce((sum, pay) => sum + (pay.actualAmount || pay.amount || 0), 0);
+        const paidExpense = projectPayments.filter(pay => pay.type === "expense" && (pay.status === "completed" || pay.actualDate))
+          .reduce((sum, pay) => sum + (pay.actualAmount || pay.amount || 0), 0);
+        const pendingPayments = projectPayments.filter(pay => pay.status !== "completed" && !pay.actualDate).length;
+
+        return {
+          ...p,
+          salesTotal,
+          purchaseTotal,
+          profit,
+          paidIncome,
+          paidExpense,
+          pendingPayments,
+          salesCount: sales.length,
+          purchaseCount: purchases.length,
+        };
+      });
+
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/projects/:id", async (req, res) => {
+    try {
+      const projects = await storage.getProjects();
+      const project = projects.find(p => p.id === req.params.id);
+      if (!project) return res.status(404).json({ message: "Not found" });
+
+      const salesInvoices = (await storage.getSalesInvoices()).filter(i => i.projectId === project.id);
+      const purchaseInvoices = (await storage.getPurchaseInvoices()).filter(i => i.projectId === project.id);
+      const payments = (await storage.getPayments()).filter(p => p.projectId === project.id);
+
+      res.json({ ...project, salesInvoices, purchaseInvoices, payments });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
