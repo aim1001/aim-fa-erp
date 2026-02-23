@@ -71,7 +71,7 @@ export async function registerRoutes(
       data.inquiryNumber = nextNumber;
 
       try {
-        const yearFolderName = `${data.year}영업`;
+        const yearFolderName = `${data.year} 영업`;
         const folderName = `${nextNumber}_${data.customerName}_${data.productInfo || ''}`.replace(/\/$/, '');
         const folder = await createInquiryFolder(yearFolderName, folderName);
         data.source = "onedrive";
