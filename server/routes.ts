@@ -453,9 +453,11 @@ export async function registerRoutes(
     try {
       const list = await storage.getCustomers();
       const inquiryCounts = await storage.getCustomerInquiryCounts();
+      const lastTxDates = await storage.getCustomerLastTransactionDates();
       const result = list.map(c => ({
         ...c,
         inquiryCount: inquiryCounts.get(c.id) || 0,
+        lastTransactionDate: lastTxDates.get(c.id) || null,
       }));
       res.json(result);
     } catch (err: any) {
@@ -864,6 +866,20 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendors-with-stats", async (_req, res) => {
+    try {
+      const list = await storage.getVendors();
+      const lastTxDates = await storage.getVendorLastTransactionDates();
+      const result = list.map(v => ({
+        ...v,
+        lastTransactionDate: lastTxDates.get(v.id) || null,
+      }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/vendors/search", async (req, res) => {
     try {
       const q = (req.query.q as string) || "";
@@ -988,7 +1004,8 @@ export async function registerRoutes(
         }
       }
 
-      res.json({ vendorsCreated, vendorsUpdated, invoicesLinked });
+      const uniqueBizNums = new Set(allInvoices.filter(i => i.businessNumber).map(i => i.businessNumber!.replace(/-/g, "")));
+      res.json({ vendorsCreated, vendorsUpdated, invoicesLinked, totalInvoices: allInvoices.length, uniqueBusinessNumbers: uniqueBizNums.size });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

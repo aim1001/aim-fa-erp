@@ -105,6 +105,10 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Sidebar reorganized into sections: 영업/경영지원/관리
 - 2026-02-23: Removed 담당자 from sidebar (accessible only via customer detail modal)
 - 2026-02-23: Replaced 연도별 sidebar section with 최근 6개월/최근 1년 quick filters under 영업
+- 2026-02-23: OneDrive tax invoice import (매출/매입전자세금계산서 엑셀 파일 → DB, 연도별 선택)
+- 2026-02-23: Auto vendor creation on purchase invoice import (사업자번호 기반 공급업체 자동 생성)
+- 2026-02-23: Vendor sync from invoices (매입계산서 기준 공급업체 갱신 버튼)
+- 2026-02-23: Added lastTransactionDate to customer-list and vendor-list (계산서 기준 최근 거래일)
 
 ## User Preferences
 - Korean language UI

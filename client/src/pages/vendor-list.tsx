@@ -33,6 +33,7 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors-with-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId] });
     },
     onError: (err: Error) => {
@@ -47,6 +48,7 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
     onSuccess: () => {
       toast({ title: "삭제 완료" });
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors-with-stats"] });
       onClose();
     },
     onError: (err: Error) => {
@@ -148,6 +150,8 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
   );
 }
 
+type VendorWithStats = Vendor & { lastTransactionDate: string | null };
+
 export default function VendorList() {
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
@@ -155,8 +159,8 @@ export default function VendorList() {
   const [search, setSearch] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
 
-  const { data: vendorList, isLoading } = useQuery<Vendor[]>({
-    queryKey: ["/api/vendors"],
+  const { data: vendorList, isLoading } = useQuery<VendorWithStats[]>({
+    queryKey: ["/api/vendors-with-stats"],
   });
 
   const favoriteMutation = useMutation({
@@ -165,21 +169,21 @@ export default function VendorList() {
       return res.json();
     },
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/vendors"] });
-      const prev = queryClient.getQueryData<Vendor[]>(["/api/vendors"]);
+      await queryClient.cancelQueries({ queryKey: ["/api/vendors-with-stats"] });
+      const prev = queryClient.getQueryData<VendorWithStats[]>(["/api/vendors-with-stats"]);
       if (prev) {
-        queryClient.setQueryData(["/api/vendors"], prev.map(v =>
+        queryClient.setQueryData(["/api/vendors-with-stats"], prev.map(v =>
           v.id === id ? { ...v, isFavorite: !v.isFavorite } : v
         ));
       }
       return { prev };
     },
     onError: (_err, _id, context) => {
-      if (context?.prev) queryClient.setQueryData(["/api/vendors"], context.prev);
+      if (context?.prev) queryClient.setQueryData(["/api/vendors-with-stats"], context.prev);
       toast({ title: "즐겨찾기 변경 실패", variant: "destructive" });
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors-with-stats"] });
     },
   });
 
@@ -189,15 +193,18 @@ export default function VendorList() {
       return res.json();
     },
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors-with-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
       const parts: string[] = [];
+      parts.push(`매입계산서 ${data.totalInvoices}건 검토`);
+      parts.push(`사업자번호 ${data.uniqueBusinessNumbers}개 확인`);
       if (data.vendorsCreated > 0) parts.push(`${data.vendorsCreated}개 신규 등록`);
       if (data.vendorsUpdated > 0) parts.push(`${data.vendorsUpdated}개 정보 보충`);
-      if (data.invoicesLinked > 0) parts.push(`매입계산서 ${data.invoicesLinked}건 연결`);
+      if (data.invoicesLinked > 0) parts.push(`${data.invoicesLinked}건 연결`);
       toast({
         title: "갱신 완료",
-        description: parts.length > 0 ? parts.join(", ") : "변경 사항 없음",
+        description: parts.join(", "),
       });
     },
     onError: (err: Error) => {
@@ -211,6 +218,7 @@ export default function VendorList() {
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors-with-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       setShowAdd(false);
       setNewName("");
@@ -284,7 +292,7 @@ export default function VendorList() {
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자등록번호</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">담당자</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">전화번호</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
               </tr>
             </thead>
             <tbody>
@@ -313,7 +321,7 @@ export default function VendorList() {
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{vendor.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{vendor.representative || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{vendor.contactName || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{vendor.phone || "-"}</td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{vendor.lastTransactionDate || "-"}</td>
                 </tr>
               ))}
             </tbody>

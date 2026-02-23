@@ -431,7 +431,7 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
   );
 }
 
-type CustomerWithStats = Customer & { inquiryCount: number };
+type CustomerWithStats = Customer & { inquiryCount: number; lastTransactionDate: string | null };
 type FilterTab = "traded" | "untraded" | "bookmarked";
 
 export default function CustomerList() {
@@ -618,6 +618,7 @@ export default function CustomerList() {
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자등록번호</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">전화번호</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
                 <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">인콰이어리</th>
               </tr>
             </thead>
@@ -652,6 +653,7 @@ export default function CustomerList() {
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.representative || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.phone || "-"}</td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.lastTransactionDate || "-"}</td>
                   <td className="py-2.5 px-4 text-center hidden lg:table-cell">
                     {customer.inquiryCount > 0 ? (
                       <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5">{customer.inquiryCount}건</span>

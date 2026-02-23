@@ -70,6 +70,8 @@ export interface IStorage {
   deleteCompany(id: string): Promise<void>;
   linkCompanyToCustomer(companyId: string, customerId: string): Promise<Company | undefined>;
   getCustomerInquiryCounts(): Promise<Map<string, number>>;
+  getCustomerLastTransactionDates(): Promise<Map<string, string>>;
+  getVendorLastTransactionDates(): Promise<Map<string, string>>;
   getInquiriesByCustomerId(customerId: string): Promise<Inquiry[]>;
   getInquiriesByCompanyId(companyId: string): Promise<Inquiry[]>;
 
@@ -306,6 +308,36 @@ export class DatabaseStorage implements IStorage {
     const map = new Map<string, number>();
     for (const row of rows) {
       if (row.customerId) map.set(row.customerId, row.count);
+    }
+    return map;
+  }
+
+  async getCustomerLastTransactionDates(): Promise<Map<string, string>> {
+    const rows = await db.select({
+      customerId: salesInvoices.customerId,
+      lastDate: sql<string>`max(${salesInvoices.issueDate})`,
+    })
+      .from(salesInvoices)
+      .where(sql`${salesInvoices.customerId} is not null`)
+      .groupBy(salesInvoices.customerId);
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      if (row.customerId && row.lastDate) map.set(row.customerId, row.lastDate);
+    }
+    return map;
+  }
+
+  async getVendorLastTransactionDates(): Promise<Map<string, string>> {
+    const rows = await db.select({
+      vendorId: purchaseInvoices.vendorId,
+      lastDate: sql<string>`max(${purchaseInvoices.issueDate})`,
+    })
+      .from(purchaseInvoices)
+      .where(sql`${purchaseInvoices.vendorId} is not null`)
+      .groupBy(purchaseInvoices.vendorId);
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      if (row.vendorId && row.lastDate) map.set(row.vendorId, row.lastDate);
     }
     return map;
   }
