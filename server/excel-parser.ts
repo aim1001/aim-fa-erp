@@ -20,7 +20,7 @@ export interface CustomerListRow {
 }
 
 export async function parseCustomerListFromOneDrive(): Promise<CustomerListRow[]> {
-  const buffer = await findFileInFolder(["4.경영지원", "database"], "고객사목록.xls");
+  const buffer = await findFileInFolder(["4.경영지원", "database"], "거래처목록.xls");
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error("시트를 찾을 수 없습니다");
