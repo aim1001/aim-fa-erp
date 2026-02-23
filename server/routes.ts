@@ -158,6 +158,7 @@ export async function registerRoutes(
     try {
       const yearFolders = await listRootSalesFolder();
       const years = yearFolders
+        .filter(f => f.name.includes('영업'))
         .map(f => {
           const m = f.name.match(/(\d{4})/);
           return m ? parseInt(m[1]) : null;
@@ -179,6 +180,7 @@ export async function registerRoutes(
       let total = 0;
 
       const foldersToSync = yearFolders.filter(f => {
+        if (!f.name.includes('영업')) return false;
         const m = f.name.match(/(\d{4})/);
         if (!m) return false;
         if (targetYear) return parseInt(m[1]) === targetYear;
