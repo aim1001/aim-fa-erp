@@ -10,6 +10,8 @@ import Dashboard from "@/pages/dashboard";
 import InquiryList from "@/pages/inquiry-list";
 import InquiryDetail from "@/pages/inquiry-detail";
 import InquiryForm from "@/pages/inquiry-form";
+import CompanyList from "@/pages/company-list";
+import CompanyDetail from "@/pages/company-detail";
 
 function Router() {
   return (
@@ -18,6 +20,8 @@ function Router() {
       <Route path="/inquiries" component={InquiryList} />
       <Route path="/inquiries/new" component={InquiryForm} />
       <Route path="/inquiries/:id" component={InquiryDetail} />
+      <Route path="/companies" component={CompanyList} />
+      <Route path="/companies/:id" component={CompanyDetail} />
       <Route component={NotFound} />
     </Switch>
   );

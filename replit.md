@@ -22,20 +22,37 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 
 ## Key Features
 - OneDrive 폴더 자동 스캔 및 인콰이어리 동기화
-- 인콰이어리 CRUD (수동 추가 가능)
+- 인콰이어리 CRUD (수동 추가 가능, 영업번호 자동생성)
+- 새 인콰이어리 추가 시 OneDrive 폴더 자동 생성
 - 대시보드 (확률별, 상태별, 연도별 차트)
 - 검색 및 필터링 (고객명, 연도, 상태)
 - 파일 목록 및 OneDrive에서 열기
+- 고객사(Companies) 관리 - 엑셀에서 고객정보 추출
+- 엑셀 견적서에서 고객 정보 자동 추출 (X3:Z7 셀 기반)
+
+## Excel Customer Info Structure
+견적서 엑셀 파일 시트에서 고객 정보 위치:
+- X2/Z2: 견적번호
+- X3/Z3: 회사명
+- X4/Z4(+AA4): 주소
+- X5/Z5: 고객이름(담당자)
+- X6/Z6: 이메일
+- X7/Z7: 전화번호
+- X9/Z9: 프로젝트 이름
+- X10/Z10: 견적일자
 
 ## Project Structure
-- `shared/schema.ts` - Data models (inquiries, inquiryFiles)
+- `shared/schema.ts` - Data models (companies, inquiries, inquiryFiles)
 - `server/onedrive.ts` - OneDrive API client
+- `server/excel-parser.ts` - Excel file parsing utility for customer info extraction
 - `server/storage.ts` - Database storage interface
 - `server/routes.ts` - API routes
 - `client/src/pages/dashboard.tsx` - Dashboard page
 - `client/src/pages/inquiry-list.tsx` - Inquiry list page
-- `client/src/pages/inquiry-detail.tsx` - Inquiry detail page
-- `client/src/pages/inquiry-form.tsx` - Add/Edit inquiry form
+- `client/src/pages/inquiry-detail.tsx` - Inquiry detail page (includes CustomerInfoSection)
+- `client/src/pages/inquiry-form.tsx` - Add inquiry form (auto-generates inquiry number)
+- `client/src/pages/company-list.tsx` - Company list page
+- `client/src/pages/company-detail.tsx` - Company detail page (inline editing)
 - `client/src/components/app-sidebar.tsx` - Sidebar navigation
 
 ## Recent Changes
@@ -49,6 +66,11 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Replaced edit page with inline editing on detail page (click-to-edit all fields)
 - 2026-02-23: _info.json sync includes product detail fields
 - 2026-02-23: Redesigned contract conditions to per-stage structure: 계약금/중도금/잔금 each with ratio(%), timing type(일수지정/익월말/월말), timing days, and 납품후 flag (mid/final only)
+- 2026-02-23: Added auto-generated inquiry numbers and OneDrive folder creation on new inquiry
+- 2026-02-23: Added companies table with companyId reference in inquiries
+- 2026-02-23: Excel parser extracts customer info from quotation sheets (X3:Z7 cells)
+- 2026-02-23: Customer info scan button on inquiry detail, saves to company table + _info.json
+- 2026-02-23: Company list and detail pages with inline editing
 
 ## User Preferences
 - Korean language UI

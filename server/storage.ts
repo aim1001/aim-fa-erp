@@ -1,7 +1,8 @@
 import {
   type Inquiry, type InsertInquiry,
   type InquiryFile, type InsertInquiryFile,
-  inquiries, inquiryFiles,
+  type Company, type InsertCompany,
+  inquiries, inquiryFiles, companies,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ilike, gte, lte, desc } from "drizzle-orm";
@@ -41,6 +42,13 @@ export interface IStorage {
   getInquiryFiles(inquiryId: string): Promise<InquiryFile[]>;
   createInquiryFile(file: InsertInquiryFile): Promise<InquiryFile>;
   deleteInquiryFilesByInquiryId(inquiryId: string): Promise<void>;
+
+  getCompanies(): Promise<Company[]>;
+  getCompany(id: string): Promise<Company | undefined>;
+  getCompanyByName(name: string): Promise<Company | undefined>;
+  createCompany(company: InsertCompany): Promise<Company>;
+  updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
+  deleteCompany(id: string): Promise<void>;
 
   getNextInquiryNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
@@ -129,6 +137,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInquiryFilesByInquiryId(inquiryId: string): Promise<void> {
     await db.delete(inquiryFiles).where(eq(inquiryFiles.inquiryId, inquiryId));
+  }
+
+  async getCompanies(): Promise<Company[]> {
+    return db.select().from(companies).orderBy(companies.companyName);
+  }
+
+  async getCompany(id: string): Promise<Company | undefined> {
+    const result = await db.select().from(companies).where(eq(companies.id, id));
+    return result[0];
+  }
+
+  async getCompanyByName(name: string): Promise<Company | undefined> {
+    const result = await db.select().from(companies).where(eq(companies.companyName, name));
+    return result[0];
+  }
+
+  async createCompany(company: InsertCompany): Promise<Company> {
+    const result = await db.insert(companies).values(company).returning();
+    return result[0];
+  }
+
+  async updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined> {
+    const result = await db.update(companies).set(company).where(eq(companies.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteCompany(id: string): Promise<void> {
+    await db.delete(companies).where(eq(companies.id, id));
   }
 
   async getNextInquiryNumber(year: number): Promise<string> {

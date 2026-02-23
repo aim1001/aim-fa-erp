@@ -3,6 +3,17 @@ import { pgTable, text, varchar, integer, date, timestamp } from "drizzle-orm/pg
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const companies = pgTable("companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: text("company_name").notNull(),
+  address: text("address"),
+  contactName: text("contact_name"),
+  email: text("email"),
+  phone: text("phone"),
+  fax: text("fax"),
+  memo: text("memo"),
+});
+
 export const inquiries = pgTable("inquiries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inquiryNumber: text("inquiry_number").notNull(),
@@ -37,6 +48,7 @@ export const inquiries = pgTable("inquiries", {
   finalTimingType: text("final_timing_type"),
   finalTimingDays: integer("final_timing_days"),
   deliveryDate: text("delivery_date"),
+  companyId: varchar("company_id"),
 });
 
 export const inquiryFiles = pgTable("inquiry_files", {
@@ -49,6 +61,10 @@ export const inquiryFiles = pgTable("inquiry_files", {
   size: integer("size"),
 });
 
+export const insertCompanySchema = createInsertSchema(companies).omit({
+  id: true,
+});
+
 export const insertInquirySchema = createInsertSchema(inquiries).omit({
   id: true,
 });
@@ -57,6 +73,8 @@ export const insertInquiryFileSchema = createInsertSchema(inquiryFiles).omit({
   id: true,
 });
 
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type Company = typeof companies.$inferSelect;
 export type InsertInquiry = z.infer<typeof insertInquirySchema>;
 export type Inquiry = typeof inquiries.$inferSelect;
 export type InsertInquiryFile = z.infer<typeof insertInquiryFileSchema>;

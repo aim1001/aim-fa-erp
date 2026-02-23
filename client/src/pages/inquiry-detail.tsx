@@ -7,12 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback } from "react";
-import type { Inquiry, InquiryFile } from "@shared/schema";
+import type { Inquiry, InquiryFile, Company } from "@shared/schema";
 
 function useInlineUpdate(inquiryId: string) {
   const { toast } = useToast();
@@ -300,6 +300,181 @@ function InlineNumber({ value, field, inquiryId }: {
   );
 }
 
+interface ExcelCustomerInfo {
+  sheetName: string;
+  quoteNumber: string;
+  companyName: string;
+  address: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  projectName: string;
+  quoteDate: string;
+}
+
+function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
+  inquiryId: string;
+  companyId: string | null;
+  hasOneDrive: boolean;
+}) {
+  const { toast } = useToast();
+  const [scannedData, setScannedData] = useState<ExcelCustomerInfo[] | null>(null);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+
+  const { data: company, isLoading: companyLoading } = useQuery<Company>({
+    queryKey: [`/api/companies/${companyId}`],
+    enabled: !!companyId,
+  });
+
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/scan-excel`);
+      return res.json() as Promise<ExcelCustomerInfo[]>;
+    },
+    onSuccess: (data) => {
+      setScannedData(data);
+      if (data.length > 0) setSelectedIdx(0);
+      if (data.length === 0) {
+        toast({ title: "고객 정보를 찾을 수 없습니다", description: "엑셀 파일에 유효한 고객 정보가 없습니다.", variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "엑셀 스캔 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (info: ExcelCustomerInfo) => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/save-customer-info`, {
+        companyName: info.companyName,
+        address: info.address,
+        contactName: info.contactName,
+        email: info.email,
+        phone: info.phone,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "고객 정보 저장 완료" });
+      setScannedData(null);
+      setSelectedIdx(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const selected = scannedData && selectedIdx !== null ? scannedData[selectedIdx] : null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-1">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Building2 className="h-4 w-4" />
+          고객사 정보
+        </CardTitle>
+        {hasOneDrive && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => scanMutation.mutate()}
+            disabled={scanMutation.isPending}
+            data-testid="button-scan-excel"
+          >
+            {scanMutation.isPending ? <Loader2 className="animate-spin" /> : <Search className="h-4 w-4" />}
+            <span>엑셀에서 가져오기</span>
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent>
+        {companyLoading ? (
+          <Skeleton className="h-20" />
+        ) : company ? (
+          <div className="grid grid-cols-[80px_1fr] gap-y-2 gap-x-2 text-sm">
+            <span className="text-muted-foreground">회사명</span>
+            <span className="font-medium" data-testid="text-company-name">{company.companyName}</span>
+            <span className="text-muted-foreground">주소</span>
+            <span data-testid="text-company-address">{company.address || "-"}</span>
+            <span className="text-muted-foreground">담당자</span>
+            <span data-testid="text-company-contact">{company.contactName || "-"}</span>
+            <span className="text-muted-foreground">이메일</span>
+            <span data-testid="text-company-email">{company.email || "-"}</span>
+            <span className="text-muted-foreground">전화번호</span>
+            <span data-testid="text-company-phone">{company.phone || "-"}</span>
+          </div>
+        ) : !scannedData ? (
+          <p className="text-sm text-muted-foreground py-2 text-center">
+            {hasOneDrive ? "\"엑셀에서 가져오기\" 버튼을 눌러 고객 정보를 불러오세요." : "연결된 고객사가 없습니다."}
+          </p>
+        ) : null}
+
+        {scannedData && scannedData.length > 0 && (
+          <div className="space-y-3 mt-2">
+            <div className="border rounded-lg p-3 bg-muted/30">
+              <p className="text-xs font-medium text-muted-foreground mb-2">엑셀에서 발견된 고객 정보 ({scannedData.length}건)</p>
+              {scannedData.length > 1 && (
+                <div className="flex gap-1 flex-wrap mb-3">
+                  {scannedData.map((info, idx) => (
+                    <Button
+                      key={idx}
+                      variant={selectedIdx === idx ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs h-7"
+                      onClick={() => setSelectedIdx(idx)}
+                      data-testid={`button-select-customer-${idx}`}
+                    >
+                      {info.companyName} ({info.sheetName})
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {selected && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[80px_1fr] gap-y-1.5 gap-x-2 text-sm">
+                    <span className="text-muted-foreground">시트명</span>
+                    <span className="text-xs text-blue-600 dark:text-blue-400">{selected.sheetName}</span>
+                    <span className="text-muted-foreground">회사명</span>
+                    <span className="font-medium">{selected.companyName}</span>
+                    <span className="text-muted-foreground">주소</span>
+                    <span>{selected.address || "-"}</span>
+                    <span className="text-muted-foreground">담당자</span>
+                    <span>{selected.contactName || "-"}</span>
+                    <span className="text-muted-foreground">이메일</span>
+                    <span>{selected.email || "-"}</span>
+                    <span className="text-muted-foreground">전화번호</span>
+                    <span>{selected.phone || "-"}</span>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      size="sm"
+                      onClick={() => saveMutation.mutate(selected)}
+                      disabled={saveMutation.isPending}
+                      data-testid="button-save-customer-info"
+                    >
+                      {saveMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
+                      <span>이 정보로 저장</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setScannedData(null); setSelectedIdx(null); }}
+                    >
+                      취소
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function InquiryDetail() {
   const [, params] = useRoute("/inquiries/:id");
   const [, navigate] = useLocation();
@@ -449,6 +624,8 @@ export default function InquiryDetail() {
           </CardContent>
         </Card>
       </div>
+
+      <CustomerInfoSection inquiryId={id!} companyId={inquiry.companyId || null} hasOneDrive={!!inquiry.onedriveFolderId} />
 
       <Card>
         <CardHeader>

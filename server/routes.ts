@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { z } from "zod";
 import { storage } from "./storage";
-import { insertInquirySchema } from "@shared/schema";
+import { insertInquirySchema, insertCompanySchema } from "@shared/schema";
 import {
   listRootSalesFolder,
   listYearFolders,
@@ -11,6 +12,7 @@ import {
   writeInfoJson,
   createInquiryFolder,
 } from "./onedrive";
+import { parseExcelCustomerInfo } from "./excel-parser";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -336,6 +338,130 @@ export async function registerRoutes(
       }
 
       res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Company routes
+  app.get("/api/companies", async (req, res) => {
+    try {
+      const companies = await storage.getCompanies();
+      res.json(companies);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/companies/:id", async (req, res) => {
+    try {
+      const company = await storage.getCompany(req.params.id);
+      if (!company) return res.status(404).json({ message: "회사를 찾을 수 없습니다" });
+      res.json(company);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/companies", async (req, res) => {
+    try {
+      const data = insertCompanySchema.parse(req.body);
+      const company = await storage.createCompany(data);
+      res.status(201).json(company);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/companies/:id", async (req, res) => {
+    try {
+      const data = insertCompanySchema.partial().parse(req.body);
+      const company = await storage.updateCompany(req.params.id, data);
+      if (!company) return res.status(404).json({ message: "회사를 찾을 수 없습니다" });
+      res.json(company);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/companies/:id", async (req, res) => {
+    try {
+      await storage.deleteCompany(req.params.id);
+      res.json({ message: "삭제 완료" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Excel scan: extract customer info from Excel files in an inquiry's OneDrive folder
+  app.post("/api/inquiries/:id/scan-excel", async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry || !inquiry.onedriveFolderId) {
+        return res.status(404).json({ message: "인콰이어리를 찾을 수 없거나 OneDrive 폴더가 없습니다" });
+      }
+
+      const customerInfoList = await parseExcelCustomerInfo(inquiry.onedriveFolderId);
+      res.json(customerInfoList);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const saveCustomerInfoSchema = z.object({
+    companyName: z.string().min(1, "회사명은 필수입니다"),
+    address: z.string().nullable().optional(),
+    contactName: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
+  });
+
+  app.post("/api/inquiries/:id/save-customer-info", async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) {
+        return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      }
+
+      const { companyName, address, contactName, email, phone } = saveCustomerInfoSchema.parse(req.body);
+
+      let company = await storage.getCompanyByName(companyName);
+      if (company) {
+        company = await storage.updateCompany(company.id, {
+          address: address || company.address,
+          contactName: contactName || company.contactName,
+          email: email || company.email,
+          phone: phone || company.phone,
+        }) || company;
+      } else {
+        company = await storage.createCompany({
+          companyName,
+          address: address || null,
+          contactName: contactName || null,
+          email: email || null,
+          phone: phone || null,
+        });
+      }
+
+      await storage.updateInquiry(inquiry.id, { companyId: company.id });
+
+      if (inquiry.onedriveFolderId) {
+        try {
+          const existingInfo = await readInfoJson(inquiry.onedriveFolderId) || {};
+          await writeInfoJson(inquiry.onedriveFolderId, {
+            ...existingInfo,
+            companyName,
+            address,
+            contactName,
+            email,
+            phone,
+          });
+        } catch (err: any) {
+          console.warn("_info.json 업데이트 실패:", err.message);
+        }
+      }
+
+      res.json({ company, inquiryId: inquiry.id });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
