@@ -91,6 +91,23 @@ export async function listYearFolders(yearFolderName: string): Promise<OneDriveF
     }));
 }
 
+export async function createInquiryFolder(yearFolderName: string, folderName: string): Promise<OneDriveFolder> {
+  const client = await getClient();
+  const result = await client
+    .api(`/me/drive/root:/1.영업/${yearFolderName}:/children`)
+    .post({
+      name: folderName,
+      folder: {},
+      '@microsoft.graph.conflictBehavior': 'fail',
+    });
+
+  return {
+    id: result.id,
+    name: result.name,
+    webUrl: result.webUrl,
+  };
+}
+
 export async function listFolderFiles(folderId: string): Promise<OneDriveFile[]> {
   const client = await getClient();
   const result = await client

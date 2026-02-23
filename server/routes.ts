@@ -9,6 +9,7 @@ import {
   parseInquiryFolderName,
   readInfoJson,
   writeInfoJson,
+  createInquiryFolder,
 } from "./onedrive";
 
 export async function registerRoutes(
@@ -42,6 +43,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/next-inquiry-number/:year", async (req, res) => {
+    try {
+      const year = parseInt(req.params.year);
+      if (isNaN(year)) return res.status(400).json({ message: "유효하지 않은 연도" });
+      const nextNumber = await storage.getNextInquiryNumber(year);
+      res.json({ nextNumber });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/inquiries", async (req, res) => {
     try {
       const data = insertInquirySchema.parse(req.body);
@@ -52,6 +64,22 @@ export async function registerRoutes(
       if (data.status && !["active", "won", "lost"].includes(data.status)) {
         data.status = "active";
       }
+
+      const nextNumber = await storage.getNextInquiryNumber(data.year);
+      data.inquiryNumber = nextNumber;
+
+      try {
+        const yearFolderName = `${data.year}영업`;
+        const folderName = `${nextNumber}_${data.customerName}_${data.productInfo || ''}`.replace(/\/$/, '');
+        const folder = await createInquiryFolder(yearFolderName, folderName);
+        data.source = "onedrive";
+        data.onedriveFolderId = folder.id;
+        data.onedriveFolderName = folderName;
+      } catch (folderErr: any) {
+        console.log("OneDrive 폴더 생성 실패 (수동입력으로 저장):", folderErr.message);
+        data.source = "manual";
+      }
+
       const inquiry = await storage.createInquiry(data);
       res.status(201).json(inquiry);
     } catch (err: any) {

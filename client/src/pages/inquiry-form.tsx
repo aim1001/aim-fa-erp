@@ -2,22 +2,20 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useRoute, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Save } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Inquiry } from "@shared/schema";
+
 
 const formSchema = z.object({
-  inquiryNumber: z.string().min(1, "영업번호를 입력하세요"),
   customerName: z.string().min(1, "고객명을 입력하세요"),
   productInfo: z.string().optional(),
   year: z.coerce.number().min(2000).max(2099),
@@ -58,7 +56,6 @@ export default function InquiryForm() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      inquiryNumber: "",
       customerName: "",
       productInfo: "",
       year: currentYear,
@@ -89,10 +86,17 @@ export default function InquiryForm() {
     },
   });
 
+  const watchYear = form.watch("year");
+  const nextNumberQuery = useQuery<{ nextNumber: string }>({
+    queryKey: [`/api/next-inquiry-number/${watchYear}`],
+    enabled: !!watchYear,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
       const res = await apiRequest("POST", "/api/inquiries", {
         ...values,
+        inquiryNumber: "",
         productInfo: values.productInfo || null,
         expectedDate: values.expectedDate || null,
         memo: values.memo || null,
@@ -116,9 +120,6 @@ export default function InquiryForm() {
         finalTimingType: values.finalTimingType && values.finalTimingType !== "_none" ? values.finalTimingType : null,
         finalTimingDays: values.finalTimingDays || null,
         deliveryDate: values.deliveryDate || null,
-        source: "manual",
-        onedriveFolderId: null,
-        onedriveFolderName: null,
       });
       return res.json();
     },
@@ -153,19 +154,12 @@ export default function InquiryForm() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="inquiryNumber"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>영업번호</FormLabel>
-                      <FormControl>
-                        <Input placeholder="예: 26-3" {...field} data-testid="input-inquiry-number" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div>
+                  <label className="text-sm font-medium">영업번호 (자동생성)</label>
+                  <div className="mt-2 px-3 py-2 border rounded-md bg-muted text-sm font-mono" data-testid="text-next-inquiry-number">
+                    {nextNumberQuery.isLoading ? "..." : nextNumberQuery.data?.nextNumber || "-"}
+                  </div>
+                </div>
                 <FormField
                   control={form.control}
                   name="customerName"

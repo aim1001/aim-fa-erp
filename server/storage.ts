@@ -42,6 +42,7 @@ export interface IStorage {
   createInquiryFile(file: InsertInquiryFile): Promise<InquiryFile>;
   deleteInquiryFilesByInquiryId(inquiryId: string): Promise<void>;
 
+  getNextInquiryNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
   getDashboardStats(year?: number): Promise<{
     total: number;
@@ -128,6 +129,24 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInquiryFilesByInquiryId(inquiryId: string): Promise<void> {
     await db.delete(inquiryFiles).where(eq(inquiryFiles.inquiryId, inquiryId));
+  }
+
+  async getNextInquiryNumber(year: number): Promise<string> {
+    const prefix = String(year).slice(-2);
+    const yearInquiries = await db.select({ inquiryNumber: inquiries.inquiryNumber })
+      .from(inquiries)
+      .where(eq(inquiries.year, year));
+
+    let maxSeq = 0;
+    for (const row of yearInquiries) {
+      const match = row.inquiryNumber.match(/^\d+-(\d+)$/);
+      if (match) {
+        const seq = parseInt(match[1]);
+        if (seq > maxSeq) maxSeq = seq;
+      }
+    }
+
+    return `${prefix}-${maxSeq + 1}`;
   }
 
   async getYears(): Promise<number[]> {
