@@ -92,6 +92,15 @@ export async function registerRoutes(
             productType: inquiry.productType || "",
             industry: inquiry.industry || "",
             supplySpeed: inquiry.supplySpeed || "",
+            paymentType: inquiry.paymentType || "",
+            contractRatio: inquiry.contractRatio ?? "",
+            midRatio: inquiry.midRatio ?? "",
+            finalRatio: inquiry.finalRatio ?? "",
+            paymentTiming: inquiry.paymentTiming || "",
+            contractDueDays: inquiry.contractDueDays ?? "",
+            midFinalTiming: inquiry.midFinalTiming || "",
+            midFinalDays: inquiry.midFinalDays ?? "",
+            deliveryDate: inquiry.deliveryDate || "",
           };
           await writeInfoJson(inquiry.onedriveFolderId, infoData);
         } catch (writeErr: any) {
@@ -223,6 +232,15 @@ export async function registerRoutes(
               productType: info?.productType || null,
               industry: info?.industry || null,
               supplySpeed: info?.supplySpeed || null,
+              paymentType: info?.paymentType || null,
+              contractRatio: info?.contractRatio != null ? parseInt(String(info.contractRatio)) || null : null,
+              midRatio: info?.midRatio != null ? parseInt(String(info.midRatio)) || null : null,
+              finalRatio: info?.finalRatio != null ? parseInt(String(info.finalRatio)) || null : null,
+              paymentTiming: info?.paymentTiming || null,
+              contractDueDays: info?.contractDueDays != null ? parseInt(String(info.contractDueDays)) || null : null,
+              midFinalTiming: info?.midFinalTiming || null,
+              midFinalDays: info?.midFinalDays != null ? parseInt(String(info.midFinalDays)) || null : null,
+              deliveryDate: info?.deliveryDate || null,
             });
 
             const files = await listFolderFiles(folder.id);

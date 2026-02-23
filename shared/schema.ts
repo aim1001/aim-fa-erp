@@ -25,6 +25,15 @@ export const inquiries = pgTable("inquiries", {
   productType: text("product_type"),
   industry: text("industry"),
   supplySpeed: text("supply_speed"),
+  paymentType: text("payment_type"),
+  contractRatio: integer("contract_ratio"),
+  midRatio: integer("mid_ratio"),
+  finalRatio: integer("final_ratio"),
+  paymentTiming: text("payment_timing"),
+  contractDueDays: integer("contract_due_days"),
+  midFinalTiming: text("mid_final_timing"),
+  midFinalDays: integer("mid_final_days"),
+  deliveryDate: text("delivery_date"),
 });
 
 export const inquiryFiles = pgTable("inquiry_files", {

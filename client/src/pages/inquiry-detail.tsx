@@ -499,8 +499,8 @@ export default function InquiryDetail() {
               <span className="text-muted-foreground">예상일자</span>
               <InlineDateInput value={inquiry.expectedDate || ""} field="expectedDate" inquiryId={id!} />
 
-              <span className="text-muted-foreground">결재조건</span>
-              <InlineText value={inquiry.paymentTerms || ""} field="paymentTerms" inquiryId={id!} placeholder="클릭하여 입력" />
+              <span className="text-muted-foreground">납품일자</span>
+              <InlineDateInput value={inquiry.deliveryDate || ""} field="deliveryDate" inquiryId={id!} />
 
               <span className="text-muted-foreground">메모</span>
               <InlineTextarea value={inquiry.memo || ""} field="memo" inquiryId={id!} placeholder="클릭하여 입력" />
@@ -572,6 +572,107 @@ export default function InquiryDetail() {
                 <InlineText value={inquiry.supplySpeed || ""} field="supplySpeed" inquiryId={id!} placeholder="속도" />
                 <span className="text-muted-foreground text-xs">ea/min</span>
               </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">계약조건</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
+              <span className="text-muted-foreground">결제방식</span>
+              <InlineSelect
+                value={inquiry.paymentType || ""}
+                field="paymentType"
+                inquiryId={id!}
+                options={[
+                  { value: "_none", label: "미설정" },
+                  { value: "split", label: "계약금/중도금/잔금" },
+                  { value: "lump", label: "일괄" },
+                ]}
+              />
+
+              {(inquiry.paymentType === "split") && (
+                <>
+                  <span className="text-muted-foreground">계약금</span>
+                  <div className="flex items-center gap-1">
+                    <InlineNumber value={inquiry.contractRatio ?? 0} field="contractRatio" inquiryId={id!} />
+                    <span className="text-muted-foreground text-xs">%</span>
+                  </div>
+
+                  <span className="text-muted-foreground">중도금</span>
+                  <div className="flex items-center gap-1">
+                    <InlineNumber value={inquiry.midRatio ?? 0} field="midRatio" inquiryId={id!} />
+                    <span className="text-muted-foreground text-xs">%</span>
+                  </div>
+
+                  <span className="text-muted-foreground">잔금</span>
+                  <div className="flex items-center gap-1">
+                    <InlineNumber value={inquiry.finalRatio ?? 0} field="finalRatio" inquiryId={id!} />
+                    <span className="text-muted-foreground text-xs">%</span>
+                  </div>
+                </>
+              )}
+
+              {(inquiry.paymentType === "lump") && (
+                <>
+                  <span className="text-muted-foreground">잔금</span>
+                  <span>100%</span>
+                </>
+              )}
+            </div>
+
+            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
+              <span className="text-muted-foreground">결제시기</span>
+              <InlineSelect
+                value={inquiry.paymentTiming || ""}
+                field="paymentTiming"
+                inquiryId={id!}
+                options={[
+                  { value: "_none", label: "미설정" },
+                  { value: "next_month_end", label: "익월말" },
+                  { value: "within_2weeks", label: "2주이내" },
+                  { value: "month_end", label: "월말" },
+                  { value: "within_30days", label: "30일이내" },
+                ]}
+              />
+
+              {(inquiry.paymentType === "split") && (
+                <>
+                  <span className="text-muted-foreground">계약금 기한</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">예상일자 +</span>
+                    <InlineNumber value={inquiry.contractDueDays ?? 0} field="contractDueDays" inquiryId={id!} />
+                    <span className="text-muted-foreground text-xs">일</span>
+                  </div>
+
+                  <span className="text-muted-foreground">중도금/잔금</span>
+                  <InlineSelect
+                    value={inquiry.midFinalTiming || ""}
+                    field="midFinalTiming"
+                    inquiryId={id!}
+                    options={[
+                      { value: "_none", label: "미설정" },
+                      { value: "on_delivery", label: "납품시" },
+                      { value: "after_delivery", label: "납품후" },
+                    ]}
+                  />
+
+                  {inquiry.midFinalTiming === "after_delivery" && (
+                    <>
+                      <span className="text-muted-foreground">납품후</span>
+                      <div className="flex items-center gap-1">
+                        <InlineNumber value={inquiry.midFinalDays ?? 0} field="midFinalDays" inquiryId={id!} />
+                        <span className="text-muted-foreground text-xs">일</span>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </CardContent>

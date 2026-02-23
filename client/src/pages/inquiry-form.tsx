@@ -34,6 +34,15 @@ const formSchema = z.object({
   productType: z.string().optional(),
   industry: z.string().optional(),
   supplySpeed: z.string().optional(),
+  paymentType: z.string().optional(),
+  contractRatio: z.coerce.number().optional(),
+  midRatio: z.coerce.number().optional(),
+  finalRatio: z.coerce.number().optional(),
+  paymentTiming: z.string().optional(),
+  contractDueDays: z.coerce.number().optional(),
+  midFinalTiming: z.string().optional(),
+  midFinalDays: z.coerce.number().optional(),
+  deliveryDate: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -64,6 +73,15 @@ export default function InquiryForm() {
       productType: "",
       industry: "",
       supplySpeed: "",
+      paymentType: "",
+      contractRatio: 0,
+      midRatio: 0,
+      finalRatio: 0,
+      paymentTiming: "",
+      contractDueDays: 0,
+      midFinalTiming: "",
+      midFinalDays: 0,
+      deliveryDate: "",
     },
   });
 
@@ -83,6 +101,15 @@ export default function InquiryForm() {
         productType: values.productType || null,
         industry: values.industry && values.industry !== "_none" ? values.industry : null,
         supplySpeed: values.supplySpeed || null,
+        paymentType: values.paymentType && values.paymentType !== "_none" ? values.paymentType : null,
+        contractRatio: values.contractRatio || null,
+        midRatio: values.midRatio || null,
+        finalRatio: values.finalRatio || null,
+        paymentTiming: values.paymentTiming && values.paymentTiming !== "_none" ? values.paymentTiming : null,
+        contractDueDays: values.contractDueDays || null,
+        midFinalTiming: values.midFinalTiming && values.midFinalTiming !== "_none" ? values.midFinalTiming : null,
+        midFinalDays: values.midFinalDays || null,
+        deliveryDate: values.deliveryDate || null,
         source: "manual",
         onedriveFolderId: null,
         onedriveFolderName: null,
@@ -234,12 +261,12 @@ export default function InquiryForm() {
                 />
                 <FormField
                   control={form.control}
-                  name="paymentTerms"
+                  name="deliveryDate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>결재조건</FormLabel>
+                      <FormLabel>납품일자</FormLabel>
                       <FormControl>
-                        <Input placeholder="예: 납품 후 30일" {...field} data-testid="input-payment-terms" />
+                        <Input type="date" {...field} data-testid="input-delivery-date-basic" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -328,7 +355,7 @@ export default function InquiryForm() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>재질</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <Select onValueChange={field.onChange} value={field.value || "_none"}>
                         <FormControl>
                           <SelectTrigger data-testid="select-material">
                             <SelectValue placeholder="재질 선택" />
@@ -364,7 +391,7 @@ export default function InquiryForm() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>분야</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <Select onValueChange={field.onChange} value={field.value || "_none"}>
                         <FormControl>
                           <SelectTrigger data-testid="select-industry">
                             <SelectValue placeholder="분야 선택" />
@@ -396,6 +423,155 @@ export default function InquiryForm() {
                     </FormItem>
                   )}
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">계약조건</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="paymentType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>결제방식</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || "_none"}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-payment-type">
+                            <SelectValue placeholder="결제방식 선택" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="_none">미설정</SelectItem>
+                          <SelectItem value="split">계약금/중도금/잔금</SelectItem>
+                          <SelectItem value="lump">일괄</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="paymentTiming"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>결제시기</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || "_none"}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-payment-timing">
+                            <SelectValue placeholder="결제시기 선택" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="_none">미설정</SelectItem>
+                          <SelectItem value="next_month_end">익월말</SelectItem>
+                          <SelectItem value="within_2weeks">2주이내</SelectItem>
+                          <SelectItem value="month_end">월말</SelectItem>
+                          <SelectItem value="within_30days">30일이내</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {form.watch("paymentType") === "split" && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="contractRatio"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>계약금 (%)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="%" {...field} data-testid="input-contract-ratio" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="midRatio"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>중도금 (%)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="%" {...field} data-testid="input-mid-ratio" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="finalRatio"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>잔금 (%)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="%" {...field} data-testid="input-final-ratio" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="contractDueDays"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>계약금 기한 (예상일자 + 일)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="일" {...field} data-testid="input-contract-due-days" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="midFinalTiming"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>중도금/잔금 시점</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || "_none"}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-mid-final-timing">
+                                <SelectValue placeholder="시점 선택" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="_none">미설정</SelectItem>
+                              <SelectItem value="on_delivery">납품시</SelectItem>
+                              <SelectItem value="after_delivery">납품후</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {form.watch("midFinalTiming") === "after_delivery" && (
+                      <FormField
+                        control={form.control}
+                        name="midFinalDays"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>납품후 (일)</FormLabel>
+                            <FormControl>
+                              <Input type="number" placeholder="일" {...field} data-testid="input-mid-final-days" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
