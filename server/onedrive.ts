@@ -187,8 +187,61 @@ export async function writeInfoJson(folderId: string, data: Record<string, any>)
 
 export async function downloadFileByPath(path: string): Promise<Buffer> {
   const client = await getClient();
+  const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const stream = await client
-    .api(`/me/drive/root:/${path}:/content`)
+    .api(`/me/drive/root:/${encodedPath}:/content`)
+    .getStream();
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream as any) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+export async function findFileInFolder(folderNames: string[], fileName: string): Promise<Buffer> {
+  const client = await getClient();
+
+  let currentPath = '/me/drive/root/children';
+  let currentFolderId: string | null = null;
+
+  for (const folderName of folderNames) {
+    const result = await client
+      .api(currentFolderId ? `/me/drive/items/${currentFolderId}/children` : currentPath)
+      .select('id,name,folder')
+      .get();
+
+    const folder = (result.value || []).find(
+      (item: any) => item.folder && item.name === folderName
+    );
+
+    if (!folder) {
+      const available = (result.value || [])
+        .filter((item: any) => item.folder)
+        .map((item: any) => item.name);
+      throw new Error(`폴더 '${folderName}'을 찾을 수 없습니다. 사용 가능한 폴더: ${available.join(', ')}`);
+    }
+    currentFolderId = folder.id;
+  }
+
+  const filesResult = await client
+    .api(`/me/drive/items/${currentFolderId}/children`)
+    .select('id,name,file')
+    .get();
+
+  const file = (filesResult.value || []).find(
+    (item: any) => item.file && item.name === fileName
+  );
+
+  if (!file) {
+    const available = (filesResult.value || [])
+      .filter((item: any) => item.file)
+      .map((item: any) => item.name);
+    throw new Error(`파일 '${fileName}'을 찾을 수 없습니다. 사용 가능한 파일: ${available.join(', ')}`);
+  }
+
+  const stream = await client
+    .api(`/me/drive/items/${file.id}/content`)
     .getStream();
 
   const chunks: Buffer[] = [];

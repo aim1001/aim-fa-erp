@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { downloadFile, listFolderFiles, downloadFileByPath } from "./onedrive";
+import { downloadFile, listFolderFiles, downloadFileByPath, findFileInFolder } from "./onedrive";
 
 export interface CustomerListRow {
   businessNumber: string;
@@ -20,8 +20,7 @@ export interface CustomerListRow {
 }
 
 export async function parseCustomerListFromOneDrive(): Promise<CustomerListRow[]> {
-  const filePath = "4.경영지원/database/고객사목록.xls";
-  const buffer = await downloadFileByPath(filePath);
+  const buffer = await findFileInFolder(["4.경영지원", "database"], "고객사목록.xls");
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error("시트를 찾을 수 없습니다");
