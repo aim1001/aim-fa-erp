@@ -3,11 +3,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split } from "lucide-react";
 import { useState, useMemo } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Payment } from "@shared/schema";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ko } from "date-fns/locale";
 
 type EnrichedPayment = Payment & {
   invoiceIssueDate: string | null;
@@ -23,6 +26,19 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+
+function parseDateString(dateStr: string): Date | undefined {
+  if (!dateStr) return undefined;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function formatDateStr(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 function formatAmount(amount: number | null | undefined) {
   if (!amount && amount !== 0) return "-";
@@ -385,6 +401,83 @@ export default function PaymentPlan() {
     },
   });
 
+  const inlineUpdate = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/payments/${id}`, patch);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createPayment = useMutation({
+    mutationFn: async (data: Record<string, any>) => {
+      const res = await apiRequest("POST", "/api/payments", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      toast({ title: "잔액 결제 건이 생성되었습니다" });
+    },
+  });
+
+  const handleInlineDateChange = (paymentId: string, date: Date | null) => {
+    inlineUpdate.mutate({ id: paymentId, patch: { plannedDate: date ? formatDateStr(date) : null } });
+  };
+
+  const handleFullPayment = (p: EnrichedPayment) => {
+    const today = formatDateStr(new Date());
+    inlineUpdate.mutate({ id: p.id, patch: { actualAmount: p.amount || 0, actualDate: today, plannedDate: today, status: "completed" } });
+  };
+
+  const [partialAmount, setPartialAmount] = useState("");
+  const [partialPaymentId, setPartialPaymentId] = useState<string | null>(null);
+  const [remainderDate, setRemainderDate] = useState<Date | undefined>(undefined);
+  const [showRemainderPicker, setShowRemainderPicker] = useState(false);
+  const [remainderInfo, setRemainderInfo] = useState<{ payment: EnrichedPayment; paidAmount: number } | null>(null);
+
+  const handlePartialPayment = (p: EnrichedPayment, amountStr: string) => {
+    const paid = parseInt(amountStr);
+    if (!paid || paid <= 0) return;
+    const today = formatDateStr(new Date());
+    const remaining = (p.amount || 0) - paid;
+    inlineUpdate.mutate({ id: p.id, patch: { actualAmount: paid, actualDate: today, plannedDate: today, status: "completed", amount: paid } });
+    if (remaining > 0) {
+      setRemainderInfo({ payment: p, paidAmount: paid });
+      setShowRemainderPicker(true);
+    }
+    setPartialPaymentId(null);
+    setPartialAmount("");
+  };
+
+  const handleCreateRemainder = (date: Date) => {
+    if (!remainderInfo) return;
+    const { payment: p, paidAmount } = remainderInfo;
+    const remaining = (p.amount || 0) - paidAmount;
+    createPayment.mutate({
+      type: p.type,
+      companyName: p.companyName,
+      description: p.description ? `${p.description} (잔액)` : "잔액",
+      amount: remaining,
+      plannedDate: formatDateStr(date),
+      paymentMethod: p.paymentMethod,
+      status: "planned",
+      salesInvoiceId: p.salesInvoiceId,
+      purchaseInvoiceId: p.purchaseInvoiceId,
+    });
+    setShowRemainderPicker(false);
+    setRemainderInfo(null);
+    setRemainderDate(undefined);
+  };
+
   const prevMonth = () => {
     if (month === 1) { setYear(y => y - 1); setMonth(12); }
     else setMonth(m => m - 1);
@@ -413,16 +506,6 @@ export default function PaymentPlan() {
     });
     return { plannedIncome, plannedExpense, actualIncome, actualExpense };
   }, [payments]);
-
-  const groupedByDate = useMemo(() => {
-    const groups = new Map<string, Payment[]>();
-    sorted.forEach(p => {
-      const date = p.plannedDate || "미정";
-      if (!groups.has(date)) groups.set(date, []);
-      groups.get(date)!.push(p);
-    });
-    return groups;
-  }, [sorted]);
 
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
@@ -462,7 +545,7 @@ export default function PaymentPlan() {
             onClick={() => setViewMode("calendar")}
             data-testid="button-view-calendar"
           >
-            <Calendar className="h-4 w-4 mr-1" />캘린더
+            <CalendarIcon className="h-4 w-4 mr-1" />캘린더
           </Button>
         </div>
       </div>
@@ -507,6 +590,7 @@ export default function PaymentPlan() {
               <tbody>
                 {sorted.map(p => {
                   const statusInfo = getStatusInfo(p);
+                  const isCompleted = p.status === "completed" || !!p.actualDate;
                   return (
                     <tr
                       key={p.id}
@@ -525,16 +609,113 @@ export default function PaymentPlan() {
                           {p.type === "income" ? "입금" : "출금"}
                         </span>
                       </td>
-                      <td className="py-1.5 px-2 text-xs">{p.plannedDate || "미정"}</td>
+                      <td className="py-1.5 px-2" onClick={e => e.stopPropagation()}>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs h-6 px-1.5 font-normal border-dashed border justify-start"
+                              data-testid={`button-date-${p.id}`}
+                            >
+                              <CalendarIcon className="mr-1 h-3 w-3 text-muted-foreground" />
+                              {p.plannedDate || "날짜 선택"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={p.plannedDate ? parseDateString(p.plannedDate) : undefined}
+                              onSelect={(date) => {
+                                if (date) handleInlineDateChange(p.id, date);
+                              }}
+                              locale={ko}
+                            />
+                            {p.plannedDate && (
+                              <div className="p-2 border-t">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full text-xs"
+                                  onClick={() => handleInlineDateChange(p.id, null)}
+                                  data-testid={`button-clear-date-${p.id}`}
+                                >
+                                  <X className="mr-1 h-3 w-3" />날짜 지우기
+                                </Button>
+                              </div>
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                      </td>
                       <td className="py-1.5 px-2 text-xs text-muted-foreground hidden md:table-cell">{p.invoiceIssueDate || "-"}</td>
                       <td className="py-1.5 px-2">
                         <div className="text-xs font-medium truncate max-w-[160px]">{p.companyName || "-"}</div>
                         {p.invoiceItem && <div className="text-[10px] text-muted-foreground truncate max-w-[160px]">{p.invoiceItem}</div>}
                       </td>
-                      <td className="py-1.5 px-2 text-right">
-                        <span className={`text-xs font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>
-                          {(p.amount || 0).toLocaleString()}
-                        </span>
+                      <td className="py-1.5 px-2 text-right" onClick={e => e.stopPropagation()}>
+                        {isCompleted ? (
+                          <span className={`text-xs font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>
+                            {(p.amount || 0).toLocaleString()}
+                          </span>
+                        ) : (
+                          <Popover open={partialPaymentId === p.id} onOpenChange={open => { if (!open) { setPartialPaymentId(null); setPartialAmount(""); } }}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={`text-xs h-6 px-1.5 font-medium border-dashed border ${p.type === "income" ? "text-blue-600 hover:text-blue-700 hover:bg-blue-50" : "text-red-600 hover:text-red-700 hover:bg-red-50"}`}
+                                onClick={() => setPartialPaymentId(p.id)}
+                                data-testid={`button-amount-${p.id}`}
+                              >
+                                <Banknote className="mr-1 h-3 w-3" />
+                                {(p.amount || 0).toLocaleString()}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-56 p-3" align="end">
+                              <div className="space-y-2">
+                                <div className="text-xs font-medium text-muted-foreground">{p.type === "income" ? "입금" : "출금"} 처리</div>
+                                <Button
+                                  size="sm"
+                                  className="w-full text-xs"
+                                  onClick={() => { handleFullPayment(p); setPartialPaymentId(null); }}
+                                  data-testid={`button-full-payment-${p.id}`}
+                                >
+                                  <Check className="mr-1 h-3 w-3" />
+                                  전체 {p.type === "income" ? "입금" : "출금"} ({(p.amount || 0).toLocaleString()}원)
+                                </Button>
+                                <div className="border-t pt-2">
+                                  <div className="text-[10px] text-muted-foreground mb-1">분할 {p.type === "income" ? "입금" : "출금"}</div>
+                                  <div className="flex gap-1">
+                                    <Input
+                                      type="number"
+                                      placeholder="금액 입력"
+                                      value={partialAmount}
+                                      onChange={e => setPartialAmount(e.target.value)}
+                                      className="h-7 text-xs flex-1"
+                                      onKeyDown={e => { if (e.key === "Enter") handlePartialPayment(p, partialAmount); }}
+                                      data-testid={`input-partial-amount-${p.id}`}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs px-2"
+                                      disabled={!partialAmount || parseInt(partialAmount) <= 0}
+                                      onClick={() => handlePartialPayment(p, partialAmount)}
+                                      data-testid={`button-partial-confirm-${p.id}`}
+                                    >
+                                      확인
+                                    </Button>
+                                  </div>
+                                  {partialAmount && parseInt(partialAmount) > 0 && parseInt(partialAmount) < (p.amount || 0) && (
+                                    <div className="text-[10px] text-orange-600 mt-1">
+                                      잔액: {((p.amount || 0) - parseInt(partialAmount)).toLocaleString()}원 → 다음 결제 건 생성
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        )}
                       </td>
                       <td className="py-1.5 px-2 text-right hidden md:table-cell">
                         {p.actualAmount ? (
@@ -552,7 +733,7 @@ export default function PaymentPlan() {
           </div>
         ) : (
           <div className="text-center py-12 text-muted-foreground">
-            <Calendar className="h-12 w-12 mx-auto mb-4 opacity-30" />
+            <CalendarIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p>이 달에 등록된 결제 계획이 없습니다.</p>
           </div>
         )
@@ -567,6 +748,50 @@ export default function PaymentPlan() {
       </Dialog>
 
       <AddPaymentDialog open={showAdd} onOpenChange={setShowAdd} />
+
+      <Dialog open={showRemainderPicker} onOpenChange={open => { if (!open) { setShowRemainderPicker(false); setRemainderInfo(null); setRemainderDate(undefined); } }}>
+        <DialogContent className="max-w-sm" data-testid="modal-remainder-date">
+          <DialogHeader>
+            <DialogTitle>잔액 결제 일정</DialogTitle>
+          </DialogHeader>
+          {remainderInfo && (
+            <div className="space-y-3">
+              <div className="text-sm">
+                <span className="text-muted-foreground">잔액: </span>
+                <span className="font-medium text-orange-600">
+                  {((remainderInfo.payment.amount || 0) - remainderInfo.paidAmount).toLocaleString()}원
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground">잔액을 언제 처리할지 날짜를 선택하세요.</div>
+              <Calendar
+                mode="single"
+                selected={remainderDate}
+                onSelect={setRemainderDate}
+                locale={ko}
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1"
+                  disabled={!remainderDate}
+                  onClick={() => { if (remainderDate) handleCreateRemainder(remainderDate); }}
+                  data-testid="button-create-remainder"
+                >
+                  <Check className="mr-1 h-3 w-3" />결제 건 생성
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { setShowRemainderPicker(false); setRemainderInfo(null); setRemainderDate(undefined); }}
+                  data-testid="button-skip-remainder"
+                >
+                  건너뛰기
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
