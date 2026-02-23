@@ -1243,5 +1243,121 @@ export async function registerRoutes(
     }
   });
 
+  // Payment routes
+  app.get("/api/payments", async (req, res) => {
+    try {
+      const { year, month } = req.query;
+      if (year && month) {
+        const list = await storage.getPaymentsByMonth(parseInt(year as string), parseInt(month as string));
+        res.json(list);
+      } else {
+        const list = await storage.getPayments();
+        res.json(list);
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/payments/by-invoice", async (req, res) => {
+    try {
+      const { type, invoiceId } = req.query;
+      if (!type || !invoiceId) return res.status(400).json({ message: "type and invoiceId required" });
+      const list = await storage.getPaymentsByInvoice(type as string, invoiceId as string);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/payments", async (req, res) => {
+    try {
+      const payment = await storage.createPayment(req.body);
+      res.json(payment);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/payments/:id", async (req, res) => {
+    try {
+      const updated = await storage.updatePayment(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ message: "not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/payments/:id", async (req, res) => {
+    try {
+      await storage.deletePayment(req.params.id);
+      res.json({ message: "삭제 완료" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/payments/auto-generate", async (req, res) => {
+    try {
+      const { invoiceId, type, paymentMethod, splitCount, amounts, plannedDates } = req.body;
+      if (!invoiceId || !type || !paymentMethod) {
+        return res.status(400).json({ message: "invoiceId, type, paymentMethod required" });
+      }
+
+      let invoice: any;
+      let companyName = "";
+      if (type === "income") {
+        invoice = await storage.getSalesInvoice(invoiceId);
+        companyName = invoice?.companyName || "";
+      } else {
+        invoice = await storage.getPurchaseInvoice(invoiceId);
+        companyName = invoice?.companyName || "";
+      }
+      if (!invoice) return res.status(404).json({ message: "invoice not found" });
+
+      await storage.deletePaymentsByInvoice(type, invoiceId);
+
+      const total = invoice.totalAmount || 0;
+      const splits = splitCount || 1;
+      const created = [];
+
+      for (let i = 0; i < splits; i++) {
+        const amount = amounts?.[i] || Math.round(total / splits);
+        let plannedDate = plannedDates?.[i] || null;
+
+        if (!plannedDate && invoice.issueDate && paymentMethod !== "specific_date") {
+          const issueDate = new Date(invoice.issueDate);
+          if (paymentMethod === "end_of_next_month") {
+            const nextMonth = new Date(issueDate.getFullYear(), issueDate.getMonth() + 2, 0);
+            plannedDate = nextMonth.toISOString().split("T")[0];
+          } else if (paymentMethod === "end_of_month") {
+            const endOfMonth = new Date(issueDate.getFullYear(), issueDate.getMonth() + 1, 0);
+            plannedDate = endOfMonth.toISOString().split("T")[0];
+          }
+        }
+
+        const payment = await storage.createPayment({
+          type,
+          salesInvoiceId: type === "income" ? invoiceId : null,
+          purchaseInvoiceId: type === "expense" ? invoiceId : null,
+          companyName,
+          description: invoice.item || null,
+          amount,
+          paymentMethod,
+          plannedDate,
+          status: "planned",
+          splitIndex: i + 1,
+          splitTotal: splits,
+        });
+        created.push(payment);
+      }
+
+      res.json({ created: created.length, payments: created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

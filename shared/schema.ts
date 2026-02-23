@@ -161,6 +161,23 @@ export const purchaseInvoices = pgTable("purchase_invoices", {
   status: text("status").default("pending"),
 });
 
+export const payments = pgTable("payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: text("type").notNull(),
+  salesInvoiceId: varchar("sales_invoice_id"),
+  purchaseInvoiceId: varchar("purchase_invoice_id"),
+  companyName: text("company_name"),
+  description: text("description"),
+  amount: integer("amount"),
+  paymentMethod: text("payment_method"),
+  plannedDate: text("planned_date"),
+  actualDate: text("actual_date"),
+  actualAmount: integer("actual_amount"),
+  status: text("status").default("planned"),
+  splitIndex: integer("split_index").default(1),
+  splitTotal: integer("split_total").default(1),
+});
+
 export const insertCustomerSchema = createInsertSchema(customers).omit({
   id: true,
 });
@@ -209,3 +226,9 @@ export type InsertSalesInvoice = z.infer<typeof insertSalesInvoiceSchema>;
 export type SalesInvoice = typeof salesInvoices.$inferSelect;
 export type InsertPurchaseInvoice = z.infer<typeof insertPurchaseInvoiceSchema>;
 export type PurchaseInvoice = typeof purchaseInvoices.$inferSelect;
+
+export const insertPaymentSchema = createInsertSchema(payments).omit({
+  id: true,
+});
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+export type Payment = typeof payments.$inferSelect;

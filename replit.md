@@ -27,6 +27,7 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - **inquiries** 테이블: customerId(고객사)와 companyId(담당자) 모두 참조 + 스냅샷 필드로 연결 시점 정보 보존
 - **sales_invoices** 테이블: 매출계산서 (customerId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
+- **payments** 테이블: 결제 계획 (유형, 계산서 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보)
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
 ## Key Features
@@ -42,7 +43,9 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 매출계산서 - 고객사 참조, 세금계산서 필드 (발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - 매입계산서 - 공급업체 참조, 세금계산서 필드
 - 엑셀 견적서에서 고객 정보 자동 추출 (X3:Z7 셀 기반)
-- 사이드바: 영업(인콰이어리, 진행중/수주/실주) / 경영지원(매출계산서, 매입계산서) / 관리(고객사, 공급업체)
+- 자금계획 - 월별 입출금 예정/실적 관리 (리스트+캘린더 뷰, 결제 완료 처리)
+- 결제 계획 자동 생성 (계산서에서 익월말/월말/일자지정 + 분할 지원)
+- 사이드바: 영업(인콰이어리, 진행중/수주/실주) / 경영지원(매출계산서, 매입계산서, 자금계획) / 관리(고객사, 공급업체)
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:
@@ -72,6 +75,7 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - `client/src/pages/vendor-list.tsx` - Vendor list page (공급업체 목록, 모달 편집, 즐겨찾기)
 - `client/src/pages/sales-invoice-list.tsx` - Sales invoice list page (매출계산서)
 - `client/src/pages/purchase-invoice-list.tsx` - Purchase invoice list page (매입계산서)
+- `client/src/pages/payment-plan.tsx` - Payment plan page (자금계획, 리스트+캘린더 뷰)
 - `client/src/components/app-sidebar.tsx` - Sidebar navigation (영업/경영지원/관리 섹션)
 
 ## Recent Changes
@@ -109,6 +113,12 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Auto vendor creation on purchase invoice import (사업자번호 기반 공급업체 자동 생성)
 - 2026-02-23: Vendor sync from invoices (매입계산서 기준 공급업체 갱신 버튼)
 - 2026-02-23: Added lastTransactionDate to customer-list and vendor-list (계산서 기준 최근 거래일)
+- 2026-02-23: Customer list traded/untraded filter changed to lastTransactionDate-based
+- 2026-02-23: Added period filters (year/quarter/month) and totals summary to invoice lists
+- 2026-02-23: Vendor bank info fields (bankName, bankAccount) added to schema and UI
+- 2026-02-23: Payment plan system (payments table, auto-generate from invoices, split payments)
+- 2026-02-23: Payment plan page with list + calendar views, monthly navigation, totals summary
+- 2026-02-23: Invoice detail modals now include payment plan section with generate/complete actions
 
 ## User Preferences
 - Korean language UI

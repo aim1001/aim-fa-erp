@@ -1,12 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { SalesInvoice, Customer } from "@shared/schema";
+import type { SalesInvoice, Customer, Payment } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,123 @@ import {
 function formatAmount(amount: number | null | undefined) {
   if (!amount && amount !== 0) return "-";
   return amount.toLocaleString() + "원";
+}
+
+function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income" | "expense" }) {
+  const { toast } = useToast();
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [genForm, setGenForm] = useState({ paymentMethod: "end_of_next_month", splitCount: "1" });
+
+  const { data: existingPayments } = useQuery<Payment[]>({
+    queryKey: ["/api/payments/by-invoice", type, invoiceId],
+    queryFn: async () => {
+      const res = await fetch(`/api/payments/by-invoice?type=${type}&invoiceId=${invoiceId}`);
+      return res.json();
+    },
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/payments/auto-generate", {
+        invoiceId,
+        type,
+        paymentMethod: genForm.paymentMethod,
+        splitCount: parseInt(genForm.splitCount) || 1,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", type, invoiceId] });
+      setShowGenerate(false);
+      toast({ title: "결제 계획 생성 완료", description: `${data.created}건 생성` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "생성 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: async (paymentId: string) => {
+      const today = new Date().toISOString().split("T")[0];
+      const payment = existingPayments?.find(p => p.id === paymentId);
+      const res = await apiRequest("PATCH", `/api/payments/${paymentId}`, {
+        actualDate: today,
+        actualAmount: payment?.amount || 0,
+        status: "completed",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", type, invoiceId] });
+    },
+  });
+
+  return (
+    <div className="border-t pt-3 mt-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium flex items-center gap-1">
+          <Wallet className="h-4 w-4" />결제 계획
+        </span>
+        <Button variant="outline" size="sm" onClick={() => setShowGenerate(!showGenerate)} data-testid="button-generate-payments">
+          <Plus className="h-3 w-3 mr-1" />생성
+        </Button>
+      </div>
+
+      {showGenerate && (
+        <div className="border rounded-lg p-3 mb-2 space-y-2 bg-muted/30">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs">결제방법</Label>
+              <Select value={genForm.paymentMethod} onValueChange={val => setGenForm(p => ({ ...p, paymentMethod: val }))}>
+                <SelectTrigger className="h-7 text-xs" data-testid="select-gen-method"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="end_of_next_month">익월말</SelectItem>
+                  <SelectItem value="end_of_month">월말</SelectItem>
+                  <SelectItem value="specific_date">일자지정</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">분할 횟수</Label>
+              <Input type="number" min="1" max="12" className="h-7 text-xs" value={genForm.splitCount} onChange={e => setGenForm(p => ({ ...p, splitCount: e.target.value }))} data-testid="input-split-count" />
+            </div>
+          </div>
+          <Button size="sm" className="w-full h-7 text-xs" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} data-testid="button-confirm-generate">
+            {generateMutation.isPending ? "생성 중..." : "결제 계획 생성"}
+          </Button>
+        </div>
+      )}
+
+      {existingPayments && existingPayments.length > 0 ? (
+        <div className="space-y-1">
+          {existingPayments.map(p => (
+            <div key={p.id} className="flex items-center justify-between text-xs border rounded px-2 py-1.5" data-testid={`payment-row-${p.id}`}>
+              <div className="flex items-center gap-2">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${p.status === "completed" || p.actualDate ? "bg-green-50 text-green-600" : "bg-blue-50 text-blue-600"}`}>
+                  {p.status === "completed" || p.actualDate ? "완료" : "예정"}
+                </span>
+                <span>{p.plannedDate || "미정"}</span>
+                {p.splitTotal && p.splitTotal > 1 && <span className="text-muted-foreground">({p.splitIndex}/{p.splitTotal})</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{formatAmount(p.amount)}</span>
+                {p.actualDate && <span className="text-green-600">→ {formatAmount(p.actualAmount)} ({p.actualDate})</span>}
+                {!p.actualDate && (
+                  <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => completeMutation.mutate(p.id)} data-testid={`button-complete-${p.id}`}>
+                    <Check className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">등록된 결제 계획이 없습니다.</p>
+      )}
+    </div>
+  );
 }
 
 function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose: () => void }) {
@@ -143,6 +260,7 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
         {renderField("이메일2", "email2", invoice.email2 || "")}
         {renderField("메모", "memo", invoice.memo || "")}
       </div>
+      <PaymentSection invoiceId={invoiceId} type="income" />
     </DialogContent>
   );
 }

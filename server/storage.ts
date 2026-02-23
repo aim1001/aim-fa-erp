@@ -7,8 +7,9 @@ import {
   type Vendor, type InsertVendor,
   type SalesInvoice, type InsertSalesInvoice,
   type PurchaseInvoice, type InsertPurchaseInvoice,
+  type Payment, type InsertPayment,
   inquiries, inquiryFiles, companies, customers, productImages,
-  vendors, salesInvoices, purchaseInvoices,
+  vendors, salesInvoices, purchaseInvoices, payments,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -100,6 +101,15 @@ export interface IStorage {
   updatePurchaseInvoice(id: string, invoice: Partial<InsertPurchaseInvoice>): Promise<PurchaseInvoice | undefined>;
   deletePurchaseInvoice(id: string): Promise<void>;
   getPurchaseInvoicesByYear(year: number): Promise<PurchaseInvoice[]>;
+
+  getPayments(): Promise<Payment[]>;
+  getPaymentsByMonth(year: number, month: number): Promise<Payment[]>;
+  getPayment(id: string): Promise<Payment | undefined>;
+  getPaymentsByInvoice(type: string, invoiceId: string): Promise<Payment[]>;
+  createPayment(payment: InsertPayment): Promise<Payment>;
+  updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined>;
+  deletePayment(id: string): Promise<void>;
+  deletePaymentsByInvoice(type: string, invoiceId: string): Promise<void>;
 
   getNextInquiryNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
@@ -522,6 +532,58 @@ export class DatabaseStorage implements IStorage {
 
   async getPurchaseInvoicesByYear(year: number): Promise<PurchaseInvoice[]> {
     return db.select().from(purchaseInvoices).where(eq(purchaseInvoices.year, year));
+  }
+
+  async getPayments(): Promise<Payment[]> {
+    return db.select().from(payments).orderBy(payments.plannedDate);
+  }
+
+  async getPaymentsByMonth(year: number, month: number): Promise<Payment[]> {
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const endMonth = month === 12 ? 1 : month + 1;
+    const endYear = month === 12 ? year + 1 : year;
+    const endDate = `${endYear}-${String(endMonth).padStart(2, "0")}-01`;
+    return db.select().from(payments)
+      .where(and(
+        gte(payments.plannedDate, startDate),
+        lte(payments.plannedDate, endDate)
+      ))
+      .orderBy(payments.plannedDate);
+  }
+
+  async getPayment(id: string): Promise<Payment | undefined> {
+    const result = await db.select().from(payments).where(eq(payments.id, id));
+    return result[0];
+  }
+
+  async getPaymentsByInvoice(type: string, invoiceId: string): Promise<Payment[]> {
+    if (type === "income") {
+      return db.select().from(payments).where(eq(payments.salesInvoiceId, invoiceId)).orderBy(payments.splitIndex);
+    } else {
+      return db.select().from(payments).where(eq(payments.purchaseInvoiceId, invoiceId)).orderBy(payments.splitIndex);
+    }
+  }
+
+  async createPayment(payment: InsertPayment): Promise<Payment> {
+    const result = await db.insert(payments).values(payment).returning();
+    return result[0];
+  }
+
+  async updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined> {
+    const result = await db.update(payments).set(payment).where(eq(payments.id, id)).returning();
+    return result[0];
+  }
+
+  async deletePayment(id: string): Promise<void> {
+    await db.delete(payments).where(eq(payments.id, id));
+  }
+
+  async deletePaymentsByInvoice(type: string, invoiceId: string): Promise<void> {
+    if (type === "income") {
+      await db.delete(payments).where(eq(payments.salesInvoiceId, invoiceId));
+    } else {
+      await db.delete(payments).where(eq(payments.purchaseInvoiceId, invoiceId));
+    }
   }
 }
 

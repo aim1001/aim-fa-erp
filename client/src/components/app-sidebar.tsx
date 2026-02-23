@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText, Calendar, Clock } from "lucide-react";
+import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText, Calendar, Clock, Wallet } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -105,6 +105,11 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild data-active={location === "/purchase-invoices"} data-testid="nav-purchase-invoices">
                   <Link href="/purchase-invoices"><ReceiptText /><span>매입계산서</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/payment-plan"} data-testid="nav-payment-plan">
+                  <Link href="/payment-plan"><Wallet /><span>자금계획</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
