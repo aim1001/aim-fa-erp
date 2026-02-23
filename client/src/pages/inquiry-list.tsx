@@ -153,22 +153,49 @@ export default function InquiryList() {
       const res = await apiRequest("PATCH", `/api/inquiries/${id}`, data);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/inquiries"], exact: false });
+      const allCaches = queryClient.getQueriesData<Inquiry[]>({ queryKey: ["/api/inquiries"] });
+      const snapshots = allCaches.map(([key, val]) => [key, val] as const);
+      allCaches.forEach(([key, list]) => {
+        if (Array.isArray(list)) {
+          queryClient.setQueryData<Inquiry[]>(key, list.map(inq =>
+            inq.id === id ? { ...inq, ...data } : inq
+          ));
+        }
+      });
+      return { snapshots, id, data };
     },
-    onError: (err: any) => {
+    onSuccess: (serverData, { id }) => {
+      const allCaches = queryClient.getQueriesData<Inquiry[]>({ queryKey: ["/api/inquiries"] });
+      allCaches.forEach(([key, list]) => {
+        if (Array.isArray(list)) {
+          queryClient.setQueryData<Inquiry[]>(key, list.map(inq =>
+            inq.id === id ? { ...inq, ...serverData } : inq
+          ));
+        }
+      });
+    },
+    onError: (err: any, { id, data }, context) => {
+      if (context?.snapshots) {
+        context.snapshots.forEach(([key, val]) => {
+          if (val) queryClient.setQueryData(key, val);
+        });
+      }
       toast({
         title: "수정 실패",
         description: err.message,
         variant: "destructive",
       });
     },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
   });
 
   const handleInlineUpdate = useCallback((id: string, data: Partial<Inquiry>) => {
     inlineUpdateMutation.mutate({ id, data });
-  }, []);
+  }, [inlineUpdateMutation]);
 
   const filtered = useMemo(() => {
     if (!inquiries) return [];
@@ -322,7 +349,6 @@ export default function InquiryList() {
                         <Select
                           value={String(inq.probability || 0)}
                           onValueChange={(v) => handleInlineUpdate(inq.id, { probability: parseInt(v) })}
-                          disabled={inlineUpdateMutation.isPending}
                         >
                           <SelectTrigger className="w-28 text-xs border-dashed" data-testid={`select-stage-${inq.id}`}>
                             <SelectValue />
@@ -341,7 +367,6 @@ export default function InquiryList() {
                         <Select
                           value={inq.status || "none"}
                           onValueChange={(v) => handleInlineUpdate(inq.id, { status: v })}
-                          disabled={inlineUpdateMutation.isPending}
                         >
                           <SelectTrigger className="w-24 text-xs border-dashed" data-testid={`select-status-inline-${inq.id}`}>
                             <SelectValue />
@@ -361,7 +386,6 @@ export default function InquiryList() {
                               variant="outline"
                               size="sm"
                               className="text-xs border-dashed font-normal w-32 justify-start"
-                              disabled={inlineUpdateMutation.isPending}
                               data-testid={`button-date-${inq.id}`}
                             >
                               <CalendarIcon className="mr-1 h-3 w-3" />
