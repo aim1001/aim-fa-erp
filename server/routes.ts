@@ -84,6 +84,14 @@ export async function registerRoutes(
             memo: inquiry.memo || "",
             expectedDate: inquiry.expectedDate || "",
             paymentTerms: inquiry.paymentTerms || "",
+            productWidth: inquiry.productWidth || "",
+            productDepth: inquiry.productDepth || "",
+            productHeight: inquiry.productHeight || "",
+            weight: inquiry.weight || "",
+            material: inquiry.material || "",
+            productType: inquiry.productType || "",
+            industry: inquiry.industry || "",
+            supplySpeed: inquiry.supplySpeed || "",
           };
           await writeInfoJson(inquiry.onedriveFolderId, infoData);
         } catch (writeErr: any) {
@@ -207,6 +215,14 @@ export async function registerRoutes(
               onedriveFolderId: folder.id,
               onedriveFolderName: folder.name,
               source: "onedrive",
+              productWidth: info?.productWidth || null,
+              productDepth: info?.productDepth || null,
+              productHeight: info?.productHeight || null,
+              weight: info?.weight || null,
+              material: info?.material || null,
+              productType: info?.productType || null,
+              industry: info?.industry || null,
+              supplySpeed: info?.supplySpeed || null,
             });
 
             const files = await listFolderFiles(folder.id);

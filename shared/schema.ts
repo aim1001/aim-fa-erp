@@ -17,6 +17,14 @@ export const inquiries = pgTable("inquiries", {
   onedriveFolderId: text("onedrive_folder_id"),
   onedriveFolderName: text("onedrive_folder_name"),
   source: text("source").default("onedrive"),
+  productWidth: text("product_width"),
+  productDepth: text("product_depth"),
+  productHeight: text("product_height"),
+  weight: text("weight"),
+  material: text("material"),
+  productType: text("product_type"),
+  industry: text("industry"),
+  supplySpeed: text("supply_speed"),
 });
 
 export const inquiryFiles = pgTable("inquiry_files", {

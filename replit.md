@@ -45,9 +45,15 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Changed probability from 0-100% to 1-5 stages (1=문의, 2=미팅, 3=사양협의, 4=비딩, 5=발주전)
 - 2026-02-23: Implemented _info.json bi-directional sync (read on sync, write on edit)
 - 2026-02-23: Removed "pending" status, kept only active(진행중), won(수주), lost(실주)
+- 2026-02-23: Added 8 product detail fields (productWidth, productDepth, productHeight, weight, material, productType, industry, supplySpeed)
+- 2026-02-23: Replaced edit page with inline editing on detail page (click-to-edit all fields)
+- 2026-02-23: _info.json sync includes product detail fields
 
 ## User Preferences
 - Korean language UI
 - Business/professional theme (blue primary color)
 - Probability uses 1-5 stage system, not percentage
 - Status: active(진행중), won(수주), lost(실주) only
+- Inline editing preferred (no separate edit page)
+- Material options: steel, 플라스틱, 고무류
+- Industry options: 자동차, 전기, 전자부품, 화장품, 기타

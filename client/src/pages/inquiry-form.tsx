@@ -26,20 +26,21 @@ const formSchema = z.object({
   paymentTerms: z.string().optional(),
   memo: z.string().optional(),
   status: z.string(),
+  productWidth: z.string().optional(),
+  productDepth: z.string().optional(),
+  productHeight: z.string().optional(),
+  weight: z.string().optional(),
+  material: z.string().optional(),
+  productType: z.string().optional(),
+  industry: z.string().optional(),
+  supplySpeed: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
 
 export default function InquiryForm() {
-  const [isEdit, editParams] = useRoute("/inquiries/:id/edit");
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const id = editParams?.id;
-
-  const { data: existingInquiry, isLoading: loadingExisting } = useQuery<Inquiry>({
-    queryKey: ["/api/inquiries", id],
-    enabled: !!isEdit && !!id,
-  });
 
   const currentYear = new Date().getFullYear();
 
@@ -55,47 +56,44 @@ export default function InquiryForm() {
       paymentTerms: "",
       memo: "",
       status: "active",
+      productWidth: "",
+      productDepth: "",
+      productHeight: "",
+      weight: "",
+      material: "",
+      productType: "",
+      industry: "",
+      supplySpeed: "",
     },
-    values: isEdit && existingInquiry ? {
-      inquiryNumber: existingInquiry.inquiryNumber,
-      customerName: existingInquiry.customerName,
-      productInfo: existingInquiry.productInfo || "",
-      year: existingInquiry.year,
-      probability: existingInquiry.probability || 0,
-      expectedDate: existingInquiry.expectedDate || "",
-      paymentTerms: existingInquiry.paymentTerms || "",
-      memo: existingInquiry.memo || "",
-      status: existingInquiry.status || "active",
-    } : undefined,
   });
 
   const saveMutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      if (isEdit && id) {
-        const res = await apiRequest("PATCH", `/api/inquiries/${id}`, values);
-        return res.json();
-      } else {
-        const res = await apiRequest("POST", "/api/inquiries", {
-          ...values,
-          productInfo: values.productInfo || null,
-          expectedDate: values.expectedDate || null,
-          paymentTerms: values.paymentTerms || null,
-          memo: values.memo || null,
-          source: "manual",
-          onedriveFolderId: null,
-          onedriveFolderName: null,
-        });
-        return res.json();
-      }
+      const res = await apiRequest("POST", "/api/inquiries", {
+        ...values,
+        productInfo: values.productInfo || null,
+        expectedDate: values.expectedDate || null,
+        paymentTerms: values.paymentTerms || null,
+        memo: values.memo || null,
+        productWidth: values.productWidth || null,
+        productDepth: values.productDepth || null,
+        productHeight: values.productHeight || null,
+        weight: values.weight || null,
+        material: values.material || null,
+        productType: values.productType || null,
+        industry: values.industry || null,
+        supplySpeed: values.supplySpeed || null,
+        source: "manual",
+        onedriveFolderId: null,
+        onedriveFolderName: null,
+      });
+      return res.json();
     },
     onSuccess: (data) => {
-      toast({ title: isEdit ? "수정 완료" : "추가 완료" });
+      toast({ title: "추가 완료" });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["/api/years"] });
-      if (isEdit && id) {
-        queryClient.invalidateQueries({ queryKey: ["/api/inquiries", id] });
-      }
       navigate(`/inquiries/${data.id}`);
     },
     onError: (err: Error) => {
@@ -103,33 +101,24 @@ export default function InquiryForm() {
     },
   });
 
-  if (isEdit && loadingExisting) {
-    return (
-      <div className="p-6 space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-96" />
-      </div>
-    );
-  }
-
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" asChild data-testid="button-back">
-          <Link href={isEdit ? `/inquiries/${id}` : "/inquiries"}><ArrowLeft /></Link>
+          <Link href="/inquiries"><ArrowLeft /></Link>
         </Button>
         <h1 className="text-2xl font-semibold" data-testid="text-form-title">
-          {isEdit ? "인콰이어리 수정" : "인콰이어리 추가"}
+          인콰이어리 추가
         </h1>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">정보 입력</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit((v) => saveMutation.mutate(v))} className="space-y-4">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit((v) => saveMutation.mutate(v))} className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">기본 정보</CardTitle>
+            </CardHeader>
+            <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -210,6 +199,28 @@ export default function InquiryForm() {
                 />
                 <FormField
                   control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>상태</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-status">
+                            <SelectValue placeholder="상태 선택" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="active">진행중</SelectItem>
+                          <SelectItem value="won">수주</SelectItem>
+                          <SelectItem value="lost">실주</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
                   name="expectedDate"
                   render={({ field }) => (
                     <FormItem>
@@ -234,52 +245,169 @@ export default function InquiryForm() {
                     </FormItem>
                   )}
                 />
+              </div>
+              <div className="mt-4">
                 <FormField
                   control={form.control}
-                  name="status"
+                  name="memo"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>상태</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <FormLabel>메모</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="메모를 입력하세요" rows={3} {...field} data-testid="input-memo" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">제품 상세정보</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="productWidth"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>크기 - 가로 (mm)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="가로 mm" {...field} data-testid="input-product-width" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="productDepth"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>크기 - 세로 (mm)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="세로 mm" {...field} data-testid="input-product-depth" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="productHeight"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>크기 - 높이 (mm)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="높이 mm" {...field} data-testid="input-product-height" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="weight"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>무게 (g)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="무게 g" {...field} data-testid="input-weight" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="material"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>재질</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
                         <FormControl>
-                          <SelectTrigger data-testid="select-status">
-                            <SelectValue placeholder="상태 선택" />
+                          <SelectTrigger data-testid="select-material">
+                            <SelectValue placeholder="재질 선택" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="active">진행중</SelectItem>
-                          <SelectItem value="won">수주</SelectItem>
-                          <SelectItem value="lost">실주</SelectItem>
+                          <SelectItem value="">미설정</SelectItem>
+                          <SelectItem value="steel">steel</SelectItem>
+                          <SelectItem value="플라스틱">플라스틱</SelectItem>
+                          <SelectItem value="고무류">고무류</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="productType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>종류</FormLabel>
+                      <FormControl>
+                        <Input placeholder="종류 입력" {...field} data-testid="input-product-type" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="industry"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>분야</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-industry">
+                            <SelectValue placeholder="분야 선택" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="">미설정</SelectItem>
+                          <SelectItem value="자동차">자동차</SelectItem>
+                          <SelectItem value="전기">전기</SelectItem>
+                          <SelectItem value="전자부품">전자부품</SelectItem>
+                          <SelectItem value="화장품">화장품</SelectItem>
+                          <SelectItem value="기타">기타</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="supplySpeed"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>공급속도 (ea/min)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="ea/min" {...field} data-testid="input-supply-speed" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
-              <FormField
-                control={form.control}
-                name="memo"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>메모</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="메모를 입력하세요" rows={4} {...field} data-testid="input-memo" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="flex justify-end">
-                <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save">
-                  <Save />
-                  <span>{saveMutation.isPending ? "저장중..." : "저장"}</span>
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-end">
+            <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save">
+              <Save />
+              <span>{saveMutation.isPending ? "저장중..." : "저장"}</span>
+            </Button>
+          </div>
+        </form>
+      </Form>
     </div>
   );
 }

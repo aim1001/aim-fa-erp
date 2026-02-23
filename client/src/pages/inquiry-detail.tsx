@@ -3,11 +3,15 @@ import { useRoute, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, FileSpreadsheet, FileIcon, RefreshCw, Trash2, Edit } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useState, useCallback } from "react";
 import type { Inquiry, InquiryFile } from "@shared/schema";
 
 const statusLabels: Record<string, string> = {
@@ -25,6 +29,9 @@ const stageLabels: Record<number, string> = {
   5: "5.발주전",
 };
 
+const materialOptions = ["steel", "플라스틱", "고무류"];
+const industryOptions = ["자동차", "전기", "전자부품", "화장품", "기타"];
+
 function getFileIcon(fileType: string | null) {
   if (!fileType) return <FileIcon className="h-5 w-5 text-muted-foreground" />;
   if (fileType === "xlsx" || fileType === "xls") return <FileSpreadsheet className="h-5 w-5 text-green-600 dark:text-green-400" />;
@@ -37,6 +44,318 @@ function formatFileSize(bytes: number | null) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function InlineText({ value, field, inquiryId, placeholder }: {
+  value: string;
+  field: string;
+  inquiryId: string;
+  placeholder?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (newVal: string) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal || null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      setEditing(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSave = useCallback(() => {
+    if (editValue !== value) {
+      mutation.mutate(editValue);
+    } else {
+      setEditing(false);
+    }
+  }, [editValue, value]);
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="h-7 text-sm"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSave();
+            if (e.key === "Escape") { setEditValue(value); setEditing(false); }
+          }}
+          placeholder={placeholder}
+          data-testid={`input-inline-${field}`}
+        />
+        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleSave} disabled={mutation.isPending}>
+          <Check className="h-3 w-3" />
+        </Button>
+        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { setEditValue(value); setEditing(false); }}>
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <span
+      className="cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 min-h-[1.5rem] inline-block"
+      onClick={() => { setEditValue(value); setEditing(true); }}
+      data-testid={`text-editable-${field}`}
+    >
+      {value || <span className="text-muted-foreground">{placeholder || "-"}</span>}
+    </span>
+  );
+}
+
+function InlineTextarea({ value, field, inquiryId, placeholder }: {
+  value: string;
+  field: string;
+  inquiryId: string;
+  placeholder?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (newVal: string) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal || null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      setEditing(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSave = useCallback(() => {
+    if (editValue !== value) {
+      mutation.mutate(editValue);
+    } else {
+      setEditing(false);
+    }
+  }, [editValue, value]);
+
+  if (editing) {
+    return (
+      <div className="space-y-1">
+        <Textarea
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="text-sm"
+          autoFocus
+          rows={3}
+          placeholder={placeholder}
+          data-testid={`input-inline-${field}`}
+        />
+        <div className="flex gap-1">
+          <Button size="sm" variant="secondary" onClick={handleSave} disabled={mutation.isPending}>
+            <Check className="h-3 w-3 mr-1" />저장
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setEditValue(value); setEditing(false); }}>
+            취소
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <span
+      className="cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 whitespace-pre-wrap min-h-[1.5rem] inline-block"
+      onClick={() => { setEditValue(value); setEditing(true); }}
+      data-testid={`text-editable-${field}`}
+    >
+      {value || <span className="text-muted-foreground">{placeholder || "-"}</span>}
+    </span>
+  );
+}
+
+function InlineSelect({ value, field, inquiryId, options, labels }: {
+  value: string;
+  field: string;
+  inquiryId: string;
+  options: { value: string; label: string }[];
+  labels?: Record<string, string>;
+}) {
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (newVal: string) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Select value={value} onValueChange={(v) => mutation.mutate(v)} disabled={mutation.isPending}>
+      <SelectTrigger className="h-7 text-sm w-auto min-w-24" data-testid={`select-inline-${field}`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(o => (
+          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function InlineStageSelect({ value, inquiryId }: { value: number; inquiryId: string }) {
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (newVal: number) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { probability: newVal });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Select value={String(value)} onValueChange={(v) => mutation.mutate(parseInt(v))} disabled={mutation.isPending}>
+      <SelectTrigger className="h-7 text-sm w-auto min-w-28" data-testid="select-inline-probability">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="0">미설정</SelectItem>
+        <SelectItem value="1">1. 문의</SelectItem>
+        <SelectItem value="2">2. 미팅</SelectItem>
+        <SelectItem value="3">3. 사양협의</SelectItem>
+        <SelectItem value="4">4. 비딩</SelectItem>
+        <SelectItem value="5">5. 발주전</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+function InlineDateInput({ value, field, inquiryId }: {
+  value: string;
+  field: string;
+  inquiryId: string;
+}) {
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (newVal: string) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal || null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Input
+      type="date"
+      value={value}
+      onChange={(e) => mutation.mutate(e.target.value)}
+      className="h-7 text-sm w-auto"
+      disabled={mutation.isPending}
+      data-testid={`input-inline-${field}`}
+    />
+  );
+}
+
+function InlineNumber({ value, field, inquiryId }: {
+  value: number;
+  field: string;
+  inquiryId: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(String(value));
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (newVal: number) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      setEditing(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSave = useCallback(() => {
+    const num = parseInt(editValue);
+    if (!isNaN(num) && num !== value) {
+      mutation.mutate(num);
+    } else {
+      setEditing(false);
+    }
+  }, [editValue, value]);
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input
+          type="number"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="h-7 text-sm w-24"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSave();
+            if (e.key === "Escape") { setEditValue(String(value)); setEditing(false); }
+          }}
+          data-testid={`input-inline-${field}`}
+        />
+        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleSave} disabled={mutation.isPending}>
+          <Check className="h-3 w-3" />
+        </Button>
+        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { setEditValue(String(value)); setEditing(false); }}>
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <span
+      className="cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1"
+      onClick={() => { setEditValue(String(value)); setEditing(true); }}
+      data-testid={`text-editable-${field}`}
+    >
+      {value}
+    </span>
+  );
 }
 
 export default function InquiryDetail() {
@@ -114,24 +433,21 @@ export default function InquiryDetail() {
         <h1 className="text-2xl font-semibold flex-1" data-testid="text-inquiry-title">
           {inquiry.inquiryNumber} - {inquiry.customerName}
         </h1>
-        <Button variant="secondary" asChild data-testid="button-edit">
-          <Link href={`/inquiries/${id}/edit`}>
-            <Edit />
-            <span>수정</span>
-          </Link>
-        </Button>
         <Button
           variant="destructive"
+          size="sm"
           onClick={() => {
             if (confirm("정말 삭제하시겠습니까?")) deleteMutation.mutate();
           }}
           disabled={deleteMutation.isPending}
           data-testid="button-delete"
         >
-          <Trash2 />
+          <Trash2 className="h-4 w-4" />
           <span>삭제</span>
         </Button>
       </div>
+
+      <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
@@ -139,18 +455,18 @@ export default function InquiryDetail() {
             <CardTitle className="text-base">기본 정보</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 text-sm items-center">
               <span className="text-muted-foreground">영업번호</span>
-              <span className="font-mono" data-testid="text-inquiry-number">{inquiry.inquiryNumber}</span>
+              <InlineText value={inquiry.inquiryNumber} field="inquiryNumber" inquiryId={id!} />
 
               <span className="text-muted-foreground">고객명</span>
-              <span data-testid="text-customer-name">{inquiry.customerName}</span>
+              <InlineText value={inquiry.customerName} field="customerName" inquiryId={id!} />
 
               <span className="text-muted-foreground">제품정보</span>
-              <span data-testid="text-product-info">{inquiry.productInfo || "-"}</span>
+              <InlineText value={inquiry.productInfo || ""} field="productInfo" inquiryId={id!} placeholder="클릭하여 입력" />
 
               <span className="text-muted-foreground">연도</span>
-              <span data-testid="text-year">{inquiry.year}</span>
+              <InlineNumber value={inquiry.year} field="year" inquiryId={id!} />
 
               <span className="text-muted-foreground">출처</span>
               <Badge variant="secondary">{inquiry.source === "onedrive" ? "OneDrive" : "수동입력"}</Badge>
@@ -163,29 +479,102 @@ export default function InquiryDetail() {
             <CardTitle className="text-base">영업 정보</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 text-sm items-center">
               <span className="text-muted-foreground">단계</span>
-              <span className="font-medium" data-testid="text-probability">
-                {stageLabels[inquiry.probability || 0] || "미설정"}
-              </span>
-
-              <span className="text-muted-foreground">예상일자</span>
-              <span data-testid="text-expected-date">{inquiry.expectedDate || "-"}</span>
-
-              <span className="text-muted-foreground">결재조건</span>
-              <span data-testid="text-payment-terms">{inquiry.paymentTerms || "-"}</span>
+              <InlineStageSelect value={inquiry.probability || 0} inquiryId={id!} />
 
               <span className="text-muted-foreground">상태</span>
-              <Badge variant="default" data-testid="text-status">
-                {statusLabels[inquiry.status || "active"] || inquiry.status}
-              </Badge>
+              <InlineSelect
+                value={inquiry.status || "active"}
+                field="status"
+                inquiryId={id!}
+                options={[
+                  { value: "active", label: "진행중" },
+                  { value: "won", label: "수주" },
+                  { value: "lost", label: "실주" },
+                ]}
+              />
+
+              <span className="text-muted-foreground">예상일자</span>
+              <InlineDateInput value={inquiry.expectedDate || ""} field="expectedDate" inquiryId={id!} />
+
+              <span className="text-muted-foreground">결재조건</span>
+              <InlineText value={inquiry.paymentTerms || ""} field="paymentTerms" inquiryId={id!} placeholder="클릭하여 입력" />
 
               <span className="text-muted-foreground">메모</span>
-              <span data-testid="text-memo" className="whitespace-pre-wrap">{inquiry.memo || "-"}</span>
+              <InlineTextarea value={inquiry.memo || ""} field="memo" inquiryId={id!} placeholder="클릭하여 입력" />
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">제품 상세정보</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
+              <span className="text-muted-foreground">크기 (가로)</span>
+              <div className="flex items-center gap-1">
+                <InlineText value={inquiry.productWidth || ""} field="productWidth" inquiryId={id!} placeholder="가로" />
+                <span className="text-muted-foreground text-xs">mm</span>
+              </div>
+
+              <span className="text-muted-foreground">크기 (세로)</span>
+              <div className="flex items-center gap-1">
+                <InlineText value={inquiry.productDepth || ""} field="productDepth" inquiryId={id!} placeholder="세로" />
+                <span className="text-muted-foreground text-xs">mm</span>
+              </div>
+
+              <span className="text-muted-foreground">크기 (높이)</span>
+              <div className="flex items-center gap-1">
+                <InlineText value={inquiry.productHeight || ""} field="productHeight" inquiryId={id!} placeholder="높이" />
+                <span className="text-muted-foreground text-xs">mm</span>
+              </div>
+
+              <span className="text-muted-foreground">무게</span>
+              <div className="flex items-center gap-1">
+                <InlineText value={inquiry.weight || ""} field="weight" inquiryId={id!} placeholder="무게" />
+                <span className="text-muted-foreground text-xs">g</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
+              <span className="text-muted-foreground">재질</span>
+              <InlineSelect
+                value={inquiry.material || ""}
+                field="material"
+                inquiryId={id!}
+                options={[
+                  { value: "", label: "미설정" },
+                  ...materialOptions.map(m => ({ value: m, label: m })),
+                ]}
+              />
+
+              <span className="text-muted-foreground">종류</span>
+              <InlineText value={inquiry.productType || ""} field="productType" inquiryId={id!} placeholder="클릭하여 입력" />
+
+              <span className="text-muted-foreground">분야</span>
+              <InlineSelect
+                value={inquiry.industry || ""}
+                field="industry"
+                inquiryId={id!}
+                options={[
+                  { value: "", label: "미설정" },
+                  ...industryOptions.map(i => ({ value: i, label: i })),
+                ]}
+              />
+
+              <span className="text-muted-foreground">공급속도</span>
+              <div className="flex items-center gap-1">
+                <InlineText value={inquiry.supplySpeed || ""} field="supplySpeed" inquiryId={id!} placeholder="속도" />
+                <span className="text-muted-foreground text-xs">ea/min</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-1">

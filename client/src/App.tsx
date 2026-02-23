@@ -17,7 +17,6 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/inquiries" component={InquiryList} />
       <Route path="/inquiries/new" component={InquiryForm} />
-      <Route path="/inquiries/:id/edit" component={InquiryForm} />
       <Route path="/inquiries/:id" component={InquiryDetail} />
       <Route component={NotFound} />
     </Switch>
