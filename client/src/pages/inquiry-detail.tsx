@@ -195,7 +195,8 @@ function InlineSelect({ value, field, inquiryId, options, labels }: {
 
   const mutation = useMutation({
     mutationFn: async (newVal: string) => {
-      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal });
+      const actualVal = newVal === "_none" ? null : newVal;
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: actualVal });
       return res.json();
     },
     onSuccess: () => {
@@ -209,7 +210,7 @@ function InlineSelect({ value, field, inquiryId, options, labels }: {
   });
 
   return (
-    <Select value={value} onValueChange={(v) => mutation.mutate(v)} disabled={mutation.isPending}>
+    <Select value={value || "_none"} onValueChange={(v) => mutation.mutate(v)} disabled={mutation.isPending}>
       <SelectTrigger className="h-7 text-sm w-auto min-w-24" data-testid={`select-inline-${field}`}>
         <SelectValue />
       </SelectTrigger>
@@ -547,7 +548,7 @@ export default function InquiryDetail() {
                 field="material"
                 inquiryId={id!}
                 options={[
-                  { value: "", label: "미설정" },
+                  { value: "_none", label: "미설정" },
                   ...materialOptions.map(m => ({ value: m, label: m })),
                 ]}
               />
@@ -561,7 +562,7 @@ export default function InquiryDetail() {
                 field="industry"
                 inquiryId={id!}
                 options={[
-                  { value: "", label: "미설정" },
+                  { value: "_none", label: "미설정" },
                   ...industryOptions.map(i => ({ value: i, label: i })),
                 ]}
               />

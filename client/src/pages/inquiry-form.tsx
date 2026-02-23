@@ -79,9 +79,9 @@ export default function InquiryForm() {
         productDepth: values.productDepth || null,
         productHeight: values.productHeight || null,
         weight: values.weight || null,
-        material: values.material || null,
+        material: values.material && values.material !== "_none" ? values.material : null,
         productType: values.productType || null,
-        industry: values.industry || null,
+        industry: values.industry && values.industry !== "_none" ? values.industry : null,
         supplySpeed: values.supplySpeed || null,
         source: "manual",
         onedriveFolderId: null,
@@ -335,7 +335,7 @@ export default function InquiryForm() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">미설정</SelectItem>
+                          <SelectItem value="_none">미설정</SelectItem>
                           <SelectItem value="steel">steel</SelectItem>
                           <SelectItem value="플라스틱">플라스틱</SelectItem>
                           <SelectItem value="고무류">고무류</SelectItem>
@@ -371,7 +371,7 @@ export default function InquiryForm() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">미설정</SelectItem>
+                          <SelectItem value="_none">미설정</SelectItem>
                           <SelectItem value="자동차">자동차</SelectItem>
                           <SelectItem value="전기">전기</SelectItem>
                           <SelectItem value="전자부품">전자부품</SelectItem>
