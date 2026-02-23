@@ -12,6 +12,8 @@ import InquiryDetail from "@/pages/inquiry-detail";
 import InquiryForm from "@/pages/inquiry-form";
 import CompanyList from "@/pages/company-list";
 import CompanyDetail from "@/pages/company-detail";
+import CustomerList from "@/pages/customer-list";
+import CustomerDetail from "@/pages/customer-detail";
 
 function Router() {
   return (
@@ -20,6 +22,8 @@ function Router() {
       <Route path="/inquiries" component={InquiryList} />
       <Route path="/inquiries/new" component={InquiryForm} />
       <Route path="/inquiries/:id" component={InquiryDetail} />
+      <Route path="/customers" component={CustomerList} />
+      <Route path="/customers/:id" component={CustomerDetail} />
       <Route path="/companies" component={CompanyList} />
       <Route path="/companies/:id" component={CompanyDetail} />
       <Route component={NotFound} />

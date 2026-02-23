@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, Plus, RefreshCw, Building2 } from "lucide-react";
+import { LayoutDashboard, FileText, Plus, RefreshCw, Building2, Users } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -20,7 +20,8 @@ const navItems = [
   { title: "대시보드", url: "/", icon: LayoutDashboard },
   { title: "인콰이어리 목록", url: "/inquiries", icon: FileText },
   { title: "인콰이어리 추가", url: "/inquiries/new", icon: Plus },
-  { title: "고객사 목록", url: "/companies", icon: Building2 },
+  { title: "고객사 목록", url: "/customers", icon: Building2 },
+  { title: "담당자 목록", url: "/companies", icon: Users },
 ];
 
 export function AppSidebar() {

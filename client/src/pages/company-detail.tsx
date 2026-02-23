@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Building2, Trash2, Check, X, FileText } from "lucide-react";
+import { ArrowLeft, Building2, Trash2, Check, X, FileText, Users } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -150,9 +150,9 @@ export default function CompanyDetail() {
         <Button variant="ghost" size="icon" asChild data-testid="button-back">
           <Link href="/companies"><ArrowLeft /></Link>
         </Button>
-        <Building2 className="h-5 w-5 text-primary" />
+        <Users className="h-5 w-5 text-primary" />
         <h1 className="text-2xl font-semibold flex-1" data-testid="text-company-title">
-          {company.companyName}
+          {company.contactName || company.companyName}
         </h1>
         <Button
           variant="destructive"
@@ -170,17 +170,22 @@ export default function CompanyDetail() {
 
       <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
 
+      {company.customerId && (
+        <div className="text-sm">
+          <Link href={`/customers/${company.customerId}`}>
+            <span className="text-primary hover:underline cursor-pointer" data-testid="link-parent-customer">소속 고객사 보기 →</span>
+          </Link>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">회사 정보</CardTitle>
+          <CardTitle className="text-base">담당자 정보</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-[80px_1fr] gap-y-3 gap-x-2 text-sm items-center">
             <span className="text-muted-foreground">회사명</span>
             <InlineField value={company.companyName} field="companyName" companyId={id!} />
-
-            <span className="text-muted-foreground">주소</span>
-            <InlineField value={company.address || ""} field="address" companyId={id!} placeholder="클릭하여 입력" />
 
             <span className="text-muted-foreground">담당자</span>
             <InlineField value={company.contactName || ""} field="contactName" companyId={id!} placeholder="클릭하여 입력" />
@@ -193,6 +198,9 @@ export default function CompanyDetail() {
 
             <span className="text-muted-foreground">팩스</span>
             <InlineField value={company.fax || ""} field="fax" companyId={id!} placeholder="클릭하여 입력" />
+
+            <span className="text-muted-foreground">주소</span>
+            <InlineField value={company.address || ""} field="address" companyId={id!} placeholder="클릭하여 입력" />
 
             <span className="text-muted-foreground">메모</span>
             <InlineField value={company.memo || ""} field="memo" companyId={id!} placeholder="클릭하여 입력" />

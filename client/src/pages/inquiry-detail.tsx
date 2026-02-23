@@ -503,6 +503,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
       resetScan();
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
@@ -519,6 +520,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
       resetScan();
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
     },
     onError: (err: Error) => {
       toast({ title: "연결 실패", description: err.message, variant: "destructive" });
@@ -584,13 +586,18 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
               <span className="text-muted-foreground">전화번호</span>
               <span data-testid="text-company-phone">{inquiry.snapshotPhone || "-"}</span>
             </div>
-            {inquiry.companyId && (
-              <div className="pt-1">
-                <Link href={`/companies/${inquiry.companyId}`}>
-                  <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">원본 회사 정보 보기 →</span>
+            <div className="pt-1 flex gap-3">
+              {inquiry.customerId && (
+                <Link href={`/customers/${inquiry.customerId}`}>
+                  <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-customer">고객사 정보 보기 →</span>
                 </Link>
-              </div>
-            )}
+              )}
+              {inquiry.companyId && (
+                <Link href={`/companies/${inquiry.companyId}`}>
+                  <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 보기 →</span>
+                </Link>
+              )}
+            </div>
           </div>
         ) : !scanResult ? (
           <p className="text-sm text-muted-foreground py-2 text-center">

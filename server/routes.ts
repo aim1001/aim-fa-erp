@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
 import { storage } from "./storage";
-import { insertInquirySchema, insertCompanySchema } from "@shared/schema";
+import { insertInquirySchema, insertCompanySchema, insertCustomerSchema } from "@shared/schema";
 import {
   listRootSalesFolder,
   listYearFolders,
@@ -343,7 +343,66 @@ export async function registerRoutes(
     }
   });
 
-  // Company routes
+  // Customer routes (공식 고객사 - 사업자등록 기준)
+  app.get("/api/customers", async (req, res) => {
+    try {
+      const list = await storage.getCustomers();
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/customers/:id", async (req, res) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+      res.json(customer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/customers", async (req, res) => {
+    try {
+      const data = insertCustomerSchema.parse(req.body);
+      const customer = await storage.createCustomer(data);
+      res.status(201).json(customer);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/customers/:id", async (req, res) => {
+    try {
+      const data = insertCustomerSchema.partial().parse(req.body);
+      const customer = await storage.updateCustomer(req.params.id, data);
+      if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+      res.json(customer);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/customers/:id", async (req, res) => {
+    try {
+      await storage.deleteCustomer(req.params.id);
+      res.json({ message: "삭제 완료" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/customers/:id/contacts", async (req, res) => {
+    try {
+      const contacts = await storage.getCompaniesByCustomerId(req.params.id);
+      res.json(contacts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Company routes (담당자/연락처)
   app.get("/api/companies", async (req, res) => {
     try {
       const companies = await storage.getCompanies();
@@ -492,9 +551,18 @@ export async function registerRoutes(
 
       const { companyName, address, contactName, email, phone } = saveCustomerInfoSchema.parse(req.body);
 
+      let customer = await storage.getCustomerByName(companyName);
+      if (!customer) {
+        customer = await storage.createCustomer({
+          companyName,
+          address: address || null,
+        });
+      }
+
       let company = await storage.getCompanyByName(companyName);
       if (company) {
         company = await storage.updateCompany(company.id, {
+          customerId: customer.id,
           address: address || company.address,
           contactName: contactName || company.contactName,
           email: email || company.email,
@@ -502,6 +570,7 @@ export async function registerRoutes(
         }) || company;
       } else {
         company = await storage.createCompany({
+          customerId: customer.id,
           companyName,
           address: address || null,
           contactName: contactName || null,
@@ -511,6 +580,7 @@ export async function registerRoutes(
       }
 
       await storage.updateInquiry(inquiry.id, {
+        customerId: customer.id,
         companyId: company.id,
         snapshotCompanyName: company.companyName,
         snapshotAddress: company.address || null,
@@ -535,7 +605,7 @@ export async function registerRoutes(
         }
       }
 
-      res.json({ company, inquiryId: inquiry.id });
+      res.json({ customer, company, inquiryId: inquiry.id });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -554,14 +624,20 @@ export async function registerRoutes(
         return res.status(404).json({ message: "회사를 찾을 수 없습니다" });
       }
 
-      await storage.updateInquiry(inquiry.id, {
+      const updateData: Record<string, any> = {
         companyId: company.id,
         snapshotCompanyName: company.companyName,
         snapshotAddress: company.address || null,
         snapshotContactName: company.contactName || null,
         snapshotEmail: company.email || null,
         snapshotPhone: company.phone || null,
-      });
+      };
+
+      if (company.customerId) {
+        updateData.customerId = company.customerId;
+      }
+
+      await storage.updateInquiry(inquiry.id, updateData);
 
       if (inquiry.onedriveFolderId) {
         try {

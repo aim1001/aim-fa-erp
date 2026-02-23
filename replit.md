@@ -20,6 +20,12 @@
 ```
 Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 
+## Data Architecture
+- **customers** 테이블: 사업자등록 기준 공식 고객사 (상호명, 사업자등록번호, 대표자, 주소, 업태, 종목)
+- **companies** 테이블: 담당자/연락처 (contactName, email, phone) - customerId로 고객사에 연결 (1:N)
+- **inquiries** 테이블: customerId(고객사)와 companyId(담당자) 모두 참조 + 스냅샷 필드로 연결 시점 정보 보존
+- Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
+
 ## Key Features
 - OneDrive 폴더 자동 스캔 및 인콰이어리 동기화
 - 인콰이어리 CRUD (수동 추가 가능, 영업번호 자동생성)
@@ -27,7 +33,8 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 대시보드 (확률별, 상태별, 연도별 차트)
 - 검색 및 필터링 (고객명, 연도, 상태)
 - 파일 목록 및 OneDrive에서 열기
-- 고객사(Companies) 관리 - 엑셀에서 고객정보 추출
+- 고객사(Customers) 관리 - 사업자등록 기준 공식 고객 정보
+- 담당자(Contacts/Companies) 관리 - 고객사 하위 담당자
 - 엑셀 견적서에서 고객 정보 자동 추출 (X3:Z7 셀 기반)
 
 ## Excel Customer Info Structure
@@ -42,17 +49,19 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - X10/Z10: 견적일자
 
 ## Project Structure
-- `shared/schema.ts` - Data models (companies, inquiries, inquiryFiles)
+- `shared/schema.ts` - Data models (customers, companies, inquiries, inquiryFiles, productImages)
 - `server/onedrive.ts` - OneDrive API client
 - `server/excel-parser.ts` - Excel file parsing utility for customer info extraction
 - `server/storage.ts` - Database storage interface
 - `server/routes.ts` - API routes
 - `client/src/pages/dashboard.tsx` - Dashboard page
 - `client/src/pages/inquiry-list.tsx` - Inquiry list page
-- `client/src/pages/inquiry-detail.tsx` - Inquiry detail page (includes CustomerInfoSection)
+- `client/src/pages/inquiry-detail.tsx` - Inquiry detail page (includes CustomerInfoSection, ProductImagesSection)
 - `client/src/pages/inquiry-form.tsx` - Add inquiry form (auto-generates inquiry number)
-- `client/src/pages/company-list.tsx` - Company list page
-- `client/src/pages/company-detail.tsx` - Company detail page (inline editing)
+- `client/src/pages/customer-list.tsx` - Customer list page (사업자등록 기준 공식 고객사)
+- `client/src/pages/customer-detail.tsx` - Customer detail page (사업자 정보 + 담당자 관리)
+- `client/src/pages/company-list.tsx` - Contact/Company list page (담당자 목록)
+- `client/src/pages/company-detail.tsx` - Contact detail page (담당자 정보, inline editing)
 - `client/src/components/app-sidebar.tsx` - Sidebar navigation
 
 ## Recent Changes
@@ -71,6 +80,10 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Excel parser extracts customer info from quotation sheets (X3:Z7 cells)
 - 2026-02-23: Customer info scan button on inquiry detail, saves to company table + _info.json
 - 2026-02-23: Company list and detail pages with inline editing
+- 2026-02-23: Snapshot + bridge architecture for company data
+- 2026-02-23: Added product_images table with Ctrl+V paste support (max 5 images, base64)
+- 2026-02-23: Separated customers (사업자등록 기준) from companies (담당자) - 1:N relationship
+- 2026-02-23: Customer pages for official business info, contacts managed under customers
 
 ## User Preferences
 - Korean language UI

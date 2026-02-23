@@ -2,8 +2,9 @@ import {
   type Inquiry, type InsertInquiry,
   type InquiryFile, type InsertInquiryFile,
   type Company, type InsertCompany,
+  type Customer, type InsertCustomer,
   type ProductImage, type InsertProductImage,
-  inquiries, inquiryFiles, companies, productImages,
+  inquiries, inquiryFiles, companies, customers, productImages,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ilike, gte, lte, desc } from "drizzle-orm";
@@ -44,9 +45,18 @@ export interface IStorage {
   createInquiryFile(file: InsertInquiryFile): Promise<InquiryFile>;
   deleteInquiryFilesByInquiryId(inquiryId: string): Promise<void>;
 
+  getCustomers(): Promise<Customer[]>;
+  getCustomer(id: string): Promise<Customer | undefined>;
+  getCustomerByName(name: string): Promise<Customer | undefined>;
+  searchCustomers(query: string): Promise<Customer[]>;
+  createCustomer(customer: InsertCustomer): Promise<Customer>;
+  updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined>;
+  deleteCustomer(id: string): Promise<void>;
+
   getCompanies(): Promise<Company[]>;
   getCompany(id: string): Promise<Company | undefined>;
   getCompanyByName(name: string): Promise<Company | undefined>;
+  getCompaniesByCustomerId(customerId: string): Promise<Company[]>;
   searchCompanies(query: string): Promise<Company[]>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
@@ -146,6 +156,43 @@ export class DatabaseStorage implements IStorage {
     await db.delete(inquiryFiles).where(eq(inquiryFiles.inquiryId, inquiryId));
   }
 
+  async getCustomers(): Promise<Customer[]> {
+    return db.select().from(customers).orderBy(customers.companyName);
+  }
+
+  async getCustomer(id: string): Promise<Customer | undefined> {
+    const result = await db.select().from(customers).where(eq(customers.id, id));
+    return result[0];
+  }
+
+  async getCustomerByName(name: string): Promise<Customer | undefined> {
+    const result = await db.select().from(customers).where(eq(customers.companyName, name));
+    return result[0];
+  }
+
+  async searchCustomers(query: string): Promise<Customer[]> {
+    return db.select().from(customers).where(ilike(customers.companyName, `%${query}%`));
+  }
+
+  async createCustomer(customer: InsertCustomer): Promise<Customer> {
+    const result = await db.insert(customers).values(customer).returning();
+    return result[0];
+  }
+
+  async updateCustomer(id: string, customer: Partial<InsertCustomer>): Promise<Customer | undefined> {
+    const result = await db.update(customers).set(customer).where(eq(customers.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteCustomer(id: string): Promise<void> {
+    const relatedContacts = await db.select().from(companies).where(eq(companies.customerId, id));
+    if (relatedContacts.length > 0) {
+      await db.update(companies).set({ customerId: null }).where(eq(companies.customerId, id));
+    }
+    await db.update(inquiries).set({ customerId: null }).where(eq(inquiries.customerId, id));
+    await db.delete(customers).where(eq(customers.id, id));
+  }
+
   async getCompanies(): Promise<Company[]> {
     return db.select().from(companies).orderBy(companies.companyName);
   }
@@ -158,6 +205,10 @@ export class DatabaseStorage implements IStorage {
   async getCompanyByName(name: string): Promise<Company | undefined> {
     const result = await db.select().from(companies).where(eq(companies.companyName, name));
     return result[0];
+  }
+
+  async getCompaniesByCustomerId(customerId: string): Promise<Company[]> {
+    return db.select().from(companies).where(eq(companies.customerId, customerId)).orderBy(companies.contactName);
   }
 
   async searchCompanies(query: string): Promise<Company[]> {

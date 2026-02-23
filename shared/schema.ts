@@ -3,8 +3,22 @@ import { pgTable, text, varchar, integer, date, timestamp } from "drizzle-orm/pg
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const customers = pgTable("customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: text("company_name").notNull(),
+  businessNumber: text("business_number"),
+  representative: text("representative"),
+  address: text("address"),
+  businessType: text("business_type"),
+  businessCategory: text("business_category"),
+  phone: text("phone"),
+  fax: text("fax"),
+  memo: text("memo"),
+});
+
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  customerId: varchar("customer_id"),
   companyName: text("company_name").notNull(),
   address: text("address"),
   contactName: text("contact_name"),
@@ -48,6 +62,7 @@ export const inquiries = pgTable("inquiries", {
   finalTimingType: text("final_timing_type"),
   finalTimingDays: integer("final_timing_days"),
   deliveryDate: text("delivery_date"),
+  customerId: varchar("customer_id"),
   companyId: varchar("company_id"),
   snapshotCompanyName: text("snapshot_company_name"),
   snapshotAddress: text("snapshot_address"),
@@ -73,6 +88,10 @@ export const productImages = pgTable("product_images", {
   sortOrder: integer("sort_order").default(0),
 });
 
+export const insertCustomerSchema = createInsertSchema(customers).omit({
+  id: true,
+});
+
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
 });
@@ -85,14 +104,16 @@ export const insertInquiryFileSchema = createInsertSchema(inquiryFiles).omit({
   id: true,
 });
 
-export type InsertCompany = z.infer<typeof insertCompanySchema>;
-export type Company = typeof companies.$inferSelect;
-export type InsertInquiry = z.infer<typeof insertInquirySchema>;
-export type Inquiry = typeof inquiries.$inferSelect;
 export const insertProductImageSchema = createInsertSchema(productImages).omit({
   id: true,
 });
 
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type Customer = typeof customers.$inferSelect;
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type Company = typeof companies.$inferSelect;
+export type InsertInquiry = z.infer<typeof insertInquirySchema>;
+export type Inquiry = typeof inquiries.$inferSelect;
 export type InsertInquiryFile = z.infer<typeof insertInquiryFileSchema>;
 export type InquiryFile = typeof inquiryFiles.$inferSelect;
 export type InsertProductImage = z.infer<typeof insertProductImageSchema>;
