@@ -8,6 +8,11 @@ import { useState, useMemo } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Payment } from "@shared/schema";
+
+type EnrichedPayment = Payment & {
+  invoiceIssueDate: string | null;
+  invoiceNumber: string | null;
+};
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -50,6 +55,8 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
@@ -63,6 +70,8 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
     onSuccess: () => {
       toast({ title: "삭제 완료" });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       onClose();
     },
   });
@@ -137,6 +146,18 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
       <div className="grid grid-cols-[100px_1fr] gap-y-2 gap-x-2 text-sm items-center">
         {renderField("거래처", "companyName", payment.companyName || "")}
         {renderField("설명", "description", payment.description || "")}
+        {(payment as any).invoiceIssueDate && (
+          <>
+            <span className="text-muted-foreground text-xs font-medium">계산서 발급일</span>
+            <span className="text-sm">{(payment as any).invoiceIssueDate}</span>
+          </>
+        )}
+        {(payment as any).invoiceNumber && (
+          <>
+            <span className="text-muted-foreground text-xs font-medium">계산서 번호</span>
+            <span className="text-sm text-muted-foreground">{(payment as any).invoiceNumber}</span>
+          </>
+        )}
         {renderField("예정금액", "amount", String(payment.amount || ""), "number")}
         {renderField("예정일", "plannedDate", payment.plannedDate || "", "date")}
         {renderField("실제금액", "actualAmount", String(payment.actualAmount || ""), "number")}
@@ -190,6 +211,8 @@ function AddPaymentDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       onOpenChange(false);
       setForm({ type: "expense", companyName: "", description: "", amount: "", paymentMethod: "end_of_next_month", plannedDate: "" });
       toast({ title: "결제 계획이 등록되었습니다" });
@@ -340,7 +363,7 @@ export default function PaymentPlan() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
 
-  const { data: payments, isLoading } = useQuery<Payment[]>({
+  const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
     queryFn: async () => {
       const res = await fetch(`/api/payments?year=${year}&month=${month}`);
@@ -453,62 +476,65 @@ export default function PaymentPlan() {
         <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
       ) : viewMode === "list" ? (
         sorted.length > 0 ? (
-          <div className="space-y-4">
-            {Array.from(groupedByDate.entries()).map(([date, items]) => (
-              <div key={date}>
-                <div className="text-xs font-medium text-muted-foreground mb-1 sticky top-0 bg-background py-1">
-                  {date === "미정" ? "날짜 미정" : date}
-                </div>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {items.map(p => {
-                        const statusInfo = getStatusInfo(p);
-                        return (
-                          <tr
-                            key={p.id}
-                            className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
-                            onClick={() => setSelectedId(p.id)}
-                            data-testid={`row-payment-${p.id}`}
-                          >
-                            <td className="py-2.5 px-3 w-16">
-                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${statusInfo.className}`}>
-                                <statusInfo.icon className="h-3 w-3" />
-                                {statusInfo.label}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 w-14">
-                              <span className={`text-xs font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>
-                                {p.type === "income" ? "입금" : "출금"}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <div className="font-medium">{p.companyName || "-"}</div>
-                              {p.description && <div className="text-xs text-muted-foreground">{p.description}</div>}
-                            </td>
-                            <td className="py-2.5 px-3 text-right hidden md:table-cell">
-                              <div className={`font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>
-                                {p.type === "income" ? "+" : "-"}{formatAmount(p.amount)}
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-right hidden lg:table-cell">
-                              {p.actualAmount ? (
-                                <div className="text-green-600 text-xs">
-                                  실제: {formatAmount(p.actualAmount)}
-                                </div>
-                              ) : null}
-                            </td>
-                            <td className="py-2.5 px-3 text-right hidden lg:table-cell text-xs text-muted-foreground">
-                              {p.splitTotal && p.splitTotal > 1 ? `${p.splitIndex}/${p.splitTotal}` : ""}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="text-left py-1.5 px-2 font-medium text-xs w-12">상태</th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs w-12">구분</th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs">예정일</th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs hidden md:table-cell">계산서일</th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs">거래처</th>
+                  <th className="text-right py-1.5 px-2 font-medium text-xs">예정금액</th>
+                  <th className="text-right py-1.5 px-2 font-medium text-xs hidden md:table-cell">실제금액</th>
+                  <th className="text-center py-1.5 px-2 font-medium text-xs hidden lg:table-cell w-14">분할</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(p => {
+                  const statusInfo = getStatusInfo(p);
+                  return (
+                    <tr
+                      key={p.id}
+                      className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                      onClick={() => setSelectedId(p.id)}
+                      data-testid={`row-payment-${p.id}`}
+                    >
+                      <td className="py-1.5 px-2">
+                        <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium ${statusInfo.className}`}>
+                          <statusInfo.icon className="h-2.5 w-2.5" />
+                          {statusInfo.label}
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <span className={`text-[10px] font-medium px-1 py-0.5 rounded ${p.type === "income" ? "text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400" : "text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-400"}`}>
+                          {p.type === "income" ? "입금" : "출금"}
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-2 text-xs">{p.plannedDate || "미정"}</td>
+                      <td className="py-1.5 px-2 text-xs text-muted-foreground hidden md:table-cell">{p.invoiceIssueDate || "-"}</td>
+                      <td className="py-1.5 px-2">
+                        <div className="text-xs font-medium truncate max-w-[140px]">{p.companyName || "-"}</div>
+                        {p.invoiceNumber && <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{p.invoiceNumber}</div>}
+                      </td>
+                      <td className="py-1.5 px-2 text-right">
+                        <span className={`text-xs font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>
+                          {(p.amount || 0).toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="py-1.5 px-2 text-right hidden md:table-cell">
+                        {p.actualAmount ? (
+                          <span className="text-xs text-green-600 dark:text-green-400">{(p.actualAmount || 0).toLocaleString()}</span>
+                        ) : <span className="text-xs text-muted-foreground">-</span>}
+                      </td>
+                      <td className="py-1.5 px-2 text-center hidden lg:table-cell text-[10px] text-muted-foreground">
+                        {p.splitTotal && p.splitTotal > 1 ? `${p.splitIndex}/${p.splitTotal}` : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="text-center py-12 text-muted-foreground">

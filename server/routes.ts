@@ -1341,13 +1341,34 @@ export async function registerRoutes(
   app.get("/api/payments", async (req, res) => {
     try {
       const { year, month } = req.query;
+      let list: any[];
       if (year && month) {
-        const list = await storage.getPaymentsByMonth(parseInt(year as string), parseInt(month as string));
-        res.json(list);
+        list = await storage.getPaymentsByMonth(parseInt(year as string), parseInt(month as string));
       } else {
-        const list = await storage.getPayments();
-        res.json(list);
+        list = await storage.getPayments();
       }
+
+      const salesInvoices = await storage.getSalesInvoices();
+      const purchaseInvoices = await storage.getPurchaseInvoices();
+      const salesMap = new Map(salesInvoices.map(i => [i.id, i]));
+      const purchaseMap = new Map(purchaseInvoices.map(i => [i.id, i]));
+
+      const enriched = list.map(p => {
+        let invoiceIssueDate: string | null = null;
+        let invoiceNumber: string | null = null;
+        if (p.salesInvoiceId && salesMap.has(p.salesInvoiceId)) {
+          const inv = salesMap.get(p.salesInvoiceId)!;
+          invoiceIssueDate = inv.issueDate || null;
+          invoiceNumber = inv.invoiceNumber || null;
+        } else if (p.purchaseInvoiceId && purchaseMap.has(p.purchaseInvoiceId)) {
+          const inv = purchaseMap.get(p.purchaseInvoiceId)!;
+          invoiceIssueDate = inv.issueDate || null;
+          invoiceNumber = inv.invoiceNumber || null;
+        }
+        return { ...p, invoiceIssueDate, invoiceNumber };
+      });
+
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
