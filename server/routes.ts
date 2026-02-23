@@ -1110,6 +1110,7 @@ export async function registerRoutes(
 
       let imported = 0;
       let skipped = 0;
+      let vendorsCreated = 0;
       for (const row of rows) {
         const key = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
         if (existingKeys.has(key)) {
@@ -1117,8 +1118,21 @@ export async function registerRoutes(
           continue;
         }
 
-        const bizNumClean = row.businessNumber.replace(/-/g, "");
-        const vendorId = vendorByBizNum.get(bizNumClean) || null;
+        const bizNumClean = row.businessNumber ? row.businessNumber.replace(/-/g, "") : "";
+        let vendorId = bizNumClean ? vendorByBizNum.get(bizNumClean) || null : null;
+
+        if (!vendorId && bizNumClean && row.companyName) {
+          const newVendor = await storage.createVendor({
+            companyName: row.companyName,
+            businessNumber: row.businessNumber || null,
+            representative: row.representative || null,
+            address: row.address || null,
+            contactEmail: row.email1 || null,
+          });
+          vendorId = newVendor.id;
+          vendorByBizNum.set(bizNumClean, newVendor.id);
+          vendorsCreated++;
+        }
 
         await storage.createPurchaseInvoice({
           vendorId,
@@ -1138,7 +1152,7 @@ export async function registerRoutes(
         imported++;
       }
 
-      res.json({ imported, skipped, total: rows.length });
+      res.json({ imported, skipped, vendorsCreated, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
