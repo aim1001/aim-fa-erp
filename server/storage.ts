@@ -339,7 +339,6 @@ export class DatabaseStorage implements IStorage {
     }
 
     const stages = [
-      { stage: 0, label: "미설정" },
       { stage: 1, label: "1.문의" },
       { stage: 2, label: "2.미팅" },
       { stage: 3, label: "3.사양협의" },
