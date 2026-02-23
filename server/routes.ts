@@ -393,6 +393,55 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/inquiries/:id/product-images", async (req, res) => {
+    try {
+      const images = await storage.getProductImages(req.params.id);
+      res.json(images);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/inquiries/:id/product-images", async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+
+      const count = await storage.countProductImages(req.params.id);
+      if (count >= 5) {
+        return res.status(400).json({ message: "이미지는 최대 5개까지 등록할 수 있습니다" });
+      }
+
+      const { imageData } = z.object({
+        imageData: z.string().min(1),
+      }).parse(req.body);
+
+      const image = await storage.createProductImage({
+        inquiryId: req.params.id,
+        imageData,
+        sortOrder: count,
+      });
+
+      res.status(201).json(image);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/inquiries/:id/product-images/:imageId", async (req, res) => {
+    try {
+      const images = await storage.getProductImages(req.params.id);
+      const found = images.find(i => i.id === req.params.imageId);
+      if (!found) {
+        return res.status(404).json({ message: "이미지를 찾을 수 없습니다" });
+      }
+      await storage.deleteProductImage(req.params.imageId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Excel scan: extract customer info from Excel files in an inquiry's OneDrive folder
   app.post("/api/inquiries/:id/scan-excel", async (req, res) => {
     try {

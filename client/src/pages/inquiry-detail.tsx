@@ -7,12 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useCallback } from "react";
-import type { Inquiry, InquiryFile, Company } from "@shared/schema";
+import { useState, useCallback, useRef, useEffect } from "react";
+import type { Inquiry, InquiryFile, Company, ProductImage } from "@shared/schema";
 
 function useInlineUpdate(inquiryId: string) {
   const { toast } = useToast();
@@ -297,6 +297,136 @@ function InlineNumber({ value, field, inquiryId }: {
     >
       {value}
     </span>
+  );
+}
+
+function ProductImagesSection({ inquiryId }: { inquiryId: string }) {
+  const { toast } = useToast();
+  const dropZoneRef = useRef<HTMLDivElement>(null);
+
+  const { data: images = [], isLoading } = useQuery<ProductImage[]>({
+    queryKey: [`/api/inquiries/${inquiryId}/product-images`],
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (imageData: string) => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/product-images`, { imageData });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/product-images`] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "이미지 업로드 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (imageId: string) => {
+      const res = await apiRequest("DELETE", `/api/inquiries/${inquiryId}/product-images/${imageId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/product-images`] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "이미지 삭제 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handlePaste = useCallback((e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        if (images.length >= 5) {
+          toast({ title: "이미지는 최대 5개까지 등록할 수 있습니다", variant: "destructive" });
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = reader.result as string;
+          uploadMutation.mutate(base64);
+        };
+        reader.readAsDataURL(file);
+        break;
+      }
+    }
+  }, [images.length, uploadMutation, toast]);
+
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    const handler = (e: Event) => handlePaste(e as ClipboardEvent);
+    document.addEventListener("paste", handler);
+    return () => document.removeEventListener("paste", handler);
+  }, [isFocused, handlePaste]);
+
+  return (
+    <div
+      ref={dropZoneRef}
+      tabIndex={0}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      className={`mt-4 border-t pt-4 outline-none rounded-lg transition-colors ${isFocused ? "ring-2 ring-primary/30 bg-primary/5" : ""}`}
+      data-testid="product-images-section"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-medium flex items-center gap-1.5">
+          <ImagePlus className="h-4 w-4" />
+          제품 이미지 ({images.length}/5)
+        </p>
+        {uploadMutation.isPending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-2">
+          <Skeleton className="aspect-square rounded-lg" />
+          <Skeleton className="aspect-square rounded-lg" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {images.map((img) => (
+            <div key={img.id} className="relative group aspect-square rounded-lg overflow-hidden border bg-muted/30">
+              <img
+                src={img.imageData}
+                alt="제품 이미지"
+                className="w-full h-full object-contain"
+                data-testid={`img-product-${img.id}`}
+              />
+              <Button
+                size="icon"
+                variant="destructive"
+                className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => deleteMutation.mutate(img.id)}
+                disabled={deleteMutation.isPending}
+                data-testid={`button-delete-image-${img.id}`}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+
+          {images.length < 5 && (
+            <div
+              className="aspect-square rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center text-muted-foreground cursor-pointer hover:border-primary/50 hover:text-primary/70 transition-colors"
+              onClick={() => dropZoneRef.current?.focus()}
+              data-testid="area-paste-image"
+            >
+              <ImagePlus className="h-6 w-6 mb-1" />
+              <span className="text-xs text-center px-2">{isFocused ? "Ctrl+V로\n붙여넣기" : "클릭 후\nCtrl+V"}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -812,6 +942,8 @@ export default function InquiryDetail() {
               </div>
             </div>
           </div>
+
+          <ProductImagesSection inquiryId={id!} />
         </CardContent>
       </Card>
 

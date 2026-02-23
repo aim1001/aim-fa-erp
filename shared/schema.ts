@@ -66,6 +66,13 @@ export const inquiryFiles = pgTable("inquiry_files", {
   size: integer("size"),
 });
 
+export const productImages = pgTable("product_images", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inquiryId: varchar("inquiry_id").notNull(),
+  imageData: text("image_data").notNull(),
+  sortOrder: integer("sort_order").default(0),
+});
+
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
 });
@@ -82,5 +89,11 @@ export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
 export type InsertInquiry = z.infer<typeof insertInquirySchema>;
 export type Inquiry = typeof inquiries.$inferSelect;
+export const insertProductImageSchema = createInsertSchema(productImages).omit({
+  id: true,
+});
+
 export type InsertInquiryFile = z.infer<typeof insertInquiryFileSchema>;
 export type InquiryFile = typeof inquiryFiles.$inferSelect;
+export type InsertProductImage = z.infer<typeof insertProductImageSchema>;
+export type ProductImage = typeof productImages.$inferSelect;

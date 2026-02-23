@@ -2,7 +2,8 @@ import {
   type Inquiry, type InsertInquiry,
   type InquiryFile, type InsertInquiryFile,
   type Company, type InsertCompany,
-  inquiries, inquiryFiles, companies,
+  type ProductImage, type InsertProductImage,
+  inquiries, inquiryFiles, companies, productImages,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ilike, gte, lte, desc } from "drizzle-orm";
@@ -50,6 +51,11 @@ export interface IStorage {
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
   deleteCompany(id: string): Promise<void>;
+
+  getProductImages(inquiryId: string): Promise<ProductImage[]>;
+  createProductImage(image: InsertProductImage): Promise<ProductImage>;
+  deleteProductImage(id: string): Promise<void>;
+  countProductImages(inquiryId: string): Promise<number>;
 
   getNextInquiryNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
@@ -170,6 +176,27 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCompany(id: string): Promise<void> {
     await db.delete(companies).where(eq(companies.id, id));
+  }
+
+  async getProductImages(inquiryId: string): Promise<ProductImage[]> {
+    return db.select().from(productImages)
+      .where(eq(productImages.inquiryId, inquiryId))
+      .orderBy(productImages.sortOrder);
+  }
+
+  async createProductImage(image: InsertProductImage): Promise<ProductImage> {
+    const result = await db.insert(productImages).values(image).returning();
+    return result[0];
+  }
+
+  async deleteProductImage(id: string): Promise<void> {
+    await db.delete(productImages).where(eq(productImages.id, id));
+  }
+
+  async countProductImages(inquiryId: string): Promise<number> {
+    const result = await db.select().from(productImages)
+      .where(eq(productImages.inquiryId, inquiryId));
+    return result.length;
   }
 
   async getNextInquiryNumber(year: number): Promise<string> {
