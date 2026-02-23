@@ -18,14 +18,21 @@ const statusLabels: Record<string, string> = {
   active: "진행중",
   won: "수주",
   lost: "실주",
-  pending: "대기",
 };
 
 const statusVariants: Record<string, "default" | "secondary" | "destructive"> = {
   active: "default",
   won: "default",
   lost: "destructive",
-  pending: "secondary",
+};
+
+const stageLabels: Record<number, string> = {
+  0: "-",
+  1: "1.문의",
+  2: "2.미팅",
+  3: "3.사양협의",
+  4: "4.비딩",
+  5: "5.발주전",
 };
 
 export default function InquiryList() {
@@ -194,7 +201,6 @@ export default function InquiryList() {
                 <SelectItem value="active">진행중</SelectItem>
                 <SelectItem value="won">수주</SelectItem>
                 <SelectItem value="lost">실주</SelectItem>
-                <SelectItem value="pending">대기</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -215,7 +221,7 @@ export default function InquiryList() {
                   <TableHead>고객명</TableHead>
                   <TableHead>제품정보</TableHead>
                   <TableHead>연도</TableHead>
-                  <TableHead>확률</TableHead>
+                  <TableHead>단계</TableHead>
                   <TableHead>상태</TableHead>
                   <TableHead>예상일자</TableHead>
                   <TableHead className="w-12"></TableHead>
@@ -241,8 +247,8 @@ export default function InquiryList() {
                       <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
                       <TableCell>{inq.year}</TableCell>
                       <TableCell>
-                        <span className={`font-medium ${(inq.probability || 0) >= 61 ? "text-green-600 dark:text-green-400" : ""}`}>
-                          {inq.probability || 0}%
+                        <span className={`text-sm font-medium ${(inq.probability || 0) >= 4 ? "text-green-600 dark:text-green-400" : ""}`}>
+                          {stageLabels[inq.probability || 0] || "-"}
                         </span>
                       </TableCell>
                       <TableCell>

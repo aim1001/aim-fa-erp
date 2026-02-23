@@ -122,6 +122,52 @@ export async function downloadFile(itemId: string): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+export async function readInfoJson(folderId: string): Promise<Record<string, any> | null> {
+  try {
+    const client = await getClient();
+    const children = await client
+      .api(`/me/drive/items/${folderId}/children`)
+      .select('id,name,file')
+      .get();
+
+    const infoFile = (children.value || []).find(
+      (item: any) => item.file && item.name === '_info.json'
+    );
+    if (!infoFile) return null;
+
+    const stream = await client
+      .api(`/me/drive/items/${infoFile.id}/content`)
+      .getStream();
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream as any) {
+      chunks.push(Buffer.from(chunk));
+    }
+    const content = Buffer.concat(chunks).toString('utf-8');
+    return JSON.parse(content);
+  } catch (err) {
+    console.warn(`Failed to read _info.json from folder ${folderId}:`, (err as Error).message);
+    return null;
+  }
+}
+
+export async function writeInfoJson(folderId: string, data: Record<string, any>): Promise<void> {
+  const client = await getClient();
+  const content = JSON.stringify(data, null, 2);
+  const folderItem = await client.api(`/me/drive/items/${folderId}`).select('parentReference,name').get();
+  const driveId = folderItem.parentReference?.driveId;
+
+  if (driveId) {
+    await client
+      .api(`/drives/${driveId}/items/${folderId}:/_info.json:/content`)
+      .put(Buffer.from(content, 'utf-8'));
+  } else {
+    await client
+      .api(`/me/drive/items/${folderId}:/_info.json:/content`)
+      .put(Buffer.from(content, 'utf-8'));
+  }
+}
+
 export function parseInquiryFolderName(folderName: string, year: number): {
   inquiryNumber: string;
   customerName: string;

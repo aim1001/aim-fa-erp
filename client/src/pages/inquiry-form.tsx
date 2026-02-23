@@ -21,7 +21,7 @@ const formSchema = z.object({
   customerName: z.string().min(1, "고객명을 입력하세요"),
   productInfo: z.string().optional(),
   year: z.coerce.number().min(2000).max(2099),
-  probability: z.coerce.number().min(0).max(100),
+  probability: z.coerce.number().min(0).max(5),
   expectedDate: z.string().optional(),
   paymentTerms: z.string().optional(),
   memo: z.string().optional(),
@@ -93,6 +93,9 @@ export default function InquiryForm() {
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["/api/years"] });
+      if (isEdit && id) {
+        queryClient.invalidateQueries({ queryKey: ["/api/inquiries", id] });
+      }
       navigate(`/inquiries/${data.id}`);
     },
     onError: (err: Error) => {
@@ -185,10 +188,22 @@ export default function InquiryForm() {
                   name="probability"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>확률 (%)</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={0} max={100} {...field} data-testid="input-probability" />
-                      </FormControl>
+                      <FormLabel>단계</FormLabel>
+                      <Select onValueChange={(v) => field.onChange(parseInt(v))} value={String(field.value)}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-probability">
+                            <SelectValue placeholder="단계 선택" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="0">미설정</SelectItem>
+                          <SelectItem value="1">1. 문의</SelectItem>
+                          <SelectItem value="2">2. 미팅</SelectItem>
+                          <SelectItem value="3">3. 사양협의</SelectItem>
+                          <SelectItem value="4">4. 비딩</SelectItem>
+                          <SelectItem value="5">5. 발주전</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -235,7 +250,6 @@ export default function InquiryForm() {
                           <SelectItem value="active">진행중</SelectItem>
                           <SelectItem value="won">수주</SelectItem>
                           <SelectItem value="lost">실주</SelectItem>
-                          <SelectItem value="pending">대기</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

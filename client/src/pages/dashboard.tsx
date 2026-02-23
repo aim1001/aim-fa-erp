@@ -12,7 +12,14 @@ const CHART_COLORS = [
   "hsl(43, 96%, 56%)",
   "hsl(280, 65%, 60%)",
   "hsl(0, 84%, 60%)",
+  "hsl(200, 70%, 50%)",
 ];
+
+const statusLabels: Record<string, string> = {
+  active: "진행중",
+  won: "수주",
+  lost: "실주",
+};
 
 export default function Dashboard() {
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -27,15 +34,8 @@ export default function Dashboard() {
     byStatus: { status: string; count: number }[];
     byYear: { year: number; count: number }[];
   }>({
-    queryKey: ["/api/dashboard", selectedYear !== "all" ? `?year=${selectedYear}` : ""],
+    queryKey: ["/api/dashboard" + (selectedYear !== "all" ? `?year=${selectedYear}` : "")],
   });
-
-  const statusLabels: Record<string, string> = {
-    active: "진행중",
-    won: "수주",
-    lost: "실주",
-    pending: "대기",
-  };
 
   if (isLoading) {
     return (
@@ -51,6 +51,12 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const activeCount = stats?.byStatus?.find(s => s.status === "active")?.count || 0;
+  const wonCount = stats?.byStatus?.find(s => s.status === "won")?.count || 0;
+  const highStageCount = stats?.byProbability
+    ?.filter(p => p.range.startsWith("4.") || p.range.startsWith("5."))
+    .reduce((a, b) => a + b.count, 0) || 0;
 
   return (
     <div className="p-6 space-y-6 overflow-auto h-full">
@@ -82,13 +88,11 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">높은 확률 (61%+)</CardTitle>
+            <CardTitle className="text-sm font-medium">비딩/발주전</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-high-probability">
-              {stats?.byProbability?.filter(p => p.range === "61-80%" || p.range === "81-100%").reduce((a, b) => a + b.count, 0) || 0}
-            </div>
+            <div className="text-2xl font-bold" data-testid="text-high-probability">{highStageCount}</div>
           </CardContent>
         </Card>
 
@@ -98,19 +102,17 @@ export default function Dashboard() {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-active-count">
-              {stats?.byStatus?.find(s => s.status === "active")?.count || 0}
-            </div>
+            <div className="text-2xl font-bold" data-testid="text-active-count">{activeCount}</div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">연도 수</CardTitle>
+            <CardTitle className="text-sm font-medium">수주</CardTitle>
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-year-count">{stats?.byYear?.length || 0}</div>
+            <div className="text-2xl font-bold" data-testid="text-won-count">{wonCount}</div>
           </CardContent>
         </Card>
       </div>
@@ -118,17 +120,17 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">확률별 분포</CardTitle>
+            <CardTitle className="text-base">단계별 분포</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats?.byProbability || []}>
-                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
+                <BarChart data={(stats?.byProbability || []).filter(p => p.count > 0)}>
+                  <XAxis dataKey="range" tick={{ fontSize: 11 }} />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
                   <Bar dataKey="count" name="건수" radius={[4, 4, 0, 0]}>
-                    {(stats?.byProbability || []).map((_entry, index) => (
+                    {(stats?.byProbability || []).filter(p => p.count > 0).map((_entry, index) => (
                       <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
                   </Bar>

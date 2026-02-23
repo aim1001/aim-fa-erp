@@ -14,7 +14,15 @@ const statusLabels: Record<string, string> = {
   active: "진행중",
   won: "수주",
   lost: "실주",
-  pending: "대기",
+};
+
+const stageLabels: Record<number, string> = {
+  0: "미설정",
+  1: "1.문의",
+  2: "2.미팅",
+  3: "3.사양협의",
+  4: "4.비딩",
+  5: "5.발주전",
 };
 
 function getFileIcon(fileType: string | null) {
@@ -156,8 +164,10 @@ export default function InquiryDetail() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <span className="text-muted-foreground">확률</span>
-              <span className="font-medium" data-testid="text-probability">{inquiry.probability || 0}%</span>
+              <span className="text-muted-foreground">단계</span>
+              <span className="font-medium" data-testid="text-probability">
+                {stageLabels[inquiry.probability || 0] || "미설정"}
+              </span>
 
               <span className="text-muted-foreground">예상일자</span>
               <span data-testid="text-expected-date">{inquiry.expectedDate || "-"}</span>

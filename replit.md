@@ -40,7 +40,14 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 
 ## Recent Changes
 - 2026-02-23: Initial MVP build with OneDrive integration, dashboard, CRUD
+- 2026-02-23: Multi-format folder name parsing (2024-2026, 2021-2022, 2020 formats)
+- 2026-02-23: Year-specific OneDrive sync, natural sorting, URL-based filtering
+- 2026-02-23: Changed probability from 0-100% to 1-5 stages (1=문의, 2=미팅, 3=사양협의, 4=비딩, 5=발주전)
+- 2026-02-23: Implemented _info.json bi-directional sync (read on sync, write on edit)
+- 2026-02-23: Removed "pending" status, kept only active(진행중), won(수주), lost(실주)
 
 ## User Preferences
 - Korean language UI
 - Business/professional theme (blue primary color)
+- Probability uses 1-5 stage system, not percentage
+- Status: active(진행중), won(수주), lost(실주) only

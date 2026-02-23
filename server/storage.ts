@@ -146,17 +146,18 @@ export class DatabaseStorage implements IStorage {
   }> {
     const all = await this.getInquiries(year ? { year } : undefined);
 
-    const probRanges = [
-      { range: "0-20%", min: 0, max: 20 },
-      { range: "21-40%", min: 21, max: 40 },
-      { range: "41-60%", min: 41, max: 60 },
-      { range: "61-80%", min: 61, max: 80 },
-      { range: "81-100%", min: 81, max: 100 },
+    const stages = [
+      { stage: 0, label: "미설정" },
+      { stage: 1, label: "1.문의" },
+      { stage: 2, label: "2.미팅" },
+      { stage: 3, label: "3.사양협의" },
+      { stage: 4, label: "4.비딩" },
+      { stage: 5, label: "5.발주전" },
     ];
 
-    const byProbability = probRanges.map(r => ({
-      range: r.range,
-      count: all.filter(i => (i.probability || 0) >= r.min && (i.probability || 0) <= r.max).length,
+    const byProbability = stages.map(s => ({
+      range: s.label,
+      count: all.filter(i => (i.probability || 0) === s.stage).length,
     }));
 
     const statusMap = new Map<string, number>();
