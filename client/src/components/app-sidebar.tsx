@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, RefreshCw, Building2, Users, Target, Trophy, XCircle, LogOut } from "lucide-react";
+import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -14,13 +14,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-
-const navItems = [
-  { title: "대시보드", url: "/", icon: LayoutDashboard },
-  { title: "인콰이어리 목록", url: "/inquiries", icon: FileText },
-  { title: "고객사 목록", url: "/customers", icon: Building2 },
-  { title: "담당자 목록", url: "/companies", icon: Users },
-];
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -51,65 +44,75 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>영업 관리</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    data-active={location === item.url}
-                    data-testid={`nav-${item.url.replace(/\//g, '-').slice(1) || 'dashboard'}`}
-                  >
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/"} data-testid="nav-dashboard">
+                  <Link href="/"><LayoutDashboard /><span>대시보드</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>빠른 보기</SidebarGroupLabel>
+          <SidebarGroupLabel>영업</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "active"}
-                  data-testid="nav-quick-active"
-                >
-                  <Link href="/inquiries?status=active">
-                    <Target />
-                    <span>진행중</span>
-                  </Link>
+                <SidebarMenuButton asChild data-active={location === "/inquiries" && !new URLSearchParams(searchString).get("status")} data-testid="nav-inquiries">
+                  <Link href="/inquiries"><FileText /><span>인콰이어리</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "won"}
-                  data-testid="nav-quick-won"
-                >
-                  <Link href="/inquiries?status=won">
-                    <Trophy />
-                    <span>수주</span>
-                  </Link>
+                <SidebarMenuButton asChild data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "active"} data-testid="nav-quick-active">
+                  <Link href="/inquiries?status=active"><Target /><span>진행중</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "lost"}
-                  data-testid="nav-quick-lost"
-                >
-                  <Link href="/inquiries?status=lost">
-                    <XCircle />
-                    <span>실주</span>
-                  </Link>
+                <SidebarMenuButton asChild data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "won"} data-testid="nav-quick-won">
+                  <Link href="/inquiries?status=won"><Trophy /><span>수주</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "lost"} data-testid="nav-quick-lost">
+                  <Link href="/inquiries?status=lost"><XCircle /><span>실주</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>경영지원</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/sales-invoices"} data-testid="nav-sales-invoices">
+                  <Link href="/sales-invoices"><Receipt /><span>매출계산서</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/purchase-invoices"} data-testid="nav-purchase-invoices">
+                  <Link href="/purchase-invoices"><ReceiptText /><span>매입계산서</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>관리</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/customers"} data-testid="nav-customers">
+                  <Link href="/customers"><Building2 /><span>고객사</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/vendors"} data-testid="nav-vendors">
+                  <Link href="/vendors"><Truck /><span>공급업체</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -127,10 +130,7 @@ export function AppSidebar() {
                     data-active={location === "/inquiries" && new URLSearchParams(searchString).get("year") === String(year)}
                     data-testid={`nav-year-${year}`}
                   >
-                    <Link href={`/inquiries?year=${year}`}>
-                      <FileText />
-                      <span>{year}년</span>
-                    </Link>
+                    <Link href={`/inquiries?year=${year}`}><FileText /><span>{year}년</span></Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

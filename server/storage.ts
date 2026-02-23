@@ -4,7 +4,11 @@ import {
   type Company, type InsertCompany,
   type Customer, type InsertCustomer,
   type ProductImage, type InsertProductImage,
+  type Vendor, type InsertVendor,
+  type SalesInvoice, type InsertSalesInvoice,
+  type PurchaseInvoice, type InsertPurchaseInvoice,
   inquiries, inquiryFiles, companies, customers, productImages,
+  vendors, salesInvoices, purchaseInvoices,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -73,6 +77,25 @@ export interface IStorage {
   createProductImage(image: InsertProductImage): Promise<ProductImage>;
   deleteProductImage(id: string): Promise<void>;
   countProductImages(inquiryId: string): Promise<number>;
+
+  getVendors(): Promise<Vendor[]>;
+  getVendor(id: string): Promise<Vendor | undefined>;
+  searchVendors(query: string): Promise<Vendor[]>;
+  createVendor(vendor: InsertVendor): Promise<Vendor>;
+  updateVendor(id: string, vendor: Partial<InsertVendor>): Promise<Vendor | undefined>;
+  deleteVendor(id: string): Promise<void>;
+
+  getSalesInvoices(): Promise<SalesInvoice[]>;
+  getSalesInvoice(id: string): Promise<SalesInvoice | undefined>;
+  createSalesInvoice(invoice: InsertSalesInvoice): Promise<SalesInvoice>;
+  updateSalesInvoice(id: string, invoice: Partial<InsertSalesInvoice>): Promise<SalesInvoice | undefined>;
+  deleteSalesInvoice(id: string): Promise<void>;
+
+  getPurchaseInvoices(): Promise<PurchaseInvoice[]>;
+  getPurchaseInvoice(id: string): Promise<PurchaseInvoice | undefined>;
+  createPurchaseInvoice(invoice: InsertPurchaseInvoice): Promise<PurchaseInvoice>;
+  updatePurchaseInvoice(id: string, invoice: Partial<InsertPurchaseInvoice>): Promise<PurchaseInvoice | undefined>;
+  deletePurchaseInvoice(id: string): Promise<void>;
 
   getNextInquiryNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
@@ -383,6 +406,80 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => b.year - a.year);
 
     return { total: all.length, byProbability, byStatus, byYear };
+  }
+
+  async getVendors(): Promise<Vendor[]> {
+    return db.select().from(vendors).orderBy(vendors.companyName);
+  }
+
+  async getVendor(id: string): Promise<Vendor | undefined> {
+    const result = await db.select().from(vendors).where(eq(vendors.id, id));
+    return result[0];
+  }
+
+  async searchVendors(query: string): Promise<Vendor[]> {
+    return db.select().from(vendors).where(ilike(vendors.companyName, `%${query}%`));
+  }
+
+  async createVendor(vendor: InsertVendor): Promise<Vendor> {
+    const result = await db.insert(vendors).values(vendor).returning();
+    return result[0];
+  }
+
+  async updateVendor(id: string, vendor: Partial<InsertVendor>): Promise<Vendor | undefined> {
+    const result = await db.update(vendors).set(vendor).where(eq(vendors.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteVendor(id: string): Promise<void> {
+    await db.update(purchaseInvoices).set({ vendorId: null }).where(eq(purchaseInvoices.vendorId, id));
+    await db.delete(vendors).where(eq(vendors.id, id));
+  }
+
+  async getSalesInvoices(): Promise<SalesInvoice[]> {
+    return db.select().from(salesInvoices).orderBy(desc(salesInvoices.issueDate));
+  }
+
+  async getSalesInvoice(id: string): Promise<SalesInvoice | undefined> {
+    const result = await db.select().from(salesInvoices).where(eq(salesInvoices.id, id));
+    return result[0];
+  }
+
+  async createSalesInvoice(invoice: InsertSalesInvoice): Promise<SalesInvoice> {
+    const result = await db.insert(salesInvoices).values(invoice).returning();
+    return result[0];
+  }
+
+  async updateSalesInvoice(id: string, invoice: Partial<InsertSalesInvoice>): Promise<SalesInvoice | undefined> {
+    const result = await db.update(salesInvoices).set(invoice).where(eq(salesInvoices.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteSalesInvoice(id: string): Promise<void> {
+    await db.delete(salesInvoices).where(eq(salesInvoices.id, id));
+  }
+
+  async getPurchaseInvoices(): Promise<PurchaseInvoice[]> {
+    return db.select().from(purchaseInvoices).orderBy(desc(purchaseInvoices.issueDate));
+  }
+
+  async getPurchaseInvoice(id: string): Promise<PurchaseInvoice | undefined> {
+    const result = await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+    return result[0];
+  }
+
+  async createPurchaseInvoice(invoice: InsertPurchaseInvoice): Promise<PurchaseInvoice> {
+    const result = await db.insert(purchaseInvoices).values(invoice).returning();
+    return result[0];
+  }
+
+  async updatePurchaseInvoice(id: string, invoice: Partial<InsertPurchaseInvoice>): Promise<PurchaseInvoice | undefined> {
+    const result = await db.update(purchaseInvoices).set(invoice).where(eq(purchaseInvoices.id, id)).returning();
+    return result[0];
+  }
+
+  async deletePurchaseInvoice(id: string): Promise<void> {
+    await db.delete(purchaseInvoices).where(eq(purchaseInvoices.id, id));
   }
 }
 

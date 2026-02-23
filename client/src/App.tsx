@@ -12,6 +12,9 @@ import CompanyList from "@/pages/company-list";
 import CompanyDetail from "@/pages/company-detail";
 import CustomerList from "@/pages/customer-list";
 import CustomerDetail from "@/pages/customer-detail";
+import VendorList from "@/pages/vendor-list";
+import SalesInvoiceList from "@/pages/sales-invoice-list";
+import PurchaseInvoiceList from "@/pages/purchase-invoice-list";
 import Login from "@/pages/login";
 import { getQueryFn } from "@/lib/queryClient";
 
@@ -24,6 +27,9 @@ function Router() {
       <Route path="/customers/:id" component={CustomerDetail} />
       <Route path="/companies" component={CompanyList} />
       <Route path="/companies/:id" component={CompanyDetail} />
+      <Route path="/vendors" component={VendorList} />
+      <Route path="/sales-invoices" component={SalesInvoiceList} />
+      <Route path="/purchase-invoices" component={PurchaseInvoiceList} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -21,9 +21,12 @@
 Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 
 ## Data Architecture
-- **customers** 테이블: 사업자등록 기준 공식 고객사 (상호명, 사업자등록번호, 대표자, 주소, 업태, 종목)
+- **customers** 테이블: 사업자등록 기준 공식 고객사 (상호명, 사업자등록번호, 대표자, 주소, 업태, 종목) - 영업/경영지원 공유
 - **companies** 테이블: 담당자/연락처 (contactName, email, phone) - customerId로 고객사에 연결 (1:N)
+- **vendors** 테이블: 공급업체 (상호명, 사업자등록번호, 대표자, 담당자 정보, 즐겨찾기) - 매입계산서용
 - **inquiries** 테이블: customerId(고객사)와 companyId(담당자) 모두 참조 + 스냅샷 필드로 연결 시점 정보 보존
+- **sales_invoices** 테이블: 매출계산서 (customerId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
+- **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
 ## Key Features
@@ -33,9 +36,13 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 대시보드 (확률별, 상태별, 연도별 차트)
 - 검색 및 필터링 (고객명, 연도, 상태)
 - 파일 목록 및 OneDrive에서 열기
-- 고객사(Customers) 관리 - 사업자등록 기준 공식 고객 정보
-- 담당자(Contacts/Companies) 관리 - 고객사 하위 담당자
+- 고객사(Customers) 관리 - 사업자등록 기준 공식 고객 정보 (즐겨찾기, 거래/미거래/북마크 필터)
+- 담당자(Contacts/Companies) 관리 - 고객사 상세 모달 내에서만 접근
+- 공급업체(Vendors) 관리 - 매입계산서용 업체 관리 (즐겨찾기, 테이블/모달 편집)
+- 매출계산서 - 고객사 참조, 세금계산서 필드 (발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
+- 매입계산서 - 공급업체 참조, 세금계산서 필드
 - 엑셀 견적서에서 고객 정보 자동 추출 (X3:Z7 셀 기반)
+- 사이드바: 영업(인콰이어리, 진행중/수주/실주) / 경영지원(매출계산서, 매입계산서) / 관리(고객사, 공급업체)
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:
@@ -49,7 +56,7 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - X10/Z10: 견적일자
 
 ## Project Structure
-- `shared/schema.ts` - Data models (customers, companies, inquiries, inquiryFiles, productImages)
+- `shared/schema.ts` - Data models (customers, companies, vendors, inquiries, inquiryFiles, productImages, salesInvoices, purchaseInvoices)
 - `server/onedrive.ts` - OneDrive API client
 - `server/excel-parser.ts` - Excel file parsing utility for customer info extraction
 - `server/storage.ts` - Database storage interface
@@ -62,7 +69,10 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - `client/src/pages/customer-detail.tsx` - Customer detail page (레거시, 직접 접근 시 사용)
 - `client/src/pages/company-list.tsx` - Contact/Company list page (담당자 목록)
 - `client/src/pages/company-detail.tsx` - Contact detail page (담당자 정보, inline editing)
-- `client/src/components/app-sidebar.tsx` - Sidebar navigation
+- `client/src/pages/vendor-list.tsx` - Vendor list page (공급업체 목록, 모달 편집, 즐겨찾기)
+- `client/src/pages/sales-invoice-list.tsx` - Sales invoice list page (매출계산서)
+- `client/src/pages/purchase-invoice-list.tsx` - Purchase invoice list page (매입계산서)
+- `client/src/components/app-sidebar.tsx` - Sidebar navigation (영업/경영지원/관리 섹션)
 
 ## Recent Changes
 - 2026-02-23: Initial MVP build with OneDrive integration, dashboard, CRUD
@@ -90,6 +100,10 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Session-based password authentication (APP_PASSWORD env var, default aim1001)
 - 2026-02-23: Dashboard 단계별 분포에서 "미설정" 제외
 - 2026-02-23: Customer favorite/bookmark feature (isFavorite field) with 3-tab filter (거래/미거래/북마크)
+- 2026-02-23: Vendor management module (CRUD, favorite toggle, table + modal editing)
+- 2026-02-23: Sales/Purchase invoice modules (basic tax invoice fields, customer/vendor reference)
+- 2026-02-23: Sidebar reorganized into sections: 영업/경영지원/관리
+- 2026-02-23: Removed 담당자 from sidebar (accessible only via customer detail modal)
 
 ## User Preferences
 - Korean language UI

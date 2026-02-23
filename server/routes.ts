@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
 import { storage } from "./storage";
-import { insertInquirySchema, insertCompanySchema, insertCustomerSchema } from "@shared/schema";
+import { insertInquirySchema, insertCompanySchema, insertCustomerSchema, insertVendorSchema, insertSalesInvoiceSchema, insertPurchaseInvoiceSchema } from "@shared/schema";
 import {
   listRootSalesFolder,
   listYearFolders,
@@ -850,6 +850,175 @@ export async function registerRoutes(
       }
 
       res.json({ company, inquiryId: inquiry.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/vendors", async (_req, res) => {
+    try {
+      const list = await storage.getVendors();
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/vendors/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      if (q.length < 1) return res.json([]);
+      const results = await storage.searchVendors(q);
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/vendors/:id", async (req, res) => {
+    try {
+      const vendor = await storage.getVendor(req.params.id);
+      if (!vendor) return res.status(404).json({ message: "공급업체를 찾을 수 없습니다" });
+      res.json(vendor);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/vendors", async (req, res) => {
+    try {
+      const data = insertVendorSchema.parse(req.body);
+      const vendor = await storage.createVendor(data);
+      res.status(201).json(vendor);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/vendors/:id", async (req, res) => {
+    try {
+      const data = insertVendorSchema.partial().parse(req.body);
+      const vendor = await storage.updateVendor(req.params.id, data);
+      if (!vendor) return res.status(404).json({ message: "공급업체를 찾을 수 없습니다" });
+      res.json(vendor);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/vendors/:id/favorite", async (req, res) => {
+    try {
+      const vendor = await storage.getVendor(req.params.id);
+      if (!vendor) return res.status(404).json({ message: "공급업체를 찾을 수 없습니다" });
+      const updated = await storage.updateVendor(req.params.id, { isFavorite: !vendor.isFavorite });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/vendors/:id", async (req, res) => {
+    try {
+      await storage.deleteVendor(req.params.id);
+      res.json({ message: "삭제 완료" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/sales-invoices", async (_req, res) => {
+    try {
+      const list = await storage.getSalesInvoices();
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/sales-invoices/:id", async (req, res) => {
+    try {
+      const invoice = await storage.getSalesInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ message: "매출계산서를 찾을 수 없습니다" });
+      res.json(invoice);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/sales-invoices", async (req, res) => {
+    try {
+      const data = insertSalesInvoiceSchema.parse(req.body);
+      const invoice = await storage.createSalesInvoice(data);
+      res.status(201).json(invoice);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/sales-invoices/:id", async (req, res) => {
+    try {
+      const data = insertSalesInvoiceSchema.partial().parse(req.body);
+      const invoice = await storage.updateSalesInvoice(req.params.id, data);
+      if (!invoice) return res.status(404).json({ message: "매출계산서를 찾을 수 없습니다" });
+      res.json(invoice);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/sales-invoices/:id", async (req, res) => {
+    try {
+      await storage.deleteSalesInvoice(req.params.id);
+      res.json({ message: "삭제 완료" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-invoices", async (_req, res) => {
+    try {
+      const list = await storage.getPurchaseInvoices();
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-invoices/:id", async (req, res) => {
+    try {
+      const invoice = await storage.getPurchaseInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ message: "매입계산서를 찾을 수 없습니다" });
+      res.json(invoice);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-invoices", async (req, res) => {
+    try {
+      const data = insertPurchaseInvoiceSchema.parse(req.body);
+      const invoice = await storage.createPurchaseInvoice(data);
+      res.status(201).json(invoice);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/purchase-invoices/:id", async (req, res) => {
+    try {
+      const data = insertPurchaseInvoiceSchema.partial().parse(req.body);
+      const invoice = await storage.updatePurchaseInvoice(req.params.id, data);
+      if (!invoice) return res.status(404).json({ message: "매입계산서를 찾을 수 없습니다" });
+      res.json(invoice);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/purchase-invoices/:id", async (req, res) => {
+    try {
+      await storage.deletePurchaseInvoice(req.params.id);
+      res.json({ message: "삭제 완료" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
