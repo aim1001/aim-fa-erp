@@ -9,7 +9,6 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import InquiryList from "@/pages/inquiry-list";
 import InquiryDetail from "@/pages/inquiry-detail";
-import InquiryForm from "@/pages/inquiry-form";
 import CompanyList from "@/pages/company-list";
 import CompanyDetail from "@/pages/company-detail";
 import CustomerList from "@/pages/customer-list";
@@ -20,7 +19,6 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/inquiries" component={InquiryList} />
-      <Route path="/inquiries/new" component={InquiryForm} />
       <Route path="/inquiries/:id" component={InquiryDetail} />
       <Route path="/customers" component={CustomerList} />
       <Route path="/customers/:id" component={CustomerDetail} />

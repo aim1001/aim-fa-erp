@@ -15,6 +15,7 @@ import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ko } from "date-fns/locale";
+import { InquiryFormDialog } from "@/pages/inquiry-form";
 import type { Inquiry } from "@shared/schema";
 
 function parseDateString(dateStr: string): Date {
@@ -56,6 +57,7 @@ export default function InquiryList() {
   const [, navigate] = useLocation();
   const searchString = useSearch();
   const [search, setSearch] = useState("");
+  const [showAddDialog, setShowAddDialog] = useState(false);
   const { toast } = useToast();
 
   const urlParams = new URLSearchParams(searchString);
@@ -199,11 +201,9 @@ export default function InquiryList() {
               ))}
             </SelectContent>
           </Select>
-          <Button asChild data-testid="button-add-inquiry">
-            <Link href="/inquiries/new">
-              <Plus />
-              <span>추가</span>
-            </Link>
+          <Button onClick={() => setShowAddDialog(true)} data-testid="button-add-inquiry">
+            <Plus />
+            <span>추가</span>
           </Button>
         </div>
       </div>
@@ -394,6 +394,8 @@ export default function InquiryList() {
       <div className="text-sm text-muted-foreground" data-testid="text-result-count">
         총 {filtered.length}건
       </div>
+
+      <InquiryFormDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
     </div>
   );
 }
