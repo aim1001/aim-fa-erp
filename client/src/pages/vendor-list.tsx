@@ -131,6 +131,8 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
               {renderField("주소", "address", vendor.address || "")}
               {renderField("전화번호", "phone", vendor.phone || "")}
               {renderField("팩스", "fax", vendor.fax || "")}
+              {renderField("거래은행", "bankName", vendor.bankName || "")}
+              {renderField("계좌번호", "bankAccount", vendor.bankAccount || "")}
               {renderField("메모", "memo", vendor.memo || "")}
             </div>
           </CardContent>
