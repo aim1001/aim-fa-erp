@@ -63,6 +63,9 @@ export interface IStorage {
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
   deleteCompany(id: string): Promise<void>;
+  linkCompanyToCustomer(companyId: string, customerId: string): Promise<Company | undefined>;
+  getInquiriesByCustomerId(customerId: string): Promise<Inquiry[]>;
+  getInquiriesByCompanyId(companyId: string): Promise<Inquiry[]>;
 
   getProductImages(inquiryId: string): Promise<ProductImage[]>;
   createProductImage(image: InsertProductImage): Promise<ProductImage>;
@@ -246,6 +249,22 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCompany(id: string): Promise<void> {
     await db.delete(companies).where(eq(companies.id, id));
+  }
+
+  async linkCompanyToCustomer(companyId: string, customerId: string): Promise<Company | undefined> {
+    const result = await db.update(companies)
+      .set({ customerId, isTemporary: false })
+      .where(eq(companies.id, companyId))
+      .returning();
+    return result[0];
+  }
+
+  async getInquiriesByCustomerId(customerId: string): Promise<Inquiry[]> {
+    return db.select().from(inquiries).where(eq(inquiries.customerId, customerId)).orderBy(desc(inquiries.year));
+  }
+
+  async getInquiriesByCompanyId(companyId: string): Promise<Inquiry[]> {
+    return db.select().from(inquiries).where(eq(inquiries.companyId, companyId)).orderBy(desc(inquiries.year));
   }
 
   async getProductImages(inquiryId: string): Promise<ProductImage[]> {

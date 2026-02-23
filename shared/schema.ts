@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, date, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, date, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -35,6 +35,7 @@ export const companies = pgTable("companies", {
   phone: text("phone"),
   fax: text("fax"),
   memo: text("memo"),
+  isTemporary: boolean("is_temporary").default(true),
 });
 
 export const inquiries = pgTable("inquiries", {

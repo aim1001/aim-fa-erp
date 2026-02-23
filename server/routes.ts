@@ -353,6 +353,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/customers/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      if (q.length < 1) return res.json([]);
+      const results = await storage.searchCustomers(q);
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/customers/:id", async (req, res) => {
     try {
       const customer = await storage.getCustomer(req.params.id);
@@ -449,6 +460,55 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("고객사 동기화 오류:", err);
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/customers/:id/inquiries", async (req, res) => {
+    try {
+      const list = await storage.getInquiriesByCustomerId(req.params.id);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/companies/:id/link-customer", async (req, res) => {
+    try {
+      const { customerId } = z.object({ customerId: z.string() }).parse(req.body);
+      const customer = await storage.getCustomer(customerId);
+      if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+      const company = await storage.linkCompanyToCustomer(req.params.id, customerId);
+      if (!company) return res.status(404).json({ message: "담당자를 찾을 수 없습니다" });
+      res.json(company);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/companies/:id/unlink-customer", async (req, res) => {
+    try {
+      const company = await storage.updateCompany(req.params.id, { customerId: null, isTemporary: true });
+      if (!company) return res.status(404).json({ message: "담당자를 찾을 수 없습니다" });
+      res.json(company);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/inquiries/:id/link-customer", async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      const { customerId } = z.object({ customerId: z.string() }).parse(req.body);
+      const customer = await storage.getCustomer(customerId);
+      if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+      const updated = await storage.updateInquiry(inquiry.id, {
+        customerId: customer.id,
+        customerName: customer.companyName,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
     }
   });
 
@@ -613,6 +673,7 @@ export async function registerRoutes(
       if (company) {
         company = await storage.updateCompany(company.id, {
           customerId: customer.id,
+          isTemporary: false,
           address: address || company.address,
           contactName: contactName || company.contactName,
           email: email || company.email,
@@ -626,6 +687,7 @@ export async function registerRoutes(
           contactName: contactName || null,
           email: email || null,
           phone: phone || null,
+          isTemporary: false,
         });
       }
 

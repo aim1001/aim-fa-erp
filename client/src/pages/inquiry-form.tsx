@@ -9,10 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Building2, Check } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useState, useEffect, useRef } from "react";
+import { Badge } from "@/components/ui/badge";
+import type { Customer } from "@shared/schema";
 
 
 const formSchema = z.object({
@@ -50,6 +53,30 @@ type FormValues = z.infer<typeof formSchema>;
 export default function InquiryForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const { data: searchResults = [] } = useQuery<Customer[]>({
+    queryKey: ["/api/customers/search", customerSearch],
+    queryFn: async () => {
+      if (customerSearch.length < 1) return [];
+      const res = await fetch(`/api/customers/search?q=${encodeURIComponent(customerSearch)}`);
+      return res.json();
+    },
+    enabled: customerSearch.length >= 1,
+  });
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const currentYear = new Date().getFullYear();
 
@@ -97,6 +124,7 @@ export default function InquiryForm() {
       const res = await apiRequest("POST", "/api/inquiries", {
         ...values,
         inquiryNumber: "",
+        customerId: selectedCustomer?.id || null,
         productInfo: values.productInfo || null,
         expectedDate: values.expectedDate || null,
         memo: values.memo || null,
@@ -166,9 +194,61 @@ export default function InquiryForm() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>고객명</FormLabel>
-                      <FormControl>
-                        <Input placeholder="고객명 입력" {...field} data-testid="input-customer-name" />
-                      </FormControl>
+                      <div className="relative" ref={dropdownRef}>
+                        <FormControl>
+                          <Input
+                            placeholder="고객명 입력 (기존 고객사 검색 가능)"
+                            {...field}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              setCustomerSearch(e.target.value);
+                              setShowCustomerDropdown(true);
+                              if (selectedCustomer && e.target.value !== selectedCustomer.companyName) {
+                                setSelectedCustomer(null);
+                              }
+                            }}
+                            onFocus={() => {
+                              if (field.value) {
+                                setCustomerSearch(field.value);
+                                setShowCustomerDropdown(true);
+                              }
+                            }}
+                            data-testid="input-customer-name"
+                          />
+                        </FormControl>
+                        {selectedCustomer && (
+                          <Badge variant="secondary" className="absolute right-2 top-1/2 -translate-y-1/2 text-xs gap-1">
+                            <Building2 className="h-3 w-3" />
+                            연결됨
+                          </Badge>
+                        )}
+                        {showCustomerDropdown && searchResults.length > 0 && !selectedCustomer && (
+                          <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
+                            {searchResults.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
+                                onClick={() => {
+                                  field.onChange(c.companyName);
+                                  setSelectedCustomer(c);
+                                  setShowCustomerDropdown(false);
+                                }}
+                                data-testid={`option-customer-${c.id}`}
+                              >
+                                <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                                <div>
+                                  <span className="font-medium">{c.companyName}</span>
+                                  {c.businessNumber && <span className="text-muted-foreground ml-2 text-xs">{c.businessNumber}</span>}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {!selectedCustomer && field.value && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">임시 고객명으로 등록됩니다</p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}

@@ -12,7 +12,7 @@ import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { Inquiry, InquiryFile, Company, ProductImage } from "@shared/schema";
+import type { Inquiry, InquiryFile, Company, ProductImage, Customer } from "@shared/schema";
 
 function useInlineUpdate(inquiryId: string) {
   const { toast } = useToast();
@@ -448,6 +448,91 @@ interface ScanResult {
   existingMatches: Record<string, Company[]>;
 }
 
+function CustomerLinkSection({ inquiryId, inquiry }: { inquiryId: string; inquiry: Inquiry }) {
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data: searchResults = [] } = useQuery<Customer[]>({
+    queryKey: ["/api/customers/search", searchQuery],
+    queryFn: async () => {
+      if (searchQuery.length < 1) return [];
+      const res = await fetch(`/api/customers/search?q=${encodeURIComponent(searchQuery)}`);
+      return res.json();
+    },
+    enabled: searchQuery.length >= 1,
+  });
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const linkMutation = useMutation({
+    mutationFn: async (customerId: string) => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/link-customer`, { customerId });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "고객사 연결 완료" });
+      setSearchQuery("");
+      setShowDropdown(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (inquiry.customerId) return null;
+
+  return (
+    <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20 mt-2">
+      <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">고객사 미연결 - 기존 고객사를 검색하여 연결하세요</p>
+      <div className="relative" ref={ref}>
+        <Input
+          placeholder="고객사명으로 검색..."
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setShowDropdown(true);
+          }}
+          onFocus={() => setShowDropdown(true)}
+          className="h-8 text-sm"
+          data-testid="input-link-customer-search"
+        />
+        {showDropdown && searchResults.length > 0 && (
+          <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto">
+            {searchResults.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
+                onClick={() => linkMutation.mutate(c.id)}
+                disabled={linkMutation.isPending}
+                data-testid={`option-link-customer-${c.id}`}
+              >
+                <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                <div>
+                  <span className="font-medium">{c.companyName}</span>
+                  {c.businessNumber && <span className="text-muted-foreground ml-2 text-xs">{c.businessNumber}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   inquiryId: string;
   inquiry: Inquiry;
@@ -587,11 +672,18 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
               <span className="text-muted-foreground">전화번호</span>
               <span data-testid="text-company-phone">{inquiry.snapshotPhone || "-"}</span>
             </div>
-            <div className="pt-1 flex gap-3">
-              {inquiry.customerId && (
-                <Link href={`/customers/${inquiry.customerId}`}>
-                  <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-customer">고객사 정보 보기 →</span>
-                </Link>
+            <div className="pt-1 flex gap-3 items-center">
+              {inquiry.customerId ? (
+                <>
+                  <Badge variant="secondary" className="text-xs gap-1">
+                    <Building2 className="h-3 w-3" />연결됨
+                  </Badge>
+                  <Link href={`/customers/${inquiry.customerId}`}>
+                    <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-customer">고객사 정보 보기 →</span>
+                  </Link>
+                </>
+              ) : (
+                <Badge variant="outline" className="text-xs gap-1 border-amber-500 text-amber-600">임시</Badge>
               )}
               {inquiry.companyId && (
                 <Link href={`/companies/${inquiry.companyId}`}>
@@ -599,11 +691,15 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
                 </Link>
               )}
             </div>
+            <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
           </div>
         ) : !scanResult ? (
-          <p className="text-sm text-muted-foreground py-2 text-center">
-            {hasOneDrive ? "\"엑셀에서 가져오기\" 버튼을 눌러 고객 정보를 불러오세요." : "연결된 고객사가 없습니다."}
-          </p>
+          <div>
+            <p className="text-sm text-muted-foreground py-2 text-center">
+              {hasOneDrive ? "\"엑셀에서 가져오기\" 버튼을 눌러 고객 정보를 불러오세요." : "연결된 고객사가 없습니다."}
+            </p>
+            <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
+          </div>
         ) : null}
 
         {scanResult && scanResult.scanned.length > 0 && (

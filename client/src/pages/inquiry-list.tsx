@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Link2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -284,7 +284,16 @@ export default function InquiryList() {
                       data-testid={`row-inquiry-${inq.id}`}
                     >
                       <TableCell className="font-mono text-sm">{inq.inquiryNumber}</TableCell>
-                      <TableCell className="font-medium">{inq.customerName}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {inq.customerName}
+                          {inq.customerId ? (
+                            <Link2 className="h-3 w-3 text-primary shrink-0" />
+                          ) : (
+                            <AlertCircle className="h-3 w-3 text-amber-500 shrink-0" />
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
                       <TableCell>{inq.year}</TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>

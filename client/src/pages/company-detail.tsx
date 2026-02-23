@@ -4,12 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Building2, Trash2, Check, X, FileText, Users } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Building2, Trash2, Check, X, FileText, Users, Link2, AlertCircle, Unlink } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useCallback } from "react";
-import type { Company, Inquiry } from "@shared/schema";
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { Company, Customer, Inquiry } from "@shared/schema";
 
 function useCompanyUpdate(companyId: string) {
   const { toast } = useToast();
@@ -93,6 +94,134 @@ function InlineField({ value, field, companyId, placeholder }: {
   );
 }
 
+function CustomerLinkWidget({ companyId, company }: { companyId: string; company: Company }) {
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const { data: searchResults = [] } = useQuery<Customer[]>({
+    queryKey: ["/api/customers/search", searchQuery],
+    queryFn: async () => {
+      if (searchQuery.length < 1) return [];
+      const res = await fetch(`/api/customers/search?q=${encodeURIComponent(searchQuery)}`);
+      return res.json();
+    },
+    enabled: searchQuery.length >= 1,
+  });
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const linkMutation = useMutation({
+    mutationFn: async (customerId: string) => {
+      const res = await apiRequest("POST", `/api/companies/${companyId}/link-customer`, { customerId });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "고객사 연결 완료" });
+      setSearchQuery("");
+      setShowDropdown(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/companies/${companyId}/unlink-customer`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "고객사 연결 해제 완료" });
+      queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 해제 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (company.customerId && !company.isTemporary) {
+    return (
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary" className="text-xs gap-1">
+          <Link2 className="h-3 w-3" />연결됨
+        </Badge>
+        <Link href={`/customers/${company.customerId}`}>
+          <span className="text-sm text-primary hover:underline cursor-pointer" data-testid="link-parent-customer">소속 고객사 보기 →</span>
+        </Link>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs h-6 text-muted-foreground"
+          onClick={() => {
+            if (confirm("고객사 연결을 해제하시겠습니까?")) unlinkMutation.mutate();
+          }}
+          disabled={unlinkMutation.isPending}
+          data-testid="button-unlink-customer"
+        >
+          <Unlink className="h-3 w-3 mr-1" />연결해제
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20">
+      <div className="flex items-center gap-2 mb-2">
+        <Badge variant="outline" className="text-xs gap-1 border-amber-500 text-amber-600">
+          <AlertCircle className="h-3 w-3" />임시
+        </Badge>
+        <span className="text-xs text-amber-700 dark:text-amber-400">고객사에 연결되지 않은 임시 담당자입니다</span>
+      </div>
+      <div className="relative" ref={ref}>
+        <Input
+          placeholder="기존 고객사명으로 검색하여 연결..."
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setShowDropdown(true);
+          }}
+          onFocus={() => setShowDropdown(true)}
+          className="h-8 text-sm"
+          data-testid="input-link-customer-search"
+        />
+        {showDropdown && searchResults.length > 0 && (
+          <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto">
+            {searchResults.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
+                onClick={() => linkMutation.mutate(c.id)}
+                disabled={linkMutation.isPending}
+                data-testid={`option-link-customer-${c.id}`}
+              >
+                <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                <div>
+                  <span className="font-medium">{c.companyName}</span>
+                  {c.businessNumber && <span className="text-muted-foreground ml-2 text-xs">{c.businessNumber}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function CompanyDetail() {
   const [, params] = useRoute("/companies/:id");
   const [, navigate] = useLocation();
@@ -136,7 +265,7 @@ export default function CompanyDetail() {
   if (!company) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">고객사를 찾을 수 없습니다.</p>
+        <p className="text-muted-foreground">담당자를 찾을 수 없습니다.</p>
         <Button asChild variant="secondary" className="mt-4">
           <Link href="/companies">목록으로</Link>
         </Button>
@@ -170,13 +299,7 @@ export default function CompanyDetail() {
 
       <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
 
-      {company.customerId && (
-        <div className="text-sm">
-          <Link href={`/customers/${company.customerId}`}>
-            <span className="text-primary hover:underline cursor-pointer" data-testid="link-parent-customer">소속 고객사 보기 →</span>
-          </Link>
-        </div>
-      )}
+      <CustomerLinkWidget companyId={id!} company={company} />
 
       <Card>
         <CardHeader>
