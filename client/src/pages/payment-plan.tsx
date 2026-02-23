@@ -12,6 +12,10 @@ import type { Payment } from "@shared/schema";
 type EnrichedPayment = Payment & {
   invoiceIssueDate: string | null;
   invoiceNumber: string | null;
+  invoiceTotalAmount: number | null;
+  invoiceItem: string | null;
+  invoicePaidAmount: number;
+  invoiceRemainingAmount: number;
 };
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -37,11 +41,11 @@ function getStatusInfo(payment: Payment) {
 
 function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose: () => void }) {
   const { toast } = useToast();
-  const { data: payment } = useQuery<Payment>({
+  const { data: payment } = useQuery<EnrichedPayment>({
     queryKey: ["/api/payments", paymentId],
     queryFn: async () => {
       const all = await (await fetch("/api/payments")).json();
-      return all.find((p: Payment) => p.id === paymentId);
+      return all.find((p: EnrichedPayment) => p.id === paymentId);
     },
   });
 
@@ -80,13 +84,17 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
     if (!payment) return;
     const numFields = ["amount", "actualAmount"];
     const newVal = numFields.includes(field) ? (editValue ? parseInt(editValue) : null) : (editValue || null);
-    updateMutation.mutate({ [field]: newVal });
+    if (field === "actualDate" && newVal) {
+      updateMutation.mutate({ actualDate: newVal, plannedDate: newVal });
+    } else {
+      updateMutation.mutate({ [field]: newVal });
+    }
     setEditing(null);
   };
 
   const markCompleted = () => {
     const today = new Date().toISOString().split("T")[0];
-    updateMutation.mutate({ actualDate: today, actualAmount: payment?.amount || 0, status: "completed" });
+    updateMutation.mutate({ actualDate: today, actualAmount: payment?.amount || 0, status: "completed", plannedDate: today });
   };
 
   const renderField = (label: string, field: string, value: string, inputType = "text") => (
@@ -143,21 +151,27 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
           </Button>
         </div>
       </DialogHeader>
+      {(payment.invoiceItem || payment.invoiceNumber || payment.invoiceTotalAmount) && (
+        <div className="border rounded-md p-3 bg-muted/30 space-y-1.5" data-testid="section-invoice-info">
+          {payment.invoiceItem && (
+            <div className="text-sm font-medium truncate" data-testid="text-invoice-item">{payment.invoiceItem}</div>
+          )}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+            {payment.invoiceNumber && <span>No. {payment.invoiceNumber}</span>}
+            {payment.invoiceIssueDate && <span>발급일 {payment.invoiceIssueDate}</span>}
+          </div>
+          {payment.invoiceTotalAmount != null && (
+            <div className="flex items-center gap-4 text-xs mt-1">
+              <span>전체금액 <span className="font-medium text-foreground">{(payment.invoiceTotalAmount || 0).toLocaleString()}원</span></span>
+              <span>지급완료 <span className="font-medium text-green-600 dark:text-green-400">{(payment.invoicePaidAmount || 0).toLocaleString()}원</span></span>
+              <span>잔액 <span className={`font-medium ${payment.invoiceRemainingAmount > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>{(payment.invoiceRemainingAmount || 0).toLocaleString()}원</span></span>
+            </div>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-[100px_1fr] gap-y-2 gap-x-2 text-sm items-center">
         {renderField("거래처", "companyName", payment.companyName || "")}
         {renderField("설명", "description", payment.description || "")}
-        {(payment as any).invoiceIssueDate && (
-          <>
-            <span className="text-muted-foreground text-xs font-medium">계산서 발급일</span>
-            <span className="text-sm">{(payment as any).invoiceIssueDate}</span>
-          </>
-        )}
-        {(payment as any).invoiceNumber && (
-          <>
-            <span className="text-muted-foreground text-xs font-medium">계산서 번호</span>
-            <span className="text-sm text-muted-foreground">{(payment as any).invoiceNumber}</span>
-          </>
-        )}
         {renderField("예정금액", "amount", String(payment.amount || ""), "number")}
         {renderField("예정일", "plannedDate", payment.plannedDate || "", "date")}
         {renderField("실제금액", "actualAmount", String(payment.actualAmount || ""), "number")}
@@ -514,8 +528,8 @@ export default function PaymentPlan() {
                       <td className="py-1.5 px-2 text-xs">{p.plannedDate || "미정"}</td>
                       <td className="py-1.5 px-2 text-xs text-muted-foreground hidden md:table-cell">{p.invoiceIssueDate || "-"}</td>
                       <td className="py-1.5 px-2">
-                        <div className="text-xs font-medium truncate max-w-[140px]">{p.companyName || "-"}</div>
-                        {p.invoiceNumber && <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{p.invoiceNumber}</div>}
+                        <div className="text-xs font-medium truncate max-w-[160px]">{p.companyName || "-"}</div>
+                        {p.invoiceItem && <div className="text-[10px] text-muted-foreground truncate max-w-[160px]">{p.invoiceItem}</div>}
                       </td>
                       <td className="py-1.5 px-2 text-right">
                         <span className={`text-xs font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>

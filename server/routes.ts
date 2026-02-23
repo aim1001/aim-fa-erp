@@ -1353,19 +1353,43 @@ export async function registerRoutes(
       const salesMap = new Map(salesInvoices.map(i => [i.id, i]));
       const purchaseMap = new Map(purchaseInvoices.map(i => [i.id, i]));
 
+      const allPayments = await storage.getPayments();
+      const paidBySalesInvoice = new Map<string, number>();
+      const paidByPurchaseInvoice = new Map<string, number>();
+      allPayments.forEach(ap => {
+        if ((ap.status === "completed" || ap.actualDate) && ap.salesInvoiceId) {
+          paidBySalesInvoice.set(ap.salesInvoiceId, (paidBySalesInvoice.get(ap.salesInvoiceId) || 0) + (ap.actualAmount || ap.amount || 0));
+        }
+        if ((ap.status === "completed" || ap.actualDate) && ap.purchaseInvoiceId) {
+          paidByPurchaseInvoice.set(ap.purchaseInvoiceId, (paidByPurchaseInvoice.get(ap.purchaseInvoiceId) || 0) + (ap.actualAmount || ap.amount || 0));
+        }
+      });
+
       const enriched = list.map(p => {
         let invoiceIssueDate: string | null = null;
         let invoiceNumber: string | null = null;
+        let invoiceTotalAmount: number | null = null;
+        let invoiceItem: string | null = null;
+        let invoicePaidAmount = 0;
+        let invoiceRemainingAmount = 0;
         if (p.salesInvoiceId && salesMap.has(p.salesInvoiceId)) {
           const inv = salesMap.get(p.salesInvoiceId)!;
           invoiceIssueDate = inv.issueDate || null;
           invoiceNumber = inv.invoiceNumber || null;
+          invoiceTotalAmount = inv.totalAmount || 0;
+          invoiceItem = inv.item || null;
+          invoicePaidAmount = paidBySalesInvoice.get(p.salesInvoiceId) || 0;
+          invoiceRemainingAmount = Math.max((invoiceTotalAmount || 0) - invoicePaidAmount, 0);
         } else if (p.purchaseInvoiceId && purchaseMap.has(p.purchaseInvoiceId)) {
           const inv = purchaseMap.get(p.purchaseInvoiceId)!;
           invoiceIssueDate = inv.issueDate || null;
           invoiceNumber = inv.invoiceNumber || null;
+          invoiceTotalAmount = inv.totalAmount || 0;
+          invoiceItem = inv.item || null;
+          invoicePaidAmount = paidByPurchaseInvoice.get(p.purchaseInvoiceId) || 0;
+          invoiceRemainingAmount = Math.max((invoiceTotalAmount || 0) - invoicePaidAmount, 0);
         }
-        return { ...p, invoiceIssueDate, invoiceNumber };
+        return { ...p, invoiceIssueDate, invoiceNumber, invoiceTotalAmount, invoiceItem, invoicePaidAmount, invoiceRemainingAmount };
       });
 
       res.json(enriched);
