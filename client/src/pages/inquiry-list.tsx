@@ -1,18 +1,26 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ko } from "date-fns/locale";
 import type { Inquiry } from "@shared/schema";
+
+function parseDateString(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
 
 const statusLabels: Record<string, string> = {
   active: "진행중",
@@ -106,6 +114,28 @@ export default function InquiryList() {
       });
     },
   });
+
+  const inlineUpdateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Inquiry> }) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "수정 실패",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleInlineUpdate = useCallback((id: string, data: Partial<Inquiry>) => {
+    inlineUpdateMutation.mutate({ id, data });
+  }, []);
 
   const filtered = useMemo(() => {
     if (!inquiries) return [];
@@ -247,17 +277,86 @@ export default function InquiryList() {
                       <TableCell className="font-medium">{inq.customerName}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
                       <TableCell>{inq.year}</TableCell>
-                      <TableCell>
-                        <span className={`text-sm font-medium ${(inq.probability || 0) >= 4 ? "text-green-600 dark:text-green-400" : ""}`}>
-                          {stageLabels[inq.probability || 0] || "-"}
-                        </span>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Select
+                          value={String(inq.probability || 0)}
+                          onValueChange={(v) => handleInlineUpdate(inq.id, { probability: parseInt(v) })}
+                          disabled={inlineUpdateMutation.isPending}
+                        >
+                          <SelectTrigger className="w-28 text-xs border-dashed" data-testid={`select-stage-${inq.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">-</SelectItem>
+                            <SelectItem value="1">1.문의</SelectItem>
+                            <SelectItem value="2">2.미팅</SelectItem>
+                            <SelectItem value="3">3.사양협의</SelectItem>
+                            <SelectItem value="4">4.비딩</SelectItem>
+                            <SelectItem value="5">5.발주전</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariants[inq.status || "active"] || "secondary"}>
-                          {statusLabels[inq.status || "active"] || inq.status}
-                        </Badge>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Select
+                          value={inq.status || "active"}
+                          onValueChange={(v) => handleInlineUpdate(inq.id, { status: v })}
+                          disabled={inlineUpdateMutation.isPending}
+                        >
+                          <SelectTrigger className="w-24 text-xs border-dashed" data-testid={`select-status-inline-${inq.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="active">진행중</SelectItem>
+                            <SelectItem value="won">수주</SelectItem>
+                            <SelectItem value="lost">실주</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{inq.expectedDate || "-"}</TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs border-dashed font-normal w-32 justify-start"
+                              disabled={inlineUpdateMutation.isPending}
+                              data-testid={`button-date-${inq.id}`}
+                            >
+                              <CalendarIcon className="mr-1 h-3 w-3" />
+                              {inq.expectedDate || "날짜 선택"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={inq.expectedDate ? parseDateString(inq.expectedDate) : undefined}
+                              onSelect={(date) => {
+                                if (date) {
+                                  const y = date.getFullYear();
+                                  const m = String(date.getMonth() + 1).padStart(2, '0');
+                                  const d = String(date.getDate()).padStart(2, '0');
+                                  handleInlineUpdate(inq.id, { expectedDate: `${y}-${m}-${d}` });
+                                }
+                              }}
+                              locale={ko}
+                            />
+                            {inq.expectedDate && (
+                              <div className="p-2 border-t">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full text-xs"
+                                  onClick={() => handleInlineUpdate(inq.id, { expectedDate: null })}
+                                  data-testid={`button-clear-date-${inq.id}`}
+                                >
+                                  <X className="mr-1 h-3 w-3" />
+                                  날짜 지우기
+                                </Button>
+                              </div>
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                      </TableCell>
                       <TableCell>
                         <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); navigate(`/inquiries/${inq.id}`); }}>
                           <ExternalLink className="h-4 w-4" />
