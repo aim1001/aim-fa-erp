@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { FileText, TrendingUp, Target, Calendar } from "lucide-react";
+import { FileText, TrendingUp, Target, Calendar, XCircle } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -101,6 +101,7 @@ export default function Dashboard() {
 
   const activeCount = stats?.byStatus?.find(s => s.status === "active")?.count || 0;
   const wonCount = stats?.byStatus?.find(s => s.status === "won")?.count || 0;
+  const lostCount = stats?.byStatus?.find(s => s.status === "lost")?.count || 0;
   const highStageCount = stats?.byProbability
     ?.filter(p => p.range.startsWith("4.") || p.range.startsWith("5."))
     .reduce((a, b) => a + b.count, 0) || 0;
@@ -155,7 +156,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">총 인콰이어리</CardTitle>
@@ -201,6 +202,20 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold" data-testid="text-won-count">{wonCount}</div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className="cursor-pointer transition-colors hover:bg-accent/50"
+              onClick={() => navigate("/inquiries?status=lost")}
+              data-testid="card-lost"
+            >
+              <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">실주</CardTitle>
+                <XCircle className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="text-lost-count">{lostCount}</div>
               </CardContent>
             </Card>
           </div>

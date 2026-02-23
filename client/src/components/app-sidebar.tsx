@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, RefreshCw, Building2, Users, Target, Trophy } from "lucide-react";
+import { LayoutDashboard, FileText, RefreshCw, Building2, Users, Target, Trophy, XCircle } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -97,6 +97,18 @@ export function AppSidebar() {
                   <Link href="/inquiries?status=won">
                     <Trophy />
                     <span>수주</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "lost"}
+                  data-testid="nav-quick-lost"
+                >
+                  <Link href="/inquiries?status=lost">
+                    <XCircle />
+                    <span>실주</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
