@@ -75,7 +75,7 @@ export interface IStorage {
 
   getNextInquiryNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
-  getDashboardStats(year?: number): Promise<{
+  getDashboardStats(years?: number[]): Promise<{
     total: number;
     byProbability: { range: string; count: number }[];
     byStatus: { status: string; count: number }[];
@@ -324,13 +324,19 @@ export class DatabaseStorage implements IStorage {
     return result.map(r => r.year);
   }
 
-  async getDashboardStats(year?: number): Promise<{
+  async getDashboardStats(years?: number[]): Promise<{
     total: number;
     byProbability: { range: string; count: number }[];
     byStatus: { status: string; count: number }[];
     byYear: { year: number; count: number }[];
   }> {
-    const all = await this.getInquiries(year ? { year } : undefined);
+    let all: Inquiry[];
+    if (years && years.length > 0) {
+      const results = await Promise.all(years.map(y => this.getInquiries({ year: y })));
+      all = results.flat();
+    } else {
+      all = await this.getInquiries();
+    }
 
     const stages = [
       { stage: 0, label: "미설정" },

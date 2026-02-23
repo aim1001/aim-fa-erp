@@ -176,8 +176,11 @@ export async function registerRoutes(
 
   app.get("/api/dashboard", async (req, res) => {
     try {
-      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
-      const stats = await storage.getDashboardStats(year);
+      const yearsParam = req.query.years as string | undefined;
+      const years = yearsParam
+        ? yearsParam.split(",").map(y => parseInt(y.trim())).filter(y => !isNaN(y))
+        : undefined;
+      const stats = await storage.getDashboardStats(years);
       res.json(stats);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
