@@ -49,6 +49,11 @@ export const inquiries = pgTable("inquiries", {
   finalTimingDays: integer("final_timing_days"),
   deliveryDate: text("delivery_date"),
   companyId: varchar("company_id"),
+  snapshotCompanyName: text("snapshot_company_name"),
+  snapshotAddress: text("snapshot_address"),
+  snapshotContactName: text("snapshot_contact_name"),
+  snapshotEmail: text("snapshot_email"),
+  snapshotPhone: text("snapshot_phone"),
 });
 
 export const inquiryFiles = pgTable("inquiry_files", {

@@ -461,7 +461,14 @@ export async function registerRoutes(
         });
       }
 
-      await storage.updateInquiry(inquiry.id, { companyId: company.id });
+      await storage.updateInquiry(inquiry.id, {
+        companyId: company.id,
+        snapshotCompanyName: company.companyName,
+        snapshotAddress: company.address || null,
+        snapshotContactName: company.contactName || null,
+        snapshotEmail: company.email || null,
+        snapshotPhone: company.phone || null,
+      });
 
       if (inquiry.onedriveFolderId) {
         try {
@@ -498,7 +505,14 @@ export async function registerRoutes(
         return res.status(404).json({ message: "회사를 찾을 수 없습니다" });
       }
 
-      await storage.updateInquiry(inquiry.id, { companyId: company.id });
+      await storage.updateInquiry(inquiry.id, {
+        companyId: company.id,
+        snapshotCompanyName: company.companyName,
+        snapshotAddress: company.address || null,
+        snapshotContactName: company.contactName || null,
+        snapshotEmail: company.email || null,
+        snapshotPhone: company.phone || null,
+      });
 
       if (inquiry.onedriveFolderId) {
         try {

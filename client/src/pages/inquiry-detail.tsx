@@ -317,9 +317,9 @@ interface ScanResult {
   existingMatches: Record<string, Company[]>;
 }
 
-function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
+function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   inquiryId: string;
-  companyId: string | null;
+  inquiry: Inquiry;
   hasOneDrive: boolean;
 }) {
   const { toast } = useToast();
@@ -328,10 +328,7 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [selectedExistingId, setSelectedExistingId] = useState<string | null>(null);
 
-  const { data: company, isLoading: companyLoading } = useQuery<Company>({
-    queryKey: ["/api/companies", companyId],
-    enabled: !!companyId,
-  });
+  const hasSnapshot = !!inquiry.snapshotCompanyName;
 
   const scanMutation = useMutation({
     mutationFn: async () => {
@@ -443,22 +440,27 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
         )}
       </CardHeader>
       <CardContent>
-        {companyLoading ? (
-          <Skeleton className="h-20" />
-        ) : company && !scanResult ? (
-          <div className="grid grid-cols-[80px_1fr] gap-y-2 gap-x-2 text-sm">
-            <span className="text-muted-foreground">회사명</span>
-            <Link href={`/companies/${company.id}`}>
-              <span className="font-medium text-primary hover:underline cursor-pointer" data-testid="text-company-name">{company.companyName}</span>
-            </Link>
-            <span className="text-muted-foreground">주소</span>
-            <span data-testid="text-company-address">{company.address || "-"}</span>
-            <span className="text-muted-foreground">담당자</span>
-            <span data-testid="text-company-contact">{company.contactName || "-"}</span>
-            <span className="text-muted-foreground">이메일</span>
-            <span data-testid="text-company-email">{company.email || "-"}</span>
-            <span className="text-muted-foreground">전화번호</span>
-            <span data-testid="text-company-phone">{company.phone || "-"}</span>
+        {hasSnapshot && !scanResult ? (
+          <div className="space-y-2">
+            <div className="grid grid-cols-[80px_1fr] gap-y-2 gap-x-2 text-sm">
+              <span className="text-muted-foreground">회사명</span>
+              <span className="font-medium" data-testid="text-company-name">{inquiry.snapshotCompanyName}</span>
+              <span className="text-muted-foreground">주소</span>
+              <span data-testid="text-company-address">{inquiry.snapshotAddress || "-"}</span>
+              <span className="text-muted-foreground">담당자</span>
+              <span data-testid="text-company-contact">{inquiry.snapshotContactName || "-"}</span>
+              <span className="text-muted-foreground">이메일</span>
+              <span data-testid="text-company-email">{inquiry.snapshotEmail || "-"}</span>
+              <span className="text-muted-foreground">전화번호</span>
+              <span data-testid="text-company-phone">{inquiry.snapshotPhone || "-"}</span>
+            </div>
+            {inquiry.companyId && (
+              <div className="pt-1">
+                <Link href={`/companies/${inquiry.companyId}`}>
+                  <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">원본 회사 정보 보기 →</span>
+                </Link>
+              </div>
+            )}
           </div>
         ) : !scanResult ? (
           <p className="text-sm text-muted-foreground py-2 text-center">
@@ -743,7 +745,7 @@ export default function InquiryDetail() {
         </Card>
       </div>
 
-      <CustomerInfoSection inquiryId={id!} companyId={inquiry.companyId || null} hasOneDrive={!!inquiry.onedriveFolderId} />
+      <CustomerInfoSection inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
 
       <Card>
         <CardHeader>
