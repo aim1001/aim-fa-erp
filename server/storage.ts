@@ -6,6 +6,24 @@ import {
 import { db } from "./db";
 import { eq, and, ilike, gte, lte, desc } from "drizzle-orm";
 
+function naturalSort(a: string, b: string): number {
+  const ax: (string | number)[] = [];
+  const bx: (string | number)[] = [];
+  a.replace(/(\d+)|(\D+)/g, (_, d, s) => { ax.push(d ? parseInt(d) : s); return ''; });
+  b.replace(/(\d+)|(\D+)/g, (_, d, s) => { bx.push(d ? parseInt(d) : s); return ''; });
+  for (let i = 0; i < Math.max(ax.length, bx.length); i++) {
+    const ai = ax[i] ?? '';
+    const bi = bx[i] ?? '';
+    if (typeof ai === 'number' && typeof bi === 'number') {
+      if (ai !== bi) return ai - bi;
+    } else {
+      const cmp = String(ai).localeCompare(String(bi));
+      if (cmp !== 0) return cmp;
+    }
+  }
+  return a.localeCompare(b);
+}
+
 export interface IStorage {
   getInquiries(filters?: {
     year?: number;
@@ -59,11 +77,19 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(inquiries.probability, filters.maxProbability));
     }
 
+    let results;
     if (conditions.length > 0) {
-      return db.select().from(inquiries).where(and(...conditions)).orderBy(desc(inquiries.year), inquiries.inquiryNumber);
+      results = await db.select().from(inquiries).where(and(...conditions)).orderBy(desc(inquiries.year));
+    } else {
+      results = await db.select().from(inquiries).orderBy(desc(inquiries.year));
     }
 
-    return db.select().from(inquiries).orderBy(desc(inquiries.year), inquiries.inquiryNumber);
+    results.sort((a, b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      return naturalSort(a.inquiryNumber, b.inquiryNumber);
+    });
+
+    return results;
   }
 
   async getInquiry(id: string): Promise<Inquiry | undefined> {
