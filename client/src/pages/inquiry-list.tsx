@@ -1,15 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Inquiry } from "@shared/schema";
 
 const statusLabels: Record<string, string> = {
@@ -27,34 +29,74 @@ const statusVariants: Record<string, "default" | "secondary" | "destructive"> = 
 };
 
 export default function InquiryList() {
-  const [location, navigate] = useLocation();
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { toast } = useToast();
 
   const urlParams = new URLSearchParams(window.location.search);
   const yearFilter = urlParams.get("year") || "all";
+  const statusFilter = urlParams.get("status") || "all";
 
   const handleYearChange = (value: string) => {
+    const params = new URLSearchParams(window.location.search);
     if (value === "all") {
-      navigate("/inquiries");
+      params.delete("year");
     } else {
-      navigate(`/inquiries?year=${value}`);
+      params.set("year", value);
     }
+    const qs = params.toString();
+    navigate(qs ? `/inquiries?${qs}` : "/inquiries");
   };
 
-  const effectiveYear = yearFilter;
+  const handleStatusChange = (value: string) => {
+    const params = new URLSearchParams(window.location.search);
+    if (value === "all") {
+      params.delete("status");
+    } else {
+      params.set("status", value);
+    }
+    const qs = params.toString();
+    navigate(qs ? `/inquiries?${qs}` : "/inquiries");
+  };
 
   const { data: years } = useQuery<number[]>({
     queryKey: ["/api/years"],
   });
 
+  const { data: onedriveYears } = useQuery<number[]>({
+    queryKey: ["/api/onedrive/years"],
+  });
+
   const queryParams = new URLSearchParams();
-  if (effectiveYear && effectiveYear !== "all") queryParams.set("year", effectiveYear);
+  if (yearFilter !== "all") queryParams.set("year", yearFilter);
   if (statusFilter !== "all") queryParams.set("status", statusFilter);
   const queryString = queryParams.toString();
 
   const { data: inquiries, isLoading } = useQuery<Inquiry[]>({
     queryKey: ["/api/inquiries", queryString ? `?${queryString}` : ""],
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async (year?: number) => {
+      const res = await apiRequest("POST", "/api/sync-onedrive", year ? { year } : {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/years"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      toast({
+        title: "동기화 완료",
+        description: `${data.synced}개 새로 추가 (총 ${data.total}개 폴더 중 ${data.skipped}개 건너뜀)`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "동기화 실패",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const filtered = useMemo(() => {
@@ -68,16 +110,55 @@ export default function InquiryList() {
     );
   }, [inquiries, search]);
 
+  const syncYearOptions = useMemo(() => {
+    const allYears = new Set<number>();
+    (years || []).forEach(y => allYears.add(y));
+    (onedriveYears || []).forEach(y => allYears.add(y));
+    return Array.from(allYears).sort((a, b) => b - a);
+  }, [years, onedriveYears]);
+
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-semibold" data-testid="text-inquiry-list-title">인콰이어리 목록</h1>
-        <Button asChild data-testid="button-add-inquiry">
-          <Link href="/inquiries/new">
-            <Plus />
-            <span>인콰이어리 추가</span>
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Select
+            onValueChange={(v) => {
+              if (v === "all") {
+                syncMutation.mutate(undefined);
+              } else {
+                syncMutation.mutate(parseInt(v));
+              }
+            }}
+            disabled={syncMutation.isPending}
+          >
+            <SelectTrigger className="w-44" data-testid="select-sync-year">
+              {syncMutation.isPending ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  동기화 중...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  OneDrive 동기화
+                </span>
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체 연도 동기화</SelectItem>
+              {syncYearOptions.map(y => (
+                <SelectItem key={y} value={String(y)}>{y}년 동기화</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button asChild data-testid="button-add-inquiry">
+            <Link href="/inquiries/new">
+              <Plus />
+              <span>추가</span>
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -93,7 +174,7 @@ export default function InquiryList() {
                 data-testid="input-search"
               />
             </div>
-            <Select value={effectiveYear !== "all" ? effectiveYear : "all"} onValueChange={handleYearChange}>
+            <Select value={yearFilter} onValueChange={handleYearChange}>
               <SelectTrigger className="w-32" data-testid="select-year">
                 <SelectValue placeholder="연도" />
               </SelectTrigger>
@@ -104,7 +185,7 @@ export default function InquiryList() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={handleStatusChange}>
               <SelectTrigger className="w-32" data-testid="select-status">
                 <SelectValue placeholder="상태" />
               </SelectTrigger>

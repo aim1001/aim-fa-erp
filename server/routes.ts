@@ -99,26 +99,56 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/sync-onedrive", async (_req, res) => {
+  app.get("/api/onedrive/years", async (_req, res) => {
     try {
       const yearFolders = await listRootSalesFolder();
-      let synced = 0;
+      const years = yearFolders
+        .map(f => {
+          const m = f.name.match(/(\d{4})/);
+          return m ? parseInt(m[1]) : null;
+        })
+        .filter((y): y is number => y !== null)
+        .sort((a, b) => b - a);
+      res.json(years);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
-      for (const yearFolder of yearFolders) {
-        const yearMatch = yearFolder.name.match(/(\d{4})/);
-        if (!yearMatch) continue;
+  app.post("/api/sync-onedrive", async (req, res) => {
+    try {
+      const targetYear = req.body.year ? parseInt(req.body.year) : undefined;
+      const yearFolders = await listRootSalesFolder();
+      let synced = 0;
+      let skipped = 0;
+      let total = 0;
+
+      const foldersToSync = yearFolders.filter(f => {
+        const m = f.name.match(/(\d{4})/);
+        if (!m) return false;
+        if (targetYear) return parseInt(m[1]) === targetYear;
+        return true;
+      });
+
+      for (const yearFolder of foldersToSync) {
+        const yearMatch = yearFolder.name.match(/(\d{4})/)!;
         const year = parseInt(yearMatch[1]);
 
         const inquiryFolders = await listYearFolders(yearFolder.name);
+        total += inquiryFolders.length;
 
         for (const folder of inquiryFolders) {
           try {
             const existing = await storage.getInquiryByFolderId(folder.id);
-            if (existing) continue;
+            if (existing) {
+              skipped++;
+              continue;
+            }
 
-            const parsed = parseInquiryFolderName(folder.name);
-            if (!parsed.inquiryNumber || !parsed.customerName) {
+            const parsed = parseInquiryFolderName(folder.name, year);
+            if (!parsed) {
               console.warn(`Skipping invalid folder: ${folder.name}`);
+              skipped++;
               continue;
             }
 
@@ -152,11 +182,18 @@ export async function registerRoutes(
             synced++;
           } catch (folderErr: any) {
             console.warn(`Error processing folder ${folder.name}:`, folderErr.message);
+            skipped++;
           }
         }
       }
 
-      res.json({ message: `${synced}개 인콰이어리 동기화 완료`, synced });
+      res.json({
+        message: `${synced}개 인콰이어리 동기화 완료`,
+        synced,
+        skipped,
+        total,
+        year: targetYear || "전체",
+      });
     } catch (err: any) {
       console.error("OneDrive sync error:", err);
       res.status(500).json({ message: err.message });

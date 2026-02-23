@@ -122,15 +122,41 @@ export async function downloadFile(itemId: string): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-export function parseInquiryFolderName(folderName: string): {
+export function parseInquiryFolderName(folderName: string, year: number): {
   inquiryNumber: string;
   customerName: string;
   productInfo: string;
-} {
+} | null {
   const parts = folderName.split('_');
-  const inquiryNumber = parts[0] || folderName;
-  const customerName = parts[1] || '';
-  const productInfo = parts.slice(2).join('_') || '';
 
-  return { inquiryNumber, customerName, productInfo };
+  if (year >= 2023) {
+    if (parts.length < 2) return null;
+    const inquiryNumber = parts[0].trim();
+    const customerName = parts[1].trim();
+    const productInfo = parts.slice(2).join('_').trim();
+    if (!inquiryNumber || !customerName) return null;
+    return { inquiryNumber, customerName, productInfo };
+  }
+
+  if (year >= 2021) {
+    if (parts.length >= 2) {
+      const inquiryNumber = parts[0].trim();
+      const customerName = parts[1].replace(/\(.*\)$/, '').trim();
+      const productInfo = parts.slice(2).join('_').trim();
+      if (!inquiryNumber || !customerName) return null;
+      return { inquiryNumber, customerName, productInfo };
+    }
+    return null;
+  }
+
+  if (parts.length >= 2) {
+    const first = parts[0].trim();
+    const customerName = parts[1].replace(/\(.*\)$/, '').trim();
+    const productInfo = parts.slice(2).join('_').trim();
+    if (!customerName) return null;
+    const inquiryNumber = first;
+    return { inquiryNumber, customerName, productInfo };
+  }
+
+  return null;
 }
