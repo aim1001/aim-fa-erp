@@ -16,6 +16,7 @@ const CHART_COLORS = [
 ];
 
 const statusLabels: Record<string, string> = {
+  none: "-",
   active: "진행중",
   won: "수주",
   lost: "실주",

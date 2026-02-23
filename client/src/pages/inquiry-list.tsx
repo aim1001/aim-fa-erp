@@ -23,15 +23,24 @@ function parseDateString(dateStr: string): Date {
 }
 
 const statusLabels: Record<string, string> = {
+  none: "-",
   active: "진행중",
   won: "수주",
   lost: "실주",
 };
 
 const statusVariants: Record<string, "default" | "secondary" | "destructive"> = {
+  none: "secondary",
   active: "default",
   won: "default",
   lost: "destructive",
+};
+
+const statusRowClass: Record<string, string> = {
+  none: "",
+  active: "",
+  won: "bg-green-50 dark:bg-green-950/30",
+  lost: "bg-red-50 dark:bg-red-950/30",
 };
 
 const stageLabels: Record<number, string> = {
@@ -229,6 +238,7 @@ export default function InquiryList() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체 상태</SelectItem>
+                <SelectItem value="none">-</SelectItem>
                 <SelectItem value="active">진행중</SelectItem>
                 <SelectItem value="won">수주</SelectItem>
                 <SelectItem value="lost">실주</SelectItem>
@@ -269,7 +279,7 @@ export default function InquiryList() {
                   filtered.map((inq) => (
                     <TableRow
                       key={inq.id}
-                      className="cursor-pointer hover-elevate"
+                      className={`cursor-pointer hover-elevate ${statusRowClass[inq.status || "none"] || ""}`}
                       onClick={() => navigate(`/inquiries/${inq.id}`)}
                       data-testid={`row-inquiry-${inq.id}`}
                     >
@@ -298,7 +308,7 @@ export default function InquiryList() {
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Select
-                          value={inq.status || "active"}
+                          value={inq.status || "none"}
                           onValueChange={(v) => handleInlineUpdate(inq.id, { status: v })}
                           disabled={inlineUpdateMutation.isPending}
                         >
@@ -306,6 +316,7 @@ export default function InquiryList() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="none">-</SelectItem>
                             <SelectItem value="active">진행중</SelectItem>
                             <SelectItem value="won">수주</SelectItem>
                             <SelectItem value="lost">실주</SelectItem>

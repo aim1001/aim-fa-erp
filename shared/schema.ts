@@ -47,7 +47,7 @@ export const inquiries = pgTable("inquiries", {
   expectedDate: text("expected_date"),
   paymentTerms: text("payment_terms"),
   memo: text("memo"),
-  status: text("status").default("active"),
+  status: text("status").default("none"),
   onedriveFolderId: text("onedrive_folder_id"),
   onedriveFolderName: text("onedrive_folder_name"),
   source: text("source").default("onedrive"),

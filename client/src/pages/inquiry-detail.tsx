@@ -45,6 +45,7 @@ function useInlineUpdate(inquiryId: string) {
 }
 
 const statusLabels: Record<string, string> = {
+  none: "-",
   active: "진행중",
   won: "수주",
   lost: "실주",
@@ -859,10 +860,11 @@ export default function InquiryDetail() {
 
               <span className="text-muted-foreground">상태</span>
               <InlineSelect
-                value={inquiry.status || "active"}
+                value={inquiry.status || "none"}
                 field="status"
                 inquiryId={id!}
                 options={[
+                  { value: "none", label: "-" },
                   { value: "active", label: "진행중" },
                   { value: "won", label: "수주" },
                   { value: "lost", label: "실주" },
