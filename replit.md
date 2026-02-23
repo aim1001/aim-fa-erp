@@ -104,6 +104,7 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Sales/Purchase invoice modules (basic tax invoice fields, customer/vendor reference)
 - 2026-02-23: Sidebar reorganized into sections: 영업/경영지원/관리
 - 2026-02-23: Removed 담당자 from sidebar (accessible only via customer detail modal)
+- 2026-02-23: Replaced 연도별 sidebar section with 최근 6개월/최근 1년 quick filters under 영업
 
 ## User Preferences
 - Korean language UI

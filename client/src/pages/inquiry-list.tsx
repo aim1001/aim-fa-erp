@@ -85,9 +85,11 @@ export default function InquiryList() {
   const urlParams = new URLSearchParams(searchString);
   const yearFilter = urlParams.get("year") || "all";
   const statusFilter = urlParams.get("status") || "all";
+  const periodFilter = urlParams.get("period") || "";
 
   const handleYearChange = (value: string) => {
     const params = new URLSearchParams(searchString);
+    params.delete("period");
     if (value === "all") {
       params.delete("year");
     } else {
@@ -117,7 +119,7 @@ export default function InquiryList() {
   });
 
   const queryParams = new URLSearchParams();
-  if (yearFilter !== "all") queryParams.set("year", yearFilter);
+  if (yearFilter !== "all" && !periodFilter) queryParams.set("year", yearFilter);
   if (statusFilter !== "all") queryParams.set("status", statusFilter);
   const queryString = queryParams.toString();
 
@@ -199,14 +201,38 @@ export default function InquiryList() {
 
   const filtered = useMemo(() => {
     if (!inquiries) return [];
-    if (!search) return inquiries;
+    let list = inquiries;
+    if (periodFilter) {
+      const now = new Date();
+      let cutoff: Date;
+      if (periodFilter === "6m") {
+        cutoff = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+      } else {
+        cutoff = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      }
+      const cutoffYear = cutoff.getFullYear();
+      const cutoffMonth = cutoff.getMonth() + 1;
+      list = list.filter(i => {
+        if (i.expectedDate) {
+          return parseDateString(i.expectedDate) >= cutoff;
+        }
+        const yearNum = i.year || parseInt(i.inquiryNumber.split("-")[0]) + 2000;
+        if (yearNum > cutoffYear) return true;
+        if (yearNum === cutoffYear) {
+          const num = parseInt(i.inquiryNumber.split("-")[1]) || 0;
+          return num >= cutoffMonth;
+        }
+        return false;
+      });
+    }
+    if (!search) return list;
     const s = search.toLowerCase();
-    return inquiries.filter(i =>
+    return list.filter(i =>
       i.customerName.toLowerCase().includes(s) ||
       i.inquiryNumber.toLowerCase().includes(s) ||
       (i.productInfo && i.productInfo.toLowerCase().includes(s))
     );
-  }, [inquiries, search]);
+  }, [inquiries, search, periodFilter]);
 
   const syncYearOptions = useMemo(() => {
     const allYears = new Set<number>();

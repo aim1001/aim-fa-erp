@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText } from "lucide-react";
+import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText, Calendar, Clock } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -9,8 +9,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -19,10 +20,6 @@ export function AppSidebar() {
   const [location] = useLocation();
   const searchString = useSearch();
   const { toast } = useToast();
-
-  const { data: years } = useQuery<number[]>({
-    queryKey: ["/api/years"],
-  });
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -80,6 +77,19 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
+            <SidebarSeparator className="my-1" />
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/inquiries" && new URLSearchParams(searchString).get("period") === "6m"} data-testid="nav-period-6m">
+                  <Link href="/inquiries?period=6m"><Clock /><span>최근 6개월</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/inquiries" && new URLSearchParams(searchString).get("period") === "1y"} data-testid="nav-period-1y">
+                  <Link href="/inquiries?period=1y"><Calendar /><span>최근 1년</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
@@ -115,25 +125,6 @@ export function AppSidebar() {
                   <Link href="/vendors"><Truck /><span>공급업체</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
-          <SidebarGroupLabel>연도별</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {(years || []).map((year) => (
-                <SidebarMenuItem key={year}>
-                  <SidebarMenuButton
-                    asChild
-                    data-active={location === "/inquiries" && new URLSearchParams(searchString).get("year") === String(year)}
-                    data-testid={`nav-year-${year}`}
-                  >
-                    <Link href={`/inquiries?year=${year}`}><FileText /><span>{year}년</span></Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
