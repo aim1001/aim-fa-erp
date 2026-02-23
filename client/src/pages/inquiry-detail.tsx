@@ -14,6 +14,36 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback } from "react";
 import type { Inquiry, InquiryFile } from "@shared/schema";
 
+function useInlineUpdate(inquiryId: string) {
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (patch: Record<string, any>) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, patch);
+      return res.json();
+    },
+    onMutate: async (patch) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      const prev = queryClient.getQueryData<Inquiry>(["/api/inquiries", inquiryId]);
+      if (prev) {
+        queryClient.setQueryData(["/api/inquiries", inquiryId], { ...prev, ...patch });
+      }
+      return { prev };
+    },
+    onError: (err: Error, _patch, context) => {
+      if (context?.prev) {
+        queryClient.setQueryData(["/api/inquiries", inquiryId], context.prev);
+      }
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+  });
+}
+
 const statusLabels: Record<string, string> = {
   active: "진행중",
   won: "수주",
@@ -54,31 +84,14 @@ function InlineText({ value, field, inquiryId, placeholder }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: async (newVal: string) => {
-      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal || null });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
-      setEditing(false);
-    },
-    onError: (err: Error) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-    },
-  });
+  const mutation = useInlineUpdate(inquiryId);
 
   const handleSave = useCallback(() => {
     if (editValue !== value) {
-      mutation.mutate(editValue);
-    } else {
-      setEditing(false);
+      mutation.mutate({ [field]: editValue || null });
     }
-  }, [editValue, value]);
+    setEditing(false);
+  }, [editValue, value, field]);
 
   if (editing) {
     return (
@@ -124,30 +137,14 @@ function InlineTextarea({ value, field, inquiryId, placeholder }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: async (newVal: string) => {
-      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal || null });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-      setEditing(false);
-    },
-    onError: (err: Error) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-    },
-  });
+  const mutation = useInlineUpdate(inquiryId);
 
   const handleSave = useCallback(() => {
     if (editValue !== value) {
-      mutation.mutate(editValue);
-    } else {
-      setEditing(false);
+      mutation.mutate({ [field]: editValue || null });
     }
-  }, [editValue, value]);
+    setEditing(false);
+  }, [editValue, value, field]);
 
   if (editing) {
     return (
@@ -191,26 +188,13 @@ function InlineSelect({ value, field, inquiryId, options, labels }: {
   options: { value: string; label: string }[];
   labels?: Record<string, string>;
 }) {
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: async (newVal: string) => {
-      const actualVal = newVal === "_none" ? null : newVal;
-      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: actualVal });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-    },
-  });
+  const mutation = useInlineUpdate(inquiryId);
 
   return (
-    <Select value={value || "_none"} onValueChange={(v) => mutation.mutate(v)} disabled={mutation.isPending}>
+    <Select value={value || "_none"} onValueChange={(v) => {
+      const actualVal = v === "_none" ? null : v;
+      mutation.mutate({ [field]: actualVal });
+    }} disabled={mutation.isPending}>
       <SelectTrigger className="h-7 text-sm w-auto min-w-24" data-testid={`select-inline-${field}`}>
         <SelectValue />
       </SelectTrigger>
@@ -224,25 +208,10 @@ function InlineSelect({ value, field, inquiryId, options, labels }: {
 }
 
 function InlineStageSelect({ value, inquiryId }: { value: number; inquiryId: string }) {
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: async (newVal: number) => {
-      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { probability: newVal });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-    },
-  });
+  const mutation = useInlineUpdate(inquiryId);
 
   return (
-    <Select value={String(value)} onValueChange={(v) => mutation.mutate(parseInt(v))} disabled={mutation.isPending}>
+    <Select value={String(value)} onValueChange={(v) => mutation.mutate({ probability: parseInt(v) })} disabled={mutation.isPending}>
       <SelectTrigger className="h-7 text-sm w-auto min-w-28" data-testid="select-inline-probability">
         <SelectValue />
       </SelectTrigger>
@@ -263,26 +232,13 @@ function InlineDateInput({ value, field, inquiryId }: {
   field: string;
   inquiryId: string;
 }) {
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: async (newVal: string) => {
-      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal || null });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-    },
-  });
+  const mutation = useInlineUpdate(inquiryId);
 
   return (
     <Input
       type="date"
       value={value}
-      onChange={(e) => mutation.mutate(e.target.value)}
+      onChange={(e) => mutation.mutate({ [field]: e.target.value || null })}
       className="h-7 text-sm w-auto"
       disabled={mutation.isPending}
       data-testid={`input-inline-${field}`}
@@ -297,31 +253,16 @@ function InlineNumber({ value, field, inquiryId }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(String(value));
-  const { toast } = useToast();
-
-  const mutation = useMutation({
-    mutationFn: async (newVal: number) => {
-      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, { [field]: newVal });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-      setEditing(false);
-    },
-    onError: (err: Error) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-    },
-  });
+  const mutation = useInlineUpdate(inquiryId);
 
   const handleSave = useCallback(() => {
     const num = parseInt(editValue);
-    if (!isNaN(num) && num !== value) {
-      mutation.mutate(num);
-    } else {
-      setEditing(false);
+    if (isNaN(num)) return;
+    if (num !== value) {
+      mutation.mutate({ [field]: num });
     }
-  }, [editValue, value]);
+    setEditing(false);
+  }, [editValue, value, field]);
 
   if (editing) {
     return (
