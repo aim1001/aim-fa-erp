@@ -44,6 +44,8 @@ function extractCustomerInfo(sheet: XLSX.WorkSheet, sheetName: string): ExcelCus
   };
 }
 
+const VALID_SHEET_NAMES = ["한화", "하이크"];
+
 export async function parseExcelCustomerInfo(folderId: string): Promise<ExcelCustomerInfo[]> {
   const files = await listFolderFiles(folderId);
   const excelFiles = files.filter(f =>
@@ -57,7 +59,10 @@ export async function parseExcelCustomerInfo(folderId: string): Promise<ExcelCus
       const buffer = await downloadFile(ef.id);
       const workbook = XLSX.read(buffer, { type: "buffer" });
 
-      for (const sheetName of workbook.SheetNames) {
+      const targetSheets = workbook.SheetNames.filter(name =>
+        VALID_SHEET_NAMES.includes(name)
+      );
+      for (const sheetName of targetSheets) {
         const sheet = workbook.Sheets[sheetName];
         const info = extractCustomerInfo(sheet, sheetName);
         if (info) {
