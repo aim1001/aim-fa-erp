@@ -44,7 +44,7 @@ function extractCustomerInfo(sheet: XLSX.WorkSheet, sheetName: string): ExcelCus
   };
 }
 
-const VALID_SHEET_NAMES = ["한화", "하이크"];
+const VALID_SHEET_PREFIXES = ["한화", "하이크"];
 
 export async function parseExcelCustomerInfo(folderId: string): Promise<ExcelCustomerInfo[]> {
   const files = await listFolderFiles(folderId);
@@ -60,7 +60,7 @@ export async function parseExcelCustomerInfo(folderId: string): Promise<ExcelCus
       const workbook = XLSX.read(buffer, { type: "buffer" });
 
       const targetSheets = workbook.SheetNames.filter(name =>
-        VALID_SHEET_NAMES.includes(name)
+        VALID_SHEET_PREFIXES.some(prefix => name.startsWith(prefix))
       );
       for (const sheetName of targetSheets) {
         const sheet = workbook.Sheets[sheetName];
