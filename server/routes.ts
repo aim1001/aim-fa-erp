@@ -402,7 +402,25 @@ export async function registerRoutes(
       }
 
       const customerInfoList = await parseExcelCustomerInfo(inquiry.onedriveFolderId);
-      res.json(customerInfoList);
+
+      const existingMatches: Record<string, any[]> = {};
+      for (const info of customerInfoList) {
+        const keywords = info.companyName.replace(/[()（）]/g, ' ').split(/\s+/).filter(k => k.length >= 2);
+        const matchSet = new Map<string, any>();
+        for (const keyword of keywords) {
+          const matches = await storage.searchCompanies(keyword);
+          for (const m of matches) {
+            matchSet.set(m.id, m);
+          }
+        }
+        const exact = await storage.getCompanyByName(info.companyName);
+        if (exact) matchSet.set(exact.id, exact);
+        if (matchSet.size > 0) {
+          existingMatches[info.companyName] = Array.from(matchSet.values());
+        }
+      }
+
+      res.json({ scanned: customerInfoList, existingMatches });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -450,11 +468,48 @@ export async function registerRoutes(
           const existingInfo = await readInfoJson(inquiry.onedriveFolderId) || {};
           await writeInfoJson(inquiry.onedriveFolderId, {
             ...existingInfo,
-            companyName,
-            address,
-            contactName,
-            email,
-            phone,
+            companyName: company.companyName,
+            address: company.address,
+            contactName: company.contactName,
+            email: company.email,
+            phone: company.phone,
+          });
+        } catch (err: any) {
+          console.warn("_info.json 업데이트 실패:", err.message);
+        }
+      }
+
+      res.json({ company, inquiryId: inquiry.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/inquiries/:id/link-company", async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) {
+        return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      }
+
+      const { companyId } = z.object({ companyId: z.string() }).parse(req.body);
+      const company = await storage.getCompany(companyId);
+      if (!company) {
+        return res.status(404).json({ message: "회사를 찾을 수 없습니다" });
+      }
+
+      await storage.updateInquiry(inquiry.id, { companyId: company.id });
+
+      if (inquiry.onedriveFolderId) {
+        try {
+          const existingInfo = await readInfoJson(inquiry.onedriveFolderId) || {};
+          await writeInfoJson(inquiry.onedriveFolderId, {
+            ...existingInfo,
+            companyName: company.companyName,
+            address: company.address,
+            contactName: company.contactName,
+            email: company.email,
+            phone: company.phone,
           });
         } catch (err: any) {
           console.warn("_info.json 업데이트 실패:", err.message);

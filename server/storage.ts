@@ -46,6 +46,7 @@ export interface IStorage {
   getCompanies(): Promise<Company[]>;
   getCompany(id: string): Promise<Company | undefined>;
   getCompanyByName(name: string): Promise<Company | undefined>;
+  searchCompanies(query: string): Promise<Company[]>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
   deleteCompany(id: string): Promise<void>;
@@ -151,6 +152,10 @@ export class DatabaseStorage implements IStorage {
   async getCompanyByName(name: string): Promise<Company | undefined> {
     const result = await db.select().from(companies).where(eq(companies.companyName, name));
     return result[0];
+  }
+
+  async searchCompanies(query: string): Promise<Company[]> {
+    return db.select().from(companies).where(ilike(companies.companyName, `%${query}%`));
   }
 
   async createCompany(company: InsertCompany): Promise<Company> {

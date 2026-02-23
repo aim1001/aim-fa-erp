@@ -312,29 +312,46 @@ interface ExcelCustomerInfo {
   quoteDate: string;
 }
 
+interface ScanResult {
+  scanned: ExcelCustomerInfo[];
+  existingMatches: Record<string, Company[]>;
+}
+
 function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
   inquiryId: string;
   companyId: string | null;
   hasOneDrive: boolean;
 }) {
   const { toast } = useToast();
-  const [scannedData, setScannedData] = useState<ExcelCustomerInfo[] | null>(null);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [mode, setMode] = useState<"new" | "existing">("new");
+  const [selectedExistingId, setSelectedExistingId] = useState<string | null>(null);
 
   const { data: company, isLoading: companyLoading } = useQuery<Company>({
-    queryKey: [`/api/companies/${companyId}`],
+    queryKey: ["/api/companies", companyId],
     enabled: !!companyId,
   });
 
   const scanMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/scan-excel`);
-      return res.json() as Promise<ExcelCustomerInfo[]>;
+      return res.json() as Promise<ScanResult>;
     },
     onSuccess: (data) => {
-      setScannedData(data);
-      if (data.length > 0) setSelectedIdx(0);
-      if (data.length === 0) {
+      setScanResult(data);
+      if (data.scanned.length > 0) {
+        setSelectedIdx(0);
+        const firstMatches = data.existingMatches[data.scanned[0].companyName];
+        if (firstMatches && firstMatches.length > 0) {
+          setMode("existing");
+          setSelectedExistingId(firstMatches[0].id);
+        } else {
+          setMode("new");
+          setSelectedExistingId(null);
+        }
+      }
+      if (data.scanned.length === 0) {
         toast({ title: "고객 정보를 찾을 수 없습니다", description: "엑셀 파일에 유효한 고객 정보가 없습니다.", variant: "destructive" });
       }
     },
@@ -356,8 +373,7 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
     },
     onSuccess: () => {
       toast({ title: "고객 정보 저장 완료" });
-      setScannedData(null);
-      setSelectedIdx(null);
+      resetScan();
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
     },
@@ -366,7 +382,45 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
     },
   });
 
-  const selected = scannedData && selectedIdx !== null ? scannedData[selectedIdx] : null;
+  const linkMutation = useMutation({
+    mutationFn: async (companyId: string) => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/link-company`, { companyId });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "기존 회사 연결 완료" });
+      resetScan();
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const resetScan = () => {
+    setScanResult(null);
+    setSelectedIdx(null);
+    setMode("new");
+    setSelectedExistingId(null);
+  };
+
+  const selected = scanResult && selectedIdx !== null ? scanResult.scanned[selectedIdx] : null;
+  const existingForSelected = selected ? (scanResult?.existingMatches[selected.companyName] || []) : [];
+  const isSaving = saveMutation.isPending || linkMutation.isPending;
+
+  const handleSelectScanned = (idx: number) => {
+    setSelectedIdx(idx);
+    const info = scanResult!.scanned[idx];
+    const matches = scanResult!.existingMatches[info.companyName] || [];
+    if (matches.length > 0) {
+      setMode("existing");
+      setSelectedExistingId(matches[0].id);
+    } else {
+      setMode("new");
+      setSelectedExistingId(null);
+    }
+  };
 
   return (
     <Card>
@@ -383,7 +437,7 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
             disabled={scanMutation.isPending}
             data-testid="button-scan-excel"
           >
-            {scanMutation.isPending ? <Loader2 className="animate-spin" /> : <Search className="h-4 w-4" />}
+            {scanMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
             <span>엑셀에서 가져오기</span>
           </Button>
         )}
@@ -391,10 +445,12 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
       <CardContent>
         {companyLoading ? (
           <Skeleton className="h-20" />
-        ) : company ? (
+        ) : company && !scanResult ? (
           <div className="grid grid-cols-[80px_1fr] gap-y-2 gap-x-2 text-sm">
             <span className="text-muted-foreground">회사명</span>
-            <span className="font-medium" data-testid="text-company-name">{company.companyName}</span>
+            <Link href={`/companies/${company.id}`}>
+              <span className="font-medium text-primary hover:underline cursor-pointer" data-testid="text-company-name">{company.companyName}</span>
+            </Link>
             <span className="text-muted-foreground">주소</span>
             <span data-testid="text-company-address">{company.address || "-"}</span>
             <span className="text-muted-foreground">담당자</span>
@@ -404,25 +460,25 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
             <span className="text-muted-foreground">전화번호</span>
             <span data-testid="text-company-phone">{company.phone || "-"}</span>
           </div>
-        ) : !scannedData ? (
+        ) : !scanResult ? (
           <p className="text-sm text-muted-foreground py-2 text-center">
             {hasOneDrive ? "\"엑셀에서 가져오기\" 버튼을 눌러 고객 정보를 불러오세요." : "연결된 고객사가 없습니다."}
           </p>
         ) : null}
 
-        {scannedData && scannedData.length > 0 && (
-          <div className="space-y-3 mt-2">
+        {scanResult && scanResult.scanned.length > 0 && (
+          <div className="space-y-3">
             <div className="border rounded-lg p-3 bg-muted/30">
-              <p className="text-xs font-medium text-muted-foreground mb-2">엑셀에서 발견된 고객 정보 ({scannedData.length}건)</p>
-              {scannedData.length > 1 && (
+              <p className="text-xs font-medium text-muted-foreground mb-2">엑셀에서 발견된 고객 정보 ({scanResult.scanned.length}건)</p>
+              {scanResult.scanned.length > 1 && (
                 <div className="flex gap-1 flex-wrap mb-3">
-                  {scannedData.map((info, idx) => (
+                  {scanResult.scanned.map((info, idx) => (
                     <Button
                       key={idx}
                       variant={selectedIdx === idx ? "default" : "outline"}
                       size="sm"
                       className="text-xs h-7"
-                      onClick={() => setSelectedIdx(idx)}
+                      onClick={() => handleSelectScanned(idx)}
                       data-testid={`button-select-customer-${idx}`}
                     >
                       {info.companyName} ({info.sheetName})
@@ -432,7 +488,7 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
               )}
 
               {selected && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="grid grid-cols-[80px_1fr] gap-y-1.5 gap-x-2 text-sm">
                     <span className="text-muted-foreground">시트명</span>
                     <span className="text-xs text-blue-600 dark:text-blue-400">{selected.sheetName}</span>
@@ -447,20 +503,82 @@ function CustomerInfoSection({ inquiryId, companyId, hasOneDrive }: {
                     <span className="text-muted-foreground">전화번호</span>
                     <span>{selected.phone || "-"}</span>
                   </div>
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      size="sm"
-                      onClick={() => saveMutation.mutate(selected)}
-                      disabled={saveMutation.isPending}
-                      data-testid="button-save-customer-info"
-                    >
-                      {saveMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
-                      <span>이 정보로 저장</span>
-                    </Button>
+
+                  {existingForSelected.length > 0 && (
+                    <div className="border-t pt-3">
+                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-2">유사한 기존 회사 발견 ({existingForSelected.length}건)</p>
+                      <div className="flex gap-2 mb-2">
+                        <Button
+                          variant={mode === "existing" ? "default" : "outline"}
+                          size="sm"
+                          className="text-xs h-7"
+                          onClick={() => {
+                            setMode("existing");
+                            if (!selectedExistingId && existingForSelected.length > 0) setSelectedExistingId(existingForSelected[0].id);
+                          }}
+                          data-testid="button-mode-existing"
+                        >
+                          기존 회사 연결
+                        </Button>
+                        <Button
+                          variant={mode === "new" ? "default" : "outline"}
+                          size="sm"
+                          className="text-xs h-7"
+                          onClick={() => setMode("new")}
+                          data-testid="button-mode-new"
+                        >
+                          새로 등록
+                        </Button>
+                      </div>
+
+                      {mode === "existing" && (
+                        <div className="space-y-1.5">
+                          {existingForSelected.map((ec) => (
+                            <button
+                              type="button"
+                              key={ec.id}
+                              className={`w-full text-left border rounded-md p-2 text-sm transition-colors ${selectedExistingId === ec.id ? "border-primary bg-primary/5" : "bg-background hover:bg-accent"}`}
+                              onClick={() => setSelectedExistingId(ec.id)}
+                              data-testid={`button-existing-company-${ec.id}`}
+                            >
+                              <div className="font-medium">{ec.companyName}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {[ec.contactName, ec.email, ec.phone].filter(Boolean).join(" | ") || "정보 없음"}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2 border-t">
+                    {mode === "existing" && selectedExistingId ? (
+                      <Button
+                        size="sm"
+                        onClick={() => linkMutation.mutate(selectedExistingId!)}
+                        disabled={isSaving || !selectedExistingId}
+                        data-testid="button-link-existing-company"
+                      >
+                        {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Building2 className="h-4 w-4" />}
+                        <span>기존 회사 연결</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => saveMutation.mutate(selected)}
+                        disabled={isSaving}
+                        data-testid="button-save-customer-info"
+                      >
+                        {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
+                        <span>{existingForSelected.length > 0 ? "새 회사로 등록" : "이 정보로 저장"}</span>
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => { setScannedData(null); setSelectedIdx(null); }}
+                      onClick={resetScan}
+                      data-testid="button-cancel-scan"
                     >
                       취소
                     </Button>
