@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { downloadFile, listFolderFiles, downloadFileByPath, findFileInFolder } from "./onedrive";
+import { downloadFile, listFolderFiles, downloadFileByPath, findFileInFolder, listFilesByPath, listFoldersByPath } from "./onedrive";
 
 export interface CustomerListRow {
   businessNumber: string;
@@ -143,4 +143,147 @@ export async function parseExcelCustomerInfo(folderId: string): Promise<ExcelCus
   }
 
   return Array.from(seen.values());
+}
+
+export interface TaxInvoiceRow {
+  writeDate: string;
+  issueDate: string;
+  businessNumber: string;
+  companyName: string;
+  representative: string;
+  address: string;
+  supplyAmount: number | null;
+  taxAmount: number | null;
+  totalAmount: number | null;
+  email1: string;
+  email2: string;
+}
+
+function parseAmount(val: string): number | null {
+  if (!val) return null;
+  const num = parseInt(val.replace(/[^0-9-]/g, ""), 10);
+  return isNaN(num) ? null : num;
+}
+
+function parseSalesInvoiceRow(sheet: XLSX.WorkSheet, row: number): TaxInvoiceRow | null {
+  const writeDate = getCellValue(sheet, 0, row);
+  const issueDate = getCellValue(sheet, 2, row);
+  if (!writeDate && !issueDate) return null;
+
+  return {
+    writeDate,
+    issueDate,
+    businessNumber: getCellValue(sheet, 9, row),
+    companyName: getCellValue(sheet, 11, row),
+    representative: getCellValue(sheet, 12, row),
+    address: getCellValue(sheet, 13, row),
+    totalAmount: parseAmount(getCellValue(sheet, 14, row)),
+    supplyAmount: parseAmount(getCellValue(sheet, 15, row)),
+    taxAmount: parseAmount(getCellValue(sheet, 16, row)),
+    email1: getCellValue(sheet, 23, row),
+    email2: getCellValue(sheet, 24, row),
+  };
+}
+
+function parsePurchaseInvoiceRow(sheet: XLSX.WorkSheet, row: number): TaxInvoiceRow | null {
+  const writeDate = getCellValue(sheet, 0, row);
+  const issueDate = getCellValue(sheet, 2, row);
+  if (!writeDate && !issueDate) return null;
+
+  return {
+    writeDate,
+    issueDate,
+    businessNumber: getCellValue(sheet, 4, row),
+    companyName: getCellValue(sheet, 6, row),
+    representative: getCellValue(sheet, 7, row),
+    address: getCellValue(sheet, 8, row),
+    totalAmount: parseAmount(getCellValue(sheet, 14, row)),
+    supplyAmount: parseAmount(getCellValue(sheet, 15, row)),
+    taxAmount: parseAmount(getCellValue(sheet, 16, row)),
+    email1: getCellValue(sheet, 22, row),
+    email2: "",
+  };
+}
+
+function parseInvoiceSheet(
+  buffer: Buffer,
+  rowParser: (sheet: XLSX.WorkSheet, row: number) => TaxInvoiceRow | null
+): TaxInvoiceRow[] {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) return [];
+
+  const results: TaxInvoiceRow[] = [];
+  let row = 6;
+  let emptyCount = 0;
+  while (emptyCount < 3) {
+    const parsed = rowParser(sheet, row);
+    if (!parsed) {
+      emptyCount++;
+      row++;
+      continue;
+    }
+    emptyCount = 0;
+    results.push(parsed);
+    row++;
+  }
+  return results;
+}
+
+export async function parseSalesTaxInvoices(year: number): Promise<TaxInvoiceRow[]> {
+  const basePath = `4.경영지원/database/${year}`;
+  const files = await listFilesByPath(basePath);
+  const targetFiles = files.filter(f => f.name.startsWith("매출전자세금계산서목록") && (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")));
+
+  if (targetFiles.length === 0) {
+    throw new Error(`${year}년 매출전자세금계산서 파일을 찾을 수 없습니다`);
+  }
+
+  const allRows: TaxInvoiceRow[] = [];
+  for (const file of targetFiles) {
+    try {
+      const buffer = await downloadFile(file.id);
+      const rows = parseInvoiceSheet(buffer, parseSalesInvoiceRow);
+      allRows.push(...rows);
+      console.log(`[매출] ${file.name}: ${rows.length}건 파싱`);
+    } catch (err: any) {
+      console.warn(`[매출] ${file.name} 파싱 실패:`, err.message);
+    }
+  }
+  return allRows;
+}
+
+export async function parsePurchaseTaxInvoices(year: number): Promise<TaxInvoiceRow[]> {
+  const basePath = `4.경영지원/database/${year}`;
+  const files = await listFilesByPath(basePath);
+  const targetFiles = files.filter(f => f.name.startsWith("매입전자세금계산서목록") && (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")));
+
+  if (targetFiles.length === 0) {
+    throw new Error(`${year}년 매입전자세금계산서 파일을 찾을 수 없습니다`);
+  }
+
+  const allRows: TaxInvoiceRow[] = [];
+  for (const file of targetFiles) {
+    try {
+      const buffer = await downloadFile(file.id);
+      const rows = parseInvoiceSheet(buffer, parsePurchaseInvoiceRow);
+      allRows.push(...rows);
+      console.log(`[매입] ${file.name}: ${rows.length}건 파싱`);
+    } catch (err: any) {
+      console.warn(`[매입] ${file.name} 파싱 실패:`, err.message);
+    }
+  }
+  return allRows;
+}
+
+export async function getAvailableInvoiceYears(): Promise<number[]> {
+  try {
+    const folders = await listFoldersByPath("4.경영지원/database");
+    return folders
+      .map(f => parseInt(f.name))
+      .filter(y => !isNaN(y))
+      .sort((a, b) => b - a);
+  } catch {
+    return [];
+  }
 }

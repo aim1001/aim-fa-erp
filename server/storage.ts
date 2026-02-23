@@ -90,12 +90,14 @@ export interface IStorage {
   createSalesInvoice(invoice: InsertSalesInvoice): Promise<SalesInvoice>;
   updateSalesInvoice(id: string, invoice: Partial<InsertSalesInvoice>): Promise<SalesInvoice | undefined>;
   deleteSalesInvoice(id: string): Promise<void>;
+  getSalesInvoicesByYear(year: number): Promise<SalesInvoice[]>;
 
   getPurchaseInvoices(): Promise<PurchaseInvoice[]>;
   getPurchaseInvoice(id: string): Promise<PurchaseInvoice | undefined>;
   createPurchaseInvoice(invoice: InsertPurchaseInvoice): Promise<PurchaseInvoice>;
   updatePurchaseInvoice(id: string, invoice: Partial<InsertPurchaseInvoice>): Promise<PurchaseInvoice | undefined>;
   deletePurchaseInvoice(id: string): Promise<void>;
+  getPurchaseInvoicesByYear(year: number): Promise<PurchaseInvoice[]>;
 
   getNextInquiryNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
@@ -480,6 +482,14 @@ export class DatabaseStorage implements IStorage {
 
   async deletePurchaseInvoice(id: string): Promise<void> {
     await db.delete(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+  }
+
+  async getSalesInvoicesByYear(year: number): Promise<SalesInvoice[]> {
+    return db.select().from(salesInvoices).where(eq(salesInvoices.year, year));
+  }
+
+  async getPurchaseInvoicesByYear(year: number): Promise<PurchaseInvoice[]> {
+    return db.select().from(purchaseInvoices).where(eq(purchaseInvoices.year, year));
   }
 }
 

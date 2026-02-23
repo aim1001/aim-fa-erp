@@ -185,6 +185,42 @@ export async function writeInfoJson(folderId: string, data: Record<string, any>)
   }
 }
 
+export async function listFilesByPath(path: string): Promise<OneDriveFile[]> {
+  const client = await getClient();
+  const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
+  const result = await client
+    .api(`/me/drive/root:/${encodedPath}:/children`)
+    .select('id,name,webUrl,size,file')
+    .get();
+
+  return (result.value || [])
+    .filter((item: any) => item.file)
+    .map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      webUrl: item.webUrl,
+      size: item.size,
+      mimeType: item.file?.mimeType,
+    }));
+}
+
+export async function listFoldersByPath(path: string): Promise<OneDriveFolder[]> {
+  const client = await getClient();
+  const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
+  const result = await client
+    .api(`/me/drive/root:/${encodedPath}:/children`)
+    .select('id,name,webUrl,folder')
+    .get();
+
+  return (result.value || [])
+    .filter((item: any) => item.folder)
+    .map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      webUrl: item.webUrl,
+    }));
+}
+
 export async function downloadFileByPath(path: string): Promise<Buffer> {
   const client = await getClient();
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');

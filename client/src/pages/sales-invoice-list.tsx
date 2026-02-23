@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2 } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 
 function formatAmount(amount: number | null | undefined) {
-  if (!amount) return "-";
+  if (!amount && amount !== 0) return "-";
   return amount.toLocaleString() + "원";
 }
 
@@ -126,14 +126,21 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
         </Select>
         <span className="text-muted-foreground text-xs">(현재: {customerName})</span>
         <span></span>
+        {renderField("상호", "companyName", invoice.companyName || "")}
+        {renderField("사업자번호", "businessNumber", invoice.businessNumber || "")}
+        {renderField("대표자", "representative", invoice.representative || "")}
+        {renderField("주소", "address", invoice.address || "")}
+        {renderField("작성일자", "writeDate", invoice.writeDate || "")}
+        {renderField("발급일자", "issueDate", invoice.issueDate || "")}
         {renderField("계산서번호", "invoiceNumber", invoice.invoiceNumber || "")}
-        {renderField("발행일", "issueDate", invoice.issueDate || "")}
         {renderField("품목", "item", invoice.item || "")}
         {renderField("수량", "quantity", String(invoice.quantity || ""))}
         {renderField("단가", "unitPrice", String(invoice.unitPrice || ""))}
         {renderField("공급가액", "supplyAmount", String(invoice.supplyAmount || ""))}
         {renderField("세액", "taxAmount", String(invoice.taxAmount || ""))}
         {renderField("합계", "totalAmount", String(invoice.totalAmount || ""))}
+        {renderField("이메일1", "email1", invoice.email1 || "")}
+        {renderField("이메일2", "email2", invoice.email2 || "")}
         {renderField("메모", "memo", invoice.memo || "")}
       </div>
     </DialogContent>
@@ -145,6 +152,7 @@ export default function SalesInvoiceList() {
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [importYear, setImportYear] = useState("");
   const [newInvoice, setNewInvoice] = useState({ customerId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
 
   const { data: invoices, isLoading } = useQuery<SalesInvoice[]>({
@@ -152,6 +160,9 @@ export default function SalesInvoiceList() {
   });
   const { data: customers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
+  });
+  const { data: invoiceYears } = useQuery<number[]>({
+    queryKey: ["/api/invoice-years"],
   });
 
   const customerMap = useMemo(() => {
@@ -165,11 +176,27 @@ export default function SalesInvoiceList() {
     if (!search) return invoices;
     const s = search.toLowerCase();
     return invoices.filter(inv =>
+      (inv.companyName && inv.companyName.toLowerCase().includes(s)) ||
       (inv.item && inv.item.toLowerCase().includes(s)) ||
       (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(s)) ||
+      (inv.businessNumber && inv.businessNumber.includes(s)) ||
       (inv.customerId && customerMap.get(inv.customerId)?.toLowerCase().includes(s))
     );
   }, [invoices, search, customerMap]);
+
+  const importMutation = useMutation({
+    mutationFn: async (year: number) => {
+      const res = await apiRequest("POST", "/api/sales-invoices/import-onedrive", { year });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      toast({ title: "가져오기 완료", description: `${data.imported}건 추가, ${data.skipped}건 중복 건너뜀 (총 ${data.total}건)` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "가져오기 실패", description: err.message, variant: "destructive" });
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -200,14 +227,34 @@ export default function SalesInvoiceList() {
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-sales-invoice-title">매출계산서</h1>
-        <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-sales-invoice">
-          <Plus className="h-4 w-4 mr-1" />추가
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={importYear} onValueChange={setImportYear}>
+            <SelectTrigger className="w-28" data-testid="select-import-year-sales">
+              <SelectValue placeholder="연도 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              {(invoiceYears || []).map(y => <SelectItem key={y} value={String(y)}>{y}년</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => { if (importYear) importMutation.mutate(parseInt(importYear)); }}
+            disabled={!importYear || importMutation.isPending}
+            data-testid="button-import-sales"
+          >
+            {importMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+            {importMutation.isPending ? "가져오는 중..." : "OneDrive에서 가져오기"}
+          </Button>
+          <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-sales-invoice">
+            <Plus className="h-4 w-4 mr-1" />추가
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="품목, 계산서번호, 고객사 검색" className="pl-9" data-testid="input-search-sales-invoices" />
+        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="상호, 품목, 사업자번호 검색" className="pl-9" data-testid="input-search-sales-invoices" />
       </div>
 
       {isLoading ? (
@@ -217,10 +264,11 @@ export default function SalesInvoiceList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="text-left py-2.5 px-4 font-medium">발행일</th>
-                <th className="text-left py-2.5 px-4 font-medium">고객사</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">품목</th>
+                <th className="text-left py-2.5 px-4 font-medium">발급일</th>
+                <th className="text-left py-2.5 px-4 font-medium">상호</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자번호</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">공급가액</th>
+                <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">세액</th>
                 <th className="text-right py-2.5 px-4 font-medium">합계</th>
               </tr>
             </thead>
@@ -228,9 +276,10 @@ export default function SalesInvoiceList() {
               {filtered.map(inv => (
                 <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(inv.id)} data-testid={`row-sales-invoice-${inv.id}`}>
                   <td className="py-2.5 px-4">{inv.issueDate || "-"}</td>
-                  <td className="py-2.5 px-4">{inv.customerId ? customerMap.get(inv.customerId) || "-" : "-"}</td>
-                  <td className="py-2.5 px-4 hidden md:table-cell">{inv.item || "-"}</td>
+                  <td className="py-2.5 px-4">{inv.companyName || (inv.customerId ? customerMap.get(inv.customerId) : "-") || "-"}</td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{inv.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.supplyAmount)}</td>
+                  <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.taxAmount)}</td>
                   <td className="py-2.5 px-4 text-right font-medium">{formatAmount(inv.totalAmount)}</td>
                 </tr>
               ))}
