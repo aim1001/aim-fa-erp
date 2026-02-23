@@ -1,5 +1,5 @@
 import { LayoutDashboard, FileText, Plus, RefreshCw } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +24,7 @@ const navItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
 
   const { data: years } = useQuery<number[]>({
@@ -79,7 +80,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={year}>
                   <SidebarMenuButton
                     asChild
-                    data-active={location === `/inquiries?year=${year}`}
+                    data-active={location === "/inquiries" && new URLSearchParams(searchString).get("year") === String(year)}
                     data-testid={`nav-year-${year}`}
                   >
                     <Link href={`/inquiries?year=${year}`}>

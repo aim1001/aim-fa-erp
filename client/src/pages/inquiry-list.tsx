@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,15 +37,16 @@ const stageLabels: Record<number, string> = {
 
 export default function InquiryList() {
   const [, navigate] = useLocation();
+  const searchString = useSearch();
   const [search, setSearch] = useState("");
   const { toast } = useToast();
 
-  const urlParams = new URLSearchParams(window.location.search);
+  const urlParams = new URLSearchParams(searchString);
   const yearFilter = urlParams.get("year") || "all";
   const statusFilter = urlParams.get("status") || "all";
 
   const handleYearChange = (value: string) => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchString);
     if (value === "all") {
       params.delete("year");
     } else {
@@ -56,7 +57,7 @@ export default function InquiryList() {
   };
 
   const handleStatusChange = (value: string) => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(searchString);
     if (value === "all") {
       params.delete("status");
     } else {
