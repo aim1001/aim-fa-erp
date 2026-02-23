@@ -1,7 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -23,9 +24,48 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+type SalesInvoiceWithPayment = SalesInvoice & {
+  paymentStatus: "none" | "planned" | "partial" | "completed";
+  paidAmount: number;
+  plannedAmount: number;
+  remainingAmount: number;
+  paymentCount: number;
+  completedCount: number;
+  nextPaymentDate: string | null;
+};
+
 function formatAmount(amount: number | null | undefined) {
   if (!amount && amount !== 0) return "-";
   return amount.toLocaleString() + "원";
+}
+
+function PaymentStatusBadge({ inv }: { inv: SalesInvoiceWithPayment }) {
+  const { paymentStatus, paidAmount, remainingAmount, paymentCount, completedCount, nextPaymentDate } = inv;
+
+  if (paymentStatus === "none") {
+    return <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30" data-testid={`badge-payment-none-${inv.id}`}><CircleMinus className="h-3 w-3 mr-1" />미설정</Badge>;
+  }
+  if (paymentStatus === "completed") {
+    return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-completed-${inv.id}`}><CircleCheck className="h-3 w-3 mr-1" />입금완료</Badge>;
+  }
+  if (paymentStatus === "partial") {
+    return (
+      <div className="flex flex-col gap-0.5" data-testid={`badge-payment-partial-${inv.id}`}>
+        <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-0">
+          <CircleDot className="h-3 w-3 mr-1" />{completedCount}/{paymentCount}회 입금
+        </Badge>
+        <span className="text-[10px] text-muted-foreground">입금 {paidAmount.toLocaleString()} / 잔액 {remainingAmount.toLocaleString()}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-0.5" data-testid={`badge-payment-planned-${inv.id}`}>
+      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
+        <Clock className="h-3 w-3 mr-1" />입금계획{paymentCount > 1 ? ` (${paymentCount}회)` : ""}
+      </Badge>
+      {nextPaymentDate && <span className="text-[10px] text-muted-foreground">예정 {nextPaymentDate}</span>}
+    </div>
+  );
 }
 
 function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income" | "expense" }) {
@@ -54,6 +94,7 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", type, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       setShowGenerate(false);
       toast({ title: "결제 계획 생성 완료", description: `${data.created}건 생성` });
     },
@@ -76,6 +117,7 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", type, invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
     },
   });
 
@@ -164,6 +206,7 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices", invoiceId] });
     },
     onError: (err: Error) => {
@@ -178,6 +221,7 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
     onSuccess: () => {
       toast({ title: "삭제 완료" });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       onClose();
     },
     onError: (err: Error) => {
@@ -274,10 +318,11 @@ export default function SalesInvoiceList() {
   const [filterYear, setFilterYear] = useState<string>("all");
   const [periodType, setPeriodType] = useState<string>("all");
   const [periodValue, setPeriodValue] = useState<string>("all");
+  const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [newInvoice, setNewInvoice] = useState({ customerId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
 
-  const { data: invoices, isLoading } = useQuery<SalesInvoice[]>({
-    queryKey: ["/api/sales-invoices"],
+  const { data: invoices, isLoading } = useQuery<SalesInvoiceWithPayment[]>({
+    queryKey: ["/api/sales-invoices-with-payments"],
   });
   const { data: customers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -326,6 +371,10 @@ export default function SalesInvoiceList() {
       }
     }
 
+    if (paymentFilter !== "all") {
+      list = list.filter(inv => inv.paymentStatus === paymentFilter);
+    }
+
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(inv =>
@@ -338,7 +387,7 @@ export default function SalesInvoiceList() {
     }
 
     return list;
-  }, [invoices, search, customerMap, filterYear, periodType, periodValue]);
+  }, [invoices, search, customerMap, filterYear, periodType, periodValue, paymentFilter]);
 
   const totals = useMemo(() => {
     let supply = 0, tax = 0, total = 0;
@@ -357,6 +406,7 @@ export default function SalesInvoiceList() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       toast({ title: "가져오기 완료", description: `${data.imported}건 추가, ${data.skipped}건 중복 건너뜀 (총 ${data.total}건)` });
     },
     onError: (err: Error) => {
@@ -380,6 +430,7 @@ export default function SalesInvoiceList() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       setShowAdd(false);
       setNewInvoice({ customerId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
       toast({ title: "매출계산서가 등록되었습니다" });
@@ -476,6 +527,28 @@ export default function SalesInvoiceList() {
         </div>
       </div>
 
+      <div className="flex items-center gap-1.5 flex-wrap" data-testid="payment-filter-tabs-sales">
+        <Wallet className="h-4 w-4 text-muted-foreground mr-1" />
+        {[
+          { value: "all", label: "전체" },
+          { value: "none", label: "미설정" },
+          { value: "planned", label: "입금계획" },
+          { value: "partial", label: "일부입금" },
+          { value: "completed", label: "입금완료" },
+        ].map(opt => (
+          <Button
+            key={opt.value}
+            variant={paymentFilter === opt.value ? "default" : "outline"}
+            size="sm"
+            className="text-xs"
+            onClick={() => setPaymentFilter(opt.value)}
+            data-testid={`filter-payment-sales-${opt.value}`}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
+
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
       ) : filtered.length > 0 ? (
@@ -489,6 +562,9 @@ export default function SalesInvoiceList() {
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">공급가액</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">세액</th>
                 <th className="text-right py-2.5 px-4 font-medium">합계</th>
+                <th className="text-center py-2.5 px-4 font-medium">결제상태</th>
+                <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell">입금액</th>
+                <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell">잔액</th>
               </tr>
             </thead>
             <tbody>
@@ -500,6 +576,13 @@ export default function SalesInvoiceList() {
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.supplyAmount)}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.taxAmount)}</td>
                   <td className="py-2.5 px-4 text-right font-medium">{formatAmount(inv.totalAmount)}</td>
+                  <td className="py-2.5 px-4 text-center"><PaymentStatusBadge inv={inv} /></td>
+                  <td className="py-2.5 px-4 text-right hidden lg:table-cell">
+                    {inv.paymentCount > 0 ? <span className="text-green-600 dark:text-green-400">{inv.paidAmount.toLocaleString()}원</span> : <span className="text-muted-foreground">-</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-right hidden lg:table-cell">
+                    {inv.paymentCount > 0 ? <span className={inv.remainingAmount > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}>{inv.remainingAmount.toLocaleString()}원</span> : <span className="text-muted-foreground">-</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>

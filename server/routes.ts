@@ -1020,6 +1020,53 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/sales-invoices-with-payments", async (_req, res) => {
+    try {
+      const list = await storage.getSalesInvoices();
+      const allPayments = await storage.getPayments();
+      const paymentsByInvoice = new Map<string, any[]>();
+      allPayments.forEach(p => {
+        if (p.salesInvoiceId) {
+          if (!paymentsByInvoice.has(p.salesInvoiceId)) paymentsByInvoice.set(p.salesInvoiceId, []);
+          paymentsByInvoice.get(p.salesInvoiceId)!.push(p);
+        }
+      });
+
+      const result = list.map(inv => {
+        const pmts = paymentsByInvoice.get(inv.id) || [];
+        const totalAmount = inv.totalAmount || 0;
+        const paidAmount = pmts.filter(p => p.status === "completed" || p.actualDate).reduce((s: number, p: any) => s + (p.actualAmount || p.amount || 0), 0);
+        const plannedAmount = pmts.filter(p => !p.actualDate && p.status !== "completed").reduce((s: number, p: any) => s + (p.amount || 0), 0);
+        const remainingAmount = Math.max(totalAmount - paidAmount, 0);
+        const paymentCount = pmts.length;
+        const completedCount = pmts.filter(p => p.status === "completed" || p.actualDate).length;
+        const pendingPayments = pmts.filter(p => !p.actualDate && p.status !== "completed").sort((a: any, b: any) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
+        const nextPaymentDate = pendingPayments.length > 0 ? pendingPayments[0].plannedDate : null;
+
+        let paymentStatus = "none";
+        if (paymentCount === 0) paymentStatus = "none";
+        else if (completedCount === paymentCount || paidAmount >= totalAmount) paymentStatus = "completed";
+        else if (completedCount > 0) paymentStatus = "partial";
+        else paymentStatus = "planned";
+
+        return {
+          ...inv,
+          paymentStatus,
+          paidAmount,
+          plannedAmount,
+          remainingAmount,
+          paymentCount,
+          completedCount,
+          nextPaymentDate,
+        };
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/sales-invoices/:id", async (req, res) => {
     try {
       const invoice = await storage.getSalesInvoice(req.params.id);
