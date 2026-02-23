@@ -14,6 +14,7 @@ export const customers = pgTable("customers", {
   phone: text("phone"),
   fax: text("fax"),
   memo: text("memo"),
+  isFavorite: boolean("is_favorite").default(false),
   mgmtDepartment: text("mgmt_department"),
   mgmtContactName: text("mgmt_contact_name"),
   mgmtPhone: text("mgmt_phone"),

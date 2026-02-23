@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus, RefreshCw, Search, Trash2, UserPlus, Users, Check, X, FileText } from "lucide-react";
+import { Building2, Plus, RefreshCw, Search, Trash2, UserPlus, Users, Check, X, FileText, Star } from "lucide-react";
 import { useState, useCallback, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -63,6 +63,7 @@ function InlineField({ value, field, entityId, entityType, placeholder }: {
     onSettled: () => {
       if (entityType === "customer") {
         queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
         queryClient.invalidateQueries({ queryKey: [`/api/customers/${entityId}`] });
       } else {
         queryClient.invalidateQueries({ queryKey: [`/api/customers/${entityId}/contacts`] });
@@ -197,6 +198,7 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
     onSuccess: () => {
       toast({ title: "삭제 완료" });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
       onClose();
     },
     onError: (err: Error) => {
@@ -429,6 +431,9 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
   );
 }
 
+type CustomerWithStats = Customer & { inquiryCount: number };
+type FilterTab = "traded" | "untraded" | "bookmarked";
+
 export default function CustomerList() {
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
@@ -436,21 +441,74 @@ export default function CustomerList() {
   const [newBizNum, setNewBizNum] = useState("");
   const [search, setSearch] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [tab, setTab] = useState<FilterTab>("traded");
 
-  const { data: customers, isLoading } = useQuery<Customer[]>({
-    queryKey: ["/api/customers"],
+  const { data: customers, isLoading } = useQuery<CustomerWithStats[]>({
+    queryKey: ["/api/customers-with-stats"],
+  });
+
+  const favoriteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/customers/${id}/favorite`);
+      return res.json();
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/customers-with-stats"] });
+      const prev = queryClient.getQueryData<CustomerWithStats[]>(["/api/customers-with-stats"]);
+      if (prev) {
+        queryClient.setQueryData(["/api/customers-with-stats"], prev.map(c =>
+          c.id === id ? { ...c, isFavorite: !c.isFavorite } : c
+        ));
+      }
+      return { prev };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.prev) {
+        queryClient.setQueryData(["/api/customers-with-stats"], context.prev);
+      }
+      toast({ title: "즐겨찾기 변경 실패", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
+    },
   });
 
   const filtered = useMemo(() => {
     if (!customers) return [];
-    if (!search) return customers;
-    const s = search.toLowerCase();
-    return customers.filter(c =>
-      c.companyName.toLowerCase().includes(s) ||
-      (c.businessNumber && c.businessNumber.toLowerCase().includes(s)) ||
-      (c.representative && c.representative.toLowerCase().includes(s))
-    );
-  }, [customers, search]);
+    let list = customers;
+
+    if (tab === "traded") {
+      list = list.filter(c => c.inquiryCount > 0);
+    } else if (tab === "untraded") {
+      list = list.filter(c => c.inquiryCount === 0);
+    } else if (tab === "bookmarked") {
+      list = list.filter(c => c.inquiryCount === 0 && c.isFavorite);
+    }
+
+    if (search) {
+      const s = search.toLowerCase();
+      list = list.filter(c =>
+        c.companyName.toLowerCase().includes(s) ||
+        (c.businessNumber && c.businessNumber.toLowerCase().includes(s)) ||
+        (c.representative && c.representative.toLowerCase().includes(s))
+      );
+    }
+
+    return list.sort((a, b) => {
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+      return a.companyName.localeCompare(b.companyName);
+    });
+  }, [customers, search, tab]);
+
+  const tabCounts = useMemo(() => {
+    if (!customers) return { traded: 0, untraded: 0, bookmarked: 0 };
+    return {
+      traded: customers.filter(c => c.inquiryCount > 0).length,
+      untraded: customers.filter(c => c.inquiryCount === 0).length,
+      bookmarked: customers.filter(c => c.inquiryCount === 0 && c.isFavorite).length,
+    };
+  }, [customers]);
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -458,6 +516,7 @@ export default function CustomerList() {
       return res.json();
     },
     onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       toast({ title: data.message || "동기화 완료" });
@@ -473,6 +532,7 @@ export default function CustomerList() {
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       setShowAdd(false);
       setNewName("");
@@ -483,6 +543,12 @@ export default function CustomerList() {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
     },
   });
+
+  const tabs: { key: FilterTab; label: string; count: number }[] = [
+    { key: "traded", label: "거래", count: tabCounts.traded },
+    { key: "untraded", label: "미거래", count: tabCounts.untraded },
+    { key: "bookmarked", label: "북마크", count: tabCounts.bookmarked },
+  ];
 
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
@@ -506,15 +572,36 @@ export default function CustomerList() {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="상호명, 사업자번호, 대표자 검색"
-          className="pl-9"
-          data-testid="input-search-customers"
-        />
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex gap-1 border rounded-lg p-1">
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                tab === t.key
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted text-muted-foreground"
+              }`}
+              onClick={() => setTab(t.key)}
+              data-testid={`tab-${t.key}`}
+            >
+              {t.label}
+              <span className={`ml-1.5 text-xs ${tab === t.key ? "text-primary-foreground/70" : "text-muted-foreground/70"}`}>
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="relative max-w-sm flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="상호명, 사업자번호, 대표자 검색"
+            className="pl-9"
+            data-testid="input-search-customers"
+          />
+        </div>
       </div>
 
       {isLoading ? (
@@ -526,11 +613,12 @@ export default function CustomerList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
+                <th className="w-10 py-2.5 px-2"></th>
                 <th className="text-left py-2.5 px-4 font-medium">상호명</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자등록번호</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">전화번호</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">주소</th>
+                <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">인콰이어리</th>
               </tr>
             </thead>
             <tbody>
@@ -541,6 +629,20 @@ export default function CustomerList() {
                   onClick={() => setSelectedCustomerId(customer.id)}
                   data-testid={`row-customer-${customer.id}`}
                 >
+                  <td className="py-2.5 px-2 text-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        favoriteMutation.mutate(customer.id);
+                      }}
+                      className="hover:scale-110 transition-transform"
+                      data-testid={`button-favorite-${customer.id}`}
+                    >
+                      <Star
+                        className={`h-4 w-4 ${customer.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`}
+                      />
+                    </button>
+                  </td>
                   <td className="py-2.5 px-4">
                     <div className="flex items-center gap-2">
                       <Building2 className="h-4 w-4 text-primary shrink-0" />
@@ -550,8 +652,12 @@ export default function CustomerList() {
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.representative || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.phone || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">
-                    <span className="line-clamp-1">{customer.address || "-"}</span>
+                  <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                    {customer.inquiryCount > 0 ? (
+                      <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5">{customer.inquiryCount}건</span>
+                    ) : (
+                      <span className="text-muted-foreground/50">-</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -563,6 +669,8 @@ export default function CustomerList() {
           <Building2 className="h-12 w-12 mx-auto mb-4 opacity-30" />
           {search ? (
             <p>검색 결과가 없습니다.</p>
+          ) : tab === "bookmarked" ? (
+            <p>북마크된 고객사가 없습니다.</p>
           ) : (
             <>
               <p>등록된 고객사가 없습니다.</p>

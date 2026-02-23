@@ -7,7 +7,7 @@ import {
   inquiries, inquiryFiles, companies, customers, productImages,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, ilike, gte, lte, desc } from "drizzle-orm";
+import { eq, and, ilike, gte, lte, desc, sql } from "drizzle-orm";
 
 function naturalSort(a: string, b: string): number {
   const ax: (string | number)[] = [];
@@ -65,6 +65,7 @@ export interface IStorage {
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
   deleteCompany(id: string): Promise<void>;
   linkCompanyToCustomer(companyId: string, customerId: string): Promise<Company | undefined>;
+  getCustomerInquiryCounts(): Promise<Map<string, number>>;
   getInquiriesByCustomerId(customerId: string): Promise<Inquiry[]>;
   getInquiriesByCompanyId(companyId: string): Promise<Inquiry[]>;
 
@@ -267,6 +268,21 @@ export class DatabaseStorage implements IStorage {
       .where(eq(companies.id, companyId))
       .returning();
     return result[0];
+  }
+
+  async getCustomerInquiryCounts(): Promise<Map<string, number>> {
+    const rows = await db.select({
+      customerId: inquiries.customerId,
+      count: sql<number>`count(*)::int`,
+    })
+      .from(inquiries)
+      .where(sql`${inquiries.customerId} is not null`)
+      .groupBy(inquiries.customerId);
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      if (row.customerId) map.set(row.customerId, row.count);
+    }
+    return map;
   }
 
   async getInquiriesByCustomerId(customerId: string): Promise<Inquiry[]> {

@@ -438,6 +438,31 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/customers/:id/favorite", async (req, res) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+      const updated = await storage.updateCustomer(req.params.id, { isFavorite: !customer.isFavorite });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/customers-with-stats", async (_req, res) => {
+    try {
+      const list = await storage.getCustomers();
+      const inquiryCounts = await storage.getCustomerInquiryCounts();
+      const result = list.map(c => ({
+        ...c,
+        inquiryCount: inquiryCounts.get(c.id) || 0,
+      }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/customers/:id", async (req, res) => {
     try {
       await storage.deleteCustomer(req.params.id);

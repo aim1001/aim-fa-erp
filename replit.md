@@ -87,6 +87,9 @@ Example: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 - 2026-02-23: Dashboard multi-year checkbox filter (2020-2024 unchecked by default)
 - 2026-02-23: Quick view sidebar links (진행중/수주/실주) + clickable dashboard cards
 - 2026-02-23: Customer list converted to table view with modal editing (optimistic updates)
+- 2026-02-23: Session-based password authentication (APP_PASSWORD env var, default aim1001)
+- 2026-02-23: Dashboard 단계별 분포에서 "미설정" 제외
+- 2026-02-23: Customer favorite/bookmark feature (isFavorite field) with 3-tab filter (거래/미거래/북마크)
 
 ## User Preferences
 - Korean language UI
