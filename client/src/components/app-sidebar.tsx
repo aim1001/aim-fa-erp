@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText, Calendar, Clock, Wallet } from "lucide-react";
+import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText, Calendar, Clock, Wallet, FolderKanban } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -87,6 +87,14 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild data-active={location === "/inquiries" && new URLSearchParams(searchString).get("period") === "1y"} data-testid="nav-period-1y">
                   <Link href="/inquiries?period=1y"><Calendar /><span>최근 1년</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+            <SidebarSeparator className="my-1" />
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/projects"} data-testid="nav-projects">
+                  <Link href="/projects"><FolderKanban /><span>프로젝트</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

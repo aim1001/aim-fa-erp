@@ -232,3 +232,22 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 });
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type Payment = typeof payments.$inferSelect;
+
+export const projects = pgTable("projects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectNumber: text("project_number"),
+  customerName: text("customer_name"),
+  description: text("description"),
+  year: integer("year"),
+  folderName: text("folder_name"),
+  onedriveFolderId: text("onedrive_folder_id"),
+  onedriveWebUrl: text("onedrive_web_url"),
+  status: text("status").default("active"),
+  memo: text("memo"),
+});
+
+export const insertProjectSchema = createInsertSchema(projects).omit({
+  id: true,
+});
+export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type Project = typeof projects.$inferSelect;

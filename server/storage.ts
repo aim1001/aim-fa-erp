@@ -8,8 +8,9 @@ import {
   type SalesInvoice, type InsertSalesInvoice,
   type PurchaseInvoice, type InsertPurchaseInvoice,
   type Payment, type InsertPayment,
+  type Project, type InsertProject,
   inquiries, inquiryFiles, companies, customers, productImages,
-  vendors, salesInvoices, purchaseInvoices, payments,
+  vendors, salesInvoices, purchaseInvoices, payments, projects,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -119,6 +120,12 @@ export interface IStorage {
     byStatus: { status: string; count: number }[];
     byYear: { year: number; count: number }[];
   }>;
+
+  getProjects(year?: number): Promise<Project[]>;
+  getProjectByFolderName(folderName: string): Promise<Project | undefined>;
+  createProject(project: InsertProject): Promise<Project>;
+  updateProject(id: string, project: Partial<InsertProject>): Promise<Project | undefined>;
+  deleteProject(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -584,6 +591,32 @@ export class DatabaseStorage implements IStorage {
     } else {
       await db.delete(payments).where(eq(payments.purchaseInvoiceId, invoiceId));
     }
+  }
+
+  async getProjects(year?: number): Promise<Project[]> {
+    const conditions = [];
+    if (year) conditions.push(eq(projects.year, year));
+    const rows = await db.select().from(projects).where(conditions.length ? and(...conditions) : undefined);
+    return rows.sort((a, b) => naturalSort(a.projectNumber || "", b.projectNumber || ""));
+  }
+
+  async getProjectByFolderName(folderName: string): Promise<Project | undefined> {
+    const [row] = await db.select().from(projects).where(eq(projects.folderName, folderName));
+    return row;
+  }
+
+  async createProject(project: InsertProject): Promise<Project> {
+    const [row] = await db.insert(projects).values(project).returning();
+    return row;
+  }
+
+  async updateProject(id: string, project: Partial<InsertProject>): Promise<Project | undefined> {
+    const [row] = await db.update(projects).set(project).where(eq(projects.id, id)).returning();
+    return row;
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    await db.delete(projects).where(eq(projects.id, id));
   }
 }
 

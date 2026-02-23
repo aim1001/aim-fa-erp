@@ -11,6 +11,7 @@ import {
   readInfoJson,
   writeInfoJson,
   createInquiryFolder,
+  listFoldersByPath,
 } from "./onedrive";
 import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears } from "./excel-parser";
 
@@ -1493,6 +1494,96 @@ export async function registerRoutes(
       }
 
       res.json({ created: created.length, payments: created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/projects/years", async (_req, res) => {
+    try {
+      const folders = await listFoldersByPath("2.공사");
+      const years = folders
+        .map(f => parseInt(f.name))
+        .filter(y => !isNaN(y))
+        .sort((a, b) => b - a);
+      res.json(years);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/projects", async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const list = await storage.getProjects(year);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/projects/sync", async (req, res) => {
+    try {
+      const year = parseInt(req.query.year as string || req.body.year);
+      if (!year) return res.status(400).json({ message: "year required" });
+
+      const folderPath = `2.공사/${year}`;
+      const folders = await listFoldersByPath(folderPath);
+
+      let created = 0, updated = 0, skipped = 0;
+
+      for (const folder of folders) {
+        const existing = await storage.getProjectByFolderName(folder.name);
+        const parts = folder.name.split("_");
+        const projectNumber = parts[0] || folder.name;
+        const customerName = parts[1] || "";
+        const description = parts.slice(2).join("_") || "";
+
+        if (existing) {
+          await storage.updateProject(existing.id, {
+            onedriveFolderId: folder.id,
+            onedriveWebUrl: folder.webUrl,
+            projectNumber,
+            customerName,
+            description,
+            year,
+          });
+          updated++;
+        } else {
+          await storage.createProject({
+            projectNumber,
+            customerName,
+            description,
+            year,
+            folderName: folder.name,
+            onedriveFolderId: folder.id,
+            onedriveWebUrl: folder.webUrl,
+            status: "active",
+          });
+          created++;
+        }
+      }
+
+      res.json({ message: `동기화 완료: ${created}건 생성, ${updated}건 갱신`, created, updated, skipped, total: folders.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/projects/:id", async (req, res) => {
+    try {
+      const result = await storage.updateProject(req.params.id, req.body);
+      if (!result) return res.status(404).json({ message: "Not found" });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/projects/:id", async (req, res) => {
+    try {
+      await storage.deleteProject(req.params.id);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
