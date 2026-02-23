@@ -478,11 +478,11 @@ export default function CustomerList() {
     let list = customers;
 
     if (tab === "traded") {
-      list = list.filter(c => c.inquiryCount > 0);
+      list = list.filter(c => c.lastTransactionDate != null);
     } else if (tab === "untraded") {
-      list = list.filter(c => c.inquiryCount === 0);
+      list = list.filter(c => c.lastTransactionDate == null);
     } else if (tab === "bookmarked") {
-      list = list.filter(c => c.inquiryCount === 0 && c.isFavorite);
+      list = list.filter(c => c.lastTransactionDate == null && c.isFavorite);
     }
 
     if (search) {
@@ -504,9 +504,9 @@ export default function CustomerList() {
   const tabCounts = useMemo(() => {
     if (!customers) return { traded: 0, untraded: 0, bookmarked: 0 };
     return {
-      traded: customers.filter(c => c.inquiryCount > 0).length,
-      untraded: customers.filter(c => c.inquiryCount === 0).length,
-      bookmarked: customers.filter(c => c.inquiryCount === 0 && c.isFavorite).length,
+      traded: customers.filter(c => c.lastTransactionDate != null).length,
+      untraded: customers.filter(c => c.lastTransactionDate == null).length,
+      bookmarked: customers.filter(c => c.lastTransactionDate == null && c.isFavorite).length,
     };
   }, [customers]);
 
