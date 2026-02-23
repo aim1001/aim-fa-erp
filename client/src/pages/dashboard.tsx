@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { FileText, TrendingUp, Target, Calendar } from "lucide-react";
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const CHART_COLORS = [
@@ -26,6 +27,8 @@ const statusLabels: Record<string, string> = {
 const EXCLUDED_BY_DEFAULT = [2020, 2021, 2022, 2023, 2024];
 
 export default function Dashboard() {
+  const [, navigate] = useLocation();
+
   const { data: years } = useQuery<number[]>({
     queryKey: ["/api/years"],
   });
@@ -173,7 +176,11 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card
+              className="cursor-pointer transition-colors hover:bg-accent/50"
+              onClick={() => navigate("/inquiries?status=active")}
+              data-testid="card-active"
+            >
               <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">진행중</CardTitle>
                 <Target className="h-4 w-4 text-muted-foreground" />
@@ -183,7 +190,11 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card
+              className="cursor-pointer transition-colors hover:bg-accent/50"
+              onClick={() => navigate("/inquiries?status=won")}
+              data-testid="card-won"
+            >
               <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">수주</CardTitle>
                 <Calendar className="h-4 w-4 text-muted-foreground" />

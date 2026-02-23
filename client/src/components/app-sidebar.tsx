@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, RefreshCw, Building2, Users } from "lucide-react";
+import { LayoutDashboard, FileText, RefreshCw, Building2, Users, Target, Trophy } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -68,6 +68,38 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>빠른 보기</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "active"}
+                  data-testid="nav-quick-active"
+                >
+                  <Link href="/inquiries?status=active">
+                    <Target />
+                    <span>진행중</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  data-active={location === "/inquiries" && new URLSearchParams(searchString).get("status") === "won"}
+                  data-testid="nav-quick-won"
+                >
+                  <Link href="/inquiries?status=won">
+                    <Trophy />
+                    <span>수주</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
