@@ -926,6 +926,74 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/vendors/sync-from-invoices", async (_req, res) => {
+    try {
+      const allInvoices = await storage.getPurchaseInvoices();
+      const existingVendors = await storage.getVendors();
+
+      const vendorByBizNum = new Map<string, { id: string; representative: string | null; address: string | null; contactEmail: string | null }>();
+      for (const v of existingVendors) {
+        if (v.businessNumber) {
+          vendorByBizNum.set(v.businessNumber.replace(/-/g, ""), {
+            id: v.id,
+            representative: v.representative,
+            address: v.address,
+            contactEmail: v.contactEmail,
+          });
+        }
+      }
+
+      let vendorsCreated = 0;
+      let vendorsUpdated = 0;
+      let invoicesLinked = 0;
+
+      for (const inv of allInvoices) {
+        if (!inv.businessNumber) continue;
+        const bizNumClean = inv.businessNumber.replace(/-/g, "");
+        if (!bizNumClean) continue;
+
+        let vendorEntry = vendorByBizNum.get(bizNumClean);
+
+        if (!vendorEntry && inv.companyName) {
+          const newVendor = await storage.createVendor({
+            companyName: inv.companyName,
+            businessNumber: inv.businessNumber,
+            representative: inv.representative || null,
+            address: inv.address || null,
+            contactEmail: inv.email1 || null,
+          });
+          vendorEntry = {
+            id: newVendor.id,
+            representative: newVendor.representative,
+            address: newVendor.address,
+            contactEmail: newVendor.contactEmail,
+          };
+          vendorByBizNum.set(bizNumClean, vendorEntry);
+          vendorsCreated++;
+        } else if (vendorEntry) {
+          const updates: Record<string, string> = {};
+          if (!vendorEntry.representative && inv.representative) updates.representative = inv.representative;
+          if (!vendorEntry.address && inv.address) updates.address = inv.address;
+          if (!vendorEntry.contactEmail && inv.email1) updates.contactEmail = inv.email1;
+          if (Object.keys(updates).length > 0) {
+            await storage.updateVendor(vendorEntry.id, updates);
+            Object.assign(vendorEntry, updates);
+            vendorsUpdated++;
+          }
+        }
+
+        if (!inv.vendorId && vendorEntry) {
+          await storage.updatePurchaseInvoice(inv.id, { vendorId: vendorEntry.id });
+          invoicesLinked++;
+        }
+      }
+
+      res.json({ vendorsCreated, vendorsUpdated, invoicesLinked });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/sales-invoices", async (_req, res) => {
     try {
       const list = await storage.getSalesInvoices();

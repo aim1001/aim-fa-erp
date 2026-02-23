@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus, Search, Trash2, Star } from "lucide-react";
+import { Building2, Plus, Search, Trash2, Star, RefreshCw } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -183,6 +183,28 @@ export default function VendorList() {
     },
   });
 
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/vendors/sync-from-invoices");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      const parts: string[] = [];
+      if (data.vendorsCreated > 0) parts.push(`${data.vendorsCreated}개 신규 등록`);
+      if (data.vendorsUpdated > 0) parts.push(`${data.vendorsUpdated}개 정보 보충`);
+      if (data.invoicesLinked > 0) parts.push(`매입계산서 ${data.invoicesLinked}건 연결`);
+      toast({
+        title: "갱신 완료",
+        description: parts.length > 0 ? parts.join(", ") : "변경 사항 없음",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "갱신 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: { companyName: string }) => {
       const res = await apiRequest("POST", "/api/vendors", data);
@@ -221,10 +243,22 @@ export default function VendorList() {
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-vendor-list-title">공급업체 목록</h1>
-        <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-vendor">
-          <Plus className="h-4 w-4 mr-1" />
-          공급업체 추가
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            data-testid="button-sync-vendors"
+          >
+            {syncMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+            {syncMutation.isPending ? "갱신 중..." : "매입계산서 기준 갱신"}
+          </Button>
+          <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-vendor">
+            <Plus className="h-4 w-4 mr-1" />
+            공급업체 추가
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
