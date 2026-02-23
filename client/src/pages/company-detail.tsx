@@ -96,7 +96,7 @@ function InlineField({ value, field, companyId, placeholder }: {
 
 function CustomerLinkWidget({ companyId, company }: { companyId: string; company: Company }) {
   const { toast } = useToast();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(company.isTemporary ? company.companyName : "");
   const [showDropdown, setShowDropdown] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -178,8 +178,8 @@ function CustomerLinkWidget({ companyId, company }: { companyId: string; company
   }
 
   return (
-    <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20">
-      <div className="flex items-center gap-2 mb-2">
+    <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20 space-y-2">
+      <div className="flex items-center gap-2">
         <Badge variant="outline" className="text-xs gap-1 border-amber-500 text-amber-600">
           <AlertCircle className="h-3 w-3" />임시
         </Badge>
@@ -187,7 +187,7 @@ function CustomerLinkWidget({ companyId, company }: { companyId: string; company
       </div>
       <div className="relative" ref={ref}>
         <Input
-          placeholder="기존 고객사명으로 검색하여 연결..."
+          placeholder="고객사명으로 검색하여 연결..."
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
@@ -216,6 +216,9 @@ function CustomerLinkWidget({ companyId, company }: { companyId: string; company
               </button>
             ))}
           </div>
+        )}
+        {searchQuery.length >= 1 && searchResults.length === 0 && (
+          <p className="text-xs text-muted-foreground mt-1">일치하는 고객사가 없습니다. 엑셀 고객사 동기화 후 다시 시도해보세요.</p>
         )}
       </div>
     </div>

@@ -36,6 +36,7 @@ export default function CustomerList() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       toast({ title: data.message || "동기화 완료" });
     },
     onError: (err: Error) => {

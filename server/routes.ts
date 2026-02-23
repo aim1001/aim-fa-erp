@@ -418,6 +418,7 @@ export async function registerRoutes(
       const rows = await parseCustomerListFromOneDrive();
       let created = 0;
       let updated = 0;
+      let linked = 0;
 
       for (const row of rows) {
         const existing = row.businessNumber
@@ -442,20 +443,33 @@ export async function registerRoutes(
           registrationDate: row.registrationDate || null,
         };
 
+        let customer;
         if (existing) {
-          await storage.updateCustomer(existing.id, data);
+          customer = await storage.updateCustomer(existing.id, data);
           updated++;
         } else {
-          await storage.createCustomer(data);
+          customer = await storage.createCustomer(data);
           created++;
+        }
+
+        if (customer) {
+          const tempCompanies = await storage.getTemporaryCompaniesByName(row.companyName);
+          for (const tc of tempCompanies) {
+            await storage.updateCompany(tc.id, {
+              customerId: customer.id,
+              isTemporary: false,
+            });
+            linked++;
+          }
         }
       }
 
       res.json({
-        message: `고객사 목록 동기화 완료: ${created}개 신규, ${updated}개 업데이트`,
+        message: `고객사 목록 동기화 완료: ${created}개 신규, ${updated}개 업데이트, ${linked}개 임시→정식 연결`,
         total: rows.length,
         created,
         updated,
+        linked,
       });
     } catch (err: any) {
       console.error("고객사 동기화 오류:", err);
