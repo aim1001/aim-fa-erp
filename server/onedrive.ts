@@ -18,7 +18,7 @@ async function getAccessToken() {
     throw new Error('X_REPLIT_TOKEN not found for repl/depl');
   }
 
-  connectionSettings = await fetch(
+  const rawResponse = await fetch(
     'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=onedrive',
     {
       headers: {
@@ -26,13 +26,55 @@ async function getAccessToken() {
         'X-Replit-Token': xReplitToken
       }
     }
-  ).then(res => res.json()).then(data => data.items?.[0]);
+  );
+  const responseData = await rawResponse.json();
+  connectionSettings = responseData.items?.[0];
 
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token;
+  console.log('OneDrive connector response keys:', JSON.stringify(Object.keys(responseData || {})));
+  console.log('OneDrive connection item keys:', JSON.stringify(connectionSettings ? Object.keys(connectionSettings) : 'null'));
+  if (connectionSettings?.settings) {
+    console.log('OneDrive settings keys:', JSON.stringify(Object.keys(connectionSettings.settings)));
+    const token = connectionSettings.settings.access_token;
+    console.log('OneDrive access_token type:', typeof token, 'length:', token?.length, 'starts:', typeof token === 'string' ? token.substring(0, 20) + '...' : 'N/A');
+    console.log('OneDrive access_token has dots:', typeof token === 'string' ? token.split('.').length - 1 : 'N/A');
+    if (connectionSettings.settings.oauth) {
+      console.log('OneDrive oauth keys:', JSON.stringify(Object.keys(connectionSettings.settings.oauth)));
+      if (connectionSettings.settings.oauth.credentials) {
+        console.log('OneDrive oauth.credentials keys:', JSON.stringify(Object.keys(connectionSettings.settings.oauth.credentials)));
+        const oauthToken = connectionSettings.settings.oauth.credentials.access_token;
+        console.log('OneDrive oauth access_token type:', typeof oauthToken, 'length:', oauthToken?.length, 'has dots:', typeof oauthToken === 'string' ? oauthToken.split('.').length - 1 : 'N/A');
+      }
+    }
+  }
+  if (connectionSettings?.secrets) {
+    console.log('OneDrive secrets keys:', JSON.stringify(Object.keys(connectionSettings.secrets)));
+  }
+  if (connectionSettings?.settings?.oauth?.credentials) {
+    const creds = connectionSettings.settings.oauth.credentials;
+    console.log('OneDrive oauth expires_at:', creds.expires_at, 'now:', Date.now(), 'expired:', creds.expires_at < Date.now());
+    console.log('OneDrive oauth token_type:', creds.token_type, 'scope:', creds.scope);
+  }
+
+  const accessToken = connectionSettings?.settings?.access_token 
+    || connectionSettings?.settings?.oauth?.credentials?.access_token
+    || connectionSettings?.secrets?.access_token
+    || connectionSettings?.secrets?.oauth?.credentials?.access_token;
 
   if (!connectionSettings || !accessToken) {
-    throw new Error('OneDrive not connected');
+    throw new Error('OneDrive not connected - no valid access token found');
   }
+
+  const testRes = await fetch('https://graph.microsoft.com/v1.0/me/drive', {
+    headers: { 'Authorization': 'Bearer ' + accessToken }
+  });
+  console.log('OneDrive direct API test status:', testRes.status);
+  if (testRes.status !== 200) {
+    const testBody = await testRes.text();
+    console.log('OneDrive direct API test body:', testBody.substring(0, 300));
+    connectionSettings = null;
+    throw new Error('OneDrive token is invalid (status ' + testRes.status + ')');
+  }
+
   return accessToken;
 }
 
