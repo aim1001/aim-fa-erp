@@ -247,7 +247,7 @@ export async function registerRoutes(
 
   app.post("/api/sync-onedrive", async (req, res) => {
     try {
-      const targetYear = req.body.year ? parseInt(req.body.year) : undefined;
+      const targetYear = req.body?.year ? parseInt(req.body.year) : undefined;
       const yearFolders = await listRootSalesFolder();
       let synced = 0;
       let skipped = 0;
