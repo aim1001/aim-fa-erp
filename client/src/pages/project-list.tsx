@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check, Pencil, Trash2, Banknote } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check, Pencil, Trash2, Banknote, AlertTriangle } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -329,7 +329,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
   const purchaseTotal = project.purchaseInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const profit = salesTotal - purchaseTotal;
   const incomePayments = project.payments.filter(p => p.type === "income");
-  const paidIncome = incomePayments.filter(p => p.status === "completed" || p.actualDate).reduce((s, p) => s + (p.amount || 0), 0);
+  const paidIncome = incomePayments.filter(p => p.status === "completed" || p.actualDate).reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
   const plannedIncome = incomePayments.filter(p => p.status !== "completed" && !p.actualDate).reduce((s, p) => s + (p.amount || 0), 0);
   const hasConditions = !!project.totalAmount && project.totalAmount > 0;
 
@@ -401,13 +401,11 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                 {incomePayments.map((pay, idx) => {
                   const isEditing = editingPaymentId === pay.id;
                   const isConfirming = confirmingPaymentId === pay.id;
-                  const amt = pay.amount || 0;
+                  const isDone = pay.status === "completed" || !!pay.actualDate;
+                  const amt = isDone && pay.actualAmount ? pay.actualAmount : (pay.amount || 0);
                   const supply = Math.round(amt / 1.1);
                   const vat = amt - supply;
-                  const ratioMap: Record<string, number> = { "계약금": project.depositRatio || 0, "중도금": project.midRatio || 0, "잔금": project.finalRatio || 0 };
-                  const matchedStage = Object.keys(ratioMap).find(k => pay.description?.includes(k));
-                  const pct = matchedStage ? ratioMap[matchedStage] : (project.totalAmount ? Math.round((supply / project.totalAmount) * 100) : 0);
-                  const isDone = pay.status === "completed" || !!pay.actualDate;
+                  const pct = project.totalAmount ? Math.round((supply / project.totalAmount) * 100) : 0;
                   const remainder = isConfirming ? amt - confirmAmount : 0;
                   const nextPending = incomePayments.find((p, i) => i > idx && p.status !== "completed" && !p.actualDate);
 
@@ -541,16 +539,32 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                   const totalAmt = paidIncome + plannedIncome;
                   const totalSupply = Math.round(totalAmt / 1.1);
                   const totalVat = totalAmt - totalSupply;
+                  const projectTotal = project.totalAmount ? Math.round(project.totalAmount * 1.1) : 0;
+                  const diff = projectTotal - totalAmt;
                   return (
-                    <div className="flex items-center justify-between text-[10px] py-1.5 px-2 bg-muted/30 font-medium">
-                      <span>합계</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">공급 {fmtComma(totalSupply)}</span>
-                        <span className="text-muted-foreground">VAT {fmtComma(totalVat)}</span>
-                        <span className="text-blue-600">{fmtComma(totalAmt)}원</span>
-                        <span className="text-muted-foreground ml-1">수금 {fmtComma(paidIncome)} / 예정 {fmtComma(plannedIncome)}</span>
+                    <>
+                      <div className="flex items-center justify-between text-[10px] py-1.5 px-2 bg-muted/30 font-medium">
+                        <span>합계 {project.totalAmount ? `(${Math.round((totalSupply / project.totalAmount) * 100)}%)` : ""}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">공급 {fmtComma(totalSupply)}</span>
+                          <span className="text-muted-foreground">VAT {fmtComma(totalVat)}</span>
+                          <span className="text-blue-600">{fmtComma(totalAmt)}원</span>
+                          <span className="text-muted-foreground ml-1">수금 {fmtComma(paidIncome)} / 예정 {fmtComma(plannedIncome)}</span>
+                        </div>
                       </div>
-                    </div>
+                      {projectTotal > 0 && diff !== 0 && (
+                        <div className={`flex items-center justify-between text-[10px] py-1 px-2 ${diff > 0 ? "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400" : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"}`}>
+                          <div className="flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            <span>{diff > 0 ? "미배정" : "초과"} {fmtComma(Math.abs(diff))}원</span>
+                          </div>
+                          <span className="text-muted-foreground">
+                            프로젝트 총액 {fmtComma(projectTotal)}원 (공급 {fmtComma(project.totalAmount || 0)})
+                            {diff > 0 && " — 예정 항목 금액을 조정하거나 새 항목을 추가하세요"}
+                          </span>
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
               </div>
