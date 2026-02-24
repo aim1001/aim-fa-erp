@@ -9,8 +9,10 @@ import {
   type PurchaseInvoice, type InsertPurchaseInvoice,
   type Payment, type InsertPayment,
   type Project, type InsertProject,
+  type OnedriveToken,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
+  onedriveTokens,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -127,6 +129,10 @@ export interface IStorage {
   createProject(project: InsertProject): Promise<Project>;
   updateProject(id: string, project: Partial<InsertProject>): Promise<Project | undefined>;
   deleteProject(id: string): Promise<void>;
+
+  getOnedriveToken(): Promise<OnedriveToken | undefined>;
+  saveOnedriveToken(data: { accessToken: string; refreshToken: string; expiresAt: Date; accountName?: string; accountEmail?: string }): Promise<OnedriveToken>;
+  deleteOnedriveToken(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -631,6 +637,27 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProject(id: string): Promise<void> {
     await db.delete(projects).where(eq(projects.id, id));
+  }
+
+  async getOnedriveToken(): Promise<OnedriveToken | undefined> {
+    const rows = await db.select().from(onedriveTokens).limit(1);
+    return rows[0];
+  }
+
+  async saveOnedriveToken(data: { accessToken: string; refreshToken: string; expiresAt: Date; accountName?: string; accountEmail?: string }): Promise<OnedriveToken> {
+    await db.delete(onedriveTokens);
+    const [row] = await db.insert(onedriveTokens).values({
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      expiresAt: data.expiresAt,
+      accountName: data.accountName || null,
+      accountEmail: data.accountEmail || null,
+    }).returning();
+    return row;
+  }
+
+  async deleteOnedriveToken(): Promise<void> {
+    await db.delete(onedriveTokens);
   }
 }
 

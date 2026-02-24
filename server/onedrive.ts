@@ -1,25 +1,179 @@
+import { storage } from "./storage";
+
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+const OAUTH_AUTHORITY = 'https://login.microsoftonline.com/common';
+const OAUTH_TOKEN_URL = `${OAUTH_AUTHORITY}/oauth2/v2.0/token`;
+const OAUTH_AUTH_URL = `${OAUTH_AUTHORITY}/oauth2/v2.0/authorize`;
+const SCOPES = 'openid profile email offline_access Files.ReadWrite.All User.Read';
 
-let connectionSettings: any;
-let lastTokenFetchTime: number = 0;
-const TOKEN_CACHE_MAX_AGE = 5 * 60 * 1000;
+let cachedAccessToken: string | null = null;
+let cachedTokenExpiry: number = 0;
 
-function maskToken(token: string): string {
-  if (!token) return `[null/empty]`;
-  return `[len=${token.length}, hasDots=${token.includes('.')}, dotCount=${(token.match(/\./g) || []).length}, startsWithBearer=${token.startsWith('Bearer ')}, type=${token.includes('.') ? 'jwt-like' : 'opaque'}]`;
+function getOAuthConfig() {
+  const clientId = process.env.AZURE_CLIENT_ID;
+  const clientSecret = process.env.AZURE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('Azure Client ID/Secret이 설정되지 않았습니다.');
+  }
+  return { clientId, clientSecret };
 }
 
-function deepKeys(obj: any, prefix = ''): string[] {
-  if (!obj || typeof obj !== 'object') return [];
-  const keys: string[] = [];
-  for (const key of Object.keys(obj)) {
-    const fullKey = prefix ? `${prefix}.${key}` : key;
-    keys.push(fullKey);
-    if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
-      keys.push(...deepKeys(obj[key], fullKey));
-    }
+function getRedirectUri(): string {
+  const devDomain = process.env.REPLIT_DEV_DOMAIN;
+  const deployDomain = process.env.REPLIT_DEPLOYMENT_URL;
+  if (deployDomain) {
+    return `${deployDomain}/api/onedrive/callback`;
   }
-  return keys;
+  if (devDomain) {
+    return `https://${devDomain}/api/onedrive/callback`;
+  }
+  return 'http://localhost:5000/api/onedrive/callback';
+}
+
+export function getAuthUrl(): string {
+  const { clientId } = getOAuthConfig();
+  const redirectUri = getRedirectUri();
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    redirect_uri: redirectUri,
+    scope: SCOPES,
+    response_mode: 'query',
+    prompt: 'consent',
+  });
+  return `${OAUTH_AUTH_URL}?${params.toString()}`;
+}
+
+export async function exchangeCodeForTokens(code: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; accountName?: string; accountEmail?: string }> {
+  const { clientId, clientSecret } = getOAuthConfig();
+  const redirectUri = getRedirectUri();
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+    scope: SCOPES,
+  });
+
+  const res = await fetch(OAUTH_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error('[OneDrive OAuth] 토큰 교환 실패:', errBody);
+    throw new Error(`토큰 교환 실패 (HTTP ${res.status})`);
+  }
+
+  const data = await res.json();
+
+  const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000);
+
+  let accountName: string | undefined;
+  let accountEmail: string | undefined;
+  try {
+    const me = await graphFetchDirect('/me', data.access_token, { select: 'displayName,mail,userPrincipalName' });
+    accountName = me.displayName;
+    accountEmail = me.mail || me.userPrincipalName;
+  } catch (e) {
+    console.warn('[OneDrive] 계정 정보 조회 실패:', (e as Error).message);
+  }
+
+  await storage.saveOnedriveToken({
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt,
+    accountName,
+    accountEmail,
+  });
+
+  cachedAccessToken = data.access_token;
+  cachedTokenExpiry = expiresAt.getTime();
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresIn: data.expires_in,
+    accountName,
+    accountEmail,
+  };
+}
+
+async function refreshAccessToken(): Promise<string> {
+  const tokenRecord = await storage.getOnedriveToken();
+  if (!tokenRecord || !tokenRecord.refreshToken) {
+    throw new Error('OneDrive가 연결되지 않았습니다. OneDrive 연결 버튼을 눌러 주세요.');
+  }
+
+  const { clientId, clientSecret } = getOAuthConfig();
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: tokenRecord.refreshToken,
+    grant_type: 'refresh_token',
+    scope: SCOPES,
+  });
+
+  const res = await fetch(OAUTH_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error('[OneDrive OAuth] 토큰 갱신 실패:', errBody);
+    await storage.deleteOnedriveToken();
+    cachedAccessToken = null;
+    cachedTokenExpiry = 0;
+    throw new Error('OneDrive 토큰이 만료되었습니다. OneDrive를 다시 연결해 주세요.');
+  }
+
+  const data = await res.json();
+  const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000);
+
+  await storage.saveOnedriveToken({
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || tokenRecord.refreshToken,
+    expiresAt,
+    accountName: tokenRecord.accountName || undefined,
+    accountEmail: tokenRecord.accountEmail || undefined,
+  });
+
+  cachedAccessToken = data.access_token;
+  cachedTokenExpiry = expiresAt.getTime();
+
+  console.log('[OneDrive] 토큰 자동 갱신 성공');
+  return data.access_token;
+}
+
+async function getAccessToken(): Promise<string> {
+  if (cachedAccessToken && cachedTokenExpiry > Date.now() + 60000) {
+    return cachedAccessToken;
+  }
+
+  const tokenRecord = await storage.getOnedriveToken();
+  if (!tokenRecord) {
+    throw new Error('OneDrive가 연결되지 않았습니다. OneDrive 연결 버튼을 눌러 주세요.');
+  }
+
+  if (tokenRecord.expiresAt.getTime() > Date.now() + 60000) {
+    cachedAccessToken = tokenRecord.accessToken;
+    cachedTokenExpiry = tokenRecord.expiresAt.getTime();
+    return tokenRecord.accessToken;
+  }
+
+  return await refreshAccessToken();
+}
+
+export function resetTokenCache() {
+  cachedAccessToken = null;
+  cachedTokenExpiry = 0;
 }
 
 type GraphErrorType = 'token_expired' | 'token_invalid' | 'needs_reauth' | 'needs_consent' | 'client_error' | 'transient' | 'unknown';
@@ -54,102 +208,10 @@ function classifyGraphError(statusCode: number, errorBody: any): { type: GraphEr
   return { type: 'unknown', code, message, needsReconnect: false };
 }
 
-function getConnectorHeaders(): { hostname: string; token: string } {
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? 'repl ' + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL
-    : null;
-
-  if (!hostname || !xReplitToken) {
-    throw new Error('Replit 커넥터 환경 변수를 찾을 수 없습니다. 서버를 재시작해 주세요.');
-  }
-  return { hostname, token: xReplitToken };
-}
-
-function extractAccessToken(conn: any): string | null {
-  if (!conn) return null;
-
-  const candidates = [
-    conn.settings?.access_token,
-    conn.settings?.oauth?.credentials?.access_token,
-    conn.settings?.oauth?.access_token,
-    conn.settings?.token,
-    conn.settings?.credentials?.access_token,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.length > 0) {
-      if (candidate.startsWith('Bearer ')) {
-        return candidate.substring(7);
-      }
-      return candidate;
-    }
-  }
-
-  return null;
-}
-
-async function fetchConnectionFromReplit(): Promise<any> {
-  const { hostname, token } = getConnectorHeaders();
-  const res = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=onedrive',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X-Replit-Token': token,
-      }
-    }
-  );
-  if (!res.ok) {
-    throw new Error(`OneDrive 커넥터 API 요청 실패 (HTTP ${res.status})`);
-  }
-  const data = await res.json();
-  const conn = data.items?.[0] || null;
-
-  if (conn) {
-    const schemaKeys = deepKeys(conn.settings || {});
-    const accessToken = extractAccessToken(conn);
-    console.log('[OneDrive 진단] 커넥터 응답 스키마:', JSON.stringify(schemaKeys));
-    console.log('[OneDrive 진단] 토큰 추출 결과:', accessToken ? maskToken(accessToken) : 'null (토큰 없음)');
-  } else {
-    console.warn('[OneDrive 진단] 커넥터 응답에 연결 항목 없음');
-  }
-
-  return conn;
-}
-
-export function resetTokenCache() {
-  connectionSettings = null;
-  lastTokenFetchTime = 0;
-}
-
-async function getAccessToken(): Promise<string> {
-  const now = Date.now();
-  const cacheStale = (now - lastTokenFetchTime) > TOKEN_CACHE_MAX_AGE;
-
-  if (connectionSettings && !cacheStale) {
-    const cached = extractAccessToken(connectionSettings);
-    if (cached) return cached;
-  }
-
-  connectionSettings = await fetchConnectionFromReplit();
-  lastTokenFetchTime = now;
-
-  const accessToken = extractAccessToken(connectionSettings);
-
-  if (!connectionSettings || !accessToken) {
-    throw new Error('OneDrive가 연결되지 않았습니다. Replit 도구 패널에서 OneDrive를 연결해 주세요.');
-  }
-  return accessToken;
-}
-
-async function graphFetch(path: string, token: string, options?: {
+async function graphFetchDirect(path: string, token: string, options?: {
   method?: string;
   body?: any;
   select?: string;
-  rawResponse?: boolean;
 }): Promise<any> {
   const method = options?.method || 'GET';
   let url = `${GRAPH_BASE}${path}`;
@@ -192,10 +254,6 @@ async function graphFetch(path: string, token: string, options?: {
     throw err;
   }
 
-  if (options?.rawResponse) {
-    return res;
-  }
-
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
     return res.json();
@@ -213,35 +271,28 @@ async function graphCallWithRetry<T>(
     return await operationFactory(token);
   } catch (firstErr: any) {
     const classified = firstErr.graphError || classifyGraphError(firstErr.statusCode || 0, firstErr);
-    console.warn(`[OneDrive] ${operationName} 실패 (1차): type=${classified.type}, code=${classified.code}, message=${classified.message}`);
+    console.warn(`[OneDrive] ${operationName} 실패 (1차): type=${classified.type}, code=${classified.code}`);
 
     if (classified.needsReconnect) {
-      console.error(`[OneDrive] 재연결 필요: ${classified.type}. 사용자가 Replit 도구 패널에서 OneDrive를 다시 연결해야 합니다.`);
       throw new Error(`OneDrive 재연결 필요 (${classified.type}): ${classified.message}`);
     }
 
     if (classified.type === 'transient') {
       await new Promise(r => setTimeout(r, 1000));
-      try {
-        return await operationFactory(token);
-      } catch (retryErr: any) {
-        console.error(`[OneDrive] ${operationName} 재시도 실패 (transient):`, retryErr.message);
-        throw retryErr;
-      }
+      return await operationFactory(token);
     }
 
     if (classified.type === 'token_expired' || classified.type === 'token_invalid') {
-      console.log(`[OneDrive] 토큰 문제로 캐시 초기화 후 재시도 (${classified.type})`);
+      console.log(`[OneDrive] 토큰 문제로 갱신 후 재시도 (${classified.type})`);
       resetTokenCache();
-
       try {
-        const freshToken = await getAccessToken();
+        const freshToken = await refreshAccessToken();
         return await operationFactory(freshToken);
       } catch (retryErr: any) {
         const retryClassified = retryErr.graphError || classifyGraphError(retryErr.statusCode || 0, retryErr);
-        console.error(`[OneDrive] ${operationName} 재시도 실패: type=${retryClassified.type}, message=${retryClassified.message}`);
-        if (retryClassified.needsReconnect) {
-          throw new Error(`OneDrive 재연결 필요 (${retryClassified.type}): ${retryClassified.message}`);
+        if (retryClassified.needsReconnect || retryClassified.type === 'token_invalid') {
+          await storage.deleteOnedriveToken();
+          throw new Error('OneDrive 토큰이 만료되었습니다. OneDrive를 다시 연결해 주세요.');
         }
         throw retryErr;
       }
@@ -257,85 +308,35 @@ export async function checkConnectionStatus(): Promise<{
   expiresAt?: string;
   accountInfo?: string;
   errorType?: string;
+  authUrl?: string;
 }> {
   try {
-    resetTokenCache();
-    const conn = await fetchConnectionFromReplit();
-    if (!conn) {
-      return { connected: false, message: 'OneDrive 연결이 설정되지 않았습니다. Replit 도구 패널에서 OneDrive를 연결해 주세요.', errorType: 'not_configured' };
-    }
-
-    const accessToken = extractAccessToken(conn);
-    if (!accessToken) {
-      const schemaKeys = deepKeys(conn.settings || {});
-      console.error('[OneDrive 진단] 토큰 추출 실패. 스키마:', JSON.stringify(schemaKeys));
-      return { connected: false, message: 'OneDrive 액세스 토큰을 찾을 수 없습니다. 커넥터 응답 구조가 변경되었을 수 있습니다.', errorType: 'token_not_found' };
-    }
-
-    connectionSettings = conn;
-    lastTokenFetchTime = Date.now();
-
-    try {
-      const me = await graphFetch('/me', accessToken, { select: 'displayName,mail' });
-      return {
-        connected: true,
-        message: `OneDrive 연결됨 (${me.displayName || me.mail || '계정 확인됨'})`,
-        expiresAt: conn.settings?.expires_at,
-        accountInfo: me.displayName || me.mail,
-      };
-    } catch (graphErr: any) {
-      const classified = graphErr.graphError || classifyGraphError(graphErr.statusCode || 0, graphErr);
-      console.warn(`[OneDrive 진단] Graph /me 호출 실패: type=${classified.type}, code=${classified.code}, msg=${classified.message}`);
-      console.log('[OneDrive 진단] 사용한 토큰:', maskToken(accessToken));
-
-      if (classified.type === 'token_expired' || classified.type === 'token_invalid') {
-        console.log('[OneDrive 진단] 토큰 문제 → 커넥터에서 재발급 시도');
-        resetTokenCache();
-        const retryConn = await fetchConnectionFromReplit();
-        const retryToken = extractAccessToken(retryConn);
-
-        if (!retryToken) {
-          return { connected: false, message: 'OneDrive 토큰 갱신 실패. Replit 도구 패널에서 OneDrive를 다시 연결해 주세요.', errorType: 'token_refresh_failed' };
-        }
-
-        connectionSettings = retryConn;
-        lastTokenFetchTime = Date.now();
-
-        try {
-          const me = await graphFetch('/me', retryToken, { select: 'displayName,mail' });
-          return {
-            connected: true,
-            message: `OneDrive 연결됨 (${me.displayName || me.mail || '계정 확인됨'})`,
-            expiresAt: retryConn.settings?.expires_at,
-            accountInfo: me.displayName || me.mail,
-          };
-        } catch (retryGraphErr: any) {
-          const retryClassified = retryGraphErr.graphError || classifyGraphError(retryGraphErr.statusCode || 0, retryGraphErr);
-          console.error(`[OneDrive 진단] 재시도 후에도 실패: type=${retryClassified.type}, msg=${retryClassified.message}`);
-          return {
-            connected: false,
-            message: retryClassified.needsReconnect
-              ? `OneDrive 재연결 필요: ${retryClassified.message}`
-              : `OneDrive API 오류: ${retryClassified.message}`,
-            errorType: retryClassified.type,
-          };
-        }
-      }
-
+    const tokenRecord = await storage.getOnedriveToken();
+    if (!tokenRecord) {
       return {
         connected: false,
-        message: classified.needsReconnect
-          ? `OneDrive 재연결 필요: ${classified.message}`
-          : `OneDrive 연결 오류: ${classified.message}`,
-        errorType: classified.type,
+        message: 'OneDrive가 연결되지 않았습니다.',
+        errorType: 'not_configured',
+        authUrl: getAuthUrl(),
       };
     }
+
+    const token = await getAccessToken();
+    const me = await graphFetchDirect('/me', token, { select: 'displayName,mail,userPrincipalName' });
+
+    return {
+      connected: true,
+      message: `OneDrive 연결됨 (${me.displayName || me.mail || '계정 확인됨'})`,
+      expiresAt: tokenRecord.expiresAt.toISOString(),
+      accountInfo: me.displayName || me.mail,
+    };
   } catch (err: any) {
-    console.error('[OneDrive 진단] checkConnectionStatus 예외:', err.message);
+    console.error('[OneDrive] checkConnectionStatus 실패:', err.message);
     return {
       connected: false,
-      message: `OneDrive 연결 확인 실패: ${err.message}`,
+      message: err.message || 'OneDrive 연결 확인 실패',
       errorType: 'exception',
+      authUrl: getAuthUrl(),
     };
   }
 }
@@ -356,7 +357,7 @@ export interface OneDriveFile {
 
 export async function listRootSalesFolder(): Promise<OneDriveFolder[]> {
   const result = await graphCallWithRetry(
-    (token) => graphFetch('/me/drive/root:/1.영업:/children', token, { select: 'id,name,webUrl,folder' }),
+    (token) => graphFetchDirect('/me/drive/root:/1.영업:/children', token, { select: 'id,name,webUrl,folder' }),
     'listRootSalesFolder'
   );
 
@@ -371,7 +372,7 @@ export async function listRootSalesFolder(): Promise<OneDriveFolder[]> {
 
 export async function listYearFolders(yearFolderName: string): Promise<OneDriveFolder[]> {
   const result = await graphCallWithRetry(
-    (token) => graphFetch(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, { select: 'id,name,webUrl,folder' }),
+    (token) => graphFetchDirect(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, { select: 'id,name,webUrl,folder' }),
     'listYearFolders'
   );
 
@@ -386,7 +387,7 @@ export async function listYearFolders(yearFolderName: string): Promise<OneDriveF
 
 export async function createInquiryFolder(yearFolderName: string, folderName: string): Promise<OneDriveFolder> {
   const result = await graphCallWithRetry(
-    (token) => graphFetch(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, {
+    (token) => graphFetchDirect(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, {
       method: 'POST',
       body: {
         name: folderName,
@@ -406,7 +407,7 @@ export async function createInquiryFolder(yearFolderName: string, folderName: st
 
 export async function listFolderFiles(folderId: string): Promise<OneDriveFile[]> {
   const result = await graphCallWithRetry(
-    (token) => graphFetch(`/me/drive/items/${folderId}/children`, token, { select: 'id,name,webUrl,size,file' }),
+    (token) => graphFetchDirect(`/me/drive/items/${folderId}/children`, token, { select: 'id,name,webUrl,size,file' }),
     'listFolderFiles'
   );
 
@@ -423,7 +424,7 @@ export async function listFolderFiles(folderId: string): Promise<OneDriveFile[]>
 
 export async function downloadFile(itemId: string): Promise<Buffer> {
   const buffer = await graphCallWithRetry(
-    (token) => graphFetch(`/me/drive/items/${itemId}/content`, token),
+    (token) => graphFetchDirect(`/me/drive/items/${itemId}/content`, token),
     'downloadFile'
   );
   return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
@@ -432,7 +433,7 @@ export async function downloadFile(itemId: string): Promise<Buffer> {
 export async function readInfoJson(folderId: string): Promise<Record<string, any> | null> {
   try {
     const children = await graphCallWithRetry(
-      (token) => graphFetch(`/me/drive/items/${folderId}/children`, token, { select: 'id,name,file' }),
+      (token) => graphFetchDirect(`/me/drive/items/${folderId}/children`, token, { select: 'id,name,file' }),
       'readInfoJson.list'
     );
 
@@ -442,7 +443,7 @@ export async function readInfoJson(folderId: string): Promise<Record<string, any
     if (!infoFile) return null;
 
     const buffer = await graphCallWithRetry(
-      (token) => graphFetch(`/me/drive/items/${infoFile.id}/content`, token),
+      (token) => graphFetchDirect(`/me/drive/items/${infoFile.id}/content`, token),
       'readInfoJson.download'
     );
 
@@ -457,7 +458,7 @@ export async function readInfoJson(folderId: string): Promise<Record<string, any
 export async function writeInfoJson(folderId: string, data: Record<string, any>): Promise<void> {
   const content = JSON.stringify(data, null, 2);
   const folderItem = await graphCallWithRetry(
-    (token) => graphFetch(`/me/drive/items/${folderId}`, token, { select: 'parentReference,name' }),
+    (token) => graphFetchDirect(`/me/drive/items/${folderId}`, token, { select: 'parentReference,name' }),
     'writeInfoJson.getFolder'
   );
   const driveId = folderItem.parentReference?.driveId;
@@ -467,7 +468,7 @@ export async function writeInfoJson(folderId: string, data: Record<string, any>)
     : `/me/drive/items/${folderId}:/_info.json:/content`;
 
   await graphCallWithRetry(
-    (token) => graphFetch(uploadPath, token, { method: 'PUT', body: Buffer.from(content, 'utf-8') }),
+    (token) => graphFetchDirect(uploadPath, token, { method: 'PUT', body: Buffer.from(content, 'utf-8') }),
     'writeInfoJson.put'
   );
 }
@@ -475,7 +476,7 @@ export async function writeInfoJson(folderId: string, data: Record<string, any>)
 export async function listFilesByPath(path: string): Promise<OneDriveFile[]> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const result = await graphCallWithRetry(
-    (token) => graphFetch(`/me/drive/root:/${encodedPath}:/children`, token, { select: 'id,name,webUrl,size,file' }),
+    (token) => graphFetchDirect(`/me/drive/root:/${encodedPath}:/children`, token, { select: 'id,name,webUrl,size,file' }),
     'listFilesByPath'
   );
 
@@ -493,7 +494,7 @@ export async function listFilesByPath(path: string): Promise<OneDriveFile[]> {
 export async function listFoldersByPath(path: string): Promise<OneDriveFolder[]> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const result = await graphCallWithRetry(
-    (token) => graphFetch(`/me/drive/root:/${encodedPath}:/children`, token, { select: 'id,name,webUrl,folder' }),
+    (token) => graphFetchDirect(`/me/drive/root:/${encodedPath}:/children`, token, { select: 'id,name,webUrl,folder' }),
     'listFoldersByPath'
   );
 
@@ -509,7 +510,7 @@ export async function listFoldersByPath(path: string): Promise<OneDriveFolder[]>
 export async function downloadFileByPath(path: string): Promise<Buffer> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const buffer = await graphCallWithRetry(
-    (token) => graphFetch(`/me/drive/root:/${encodedPath}:/content`, token),
+    (token) => graphFetchDirect(`/me/drive/root:/${encodedPath}:/content`, token),
     'downloadFileByPath'
   );
   return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
@@ -524,7 +525,7 @@ export async function findFileInFolder(folderNames: string[], fileName: string):
     const navPath = currentFolderId
       ? `/me/drive/items/${currentFolderId}/children`
       : '/me/drive/root/children';
-    const result = await graphFetch(navPath, token, { select: 'id,name,folder' });
+    const result = await graphFetchDirect(navPath, token, { select: 'id,name,folder' });
 
     const folder = (result.value || []).find(
       (item: any) => item.folder && item.name === folderName
@@ -539,7 +540,7 @@ export async function findFileInFolder(folderNames: string[], fileName: string):
     currentFolderId = folder.id;
   }
 
-  const filesResult = await graphFetch(`/me/drive/items/${currentFolderId}/children`, token, { select: 'id,name,file' });
+  const filesResult = await graphFetchDirect(`/me/drive/items/${currentFolderId}/children`, token, { select: 'id,name,file' });
 
   const file = (filesResult.value || []).find(
     (item: any) => item.file && item.name === fileName
@@ -552,7 +553,7 @@ export async function findFileInFolder(folderNames: string[], fileName: string):
     throw new Error(`파일 '${fileName}'을 찾을 수 없습니다. 사용 가능한 파일: ${available.join(', ')}`);
   }
 
-  const buffer = await graphFetch(`/me/drive/items/${file.id}/content`, token);
+  const buffer = await graphFetchDirect(`/me/drive/items/${file.id}/content`, token);
   return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 }
 

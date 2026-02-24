@@ -270,3 +270,14 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
 });
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = typeof projects.$inferSelect;
+
+export const onedriveTokens = pgTable("onedrive_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  accountName: text("account_name"),
+  accountEmail: text("account_email"),
+});
+
+export type OnedriveToken = typeof onedriveTokens.$inferSelect;

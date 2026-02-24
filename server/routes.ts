@@ -14,6 +14,8 @@ import {
   listFoldersByPath,
   checkConnectionStatus,
   resetTokenCache,
+  getAuthUrl,
+  exchangeCodeForTokens,
 } from "./onedrive";
 import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears } from "./excel-parser";
 
@@ -56,7 +58,7 @@ export async function registerRoutes(
   });
 
   app.use("/api", (req, res, next) => {
-    if (req.path === "/login" || req.path === "/logout" || req.path === "/auth/status") {
+    if (req.path === "/login" || req.path === "/logout" || req.path === "/auth/status" || req.path === "/onedrive/callback") {
       return next();
     }
     return requireAuth(req, res, next);
@@ -236,6 +238,48 @@ export async function registerRoutes(
       res.json(status);
     } catch (err: any) {
       res.json({ connected: false, message: err.message });
+    }
+  });
+
+  app.get("/api/onedrive/auth", async (_req, res) => {
+    try {
+      const authUrl = getAuthUrl();
+      res.json({ authUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/onedrive/callback", async (req, res) => {
+    try {
+      const code = req.query.code as string;
+      const error = req.query.error as string;
+
+      if (error) {
+        const errorDesc = req.query.error_description as string || error;
+        console.error('[OneDrive OAuth] 인증 실패:', errorDesc);
+        return res.redirect('/?onedrive_error=' + encodeURIComponent(errorDesc));
+      }
+
+      if (!code) {
+        return res.redirect('/?onedrive_error=' + encodeURIComponent('인증 코드가 없습니다.'));
+      }
+
+      await exchangeCodeForTokens(code);
+      return res.redirect('/?onedrive_connected=true');
+    } catch (err: any) {
+      console.error('[OneDrive OAuth] 콜백 처리 실패:', err.message);
+      return res.redirect('/?onedrive_error=' + encodeURIComponent(err.message));
+    }
+  });
+
+  app.post("/api/onedrive/disconnect", async (_req, res) => {
+    try {
+      await storage.deleteOnedriveToken();
+      resetTokenCache();
+      res.json({ ok: true, message: 'OneDrive 연결이 해제되었습니다.' });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

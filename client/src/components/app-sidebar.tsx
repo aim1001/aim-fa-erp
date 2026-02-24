@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText, Calendar, Clock, Wallet, FolderKanban, ClipboardList, CheckCircle2, AlertCircle, WifiOff } from "lucide-react";
+import { LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut, Truck, Receipt, ReceiptText, Calendar, Clock, Wallet, FolderKanban, ClipboardList, CheckCircle2, AlertCircle, WifiOff, Link2, Unlink } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   Sidebar,
@@ -16,11 +16,26 @@ import { queryClient, apiRequest, getQueryFn } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useEffect } from "react";
 
 export function AppSidebar() {
   const [location] = useLocation();
   const searchString = useSearch();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('onedrive_connected') === 'true') {
+      toast({ title: "OneDrive 연결 완료", description: "OneDrive가 성공적으로 연결되었습니다." });
+      queryClient.invalidateQueries({ queryKey: ["/api/onedrive/status"] });
+      window.history.replaceState({}, '', '/');
+    }
+    const error = params.get('onedrive_error');
+    if (error) {
+      toast({ title: "OneDrive 연결 실패", description: decodeURIComponent(error), variant: "destructive" });
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
 
   const { data: onedriveStatus, isLoading: statusLoading } = useQuery<{
     connected: boolean;
@@ -28,11 +43,41 @@ export function AppSidebar() {
     expiresAt?: string;
     accountInfo?: string;
     errorType?: string;
+    authUrl?: string;
   } | null>({
     queryKey: ["/api/onedrive/status"],
     queryFn: getQueryFn({ on401: "returnNull" }),
     refetchInterval: 5 * 60 * 1000,
     staleTime: 2 * 60 * 1000,
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/onedrive/auth");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 시작 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/onedrive/disconnect");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onedrive/status"] });
+      toast({ title: "연결 해제됨", description: "OneDrive 연결이 해제되었습니다." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 해제 실패", description: err.message, variant: "destructive" });
+    },
   });
 
   const refreshMutation = useMutation({
@@ -211,54 +256,64 @@ export function AppSidebar() {
                 ) : (
                   <>
                     <WifiOff className="h-3.5 w-3.5 text-destructive shrink-0" />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-destructive truncate cursor-default">연결 안 됨</span>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-[240px]">
-                        <p>{onedriveStatus.message}</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <span className="text-destructive truncate">연결 안 됨</span>
                   </>
                 )}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => refreshMutation.mutate()}
-                      disabled={refreshMutation.isPending}
-                      className="ml-auto shrink-0"
-                      data-testid="button-refresh-onedrive"
-                    >
-                      <RefreshCw className={`text-muted-foreground ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>연결 상태 새로고침</p>
-                  </TooltipContent>
-                </Tooltip>
+                {onedriveStatus?.connected && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => refreshMutation.mutate()}
+                        disabled={refreshMutation.isPending}
+                        className="ml-auto shrink-0"
+                        data-testid="button-refresh-onedrive"
+                      >
+                        <RefreshCw className={`text-muted-foreground ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>연결 상태 새로고침</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </div>
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={() => syncMutation.mutate()}
-                disabled={syncMutation.isPending || (!onedriveStatus?.connected && onedriveStatus !== undefined)}
-                data-testid="button-sync-onedrive"
-              >
-                <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
-                <span>{syncMutation.isPending ? "동기화 중..." : "OneDrive 동기화"}</span>
-              </Button>
-              {!onedriveStatus?.connected && !statusLoading && onedriveStatus && (
-                <p className="text-[10px] text-muted-foreground px-1" data-testid="text-onedrive-help">
-                  {onedriveStatus.errorType === 'needs_reauth' || onedriveStatus.errorType === 'needs_consent'
-                    ? 'Replit 도구 패널에서 OneDrive를 다시 연결해 주세요'
-                    : onedriveStatus.errorType === 'transient'
-                    ? '일시적 오류입니다. 잠시 후 다시 시도해 주세요'
-                    : onedriveStatus.errorType === 'not_configured'
-                    ? 'Replit 도구 패널에서 OneDrive를 연결해 주세요'
-                    : '연결 상태 새로고침 버튼을 눌러보세요'}
-                </p>
+
+              {onedriveStatus?.connected ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => syncMutation.mutate()}
+                    disabled={syncMutation.isPending}
+                    data-testid="button-sync-onedrive"
+                  >
+                    <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
+                    <span>{syncMutation.isPending ? "동기화 중..." : "OneDrive 동기화"}</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground"
+                    onClick={() => disconnectMutation.mutate()}
+                    disabled={disconnectMutation.isPending}
+                    data-testid="button-disconnect-onedrive"
+                  >
+                    <Unlink className="h-4 w-4" />
+                    <span>연결 해제</span>
+                  </Button>
+                </>
+              ) : !statusLoading && (
+                <Button
+                  variant="default"
+                  className="w-full"
+                  onClick={() => connectMutation.mutate()}
+                  disabled={connectMutation.isPending}
+                  data-testid="button-connect-onedrive"
+                >
+                  <Link2 className="h-4 w-4" />
+                  <span>{connectMutation.isPending ? "연결 중..." : "OneDrive 연결"}</span>
+                </Button>
               )}
             </div>
           </SidebarGroupContent>
