@@ -253,6 +253,37 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
     onError: (err: Error) => toast({ title: "수금 계획 생성 실패", description: err.message, variant: "destructive" }),
   });
 
+  const genInvoiceMutation = useMutation({
+    mutationFn: async (confirmed: boolean) => {
+      const res = await fetch(`/api/projects/${projectId}/generate-invoice-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.status === 409 && data.needConfirm) {
+        return { needConfirm: true, existingCount: data.existingCount };
+      }
+      if (!res.ok) throw new Error(data.message || "계산서 생성 실패");
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data.needConfirm) {
+        setShowInvoiceRegenConfirm(true);
+        return;
+      }
+      toast({ title: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      setShowInvoiceRegenConfirm(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "계산서 생성 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const invalidatePayments = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
     queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
@@ -305,6 +336,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
   const [newPaymentAmount, setNewPaymentAmount] = useState(0);
   const [newPaymentDate, setNewPaymentDate] = useState("");
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
+  const [showInvoiceRegenConfirm, setShowInvoiceRegenConfirm] = useState(false);
 
   const [showSalesPicker, setShowSalesPicker] = useState(false);
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
@@ -711,7 +743,39 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
 
           return (
             <div className="border rounded-lg p-2.5 space-y-2">
-              <span className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />계산서 발행 계획 <span className="text-[9px] text-muted-foreground font-normal">(공급가액 기준)</span></span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />계산서 발행 계획 <span className="text-[9px] text-muted-foreground font-normal">(공급가액 기준)</span></span>
+                <div className="flex items-center gap-1">
+                  {project.salesInvoices.length > 0 ? (
+                    <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => setShowInvoiceRegenConfirm(true)} disabled={genInvoiceMutation.isPending} data-testid="button-gen-invoice">
+                      {genInvoiceMutation.isPending ? "생성중..." : "재생성"}
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => genInvoiceMutation.mutate(false)} disabled={genInvoiceMutation.isPending} data-testid="button-gen-invoice">
+                      {genInvoiceMutation.isPending ? "생성중..." : "계산서 생성"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {showInvoiceRegenConfirm && (
+                <div className="border rounded p-2 bg-orange-50/50 dark:bg-orange-900/10 space-y-1.5">
+                  <div className="text-[10px] font-medium text-orange-700 dark:text-orange-400 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />계산서 재생성 확인
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    기존 연결된 계산서 {project.salesInvoices.length}건의 연결이 해제되고, 계약조건에 따라 새 계산서가 생성됩니다.
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="destructive" className="h-6 text-[10px] px-2" data-testid="button-confirm-invoice-regen"
+                      onClick={() => genInvoiceMutation.mutate(true)}>
+                      재생성
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setShowInvoiceRegenConfirm(false)} data-testid="button-cancel-invoice-regen">
+                      취소
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="space-y-1.5">
                 {stages.map(stage => {
                   const supply = Math.round(plannedTotal * stage.ratio / 100);

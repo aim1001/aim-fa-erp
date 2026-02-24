@@ -1791,5 +1791,80 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/projects/:id/generate-invoice-plan", async (req, res) => {
+    try {
+      const allProjects = await storage.getProjects();
+      const project = allProjects.find(p => p.id === req.params.id);
+      if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
+      if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
+
+      const existingSales = (await storage.getSalesInvoices()).filter(i => i.projectId === project.id);
+      if (existingSales.length > 0 && !req.body.confirmed) {
+        return res.status(409).json({
+          message: `이미 연결된 계산서 ${existingSales.length}건이 있습니다. 기존 연결을 해제하고 새로 생성하시겠습니까?`,
+          needConfirm: true,
+          existingCount: existingSales.length,
+        });
+      }
+
+      if (existingSales.length > 0 && req.body.confirmed) {
+        for (const inv of existingSales) {
+          await storage.updateSalesInvoice(inv.id, { projectId: null, invoiceStage: null });
+        }
+      }
+
+      const invoicePlan = project.invoicePlan || "split";
+      const today = new Date().toISOString().split("T")[0];
+      const yearNum = project.year || new Date().getFullYear();
+      let created = 0;
+
+      if (invoicePlan === "bulk") {
+        const supply = project.totalAmount;
+        const tax = Math.round(supply * 0.1);
+        await storage.createSalesInvoice({
+          projectId: project.id,
+          companyName: project.customerName || "",
+          issueDate: today,
+          year: yearNum,
+          item: `${project.projectNumber || ""} ${project.description || ""}`.trim() || null,
+          supplyAmount: supply,
+          taxAmount: tax,
+          totalAmount: supply + tax,
+          invoiceStage: "일괄",
+          status: "pending",
+        });
+        created++;
+      } else {
+        const stages = [
+          { name: "계약금", ratio: project.depositRatio || 0 },
+          { name: "중도금", ratio: project.midRatio || 0 },
+          { name: "잔금", ratio: project.finalRatio || 0 },
+        ].filter(s => s.ratio > 0);
+
+        for (const stage of stages) {
+          const supply = Math.round((project.totalAmount * stage.ratio) / 100);
+          const tax = Math.round(supply * 0.1);
+          await storage.createSalesInvoice({
+            projectId: project.id,
+            companyName: project.customerName || "",
+            issueDate: today,
+            year: yearNum,
+            item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
+            supplyAmount: supply,
+            taxAmount: tax,
+            totalAmount: supply + tax,
+            invoiceStage: stage.name,
+            status: "pending",
+          });
+          created++;
+        }
+      }
+
+      res.json({ message: `계산서 ${created}건 생성 완료`, created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
