@@ -247,6 +247,20 @@ export const projects = pgTable("projects", {
   onedriveWebUrl: text("onedrive_web_url"),
   status: text("status").default("active"),
   memo: text("memo"),
+  totalAmount: integer("total_amount"),
+  depositRatio: integer("deposit_ratio"),
+  depositTimingType: text("deposit_timing_type"),
+  depositTimingDays: integer("deposit_timing_days"),
+  midRatio: integer("mid_ratio"),
+  midTimingType: text("mid_timing_type"),
+  midTimingDays: integer("mid_timing_days"),
+  midAfterDelivery: text("mid_after_delivery"),
+  finalRatio: integer("final_ratio"),
+  finalTimingType: text("final_timing_type"),
+  finalTimingDays: integer("final_timing_days"),
+  finalAfterDelivery: text("final_after_delivery"),
+  invoicePlan: text("invoice_plan").default("split"),
+  deliveryDate: text("delivery_date"),
 });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({

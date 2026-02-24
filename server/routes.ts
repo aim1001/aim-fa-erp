@@ -1650,5 +1650,134 @@ export async function registerRoutes(
     }
   });
 
+  function calcPaymentDate(baseDate: string, timingType: string | null, timingDays: number | null): string {
+    const base = new Date(baseDate);
+    if (!timingType) return baseDate;
+    switch (timingType) {
+      case "end_of_next_month": {
+        const d = new Date(base.getFullYear(), base.getMonth() + 2, 0);
+        return d.toISOString().split("T")[0];
+      }
+      case "two_weeks": {
+        const d = new Date(base);
+        d.setDate(d.getDate() + 14);
+        return d.toISOString().split("T")[0];
+      }
+      case "end_of_month": {
+        const d = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+        return d.toISOString().split("T")[0];
+      }
+      case "specific_days": {
+        const d = new Date(base);
+        d.setDate(d.getDate() + (timingDays || 30));
+        return d.toISOString().split("T")[0];
+      }
+      default:
+        return baseDate;
+    }
+  }
+
+  app.post("/api/projects/:id/generate-collection-plan", async (req, res) => {
+    try {
+      const projects = await storage.getProjects();
+      const project = projects.find(p => p.id === req.params.id);
+      if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
+      if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
+
+      const baseDate = req.body.baseDate || new Date().toISOString().split("T")[0];
+      const deliveryDate = project.deliveryDate || baseDate;
+      let created = 0;
+      const stages: { name: string; ratio: number | null; timingType: string | null; timingDays: number | null; afterDelivery?: string | null }[] = [
+        { name: "계약금", ratio: project.depositRatio, timingType: project.depositTimingType, timingDays: project.depositTimingDays },
+        { name: "중도금", ratio: project.midRatio, timingType: project.midTimingType, timingDays: project.midTimingDays, afterDelivery: project.midAfterDelivery },
+        { name: "잔금", ratio: project.finalRatio, timingType: project.finalTimingType, timingDays: project.finalTimingDays, afterDelivery: project.finalAfterDelivery },
+      ];
+
+      for (let i = 0; i < stages.length; i++) {
+        const stage = stages[i];
+        if (!stage.ratio || stage.ratio <= 0) continue;
+        const amount = Math.round((project.totalAmount * stage.ratio) / 100);
+        const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
+        const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
+
+        await storage.createPayment({
+          type: "income",
+          projectId: project.id,
+          companyName: project.customerName || "",
+          description: `${project.projectNumber} ${stage.name}`,
+          amount,
+          plannedDate,
+          paymentMethod: stage.timingType || "end_of_next_month",
+          status: "planned",
+          splitIndex: i + 1,
+          splitTotal: stages.filter(s => s.ratio && s.ratio > 0).length,
+        });
+        created++;
+      }
+
+      res.json({ message: `수금 계획 ${created}건 생성 완료`, created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/projects/:id/generate-invoice-plan", async (req, res) => {
+    try {
+      const projects = await storage.getProjects();
+      const project = projects.find(p => p.id === req.params.id);
+      if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
+      if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
+
+      const plan = project.invoicePlan || "split";
+      const baseDate = req.body.baseDate || new Date().toISOString().split("T")[0];
+      let created = 0;
+
+      if (plan === "bulk") {
+        const supplyAmount = Math.round(project.totalAmount / 1.1);
+        const taxAmount = project.totalAmount - supplyAmount;
+        await storage.createSalesInvoice({
+          projectId: project.id,
+          companyName: project.customerName || "",
+          issueDate: baseDate,
+          writeDate: baseDate,
+          item: project.description || "",
+          supplyAmount,
+          taxAmount,
+          totalAmount: project.totalAmount,
+          memo: `${project.projectNumber} 일괄`,
+        });
+        created = 1;
+      } else {
+        const stages: { name: string; ratio: number | null }[] = [
+          { name: "계약금", ratio: project.depositRatio },
+          { name: "중도금", ratio: project.midRatio },
+          { name: "잔금", ratio: project.finalRatio },
+        ];
+        for (const stage of stages) {
+          if (!stage.ratio || stage.ratio <= 0) continue;
+          const total = Math.round((project.totalAmount * stage.ratio) / 100);
+          const supplyAmount = Math.round(total / 1.1);
+          const taxAmount = total - supplyAmount;
+          await storage.createSalesInvoice({
+            projectId: project.id,
+            companyName: project.customerName || "",
+            issueDate: baseDate,
+            writeDate: baseDate,
+            item: `${project.description || ""} (${stage.name})`,
+            supplyAmount,
+            taxAmount,
+            totalAmount: total,
+            memo: `${project.projectNumber} ${stage.name}`,
+          });
+          created++;
+        }
+      }
+
+      res.json({ message: `계산서 ${created}건 생성 완료`, created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
