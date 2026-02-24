@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Receipt, Wallet, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
 
 type UnissuedInvoice = {
@@ -66,6 +67,7 @@ function daysFromToday(dateStr: string | null): string {
 }
 
 export default function ManagementDashboard() {
+  const [, navigate] = useLocation();
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/management-dashboard"],
   });
@@ -175,7 +177,8 @@ export default function ManagementDashboard() {
             {displayInvoices.map((inv) => (
               <div
                 key={inv.invoiceId}
-                className={`p-2.5 text-xs flex items-center gap-3 ${inv.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
+                className={`p-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-muted/40 transition-colors ${inv.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
+                onClick={() => inv.projectId && navigate(`/projects?open=${inv.projectId}`)}
                 data-testid={`row-unissued-invoice-${inv.invoiceId}`}
               >
                 <div className="flex-1 min-w-0">
@@ -240,7 +243,8 @@ export default function ManagementDashboard() {
             {displayPayments.map((pay) => (
               <div
                 key={pay.paymentId}
-                className={`p-2.5 text-xs flex items-center gap-3 ${pay.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
+                className={`p-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-muted/40 transition-colors ${pay.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
+                onClick={() => pay.projectId && navigate(`/projects?open=${pay.projectId}`)}
                 data-testid={`row-uncollected-payment-${pay.paymentId}`}
               >
                 <div className="flex-1 min-w-0">

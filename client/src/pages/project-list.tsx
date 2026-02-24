@@ -1083,6 +1083,15 @@ export default function ProjectList() {
   const [year, setYear] = useState(now.getFullYear());
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const openId = params.get("open");
+    if (openId) {
+      setSelectedId(openId);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   const { data: years, isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/projects/years"],
   });
