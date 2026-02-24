@@ -1457,7 +1457,11 @@ export async function registerRoutes(
 
   app.patch("/api/payments/:id", async (req, res) => {
     try {
-      const updated = await storage.updatePayment(req.params.id, req.body);
+      const patch = { ...req.body };
+      if (patch.status === "completed" && patch.actualDate && !patch.plannedDate) {
+        patch.plannedDate = patch.actualDate;
+      }
+      const updated = await storage.updatePayment(req.params.id, patch);
       if (!updated) return res.status(404).json({ message: "not found" });
       res.json(updated);
     } catch (err: any) {
@@ -1548,6 +1552,14 @@ export async function registerRoutes(
         companyName = invoice?.companyName || "";
       }
       if (!invoice) return res.status(404).json({ message: "invoice not found" });
+
+      const allPayments = await storage.getPayments();
+      const existingProjectPayments = allPayments.filter(p =>
+        p.salesInvoiceId === invoiceId && p.projectId && type === "income"
+      );
+      if (existingProjectPayments.length > 0) {
+        return res.json({ created: 0, payments: existingProjectPayments, message: "프로젝트 수금계획에 이미 연결된 항목이 있습니다." });
+      }
 
       await storage.deletePaymentsByInvoice(type, invoiceId);
 
@@ -1780,6 +1792,13 @@ export async function registerRoutes(
       const completedPayments = projectPayments.filter(p => p.status === "completed" || p.actualDate);
       const completedStages = new Set(completedPayments.map(p => p.splitIndex).filter(Boolean));
 
+      const allSalesInvoices = await storage.getSalesInvoices();
+      const projectInvoices = allSalesInvoices.filter(inv => inv.projectId === project.id);
+      const invoiceByStage = new Map<string, any>();
+      projectInvoices.forEach(inv => {
+        if (inv.invoiceStage) invoiceByStage.set(inv.invoiceStage, inv);
+      });
+
       const baseDate = req.body.baseDate || new Date().toISOString().split("T")[0];
       const deliveryDate = project.deliveryDate || baseDate;
       let created = 0;
@@ -1800,9 +1819,22 @@ export async function registerRoutes(
         const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
         const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
 
+        const matchedInvoice = invoiceByStage.get(stage.name);
+        const salesInvoiceId = matchedInvoice?.id || null;
+
+        if (salesInvoiceId) {
+          const existingInvoicePayments = existingPayments.filter(p => p.salesInvoiceId === salesInvoiceId && !p.projectId);
+          for (const dup of existingInvoicePayments) {
+            if (dup.status !== "completed" && !dup.actualDate) {
+              await storage.deletePayment(dup.id);
+            }
+          }
+        }
+
         await storage.createPayment({
           type: "income",
           projectId: project.id,
+          salesInvoiceId,
           companyName: project.customerName || "",
           description: `${project.projectNumber} ${stage.name}`,
           amount,
