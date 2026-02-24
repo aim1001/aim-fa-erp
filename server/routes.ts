@@ -1684,6 +1684,8 @@ export async function registerRoutes(
       if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
 
+      const deleted = await storage.deletePlannedPaymentsByProject(project.id);
+
       const baseDate = req.body.baseDate || new Date().toISOString().split("T")[0];
       const deliveryDate = project.deliveryDate || baseDate;
       let created = 0;

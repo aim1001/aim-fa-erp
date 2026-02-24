@@ -2,7 +2,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { useState, useMemo } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +14,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 
 type EnrichedProject = Project & {
   salesTotal: number;
@@ -34,6 +36,131 @@ type ProjectDetail = Project & {
 function fmt(n: number) {
   if (!n) return "-";
   return n.toLocaleString();
+}
+
+const TIMING_OPTIONS = [
+  { value: "end_of_next_month", label: "익월말" },
+  { value: "two_weeks", label: "2주이내" },
+  { value: "end_of_month", label: "월말" },
+  { value: "specific_days", label: "일자지정" },
+];
+
+function timingLabel(t: string | null) {
+  return TIMING_OPTIONS.find(o => o.value === t)?.label || "-";
+}
+
+function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetail; onSave: () => void }) {
+  const { toast } = useToast();
+  const [totalAmount, setTotalAmount] = useState(project.totalAmount || 0);
+  const [depositRatio, setDepositRatio] = useState(project.depositRatio || 30);
+  const [depositTimingType, setDepositTimingType] = useState(project.depositTimingType || "end_of_next_month");
+  const [depositTimingDays, setDepositTimingDays] = useState(project.depositTimingDays || 0);
+  const [midRatio, setMidRatio] = useState(project.midRatio || 40);
+  const [midTimingType, setMidTimingType] = useState(project.midTimingType || "end_of_next_month");
+  const [midTimingDays, setMidTimingDays] = useState(project.midTimingDays || 0);
+  const [midAfterDelivery, setMidAfterDelivery] = useState(project.midAfterDelivery === "true");
+  const [finalRatio, setFinalRatio] = useState(project.finalRatio || 30);
+  const [finalTimingType, setFinalTimingType] = useState(project.finalTimingType || "end_of_next_month");
+  const [finalTimingDays, setFinalTimingDays] = useState(project.finalTimingDays || 0);
+  const [finalAfterDelivery, setFinalAfterDelivery] = useState(project.finalAfterDelivery === "true");
+  const [invoicePlan, setInvoicePlan] = useState(project.invoicePlan || "split");
+  const [deliveryDate, setDeliveryDate] = useState(project.deliveryDate || "");
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/projects/${project.id}`, {
+        totalAmount, depositRatio, depositTimingType, depositTimingDays,
+        midRatio, midTimingType, midTimingDays, midAfterDelivery: midAfterDelivery ? "true" : "false",
+        finalRatio, finalTimingType, finalTimingDays, finalAfterDelivery: finalAfterDelivery ? "true" : "false",
+        invoicePlan, deliveryDate: deliveryDate || null,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "수금 조건 저장 완료" });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      onSave();
+    },
+    onError: (err: Error) => toast({ title: "저장 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const ratioSum = depositRatio + midRatio + finalRatio;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-[10px]">총 프로젝트 금액 (원)</Label>
+          <Input type="number" className="h-8 text-xs" value={totalAmount || ""} onChange={e => setTotalAmount(Number(e.target.value))} data-testid="input-total-amount" />
+        </div>
+        <div>
+          <Label className="text-[10px]">납품예정일</Label>
+          <Input type="date" className="h-8 text-xs" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} data-testid="input-delivery-date" />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {[
+          { label: "계약금", ratio: depositRatio, setRatio: setDepositRatio, timing: depositTimingType, setTiming: setDepositTimingType, days: depositTimingDays, setDays: setDepositTimingDays, after: false, setAfter: () => {}, showAfter: false },
+          { label: "중도금", ratio: midRatio, setRatio: setMidRatio, timing: midTimingType, setTiming: setMidTimingType, days: midTimingDays, setDays: setMidTimingDays, after: midAfterDelivery, setAfter: setMidAfterDelivery, showAfter: true },
+          { label: "잔금", ratio: finalRatio, setRatio: setFinalRatio, timing: finalTimingType, setTiming: setFinalTimingType, days: finalTimingDays, setDays: setFinalTimingDays, after: finalAfterDelivery, setAfter: setFinalAfterDelivery, showAfter: true },
+        ].map(stage => (
+          <div key={stage.label} className="border rounded p-2 bg-muted/20">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium w-10">{stage.label}</span>
+              <div className="flex items-center gap-1">
+                <Input type="number" className="h-7 w-16 text-xs" value={stage.ratio} onChange={e => stage.setRatio(Number(e.target.value))} data-testid={`input-${stage.label}-ratio`} />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
+              {totalAmount > 0 && (
+                <span className="text-[10px] text-muted-foreground">{Math.round(totalAmount * stage.ratio / 100).toLocaleString()}원</span>
+              )}
+              <Select value={stage.timing} onValueChange={stage.setTiming}>
+                <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-${stage.label}-timing`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIMING_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {stage.timing === "specific_days" && (
+                <div className="flex items-center gap-1">
+                  <Input type="number" className="h-7 w-14 text-xs" value={stage.days} onChange={e => stage.setDays(Number(e.target.value))} data-testid={`input-${stage.label}-days`} />
+                  <span className="text-[10px] text-muted-foreground">일</span>
+                </div>
+              )}
+              {stage.showAfter && (
+                <div className="flex items-center gap-1">
+                  <Switch checked={stage.after} onCheckedChange={stage.setAfter} className="scale-75" data-testid={`switch-${stage.label}-after`} />
+                  <span className="text-[10px] text-muted-foreground">납품후</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {ratioSum !== 100 && (
+          <div className="text-[10px] text-destructive">비율 합계: {ratioSum}% (100%가 되어야 합니다)</div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Label className="text-[10px]">계산서 발행</Label>
+        <Select value={invoicePlan} onValueChange={setInvoicePlan}>
+          <SelectTrigger className="h-7 w-28 text-xs" data-testid="select-invoice-plan">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="split">분할 발행</SelectItem>
+            <SelectItem value="bulk">일괄 발행</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Button size="sm" className="w-full h-8 text-xs" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || ratioSum !== 100} data-testid="button-save-conditions">
+        <Check className="h-3 w-3 mr-1" />{saveMutation.isPending ? "저장중..." : "수금 조건 저장"}
+      </Button>
+    </div>
+  );
 }
 
 function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
@@ -70,9 +197,36 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
     },
   });
 
+  const genCollectionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/projects/${projectId}/generate-collection-plan`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+    },
+    onError: (err: Error) => toast({ title: "수금 계획 생성 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const genInvoiceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/projects/${projectId}/generate-invoice-plan`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+    },
+    onError: (err: Error) => toast({ title: "계산서 생성 실패", description: err.message, variant: "destructive" }),
+  });
+
   const [showSalesPicker, setShowSalesPicker] = useState(false);
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [showConditions, setShowConditions] = useState(false);
 
   const unlinkedSales = useMemo(() => {
     if (!allSales || !project) return [];
@@ -95,6 +249,10 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
   const salesTotal = project.salesInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const purchaseTotal = project.purchaseInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const profit = salesTotal - purchaseTotal;
+  const incomePayments = project.payments.filter(p => p.type === "income");
+  const paidIncome = incomePayments.filter(p => p.status === "completed" || p.actualDate).reduce((s, p) => s + (p.amount || 0), 0);
+  const plannedIncome = incomePayments.filter(p => p.status !== "completed" && !p.actualDate).reduce((s, p) => s + (p.amount || 0), 0);
+  const hasConditions = !!project.totalAmount && project.totalAmount > 0;
 
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="modal-project-detail">
@@ -130,6 +288,77 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
       </div>
 
       <div className="space-y-3 mt-2">
+        <div className="border rounded-lg">
+          <button className="w-full flex items-center justify-between p-2.5 text-left hover:bg-muted/30 rounded-lg transition-colors" onClick={() => setShowConditions(!showConditions)} data-testid="button-toggle-conditions">
+            <span className="text-xs font-medium flex items-center gap-1"><Settings className="h-3 w-3" />수금 조건</span>
+            <div className="flex items-center gap-2">
+              {hasConditions && (
+                <span className="text-[10px] text-muted-foreground">
+                  {fmt(project.totalAmount!)}원 | {project.depositRatio || 0}/{project.midRatio || 0}/{project.finalRatio || 0}% | {project.invoicePlan === "bulk" ? "일괄" : "분할"}
+                </span>
+              )}
+              {showConditions ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+            </div>
+          </button>
+          {showConditions && (
+            <div className="px-2.5 pb-2.5 border-t pt-2">
+              <CollectionConditionsEditor project={project} onSave={() => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] })} />
+            </div>
+          )}
+        </div>
+
+        {hasConditions && (
+          <div className="border rounded-lg p-2.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium flex items-center gap-1"><CalendarClock className="h-3 w-3" />수금 계획</span>
+              <div className="flex items-center gap-1">
+                {incomePayments.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground mr-1">
+                    수금 {fmt(paidIncome)}원 / 예정 {fmt(plannedIncome)}원
+                  </span>
+                )}
+                <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => genCollectionMutation.mutate()} disabled={genCollectionMutation.isPending} data-testid="button-gen-collection">
+                  {genCollectionMutation.isPending ? "생성중..." : incomePayments.length > 0 ? "재생성" : "수금 계획 생성"}
+                </Button>
+              </div>
+            </div>
+            {incomePayments.length > 0 && (
+              <div className="border rounded overflow-hidden">
+                {incomePayments.map(pay => (
+                  <div key={pay.id} className="flex items-center justify-between text-xs py-1.5 px-2 border-b last:border-b-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground whitespace-nowrap">{pay.plannedDate || "미정"}</span>
+                      <span className="font-medium">{pay.description}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-600 font-medium whitespace-nowrap">{(pay.amount || 0).toLocaleString()}</span>
+                      <span className={`text-[10px] px-1 py-0.5 rounded ${pay.status === "completed" || pay.actualDate ? "text-green-700 bg-green-50 dark:bg-green-900/30" : "text-orange-700 bg-orange-50 dark:bg-orange-900/30"}`}>
+                        {pay.status === "completed" || pay.actualDate ? "입금완료" : "예정"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {hasConditions && (
+          <div className="border rounded-lg p-2.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />계산서 발행 계획</span>
+              <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => genInvoiceMutation.mutate()} disabled={genInvoiceMutation.isPending} data-testid="button-gen-invoice">
+                {genInvoiceMutation.isPending ? "생성중..." : "계산서 자동 생성"}
+              </Button>
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {project.invoicePlan === "bulk"
+                ? `일괄 발행: ${fmt(project.totalAmount!)}원 매출계산서 1건`
+                : `분할 발행: 계약금(${project.depositRatio}%), 중도금(${project.midRatio}%), 잔금(${project.finalRatio}%) 별도 발행`}
+            </div>
+          </div>
+        )}
+
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium flex items-center gap-1"><Receipt className="h-3 w-3" />매출계산서 ({project.salesInvoices.length})</span>
@@ -218,21 +447,18 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
           )}
         </div>
 
-        {project.payments.length > 0 && (
+        {project.payments.filter(p => p.type !== "income").length > 0 && (
           <div>
-            <span className="text-xs font-medium flex items-center gap-1 mb-1"><Wallet className="h-3 w-3" />결제현황 ({project.payments.length})</span>
+            <span className="text-xs font-medium flex items-center gap-1 mb-1"><Wallet className="h-3 w-3" />지출현황 ({project.payments.filter(p => p.type !== "income").length})</span>
             <div className="border rounded overflow-hidden">
-              {project.payments.map(pay => (
+              {project.payments.filter(p => p.type !== "income").map(pay => (
                 <div key={pay.id} className="flex items-center justify-between text-xs py-1.5 px-2 border-b last:border-b-0">
                   <div className="flex items-center gap-2">
-                    <span className={`px-1 py-0.5 rounded text-[10px] font-medium ${pay.type === "income" ? "text-blue-700 bg-blue-50" : "text-red-700 bg-red-50"}`}>
-                      {pay.type === "income" ? "입금" : "출금"}
-                    </span>
                     <span className="text-muted-foreground">{pay.plannedDate || "미정"}</span>
                     <span>{pay.companyName}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={pay.type === "income" ? "text-blue-600" : "text-red-600"}>{(pay.amount || 0).toLocaleString()}</span>
+                    <span className="text-red-600">{(pay.amount || 0).toLocaleString()}</span>
                     <span className={`text-[10px] px-1 py-0.5 rounded ${pay.status === "completed" || pay.actualDate ? "text-green-700 bg-green-50" : "text-orange-700 bg-orange-50"}`}>
                       {pay.status === "completed" || pay.actualDate ? "완료" : "예정"}
                     </span>

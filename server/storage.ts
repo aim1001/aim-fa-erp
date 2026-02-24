@@ -111,6 +111,7 @@ export interface IStorage {
   updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment | undefined>;
   deletePayment(id: string): Promise<void>;
   deletePaymentsByInvoice(type: string, invoiceId: string): Promise<void>;
+  deletePlannedPaymentsByProject(projectId: string): Promise<number>;
 
   getNextInquiryNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
@@ -591,6 +592,13 @@ export class DatabaseStorage implements IStorage {
     } else {
       await db.delete(payments).where(eq(payments.purchaseInvoiceId, invoiceId));
     }
+  }
+
+  async deletePlannedPaymentsByProject(projectId: string): Promise<number> {
+    const result = await db.delete(payments).where(
+      and(eq(payments.projectId, projectId), eq(payments.type, "income"), eq(payments.status, "planned"))
+    ).returning();
+    return result.length;
   }
 
   async getProjects(year?: number): Promise<Project[]> {
