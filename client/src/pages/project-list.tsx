@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
+import { useSearch } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Project, SalesInvoice, PurchaseInvoice, Payment } from "@shared/schema";
@@ -1079,6 +1080,9 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
 
 export default function ProjectList() {
   const { toast } = useToast();
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const urlStatus = urlParams.get("status");
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1118,21 +1122,29 @@ export default function ProjectList() {
     }
   };
 
+  const filteredProjects = useMemo(() => {
+    if (!projects) return [];
+    if (!urlStatus) return projects;
+    return projects.filter(p => (p.status || "active") === urlStatus);
+  }, [projects, urlStatus]);
+
   const totals = useMemo(() => {
-    if (!projects) return { contract: 0, issued: 0, collected: 0, purchase: 0, profit: 0 };
+    if (!filteredProjects.length) return { contract: 0, issued: 0, collected: 0, purchase: 0, profit: 0 };
     return {
-      contract: projects.reduce((s, p) => s + (p.totalAmount || 0), 0),
-      issued: projects.reduce((s, p) => s + (p.salesSupplyTotal || 0), 0),
-      collected: projects.reduce((s, p) => s + Math.round((p.paidIncome || 0) / 1.1), 0),
-      purchase: projects.reduce((s, p) => s + p.purchaseTotal, 0),
-      profit: projects.reduce((s, p) => s + p.profit, 0),
+      contract: filteredProjects.reduce((s, p) => s + (p.totalAmount || 0), 0),
+      issued: filteredProjects.reduce((s, p) => s + (p.salesSupplyTotal || 0), 0),
+      collected: filteredProjects.reduce((s, p) => s + Math.round((p.paidIncome || 0) / 1.1), 0),
+      purchase: filteredProjects.reduce((s, p) => s + p.purchaseTotal, 0),
+      profit: filteredProjects.reduce((s, p) => s + p.profit, 0),
     };
-  }, [projects]);
+  }, [filteredProjects]);
 
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="text-project-list-title">프로젝트</h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-project-list-title">
+          프로젝트{urlStatus === "active" ? " - 진행중" : urlStatus === "completed" ? " - 완료" : ""}
+        </h1>
         <div className="flex items-center gap-2">
           {yearsLoading ? (
             <Skeleton className="h-9 w-24" />
@@ -1164,7 +1176,7 @@ export default function ProjectList() {
         </div>
       </div>
 
-      {projects && projects.length > 0 && (
+      {filteredProjects.length > 0 && (
         <div className="grid grid-cols-5 gap-2">
           <div className="border rounded-lg p-2.5">
             <div className="text-[10px] text-muted-foreground">계약</div>
@@ -1191,7 +1203,7 @@ export default function ProjectList() {
 
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-10" />)}</div>
-      ) : projects && projects.length > 0 ? (
+      ) : filteredProjects.length > 0 ? (
         <div className="border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -1207,7 +1219,7 @@ export default function ProjectList() {
               </tr>
             </thead>
             <tbody>
-              {projects.map(p => {
+              {filteredProjects.map(p => {
                 const status = statusLabel(p.status);
                 return (
                   <tr
