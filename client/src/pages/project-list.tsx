@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Project, SalesInvoice, PurchaseInvoice, Payment } from "@shared/schema";
@@ -49,6 +49,36 @@ function timingLabel(t: string | null) {
   return TIMING_OPTIONS.find(o => o.value === t)?.label || "-";
 }
 
+function fmtComma(n: number | string): string {
+  const num = typeof n === "string" ? parseInt(n.replace(/,/g, ""), 10) : n;
+  if (!num && num !== 0) return "";
+  return num.toLocaleString();
+}
+
+function CommaInput({ value, onChange, className, ...props }: { value: number; onChange: (v: number) => void; className?: string; [key: string]: any }) {
+  const [display, setDisplay] = useState(value ? fmtComma(value) : "");
+
+  useEffect(() => {
+    setDisplay(value ? fmtComma(value) : "");
+  }, [value]);
+
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      className={className}
+      value={display}
+      onChange={e => {
+        const raw = e.target.value.replace(/[^0-9]/g, "");
+        const num = parseInt(raw, 10) || 0;
+        setDisplay(raw ? fmtComma(num) : "");
+        onChange(num);
+      }}
+      {...props}
+    />
+  );
+}
+
 function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetail; onSave: () => void }) {
   const { toast } = useToast();
   const [totalAmount, setTotalAmount] = useState(project.totalAmount || 0);
@@ -88,15 +118,24 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label className="text-[10px]">총 프로젝트 금액 (원)</Label>
-          <Input type="number" className="h-8 text-xs" value={totalAmount || ""} onChange={e => setTotalAmount(Number(e.target.value))} data-testid="input-total-amount" />
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-[10px]">공급가액 (VAT별도)</Label>
+            <CommaInput className="h-8 text-xs" value={totalAmount} onChange={setTotalAmount} data-testid="input-total-amount" />
+          </div>
+          <div>
+            <Label className="text-[10px]">납품예정일</Label>
+            <Input type="date" className="h-8 text-xs" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} data-testid="input-delivery-date" />
+          </div>
         </div>
-        <div>
-          <Label className="text-[10px]">납품예정일</Label>
-          <Input type="date" className="h-8 text-xs" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} data-testid="input-delivery-date" />
-        </div>
+        {totalAmount > 0 && (
+          <div className="flex items-center gap-3 text-[10px] text-muted-foreground px-1">
+            <span>공급가액: {fmtComma(totalAmount)}원</span>
+            <span>VAT(10%): {fmtComma(Math.round(totalAmount * 0.1))}원</span>
+            <span className="font-medium text-foreground">합계: {fmtComma(Math.round(totalAmount * 1.1))}원</span>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -113,7 +152,7 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
                 <span className="text-xs text-muted-foreground">%</span>
               </div>
               {totalAmount > 0 && (
-                <span className="text-[10px] text-muted-foreground">{Math.round(totalAmount * stage.ratio / 100).toLocaleString()}원</span>
+                <span className="text-[10px] text-muted-foreground">{fmtComma(Math.round(totalAmount * stage.ratio / 100))}원 (VAT포함 {fmtComma(Math.round(totalAmount * stage.ratio / 100 * 1.1))}원)</span>
               )}
               <Select value={stage.timing} onValueChange={stage.setTiming}>
                 <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-${stage.label}-timing`}>
@@ -294,7 +333,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
             <div className="flex items-center gap-2">
               {hasConditions && (
                 <span className="text-[10px] text-muted-foreground">
-                  {fmt(project.totalAmount!)}원 | {project.depositRatio || 0}/{project.midRatio || 0}/{project.finalRatio || 0}% | {project.invoicePlan === "bulk" ? "일괄" : "분할"}
+                  {fmtComma(project.totalAmount!)}원(VAT별도) | {project.depositRatio || 0}/{project.midRatio || 0}/{project.finalRatio || 0}% | {project.invoicePlan === "bulk" ? "일괄" : "분할"}
                 </span>
               )}
               {showConditions ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
@@ -353,7 +392,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
             </div>
             <div className="text-[10px] text-muted-foreground">
               {project.invoicePlan === "bulk"
-                ? `일괄 발행: ${fmt(project.totalAmount!)}원 매출계산서 1건`
+                ? `일괄 발행: 공급가액 ${fmtComma(project.totalAmount!)}원 + VAT ${fmtComma(Math.round(project.totalAmount! * 0.1))}원 = ${fmtComma(Math.round(project.totalAmount! * 1.1))}원`
                 : `분할 발행: 계약금(${project.depositRatio}%), 중도금(${project.midRatio}%), 잔금(${project.finalRatio}%) 별도 발행`}
             </div>
           </div>

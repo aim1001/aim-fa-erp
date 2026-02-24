@@ -1698,7 +1698,8 @@ export async function registerRoutes(
       for (let i = 0; i < stages.length; i++) {
         const stage = stages[i];
         if (!stage.ratio || stage.ratio <= 0) continue;
-        const amount = Math.round((project.totalAmount * stage.ratio) / 100);
+        const supplyAmt = Math.round((project.totalAmount * stage.ratio) / 100);
+        const amount = Math.round(supplyAmt * 1.1);
         const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
         const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
 
@@ -1735,8 +1736,8 @@ export async function registerRoutes(
       let created = 0;
 
       if (plan === "bulk") {
-        const supplyAmount = Math.round(project.totalAmount / 1.1);
-        const taxAmount = project.totalAmount - supplyAmount;
+        const supplyAmount = project.totalAmount;
+        const taxAmount = Math.round(supplyAmount * 0.1);
         await storage.createSalesInvoice({
           projectId: project.id,
           companyName: project.customerName || "",
@@ -1745,7 +1746,7 @@ export async function registerRoutes(
           item: project.description || "",
           supplyAmount,
           taxAmount,
-          totalAmount: project.totalAmount,
+          totalAmount: supplyAmount + taxAmount,
           memo: `${project.projectNumber} 일괄`,
         });
         created = 1;
@@ -1757,9 +1758,8 @@ export async function registerRoutes(
         ];
         for (const stage of stages) {
           if (!stage.ratio || stage.ratio <= 0) continue;
-          const total = Math.round((project.totalAmount * stage.ratio) / 100);
-          const supplyAmount = Math.round(total / 1.1);
-          const taxAmount = total - supplyAmount;
+          const supplyAmount = Math.round((project.totalAmount * stage.ratio) / 100);
+          const taxAmount = Math.round(supplyAmount * 0.1);
           await storage.createSalesInvoice({
             projectId: project.id,
             companyName: project.customerName || "",
@@ -1768,7 +1768,7 @@ export async function registerRoutes(
             item: `${project.description || ""} (${stage.name})`,
             supplyAmount,
             taxAmount,
-            totalAmount: total,
+            totalAmount: supplyAmount + taxAmount,
             memo: `${project.projectNumber} ${stage.name}`,
           });
           created++;
