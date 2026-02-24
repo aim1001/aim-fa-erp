@@ -12,6 +12,8 @@ import {
   writeInfoJson,
   createInquiryFolder,
   listFoldersByPath,
+  checkConnectionStatus,
+  resetTokenCache,
 } from "./onedrive";
 import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears } from "./excel-parser";
 
@@ -225,6 +227,25 @@ export async function registerRoutes(
       res.json(stats);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/onedrive/status", async (_req, res) => {
+    try {
+      const status = await checkConnectionStatus();
+      res.json(status);
+    } catch (err: any) {
+      res.json({ connected: false, message: err.message });
+    }
+  });
+
+  app.post("/api/onedrive/refresh", async (_req, res) => {
+    try {
+      resetTokenCache();
+      const status = await checkConnectionStatus();
+      res.json(status);
+    } catch (err: any) {
+      res.json({ connected: false, message: err.message });
     }
   });
 

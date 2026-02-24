@@ -1,12 +1,10 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 
 let connectionSettings: any;
+let lastTokenFetchTime: number = 0;
+const TOKEN_CACHE_MAX_AGE = 5 * 60 * 1000;
 
-async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings?.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-    return connectionSettings.settings.access_token;
-  }
-
+function getConnectorHeaders(): { hostname: string; token: string } {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? 'repl ' + process.env.REPL_IDENTITY
@@ -14,19 +12,49 @@ async function getAccessToken() {
     ? 'depl ' + process.env.WEB_REPL_RENEWAL
     : null;
 
-  if (!xReplitToken) {
-    throw new Error('X-Replit-Token not found for repl/depl');
+  if (!hostname || !xReplitToken) {
+    throw new Error('Replit 커넥터 환경 변수를 찾을 수 없습니다. 서버를 재시작해 주세요.');
   }
+  return { hostname, token: xReplitToken };
+}
 
-  connectionSettings = await fetch(
+async function fetchConnectionFromReplit(): Promise<any> {
+  const { hostname, token } = getConnectorHeaders();
+  const res = await fetch(
     'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=onedrive',
     {
       headers: {
         'Accept': 'application/json',
-        'X-Replit-Token': xReplitToken
+        'X-Replit-Token': token,
       }
     }
-  ).then(res => res.json()).then(data => data.items?.[0]);
+  );
+  if (!res.ok) {
+    throw new Error(`OneDrive 커넥터 API 요청 실패 (HTTP ${res.status})`);
+  }
+  const data = await res.json();
+  return data.items?.[0] || null;
+}
+
+export function resetTokenCache() {
+  connectionSettings = null;
+  lastTokenFetchTime = 0;
+}
+
+async function getAccessToken(): Promise<string> {
+  const now = Date.now();
+  const tokenExpiry = connectionSettings?.settings?.expires_at
+    ? new Date(connectionSettings.settings.expires_at).getTime()
+    : 0;
+  const cacheStale = (now - lastTokenFetchTime) > TOKEN_CACHE_MAX_AGE;
+
+  if (connectionSettings && tokenExpiry > now && !cacheStale) {
+    const cached = connectionSettings.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token;
+    if (cached) return cached;
+  }
+
+  connectionSettings = await fetchConnectionFromReplit();
+  lastTokenFetchTime = now;
 
   const accessToken = connectionSettings?.settings?.access_token || connectionSettings?.settings?.oauth?.credentials?.access_token;
 
@@ -34,6 +62,74 @@ async function getAccessToken() {
     throw new Error('OneDrive가 연결되지 않았습니다. Replit 도구 패널에서 OneDrive를 연결해 주세요.');
   }
   return accessToken;
+}
+
+export async function checkConnectionStatus(): Promise<{
+  connected: boolean;
+  message: string;
+  expiresAt?: string;
+  accountInfo?: string;
+}> {
+  try {
+    resetTokenCache();
+    const conn = await fetchConnectionFromReplit();
+    if (!conn) {
+      return { connected: false, message: 'OneDrive 연결이 설정되지 않았습니다. Replit 도구 패널에서 OneDrive를 연결해 주세요.' };
+    }
+
+    const accessToken = conn.settings?.access_token || conn.settings?.oauth?.credentials?.access_token;
+    if (!accessToken) {
+      return { connected: false, message: 'OneDrive 액세스 토큰이 없습니다. Replit 도구 패널에서 OneDrive를 다시 연결해 주세요.' };
+    }
+
+    connectionSettings = conn;
+    lastTokenFetchTime = Date.now();
+
+    const makeClient = () => Client.initWithMiddleware({
+      authProvider: {
+        getAccessToken: async () =>
+          connectionSettings.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token,
+      },
+    });
+
+    try {
+      const client = makeClient();
+      const me = await client.api('/me').select('displayName,mail').get();
+      return {
+        connected: true,
+        message: `OneDrive 연결됨 (${me.displayName || me.mail || '계정 확인됨'})`,
+        expiresAt: conn.settings?.expires_at,
+        accountInfo: me.displayName || me.mail,
+      };
+    } catch (graphErr: any) {
+      resetTokenCache();
+      const retryConn = await fetchConnectionFromReplit();
+      const retryToken = retryConn?.settings?.access_token || retryConn?.settings?.oauth?.credentials?.access_token;
+      if (!retryToken) {
+        return { connected: false, message: 'OneDrive 토큰이 만료되었고 갱신에 실패했습니다. Replit 도구 패널에서 OneDrive를 다시 연결해 주세요.' };
+      }
+      connectionSettings = retryConn;
+      lastTokenFetchTime = Date.now();
+
+      try {
+        const retryClient = makeClient();
+        const me = await retryClient.api('/me').select('displayName,mail').get();
+        return {
+          connected: true,
+          message: `OneDrive 연결됨 (${me.displayName || me.mail || '계정 확인됨'})`,
+          expiresAt: retryConn.settings?.expires_at,
+          accountInfo: me.displayName || me.mail,
+        };
+      } catch {
+        return { connected: false, message: `OneDrive API 호출 실패: ${graphErr.message}. Replit 도구 패널에서 OneDrive를 다시 연결해 주세요.` };
+      }
+    }
+  } catch (err: any) {
+    return {
+      connected: false,
+      message: `OneDrive 연결 확인 실패: ${err.message}`,
+    };
+  }
 }
 
 async function getClient(): Promise<Client> {
