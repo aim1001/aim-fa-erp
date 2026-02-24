@@ -1095,6 +1095,20 @@ export async function registerRoutes(
       if (linkKeys && "projectId" in body) {
         const invoice = await storage.updateSalesInvoice(req.params.id, { projectId: body.projectId, invoiceStage: body.invoiceStage ?? null });
         if (!invoice) return res.status(404).json({ message: "매출계산서를 찾을 수 없습니다" });
+
+        if (body.projectId && body.invoiceStage) {
+          const allInvoices = await storage.getSalesInvoices();
+          const placeholders = allInvoices.filter(i =>
+            i.projectId === body.projectId &&
+            i.invoiceStage === body.invoiceStage &&
+            i.id !== invoice.id &&
+            !i.issueDate
+          );
+          for (const ph of placeholders) {
+            await storage.deleteSalesInvoice(ph.id);
+          }
+        }
+
         return res.json(invoice);
       }
       const data = insertSalesInvoiceSchema.partial().parse(body);
