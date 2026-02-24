@@ -339,6 +339,17 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [showInvoiceRegenConfirm, setShowInvoiceRegenConfirm] = useState(false);
 
+  const [editingInvoiceDateId, setEditingInvoiceDateId] = useState<string | null>(null);
+  const [editInvoiceDate, setEditInvoiceDate] = useState("");
+  const updateInvoiceDateMutation = useMutation({
+    mutationFn: async ({ id, plannedIssueDate }: { id: string; plannedIssueDate: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, { plannedIssueDate });
+      return res.json();
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] }); },
+    onError: (err: Error) => toast({ title: "예정일 변경 실패", description: err.message, variant: "destructive" }),
+  });
+
   const [showSalesPicker, setShowSalesPicker] = useState(false);
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -822,22 +833,54 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                       )}
                       {stageInvoices.length > 0 && (
                         <div className="border-t">
-                          {stageInvoices.map(inv => (
-                            <div key={inv.id} className="flex items-center justify-between text-[10px] py-1 px-2 border-b last:border-b-0">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="text-muted-foreground">{inv.issueDate}</span>
-                                <span className="truncate">{inv.companyName}</span>
+                          {stageInvoices.map(inv => {
+                            const isIssued = !!inv.issueDate;
+                            const isPastDue = !isIssued && inv.plannedIssueDate && inv.plannedIssueDate < new Date().toISOString().split("T")[0];
+                            const isEditingDate = editingInvoiceDateId === inv.id;
+                            return (
+                              <div key={inv.id} className={`text-[10px] py-1 px-2 border-b last:border-b-0 ${isIssued ? "bg-green-50/50 dark:bg-green-900/10" : isPastDue ? "bg-red-50/50 dark:bg-red-900/10" : ""}`}>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className={`text-[9px] px-1 py-0.5 rounded whitespace-nowrap ${isIssued ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : isPastDue ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>
+                                      {isIssued ? "발행완료" : isPastDue ? "미발행(지연)" : "미발행"}
+                                    </span>
+                                    <span className="truncate">{inv.companyName}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-muted-foreground">공급 {fmtComma(inv.supplyAmount || 0)}</span>
+                                    <span className="text-muted-foreground">VAT {fmtComma(inv.taxAmount || 0)}</span>
+                                    <span className="text-blue-600 font-medium">{fmtComma(inv.totalAmount || 0)}원</span>
+                                    <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-stage-${inv.id}`}>
+                                      <X className="h-2.5 w-2.5 text-muted-foreground" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  {isIssued ? (
+                                    <span className="text-green-700 dark:text-green-400">발행일 {inv.issueDate}</span>
+                                  ) : isEditingDate ? (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-muted-foreground">예정일</span>
+                                      <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-invoice-date-${inv.id}`} />
+                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-invoice-date-${inv.id}`}
+                                        onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}>
+                                        <Check className="h-3 w-3" />
+                                      </Button>
+                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-invoice-date-${inv.id}`}>
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <span className={`cursor-pointer hover:underline ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
+                                      onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }}
+                                      data-testid={`text-invoice-date-${inv.id}`}>
+                                      {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정 (클릭하여 설정)"}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-muted-foreground">공급 {fmtComma(inv.supplyAmount || 0)}</span>
-                                <span className="text-muted-foreground">VAT {fmtComma(inv.taxAmount || 0)}</span>
-                                <span className="text-blue-600 font-medium">{fmtComma(inv.totalAmount || 0)}원</span>
-                                <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-stage-${inv.id}`}>
-                                  <X className="h-2.5 w-2.5 text-muted-foreground" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                       {stageInvoices.length > 0 && (
@@ -892,22 +935,54 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
           )}
           {project.salesInvoices.length > 0 ? (
             <div className="border rounded overflow-hidden">
-              {project.salesInvoices.map(inv => (
-                <div key={inv.id} className="flex items-center justify-between text-xs py-1.5 px-2 border-b last:border-b-0 hover:bg-muted/30">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-muted-foreground whitespace-nowrap">{inv.issueDate}</span>
-                    <span className="font-medium truncate">{inv.companyName}</span>
-                    {inv.item && <span className="text-muted-foreground truncate hidden md:inline">({inv.item})</span>}
-                    {inv.invoiceStage && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-600 dark:bg-blue-900/30 whitespace-nowrap">{inv.invoiceStage}</span>}
+              {project.salesInvoices.map(inv => {
+                const isIssued = !!inv.issueDate;
+                const isPastDue = !isIssued && inv.plannedIssueDate && inv.plannedIssueDate < new Date().toISOString().split("T")[0];
+                const isEditingDate = editingInvoiceDateId === inv.id;
+                return (
+                  <div key={inv.id} className={`text-xs py-1.5 px-2 border-b last:border-b-0 ${isIssued ? "bg-green-50/30 dark:bg-green-900/10" : isPastDue ? "bg-red-50/30 dark:bg-red-900/10" : "hover:bg-muted/30"}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`text-[9px] px-1 py-0.5 rounded whitespace-nowrap ${isIssued ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : isPastDue ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>
+                          {isIssued ? "발행완료" : isPastDue ? "미발행(지연)" : "미발행"}
+                        </span>
+                        <span className="font-medium truncate">{inv.companyName}</span>
+                        {inv.item && <span className="text-muted-foreground truncate hidden md:inline">({inv.item})</span>}
+                        {inv.invoiceStage && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-600 dark:bg-blue-900/30 whitespace-nowrap">{inv.invoiceStage}</span>}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-blue-600 font-medium whitespace-nowrap">{fmtComma(inv.totalAmount || 0)}원</span>
+                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-sales-${inv.id}`}>
+                          <X className="h-3 w-3 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+                      {isIssued ? (
+                        <span className="text-green-700 dark:text-green-400">발행일 {inv.issueDate}</span>
+                      ) : isEditingDate ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">예정일</span>
+                          <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-sales-invoice-date-${inv.id}`} />
+                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-sales-invoice-date-${inv.id}`}
+                            onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}>
+                            <Check className="h-3 w-3" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-sales-invoice-date-${inv.id}`}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className={`cursor-pointer hover:underline ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
+                          onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }}
+                          data-testid={`text-sales-invoice-date-${inv.id}`}>
+                          {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정 (클릭하여 설정)"}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-blue-600 font-medium whitespace-nowrap">{fmtComma(inv.totalAmount || 0)}원</span>
-                    <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-sales-${inv.id}`}>
-                      <X className="h-3 w-3 text-muted-foreground" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-[10px] text-muted-foreground py-2">연결된 매출계산서가 없습니다</div>

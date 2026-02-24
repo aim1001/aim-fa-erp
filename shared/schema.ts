@@ -139,6 +139,7 @@ export const salesInvoices = pgTable("sales_invoices", {
   memo: text("memo"),
   status: text("status").default("pending"),
   invoiceStage: text("invoice_stage"),
+  plannedIssueDate: text("planned_issue_date"),
 });
 
 export const purchaseInvoices = pgTable("purchase_invoices", {

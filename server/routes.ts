@@ -1818,42 +1818,52 @@ export async function registerRoutes(
       const yearNum = project.year || new Date().getFullYear();
       let created = 0;
 
+      const baseDate = req.body.baseDate || today;
+      const deliveryDate = project.deliveryDate || baseDate;
+
       if (invoicePlan === "bulk") {
         const supply = project.totalAmount;
         const tax = Math.round(supply * 0.1);
+        const timingType = project.depositTimingType || project.finalTimingType || "end_of_next_month";
+        const timingDays = project.depositTimingDays || project.finalTimingDays || null;
+        const plannedDate = calcPaymentDate(baseDate, timingType, timingDays);
         await storage.createSalesInvoice({
           projectId: project.id,
           companyName: project.customerName || "",
-          issueDate: today,
+          issueDate: null,
           year: yearNum,
           item: `${project.projectNumber || ""} ${project.description || ""}`.trim() || null,
           supplyAmount: supply,
           taxAmount: tax,
           totalAmount: supply + tax,
           invoiceStage: "일괄",
+          plannedIssueDate: plannedDate,
           status: "pending",
         });
         created++;
       } else {
         const stages = [
-          { name: "계약금", ratio: project.depositRatio || 0 },
-          { name: "중도금", ratio: project.midRatio || 0 },
-          { name: "잔금", ratio: project.finalRatio || 0 },
+          { name: "계약금", ratio: project.depositRatio || 0, timingType: project.depositTimingType, timingDays: project.depositTimingDays, afterDelivery: null as string | null },
+          { name: "중도금", ratio: project.midRatio || 0, timingType: project.midTimingType, timingDays: project.midTimingDays, afterDelivery: project.midAfterDelivery },
+          { name: "잔금", ratio: project.finalRatio || 0, timingType: project.finalTimingType, timingDays: project.finalTimingDays, afterDelivery: project.finalAfterDelivery },
         ].filter(s => s.ratio > 0);
 
         for (const stage of stages) {
           const supply = Math.round((project.totalAmount * stage.ratio) / 100);
           const tax = Math.round(supply * 0.1);
+          const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
+          const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
           await storage.createSalesInvoice({
             projectId: project.id,
             companyName: project.customerName || "",
-            issueDate: today,
+            issueDate: null,
             year: yearNum,
             item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
             supplyAmount: supply,
             taxAmount: tax,
             totalAmount: supply + tax,
             invoiceStage: stage.name,
+            plannedIssueDate: plannedDate,
             status: "pending",
           });
           created++;
