@@ -1442,6 +1442,62 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/payments/:id/confirm", async (req, res) => {
+    try {
+      const { actualDate, actualAmount, originalAmount, remainderAction, remainderTargetId, remainderNewDescription, remainderPlannedDate, projectId, companyName } = req.body;
+      if (!actualDate || actualAmount === undefined || actualAmount < 0) {
+        return res.status(400).json({ message: "actualDate, actualAmount(0 이상) 필수" });
+      }
+
+      const remainder = (originalAmount || 0) - actualAmount;
+
+      if (remainderAction && remainder <= 0) {
+        return res.status(400).json({ message: "잔여 금액이 없어 잔여 처리를 할 수 없습니다" });
+      }
+      if (remainderAction === "merge" && !remainderTargetId) {
+        return res.status(400).json({ message: "합산 대상 항목이 지정되지 않았습니다" });
+      }
+      if (remainderAction === "new" && !projectId) {
+        return res.status(400).json({ message: "프로젝트 ID가 필요합니다" });
+      }
+
+      const updated = await storage.updatePayment(req.params.id, {
+        amount: actualAmount,
+        actualAmount,
+        actualDate,
+        status: "completed",
+      });
+      if (!updated) return res.status(404).json({ message: "결제 항목을 찾을 수 없습니다" });
+
+      let remainderResult = null;
+
+      if (remainderAction === "merge" && remainderTargetId && remainder > 0) {
+        const allPayments = await storage.getPayments();
+        const target = allPayments.find(p => p.id === remainderTargetId);
+        if (!target) return res.status(400).json({ message: "합산 대상 항목을 찾을 수 없습니다" });
+        await storage.updatePayment(remainderTargetId, {
+          amount: (target.amount || 0) + remainder,
+        });
+        remainderResult = { action: "merge", targetId: remainderTargetId, amount: remainder };
+      } else if (remainderAction === "new" && projectId && remainder > 0) {
+        const newPayment = await storage.createPayment({
+          type: "income",
+          projectId,
+          companyName: companyName || "",
+          description: remainderNewDescription || "잔여",
+          amount: remainder,
+          plannedDate: remainderPlannedDate || null,
+          status: "planned",
+        });
+        remainderResult = { action: "new", paymentId: newPayment.id, amount: remainder };
+      }
+
+      res.json({ message: "입금 처리 완료", payment: updated, remainder: remainderResult });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/payments/:id", async (req, res) => {
     try {
       await storage.deletePayment(req.params.id);
@@ -1684,6 +1740,14 @@ export async function registerRoutes(
       const project = projects.find(p => p.id === req.params.id);
       if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
+
+      const existingPayments = await storage.getPayments();
+      const projectPayments = existingPayments.filter(p => p.projectId === project.id && p.type === "income");
+      const plannedCount = projectPayments.filter(p => p.status === "planned" || (!p.actualDate && p.status !== "completed")).length;
+
+      if (plannedCount > 0 && !req.body.confirmed) {
+        return res.status(409).json({ message: `예정 항목 ${plannedCount}건이 삭제됩니다. 계속하시겠습니까?`, needConfirm: true, plannedCount });
+      }
 
       const deleted = await storage.deletePlannedPaymentsByProject(project.id);
 

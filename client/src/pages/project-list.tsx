@@ -241,7 +241,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
 
   const genCollectionMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/projects/${projectId}/generate-collection-plan`, {});
+      const res = await apiRequest("POST", `/api/projects/${projectId}/generate-collection-plan`, { confirmed: true });
       return res.json();
     },
     onSuccess: (data) => {
@@ -284,6 +284,15 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
     onError: (err: Error) => toast({ title: "삭제 실패", description: err.message, variant: "destructive" }),
   });
 
+  const confirmPaymentMutation = useMutation({
+    mutationFn: async (data: { id: string; actualDate: string; actualAmount: number; originalAmount: number; remainderAction?: "merge" | "new"; remainderTargetId?: string; remainderNewDescription?: string; remainderPlannedDate?: string; projectId?: string; companyName?: string }) => {
+      const res = await apiRequest("POST", `/api/payments/${data.id}/confirm`, data);
+      return res.json();
+    },
+    onSuccess: invalidatePayments,
+    onError: (err: Error) => toast({ title: "입금 처리 실패", description: err.message, variant: "destructive" }),
+  });
+
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState(0);
   const [editDate, setEditDate] = useState("");
@@ -294,6 +303,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
   const [newPaymentDesc, setNewPaymentDesc] = useState("");
   const [newPaymentAmount, setNewPaymentAmount] = useState(0);
   const [newPaymentDate, setNewPaymentDate] = useState("");
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
 
   const [showSalesPicker, setShowSalesPicker] = useState(false);
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
@@ -389,13 +399,43 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
         {hasConditions && (
           <div className="border rounded-lg p-2.5 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium flex items-center gap-1"><CalendarClock className="h-3 w-3" />수금 계획</span>
+              <span className="text-xs font-medium flex items-center gap-1"><CalendarClock className="h-3 w-3" />수금 계획 <span className="text-[9px] text-muted-foreground font-normal">(VAT포함 합계 기준)</span></span>
               <div className="flex items-center gap-1">
-                <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => genCollectionMutation.mutate()} disabled={genCollectionMutation.isPending} data-testid="button-gen-collection">
-                  {genCollectionMutation.isPending ? "생성중..." : incomePayments.length > 0 ? "재생성" : "수금 계획 생성"}
-                </Button>
+                {incomePayments.length > 0 ? (
+                  <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => setShowRegenConfirm(true)} disabled={genCollectionMutation.isPending} data-testid="button-gen-collection">
+                    {genCollectionMutation.isPending ? "생성중..." : "재생성"}
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => genCollectionMutation.mutate()} disabled={genCollectionMutation.isPending} data-testid="button-gen-collection">
+                    {genCollectionMutation.isPending ? "생성중..." : "수금 계획 생성"}
+                  </Button>
+                )}
               </div>
             </div>
+            {showRegenConfirm && (() => {
+              const plannedCount = incomePayments.filter(p => p.status !== "completed" && !p.actualDate).length;
+              const completedCount = incomePayments.filter(p => p.status === "completed" || p.actualDate).length;
+              return (
+                <div className="border rounded p-2 bg-orange-50/50 dark:bg-orange-900/10 space-y-1.5">
+                  <div className="text-[10px] font-medium text-orange-700 dark:text-orange-400 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />수금 계획 재생성 확인
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    예정 항목 {plannedCount}건이 삭제되고 수금 조건에 따라 새로 생성됩니다.
+                    {completedCount > 0 && <span className="text-green-600"> 입금완료 {completedCount}건은 유지됩니다.</span>}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="destructive" className="h-6 text-[10px] px-2" data-testid="button-confirm-regen"
+                      onClick={() => { genCollectionMutation.mutate(); setShowRegenConfirm(false); }}>
+                      재생성
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setShowRegenConfirm(false)} data-testid="button-cancel-regen">
+                      취소
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
             {incomePayments.length > 0 && (
               <div className="border rounded overflow-hidden">
                 {incomePayments.map((pay, idx) => {
@@ -432,8 +472,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                               {nextPending && (
                                 <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" data-testid={`button-remainder-next-${pay.id}`}
                                   onClick={() => {
-                                    updatePaymentMutation.mutate({ id: pay.id, data: { amount: confirmAmount, actualAmount: confirmAmount, actualDate: confirmDate, status: "completed" } });
-                                    updatePaymentMutation.mutate({ id: nextPending.id, data: { amount: (nextPending.amount || 0) + remainder } });
+                                    confirmPaymentMutation.mutate({ id: pay.id, actualDate: confirmDate, actualAmount: confirmAmount, originalAmount: amt, remainderAction: "merge", remainderTargetId: nextPending.id });
                                     setConfirmingPaymentId(null);
                                   }}>
                                   잔여 → {nextPending.description}에 합산
@@ -441,8 +480,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                               )}
                               <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" data-testid={`button-remainder-new-${pay.id}`}
                                 onClick={() => {
-                                  updatePaymentMutation.mutate({ id: pay.id, data: { amount: confirmAmount, actualAmount: confirmAmount, actualDate: confirmDate, status: "completed" } });
-                                  createPaymentMutation.mutate({ type: "income", projectId: project.id, companyName: project.customerName || "", description: `${pay.description} 잔여`, amount: remainder, plannedDate: pay.plannedDate, status: "planned" });
+                                  confirmPaymentMutation.mutate({ id: pay.id, actualDate: confirmDate, actualAmount: confirmAmount, originalAmount: amt, remainderAction: "new", projectId: project.id, companyName: project.customerName || "", remainderNewDescription: `${pay.description} 잔여`, remainderPlannedDate: pay.plannedDate || undefined });
                                   setConfirmingPaymentId(null);
                                 }}>
                                 잔여 → 새 항목 추가
@@ -453,7 +491,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                             {remainder <= 0 && (
                               <Button size="sm" className="h-6 text-[10px] px-2" data-testid={`button-confirm-payment-${pay.id}`}
                                 onClick={() => {
-                                  updatePaymentMutation.mutate({ id: pay.id, data: { amount: confirmAmount, actualAmount: confirmAmount, actualDate: confirmDate, status: "completed" } });
+                                  confirmPaymentMutation.mutate({ id: pay.id, actualDate: confirmDate, actualAmount: confirmAmount, originalAmount: amt });
                                   setConfirmingPaymentId(null);
                                 }}>
                                 <Check className="h-3 w-3 mr-0.5" />입금 확인
@@ -624,7 +662,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
 
           return (
             <div className="border rounded-lg p-2.5 space-y-2">
-              <span className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />계산서 발행 계획</span>
+              <span className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />계산서 발행 계획 <span className="text-[9px] text-muted-foreground font-normal">(공급가액 기준)</span></span>
               <div className="space-y-1.5">
                 {stages.map(stage => {
                   const supply = Math.round(plannedTotal * stage.ratio / 100);
@@ -697,13 +735,13 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                 })}
               </div>
               <div className="flex items-center justify-between text-[10px] px-1 pt-1">
-                <span className="text-muted-foreground">연결된 계산서 공급가액 합계: {fmtComma(linkedTotal)}원</span>
+                <span className="text-muted-foreground">연결 합계: 공급 {fmtComma(linkedTotal)} + VAT {fmtComma(Math.round(linkedTotal * 0.1))} = {fmtComma(Math.round(linkedTotal * 1.1))}원</span>
                 {diff === 0 ? (
                   <span className="text-green-600 font-medium flex items-center gap-0.5"><Check className="h-3 w-3" />일치</span>
                 ) : diff > 0 ? (
-                  <span className="text-orange-600 font-medium">미발행 {fmtComma(diff)}원</span>
+                  <span className="text-orange-600 font-medium">미발행 공급 {fmtComma(diff)}원</span>
                 ) : (
-                  <span className="text-red-600 font-medium">초과 {fmtComma(Math.abs(diff))}원</span>
+                  <span className="text-red-600 font-medium">초과 공급 {fmtComma(Math.abs(diff))}원</span>
                 )}
               </div>
             </div>
