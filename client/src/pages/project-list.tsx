@@ -458,12 +458,15 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
       )}
 
       <Tabs defaultValue="conditions" className="mt-2">
-        <TabsList className="w-full grid grid-cols-2 h-8">
+        <TabsList className="w-full grid grid-cols-3 h-8">
           <TabsTrigger value="conditions" className="text-xs" data-testid="tab-conditions">
             <Settings className="h-3 w-3 mr-1" />계약조건
           </TabsTrigger>
-          <TabsTrigger value="plans" className="text-xs" data-testid="tab-plans">
-            <CalendarClock className="h-3 w-3 mr-1" />수금/발행계획
+          <TabsTrigger value="collection" className="text-xs" data-testid="tab-collection">
+            <CalendarClock className="h-3 w-3 mr-1" />수금계획
+          </TabsTrigger>
+          <TabsTrigger value="invoices" className="text-xs" data-testid="tab-invoices">
+            <FileText className="h-3 w-3 mr-1" />계산서발행
           </TabsTrigger>
         </TabsList>
 
@@ -471,9 +474,8 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
           <CollectionConditionsEditor project={project} onSave={() => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] })} />
         </TabsContent>
 
-        <TabsContent value="plans" className="mt-2 space-y-3">
+        <TabsContent value="collection" className="mt-2 space-y-3">
         {hasConditions ? (
-          <>
           <div className="border rounded-lg p-2.5 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium flex items-center gap-1"><CalendarClock className="h-3 w-3" />수금 계획 <span className="text-[9px] text-muted-foreground font-normal">(VAT포함 합계 기준)</span></span>
@@ -722,7 +724,18 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
               </Button>
             )}
           </div>
+        ) : (
+          <div className="text-center py-6 text-sm text-muted-foreground">
+            <Settings className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+            <p>계약조건을 먼저 설정해주세요.</p>
+            <p className="text-[10px] mt-1">계약조건 탭에서 총 금액과 비율을 입력하면 수금 계획을 생성할 수 있습니다.</p>
+          </div>
+        )}
+        </TabsContent>
 
+        <TabsContent value="invoices" className="mt-2 space-y-3">
+        {hasConditions ? (
+          <>
         {(() => {
           const stages = project.invoicePlan === "bulk"
             ? [{ name: "일괄", ratio: 100 }]
@@ -971,7 +984,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
           <div className="text-center py-6 text-sm text-muted-foreground">
             <Settings className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
             <p>계약조건을 먼저 설정해주세요.</p>
-            <p className="text-[10px] mt-1">계약조건 탭에서 총 금액과 비율을 입력하면 수금/발행 계획을 생성할 수 있습니다.</p>
+            <p className="text-[10px] mt-1">계약조건 탭에서 총 금액과 비율을 입력하면 계산서 발행 계획을 생성할 수 있습니다.</p>
           </div>
         )}
         </TabsContent>
