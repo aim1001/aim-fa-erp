@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 
 type EnrichedProject = Project & {
   salesTotal: number;
+  salesSupplyTotal: number;
   purchaseTotal: number;
   profit: number;
   paidIncome: number;
@@ -107,7 +108,7 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "수금 조건 저장 완료" });
+      toast({ title: "계약조건 저장 완료" });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       onSave();
     },
@@ -196,7 +197,7 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
       </div>
 
       <Button size="sm" className="w-full h-8 text-xs" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || ratioSum !== 100} data-testid="button-save-conditions">
-        <Check className="h-3 w-3 mr-1" />{saveMutation.isPending ? "저장중..." : "수금 조건 저장"}
+        <Check className="h-3 w-3 mr-1" />{saveMutation.isPending ? "저장중..." : "계약조건 저장"}
       </Button>
     </div>
   );
@@ -335,13 +336,18 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
     );
   }
 
-  const salesTotal = project.salesInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
+  const salesSupplyTotal = project.salesInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
+  const salesTotalAmount = project.salesInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const purchaseTotal = project.purchaseInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
-  const profit = salesTotal - purchaseTotal;
   const incomePayments = project.payments.filter(p => p.type === "income");
   const paidIncome = incomePayments.filter(p => p.status === "completed" || p.actualDate).reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
+  const paidIncomeSupply = Math.round(paidIncome / 1.1);
   const plannedIncome = incomePayments.filter(p => p.status !== "completed" && !p.actualDate).reduce((s, p) => s + (p.amount || 0), 0);
   const hasConditions = !!project.totalAmount && project.totalAmount > 0;
+  const contractAmount = project.totalAmount || 0;
+  const issuedPct = contractAmount > 0 ? Math.min(Math.round((salesSupplyTotal / contractAmount) * 100), 100) : 0;
+  const collectedPct = contractAmount > 0 ? Math.min(Math.round((paidIncomeSupply / contractAmount) * 100), 100) : 0;
+  const profit = salesTotalAmount - purchaseTotal;
 
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="modal-project-detail">
@@ -361,25 +367,68 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
         <div className="text-sm text-muted-foreground">{project.description}</div>
       )}
 
-      <div className="grid grid-cols-3 gap-3 mt-2">
-        <div className="border rounded-lg p-2.5 bg-blue-50/50 dark:bg-blue-900/10">
-          <div className="text-[10px] text-muted-foreground">매출</div>
-          <div className="text-sm font-semibold text-blue-600" data-testid="text-detail-sales">{fmt(salesTotal)}원</div>
+      {hasConditions ? (
+        <div className="border rounded-lg p-3 mt-2 space-y-2">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <div className="text-[10px] text-muted-foreground">계약 (공급가액)</div>
+              <div className="text-sm font-semibold" data-testid="text-detail-contract">{fmtComma(contractAmount)}원</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground">발행 (계산서)</div>
+              <div className="text-sm font-semibold text-blue-600" data-testid="text-detail-issued">{fmtComma(salesSupplyTotal)}원</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground">수금 (입금완료)</div>
+              <div className="text-sm font-semibold text-green-600" data-testid="text-detail-collected">{fmtComma(paidIncomeSupply)}원</div>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <div>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
+                <span>발행 진행률</span>
+                <span>{issuedPct}% ({fmtComma(salesSupplyTotal)} / {fmtComma(contractAmount)})</span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${issuedPct}%` }} data-testid="bar-issued" />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
+                <span>수금 진행률</span>
+                <span>{collectedPct}% ({fmtComma(paidIncomeSupply)} / {fmtComma(contractAmount)})</span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-green-500 rounded-full transition-all" style={{ width: `${collectedPct}%` }} data-testid="bar-collected" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-[10px] pt-1 border-t">
+            <span className="text-muted-foreground">매입: <span className="text-red-600 font-medium">{fmtComma(purchaseTotal)}원</span></span>
+            <span className="text-muted-foreground">수익: <span className={`font-medium ${profit >= 0 ? "text-green-600" : "text-orange-600"}`}>{fmtComma(profit)}원</span></span>
+          </div>
         </div>
-        <div className="border rounded-lg p-2.5 bg-red-50/50 dark:bg-red-900/10">
-          <div className="text-[10px] text-muted-foreground">매입</div>
-          <div className="text-sm font-semibold text-red-600" data-testid="text-detail-purchase">{fmt(purchaseTotal)}원</div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3 mt-2">
+          <div className="border rounded-lg p-2.5 bg-blue-50/50 dark:bg-blue-900/10">
+            <div className="text-[10px] text-muted-foreground">매출</div>
+            <div className="text-sm font-semibold text-blue-600" data-testid="text-detail-sales">{fmt(salesTotalAmount)}원</div>
+          </div>
+          <div className="border rounded-lg p-2.5 bg-red-50/50 dark:bg-red-900/10">
+            <div className="text-[10px] text-muted-foreground">매입</div>
+            <div className="text-sm font-semibold text-red-600" data-testid="text-detail-purchase">{fmt(purchaseTotal)}원</div>
+          </div>
+          <div className={`border rounded-lg p-2.5 ${profit >= 0 ? "bg-green-50/50 dark:bg-green-900/10" : "bg-orange-50/50 dark:bg-orange-900/10"}`}>
+            <div className="text-[10px] text-muted-foreground">수익</div>
+            <div className={`text-sm font-semibold ${profit >= 0 ? "text-green-600" : "text-orange-600"}`} data-testid="text-detail-profit">{fmt(profit)}원</div>
+          </div>
         </div>
-        <div className={`border rounded-lg p-2.5 ${profit >= 0 ? "bg-green-50/50 dark:bg-green-900/10" : "bg-orange-50/50 dark:bg-orange-900/10"}`}>
-          <div className="text-[10px] text-muted-foreground">수익</div>
-          <div className={`text-sm font-semibold ${profit >= 0 ? "text-green-600" : "text-orange-600"}`} data-testid="text-detail-profit">{fmt(profit)}원</div>
-        </div>
-      </div>
+      )}
 
       <div className="space-y-3 mt-2">
         <div className="border rounded-lg">
           <button className="w-full flex items-center justify-between p-2.5 text-left hover:bg-muted/30 rounded-lg transition-colors" onClick={() => setShowConditions(!showConditions)} data-testid="button-toggle-conditions">
-            <span className="text-xs font-medium flex items-center gap-1"><Settings className="h-3 w-3" />수금 조건</span>
+            <span className="text-xs font-medium flex items-center gap-1"><Settings className="h-3 w-3" />계약조건</span>
             <div className="flex items-center gap-2">
               {hasConditions && (
                 <span className="text-[10px] text-muted-foreground">
@@ -421,7 +470,7 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                     <AlertTriangle className="h-3 w-3" />수금 계획 재생성 확인
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    예정 항목 {plannedCount}건이 삭제되고 수금 조건에 따라 새로 생성됩니다.
+                    예정 항목 {plannedCount}건이 삭제되고 계약조건에 따라 새로 생성됩니다.
                     {completedCount > 0 && <span className="text-green-600"> 입금완료 {completedCount}건은 유지됩니다.</span>}
                   </div>
                   <div className="flex items-center gap-1">
@@ -905,9 +954,11 @@ export default function ProjectList() {
   };
 
   const totals = useMemo(() => {
-    if (!projects) return { sales: 0, purchase: 0, profit: 0 };
+    if (!projects) return { contract: 0, issued: 0, collected: 0, purchase: 0, profit: 0 };
     return {
-      sales: projects.reduce((s, p) => s + p.salesTotal, 0),
+      contract: projects.reduce((s, p) => s + (p.totalAmount || 0), 0),
+      issued: projects.reduce((s, p) => s + (p.salesSupplyTotal || 0), 0),
+      collected: projects.reduce((s, p) => s + Math.round((p.paidIncome || 0) / 1.1), 0),
       purchase: projects.reduce((s, p) => s + p.purchaseTotal, 0),
       profit: projects.reduce((s, p) => s + p.profit, 0),
     };
@@ -949,18 +1000,26 @@ export default function ProjectList() {
       </div>
 
       {projects && projects.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="border rounded-lg p-3 bg-blue-50/50 dark:bg-blue-900/10">
-            <div className="text-xs text-muted-foreground">총 매출</div>
-            <div className="text-lg font-semibold text-blue-600" data-testid="text-total-sales">{fmt(totals.sales)}원</div>
+        <div className="grid grid-cols-5 gap-2">
+          <div className="border rounded-lg p-2.5">
+            <div className="text-[10px] text-muted-foreground">계약</div>
+            <div className="text-sm font-semibold" data-testid="text-total-contract">{fmt(totals.contract)}원</div>
           </div>
-          <div className="border rounded-lg p-3 bg-red-50/50 dark:bg-red-900/10">
-            <div className="text-xs text-muted-foreground">총 매입</div>
-            <div className="text-lg font-semibold text-red-600" data-testid="text-total-purchase">{fmt(totals.purchase)}원</div>
+          <div className="border rounded-lg p-2.5 bg-blue-50/50 dark:bg-blue-900/10">
+            <div className="text-[10px] text-muted-foreground">발행</div>
+            <div className="text-sm font-semibold text-blue-600" data-testid="text-total-issued">{fmt(totals.issued)}원</div>
           </div>
-          <div className={`border rounded-lg p-3 ${totals.profit >= 0 ? "bg-green-50/50 dark:bg-green-900/10" : "bg-orange-50/50 dark:bg-orange-900/10"}`}>
-            <div className="text-xs text-muted-foreground">총 수익</div>
-            <div className={`text-lg font-semibold ${totals.profit >= 0 ? "text-green-600" : "text-orange-600"}`} data-testid="text-total-profit">{fmt(totals.profit)}원</div>
+          <div className="border rounded-lg p-2.5 bg-green-50/50 dark:bg-green-900/10">
+            <div className="text-[10px] text-muted-foreground">수금</div>
+            <div className="text-sm font-semibold text-green-600" data-testid="text-total-collected">{fmt(totals.collected)}원</div>
+          </div>
+          <div className="border rounded-lg p-2.5 bg-red-50/50 dark:bg-red-900/10">
+            <div className="text-[10px] text-muted-foreground">매입</div>
+            <div className="text-sm font-semibold text-red-600" data-testid="text-total-purchase">{fmt(totals.purchase)}원</div>
+          </div>
+          <div className={`border rounded-lg p-2.5 ${totals.profit >= 0 ? "bg-green-50/50 dark:bg-green-900/10" : "bg-orange-50/50 dark:bg-orange-900/10"}`}>
+            <div className="text-[10px] text-muted-foreground">수익</div>
+            <div className={`text-sm font-semibold ${totals.profit >= 0 ? "text-green-600" : "text-orange-600"}`} data-testid="text-total-profit">{fmt(totals.profit)}원</div>
           </div>
         </div>
       )}
@@ -975,9 +1034,9 @@ export default function ProjectList() {
                 <th className="text-left py-2 px-3 font-medium text-xs w-20">번호</th>
                 <th className="text-left py-2 px-3 font-medium text-xs">고객사</th>
                 <th className="text-left py-2 px-3 font-medium text-xs hidden md:table-cell">내용</th>
-                <th className="text-right py-2 px-3 font-medium text-xs hidden md:table-cell w-24">매출</th>
-                <th className="text-right py-2 px-3 font-medium text-xs hidden md:table-cell w-24">매입</th>
-                <th className="text-right py-2 px-3 font-medium text-xs hidden lg:table-cell w-24">수익</th>
+                <th className="text-right py-2 px-3 font-medium text-xs hidden md:table-cell w-20">계약</th>
+                <th className="text-right py-2 px-3 font-medium text-xs hidden md:table-cell w-20">발행</th>
+                <th className="text-right py-2 px-3 font-medium text-xs hidden md:table-cell w-20">수금</th>
                 <th className="text-center py-2 px-3 font-medium text-xs w-14">상태</th>
                 <th className="text-center py-2 px-3 font-medium text-xs w-10">폴더</th>
               </tr>
@@ -1002,18 +1061,18 @@ export default function ProjectList() {
                       <span className="text-xs text-muted-foreground truncate block max-w-[200px]" data-testid={`text-project-desc-${p.id}`}>{p.description || "-"}</span>
                     </td>
                     <td className="py-2 px-3 text-right hidden md:table-cell">
-                      {p.salesTotal > 0 ? (
-                        <span className="text-xs font-medium text-blue-600">{p.salesTotal.toLocaleString()}</span>
+                      {(p.totalAmount || 0) > 0 ? (
+                        <span className="text-xs font-medium">{(p.totalAmount || 0).toLocaleString()}</span>
                       ) : <span className="text-xs text-muted-foreground">-</span>}
                     </td>
                     <td className="py-2 px-3 text-right hidden md:table-cell">
-                      {p.purchaseTotal > 0 ? (
-                        <span className="text-xs font-medium text-red-600">{p.purchaseTotal.toLocaleString()}</span>
+                      {(p.salesSupplyTotal || 0) > 0 ? (
+                        <span className="text-xs font-medium text-blue-600">{(p.salesSupplyTotal || 0).toLocaleString()}</span>
                       ) : <span className="text-xs text-muted-foreground">-</span>}
                     </td>
-                    <td className="py-2 px-3 text-right hidden lg:table-cell">
-                      {(p.salesTotal > 0 || p.purchaseTotal > 0) ? (
-                        <span className={`text-xs font-medium ${p.profit >= 0 ? "text-green-600" : "text-orange-600"}`}>{p.profit.toLocaleString()}</span>
+                    <td className="py-2 px-3 text-right hidden md:table-cell">
+                      {(p.paidIncome || 0) > 0 ? (
+                        <span className="text-xs font-medium text-green-600">{Math.round((p.paidIncome || 0) / 1.1).toLocaleString()}</span>
                       ) : <span className="text-xs text-muted-foreground">-</span>}
                     </td>
                     <td className="py-2 px-3 text-center">

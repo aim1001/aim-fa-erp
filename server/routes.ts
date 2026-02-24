@@ -1596,6 +1596,7 @@ export async function registerRoutes(
         const projectPayments = allPayments.filter(pay => pay.projectId === p.id);
 
         const salesTotal = sales.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
+        const salesSupplyTotal = sales.reduce((sum, i) => sum + (i.supplyAmount || 0), 0);
         const purchaseTotal = purchases.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
         const profit = salesTotal - purchaseTotal;
 
@@ -1608,6 +1609,7 @@ export async function registerRoutes(
         return {
           ...p,
           salesTotal,
+          salesSupplyTotal,
           purchaseTotal,
           profit,
           paidIncome,
