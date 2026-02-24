@@ -249,19 +249,6 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
     onError: (err: Error) => toast({ title: "수금 계획 생성 실패", description: err.message, variant: "destructive" }),
   });
 
-  const genInvoiceMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/projects/${projectId}/generate-invoice-plan`, {});
-      return res.json();
-    },
-    onSuccess: (data) => {
-      toast({ title: data.message });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
-    },
-    onError: (err: Error) => toast({ title: "계산서 생성 실패", description: err.message, variant: "destructive" }),
-  });
-
   const [showSalesPicker, setShowSalesPicker] = useState(false);
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -382,21 +369,51 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
           </div>
         )}
 
-        {hasConditions && (
-          <div className="border rounded-lg p-2.5 space-y-2">
-            <div className="flex items-center justify-between">
+        {hasConditions && (() => {
+          const stages = project.invoicePlan === "bulk"
+            ? [{ name: "일괄", ratio: 100 }]
+            : [
+                { name: "계약금", ratio: project.depositRatio || 0 },
+                { name: "중도금", ratio: project.midRatio || 0 },
+                { name: "잔금", ratio: project.finalRatio || 0 },
+              ].filter(s => s.ratio > 0);
+
+          const linkedTotal = project.salesInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
+          const plannedTotal = project.totalAmount!;
+          const diff = plannedTotal - linkedTotal;
+
+          return (
+            <div className="border rounded-lg p-2.5 space-y-2">
               <span className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />계산서 발행 계획</span>
-              <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => genInvoiceMutation.mutate()} disabled={genInvoiceMutation.isPending} data-testid="button-gen-invoice">
-                {genInvoiceMutation.isPending ? "생성중..." : "계산서 자동 생성"}
-              </Button>
+              <div className="border rounded overflow-hidden">
+                {stages.map(stage => {
+                  const supply = Math.round(plannedTotal * stage.ratio / 100);
+                  const vat = Math.round(supply * 0.1);
+                  return (
+                    <div key={stage.name} className="flex items-center justify-between text-xs py-1.5 px-2 border-b last:border-b-0">
+                      <span className="font-medium">{stage.name} ({stage.ratio}%)</span>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>공급 {fmtComma(supply)}</span>
+                        <span>VAT {fmtComma(vat)}</span>
+                        <span className="font-medium text-foreground">{fmtComma(supply + vat)}원</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-between text-[10px] px-1">
+                <span className="text-muted-foreground">연결된 계산서 공급가액: {fmtComma(linkedTotal)}원</span>
+                {diff === 0 ? (
+                  <span className="text-green-600 font-medium flex items-center gap-0.5"><Check className="h-3 w-3" />일치</span>
+                ) : diff > 0 ? (
+                  <span className="text-orange-600 font-medium">미발행 {fmtComma(diff)}원</span>
+                ) : (
+                  <span className="text-red-600 font-medium">초과 {fmtComma(Math.abs(diff))}원</span>
+                )}
+              </div>
             </div>
-            <div className="text-[10px] text-muted-foreground">
-              {project.invoicePlan === "bulk"
-                ? `일괄 발행: 공급가액 ${fmtComma(project.totalAmount!)}원 + VAT ${fmtComma(Math.round(project.totalAmount! * 0.1))}원 = ${fmtComma(Math.round(project.totalAmount! * 1.1))}원`
-                : `분할 발행: 계약금(${project.depositRatio}%), 중도금(${project.midRatio}%), 잔금(${project.finalRatio}%) 별도 발행`}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div>
           <div className="flex items-center justify-between mb-1">
