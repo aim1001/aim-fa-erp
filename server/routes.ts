@@ -1606,11 +1606,19 @@ export async function registerRoutes(
 
   app.get("/api/projects/years", async (_req, res) => {
     try {
-      const folders = await listFoldersByPath("2.공사");
-      const years = folders
-        .map(f => parseInt(f.name))
-        .filter(y => !isNaN(y))
-        .sort((a, b) => b - a);
+      const allProjects = await storage.getProjects();
+      const yearSet = new Set<number>();
+      for (const p of allProjects) {
+        if (p.year) yearSet.add(p.year);
+      }
+      try {
+        const folders = await listFoldersByPath("2.공사");
+        for (const f of folders) {
+          const y = parseInt(f.name);
+          if (!isNaN(y)) yearSet.add(y);
+        }
+      } catch {}
+      const years = Array.from(yearSet).sort((a, b) => b - a);
       res.json(years);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
