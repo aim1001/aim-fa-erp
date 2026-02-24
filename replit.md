@@ -128,6 +128,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-23: Payment plan page with list + calendar views, monthly navigation, totals summary
 - 2026-02-23: Invoice detail modals now include payment plan section with generate/complete actions
 - 2026-02-23: Project↔Invoice↔Payment linking (projectId fields added, project detail modal with invoice linking/unlinking, financial summaries per project)
+- 2026-02-24: OneDrive token management overhaul - graphCallWithRetry with fresh-client retry on 401/token errors, error classification (7 types), diagnostic token logging (length/type only, no secrets), Client.init callback pattern to avoid JWT parsing of opaque tokens, extractAccessToken with 5-field-path fallback, frontend error-type-specific guidance
 
 ## User Preferences
 - Korean language UI
