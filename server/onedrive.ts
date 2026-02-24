@@ -1,4 +1,4 @@
-import { Client } from '@microsoft/microsoft-graph-client';
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
 let connectionSettings: any;
 let lastTokenFetchTime: number = 0;
@@ -24,9 +24,9 @@ function deepKeys(obj: any, prefix = ''): string[] {
 
 type GraphErrorType = 'token_expired' | 'token_invalid' | 'needs_reauth' | 'needs_consent' | 'client_error' | 'transient' | 'unknown';
 
-function classifyGraphError(err: any): { type: GraphErrorType; code: string; message: string; needsReconnect: boolean } {
-  const message = err?.message || err?.body?.message || String(err);
-  const code = err?.code || err?.body?.code || err?.statusCode?.toString() || '';
+function classifyGraphError(statusCode: number, errorBody: any): { type: GraphErrorType; code: string; message: string; needsReconnect: boolean } {
+  const message = errorBody?.error?.message || errorBody?.message || String(errorBody);
+  const code = errorBody?.error?.code || errorBody?.code || statusCode.toString();
   const fullText = `${code} ${message}`.toLowerCase();
 
   if (fullText.includes('invalid_grant')) {
@@ -41,16 +41,13 @@ function classifyGraphError(err: any): { type: GraphErrorType; code: string; mes
   if (fullText.includes('aadsts')) {
     return { type: 'needs_reauth', code, message, needsReconnect: true };
   }
-  if (fullText.includes('invalidauthenticationtoken') || fullText.includes('401') || fullText.includes('unauthorized')) {
-    return { type: 'token_invalid', code, message, needsReconnect: false };
-  }
-  if (fullText.includes('idx14100') || fullText.includes('jwt is not well formed') || fullText.includes('no dots')) {
+  if (statusCode === 401 || fullText.includes('invalidauthenticationtoken') || fullText.includes('unauthorized')) {
     return { type: 'token_invalid', code, message, needsReconnect: false };
   }
   if (fullText.includes('expired') || fullText.includes('token has expired')) {
     return { type: 'token_expired', code, message, needsReconnect: false };
   }
-  if (fullText.includes('throttl') || fullText.includes('429') || fullText.includes('service unavailable') || fullText.includes('503')) {
+  if (statusCode === 429 || statusCode === 503 || fullText.includes('throttl') || fullText.includes('service unavailable')) {
     return { type: 'transient', code, message, needsReconnect: false };
   }
 
@@ -116,7 +113,6 @@ async function fetchConnectionFromReplit(): Promise<any> {
     const accessToken = extractAccessToken(conn);
     console.log('[OneDrive 진단] 커넥터 응답 스키마:', JSON.stringify(schemaKeys));
     console.log('[OneDrive 진단] 토큰 추출 결과:', accessToken ? maskToken(accessToken) : 'null (토큰 없음)');
-    console.log('[OneDrive 진단] expires_at:', conn.settings?.expires_at || '없음');
   } else {
     console.warn('[OneDrive 진단] 커넥터 응답에 연결 항목 없음');
   }
@@ -131,12 +127,9 @@ export function resetTokenCache() {
 
 async function getAccessToken(): Promise<string> {
   const now = Date.now();
-  const tokenExpiry = connectionSettings?.settings?.expires_at
-    ? new Date(connectionSettings.settings.expires_at).getTime()
-    : 0;
   const cacheStale = (now - lastTokenFetchTime) > TOKEN_CACHE_MAX_AGE;
 
-  if (connectionSettings && tokenExpiry > now && !cacheStale) {
+  if (connectionSettings && !cacheStale) {
     const cached = extractAccessToken(connectionSettings);
     if (cached) return cached;
   }
@@ -152,24 +145,74 @@ async function getAccessToken(): Promise<string> {
   return accessToken;
 }
 
-async function getClient(): Promise<Client> {
-  const accessToken = await getAccessToken();
-  return Client.init({
-    authProvider: (done) => {
-      done(null, accessToken);
+async function graphFetch(path: string, token: string, options?: {
+  method?: string;
+  body?: any;
+  select?: string;
+  rawResponse?: boolean;
+}): Promise<any> {
+  const method = options?.method || 'GET';
+  let url = `${GRAPH_BASE}${path}`;
+
+  if (options?.select) {
+    const separator = url.includes('?') ? '&' : '?';
+    url += `${separator}$select=${options.select}`;
+  }
+
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${token}`,
+  };
+
+  let body: any = undefined;
+  if (options?.body !== undefined) {
+    if (Buffer.isBuffer(options.body)) {
+      headers['Content-Type'] = 'application/octet-stream';
+      body = options.body;
+    } else if (typeof options.body === 'object') {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(options.body);
+    } else {
+      body = options.body;
     }
-  });
+  }
+
+  const res = await fetch(url, { method, headers, body });
+
+  if (!res.ok) {
+    let errorBody: any;
+    try {
+      errorBody = await res.json();
+    } catch {
+      errorBody = { message: `HTTP ${res.status} ${res.statusText}` };
+    }
+    const classified = classifyGraphError(res.status, errorBody);
+    const err: any = new Error(classified.message);
+    err.statusCode = res.status;
+    err.graphError = classified;
+    throw err;
+  }
+
+  if (options?.rawResponse) {
+    return res;
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return res.json();
+  }
+
+  return Buffer.from(await res.arrayBuffer());
 }
 
 async function graphCallWithRetry<T>(
-  operationFactory: (client: Client) => Promise<T>,
+  operationFactory: (token: string) => Promise<T>,
   operationName: string
 ): Promise<T> {
-  const client = await getClient();
+  const token = await getAccessToken();
   try {
-    return await operationFactory(client);
+    return await operationFactory(token);
   } catch (firstErr: any) {
-    const classified = classifyGraphError(firstErr);
+    const classified = firstErr.graphError || classifyGraphError(firstErr.statusCode || 0, firstErr);
     console.warn(`[OneDrive] ${operationName} 실패 (1차): type=${classified.type}, code=${classified.code}, message=${classified.message}`);
 
     if (classified.needsReconnect) {
@@ -180,7 +223,7 @@ async function graphCallWithRetry<T>(
     if (classified.type === 'transient') {
       await new Promise(r => setTimeout(r, 1000));
       try {
-        return await operationFactory(client);
+        return await operationFactory(token);
       } catch (retryErr: any) {
         console.error(`[OneDrive] ${operationName} 재시도 실패 (transient):`, retryErr.message);
         throw retryErr;
@@ -192,10 +235,10 @@ async function graphCallWithRetry<T>(
       resetTokenCache();
 
       try {
-        const freshClient = await getClient();
-        return await operationFactory(freshClient);
+        const freshToken = await getAccessToken();
+        return await operationFactory(freshToken);
       } catch (retryErr: any) {
-        const retryClassified = classifyGraphError(retryErr);
+        const retryClassified = retryErr.graphError || classifyGraphError(retryErr.statusCode || 0, retryErr);
         console.error(`[OneDrive] ${operationName} 재시도 실패: type=${retryClassified.type}, message=${retryClassified.message}`);
         if (retryClassified.needsReconnect) {
           throw new Error(`OneDrive 재연결 필요 (${retryClassified.type}): ${retryClassified.message}`);
@@ -232,14 +275,8 @@ export async function checkConnectionStatus(): Promise<{
     connectionSettings = conn;
     lastTokenFetchTime = Date.now();
 
-    const testClient = Client.init({
-      authProvider: (done) => {
-        done(null, accessToken);
-      }
-    });
-
     try {
-      const me = await testClient.api('/me').select('displayName,mail').get();
+      const me = await graphFetch('/me', accessToken, { select: 'displayName,mail' });
       return {
         connected: true,
         message: `OneDrive 연결됨 (${me.displayName || me.mail || '계정 확인됨'})`,
@@ -247,7 +284,7 @@ export async function checkConnectionStatus(): Promise<{
         accountInfo: me.displayName || me.mail,
       };
     } catch (graphErr: any) {
-      const classified = classifyGraphError(graphErr);
+      const classified = graphErr.graphError || classifyGraphError(graphErr.statusCode || 0, graphErr);
       console.warn(`[OneDrive 진단] Graph /me 호출 실패: type=${classified.type}, code=${classified.code}, msg=${classified.message}`);
       console.log('[OneDrive 진단] 사용한 토큰:', maskToken(accessToken));
 
@@ -265,12 +302,7 @@ export async function checkConnectionStatus(): Promise<{
         lastTokenFetchTime = Date.now();
 
         try {
-          const retryClient = Client.init({
-            authProvider: (done) => {
-              done(null, retryToken);
-            }
-          });
-          const me = await retryClient.api('/me').select('displayName,mail').get();
+          const me = await graphFetch('/me', retryToken, { select: 'displayName,mail' });
           return {
             connected: true,
             message: `OneDrive 연결됨 (${me.displayName || me.mail || '계정 확인됨'})`,
@@ -278,7 +310,7 @@ export async function checkConnectionStatus(): Promise<{
             accountInfo: me.displayName || me.mail,
           };
         } catch (retryGraphErr: any) {
-          const retryClassified = classifyGraphError(retryGraphErr);
+          const retryClassified = retryGraphErr.graphError || classifyGraphError(retryGraphErr.statusCode || 0, retryGraphErr);
           console.error(`[OneDrive 진단] 재시도 후에도 실패: type=${retryClassified.type}, msg=${retryClassified.message}`);
           return {
             connected: false,
@@ -324,7 +356,7 @@ export interface OneDriveFile {
 
 export async function listRootSalesFolder(): Promise<OneDriveFolder[]> {
   const result = await graphCallWithRetry(
-    (c) => c.api('/me/drive/root:/1.영업:/children').select('id,name,webUrl,folder').get(),
+    (token) => graphFetch('/me/drive/root:/1.영업:/children', token, { select: 'id,name,webUrl,folder' }),
     'listRootSalesFolder'
   );
 
@@ -339,7 +371,7 @@ export async function listRootSalesFolder(): Promise<OneDriveFolder[]> {
 
 export async function listYearFolders(yearFolderName: string): Promise<OneDriveFolder[]> {
   const result = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/root:/1.영업/${yearFolderName}:/children`).select('id,name,webUrl,folder').get(),
+    (token) => graphFetch(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, { select: 'id,name,webUrl,folder' }),
     'listYearFolders'
   );
 
@@ -354,10 +386,13 @@ export async function listYearFolders(yearFolderName: string): Promise<OneDriveF
 
 export async function createInquiryFolder(yearFolderName: string, folderName: string): Promise<OneDriveFolder> {
   const result = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/root:/1.영업/${yearFolderName}:/children`).post({
-      name: folderName,
-      folder: {},
-      '@microsoft.graph.conflictBehavior': 'fail',
+    (token) => graphFetch(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, {
+      method: 'POST',
+      body: {
+        name: folderName,
+        folder: {},
+        '@microsoft.graph.conflictBehavior': 'fail',
+      },
     }),
     'createInquiryFolder'
   );
@@ -371,7 +406,7 @@ export async function createInquiryFolder(yearFolderName: string, folderName: st
 
 export async function listFolderFiles(folderId: string): Promise<OneDriveFile[]> {
   const result = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/items/${folderId}/children`).select('id,name,webUrl,size,file').get(),
+    (token) => graphFetch(`/me/drive/items/${folderId}/children`, token, { select: 'id,name,webUrl,size,file' }),
     'listFolderFiles'
   );
 
@@ -387,22 +422,17 @@ export async function listFolderFiles(folderId: string): Promise<OneDriveFile[]>
 }
 
 export async function downloadFile(itemId: string): Promise<Buffer> {
-  const stream = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/items/${itemId}/content`).getStream(),
+  const buffer = await graphCallWithRetry(
+    (token) => graphFetch(`/me/drive/items/${itemId}/content`, token),
     'downloadFile'
   );
-
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream as any) {
-    chunks.push(Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
+  return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 }
 
 export async function readInfoJson(folderId: string): Promise<Record<string, any> | null> {
   try {
     const children = await graphCallWithRetry(
-      (c) => c.api(`/me/drive/items/${folderId}/children`).select('id,name,file').get(),
+      (token) => graphFetch(`/me/drive/items/${folderId}/children`, token, { select: 'id,name,file' }),
       'readInfoJson.list'
     );
 
@@ -411,16 +441,12 @@ export async function readInfoJson(folderId: string): Promise<Record<string, any
     );
     if (!infoFile) return null;
 
-    const stream = await graphCallWithRetry(
-      (c) => c.api(`/me/drive/items/${infoFile.id}/content`).getStream(),
+    const buffer = await graphCallWithRetry(
+      (token) => graphFetch(`/me/drive/items/${infoFile.id}/content`, token),
       'readInfoJson.download'
     );
 
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream as any) {
-      chunks.push(Buffer.from(chunk));
-    }
-    const content = Buffer.concat(chunks).toString('utf-8');
+    const content = (Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer)).toString('utf-8');
     return JSON.parse(content);
   } catch (err) {
     console.warn(`Failed to read _info.json from folder ${folderId}:`, (err as Error).message);
@@ -431,28 +457,25 @@ export async function readInfoJson(folderId: string): Promise<Record<string, any
 export async function writeInfoJson(folderId: string, data: Record<string, any>): Promise<void> {
   const content = JSON.stringify(data, null, 2);
   const folderItem = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/items/${folderId}`).select('parentReference,name').get(),
+    (token) => graphFetch(`/me/drive/items/${folderId}`, token, { select: 'parentReference,name' }),
     'writeInfoJson.getFolder'
   );
   const driveId = folderItem.parentReference?.driveId;
 
-  if (driveId) {
-    await graphCallWithRetry(
-      (c) => c.api(`/drives/${driveId}/items/${folderId}:/_info.json:/content`).put(Buffer.from(content, 'utf-8')),
-      'writeInfoJson.put'
-    );
-  } else {
-    await graphCallWithRetry(
-      (c) => c.api(`/me/drive/items/${folderId}:/_info.json:/content`).put(Buffer.from(content, 'utf-8')),
-      'writeInfoJson.put'
-    );
-  }
+  const uploadPath = driveId
+    ? `/drives/${driveId}/items/${folderId}:/_info.json:/content`
+    : `/me/drive/items/${folderId}:/_info.json:/content`;
+
+  await graphCallWithRetry(
+    (token) => graphFetch(uploadPath, token, { method: 'PUT', body: Buffer.from(content, 'utf-8') }),
+    'writeInfoJson.put'
+  );
 }
 
 export async function listFilesByPath(path: string): Promise<OneDriveFile[]> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const result = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/root:/${encodedPath}:/children`).select('id,name,webUrl,size,file').get(),
+    (token) => graphFetch(`/me/drive/root:/${encodedPath}:/children`, token, { select: 'id,name,webUrl,size,file' }),
     'listFilesByPath'
   );
 
@@ -470,7 +493,7 @@ export async function listFilesByPath(path: string): Promise<OneDriveFile[]> {
 export async function listFoldersByPath(path: string): Promise<OneDriveFolder[]> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const result = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/root:/${encodedPath}:/children`).select('id,name,webUrl,folder').get(),
+    (token) => graphFetch(`/me/drive/root:/${encodedPath}:/children`, token, { select: 'id,name,webUrl,folder' }),
     'listFoldersByPath'
   );
 
@@ -485,29 +508,25 @@ export async function listFoldersByPath(path: string): Promise<OneDriveFolder[]>
 
 export async function downloadFileByPath(path: string): Promise<Buffer> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
-  const stream = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/root:/${encodedPath}:/content`).getStream(),
+  const buffer = await graphCallWithRetry(
+    (token) => graphFetch(`/me/drive/root:/${encodedPath}:/content`, token),
     'downloadFileByPath'
   );
-
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream as any) {
-    chunks.push(Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
+  return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 }
 
 export async function findFileInFolder(folderNames: string[], fileName: string): Promise<Buffer> {
-  const client = await getClient();
+  const token = await getAccessToken();
 
-  let currentPath = '/me/drive/root/children';
   let currentFolderId: string | null = null;
 
   for (const folderName of folderNames) {
-    const navPath: string = currentFolderId ? `/me/drive/items/${currentFolderId}/children` : currentPath;
-    const result: any = await client.api(navPath).select('id,name,folder').get();
+    const navPath = currentFolderId
+      ? `/me/drive/items/${currentFolderId}/children`
+      : '/me/drive/root/children';
+    const result = await graphFetch(navPath, token, { select: 'id,name,folder' });
 
-    const folder: any = (result.value || []).find(
+    const folder = (result.value || []).find(
       (item: any) => item.folder && item.name === folderName
     );
 
@@ -520,10 +539,7 @@ export async function findFileInFolder(folderNames: string[], fileName: string):
     currentFolderId = folder.id;
   }
 
-  const filesResult = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/items/${currentFolderId}/children`).select('id,name,file').get(),
-    'findFileInFolder.listFiles'
-  );
+  const filesResult = await graphFetch(`/me/drive/items/${currentFolderId}/children`, token, { select: 'id,name,file' });
 
   const file = (filesResult.value || []).find(
     (item: any) => item.file && item.name === fileName
@@ -536,16 +552,8 @@ export async function findFileInFolder(folderNames: string[], fileName: string):
     throw new Error(`파일 '${fileName}'을 찾을 수 없습니다. 사용 가능한 파일: ${available.join(', ')}`);
   }
 
-  const stream = await graphCallWithRetry(
-    (c) => c.api(`/me/drive/items/${file.id}/content`).getStream(),
-    'findFileInFolder.download'
-  );
-
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream as any) {
-    chunks.push(Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
+  const buffer = await graphFetch(`/me/drive/items/${file.id}/content`, token);
+  return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 }
 
 export function parseInquiryFolderName(folderName: string, year: number): {
