@@ -341,8 +341,6 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
 
   const [editingInvoiceDateId, setEditingInvoiceDateId] = useState<string | null>(null);
   const [editInvoiceDate, setEditInvoiceDate] = useState("");
-  const [issuingInvoiceId, setIssuingInvoiceId] = useState<string | null>(null);
-  const [issueDate, setIssueDate] = useState("");
   const updateInvoiceDateMutation = useMutation({
     mutationFn: async ({ id, plannedIssueDate }: { id: string; plannedIssueDate: string | null }) => {
       const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, { plannedIssueDate });
@@ -350,14 +348,6 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] }); },
     onError: (err: Error) => toast({ title: "예정일 변경 실패", description: err.message, variant: "destructive" }),
-  });
-  const issueInvoiceMutation = useMutation({
-    mutationFn: async ({ id, issueDate }: { id: string; issueDate: string | null }) => {
-      const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, { issueDate, status: issueDate ? "issued" : "pending" });
-      return res.json();
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] }); setIssuingInvoiceId(null); },
-    onError: (err: Error) => toast({ title: "발행 처리 실패", description: err.message, variant: "destructive" }),
   });
 
   const [showSalesPicker, setShowSalesPicker] = useState(false);
@@ -865,56 +855,28 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                                     </Button>
                                   </div>
                                 </div>
-                                <div className="flex items-center justify-between mt-0.5">
-                                  <div className="flex items-center gap-1.5">
-                                    {isIssued ? (
-                                      <span className="text-green-700 dark:text-green-400">발행일 {inv.issueDate}</span>
-                                    ) : issuingInvoiceId === inv.id ? (
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-muted-foreground">발행일</span>
-                                        <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-issue-date-${inv.id}`} />
-                                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-confirm-issue-${inv.id}`}
-                                          disabled={!issueDate}
-                                          onClick={() => issueInvoiceMutation.mutate({ id: inv.id, issueDate })}>
-                                          <Check className="h-3 w-3" />
-                                        </Button>
-                                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setIssuingInvoiceId(null)} data-testid={`button-cancel-issue-${inv.id}`}>
-                                          <X className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                    ) : isEditingDate ? (
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-muted-foreground">예정일</span>
-                                        <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-invoice-date-${inv.id}`} />
-                                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-invoice-date-${inv.id}`}
-                                          onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}>
-                                          <Check className="h-3 w-3" />
-                                        </Button>
-                                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-invoice-date-${inv.id}`}>
-                                          <X className="h-3 w-3" />
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <span className={`cursor-pointer hover:underline ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
-                                        onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }}
-                                        data-testid={`text-invoice-date-${inv.id}`}>
-                                        {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정 (클릭하여 설정)"}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-0.5">
-                                    {isIssued ? (
-                                      <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1 text-orange-600" data-testid={`button-cancel-issued-${inv.id}`}
-                                        onClick={() => issueInvoiceMutation.mutate({ id: inv.id, issueDate: null })}>
-                                        <Undo2 className="h-3 w-3 mr-0.5" />발행취소
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  {isIssued ? (
+                                    <span className="text-green-700 dark:text-green-400">발행일 {inv.issueDate}</span>
+                                  ) : isEditingDate ? (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-muted-foreground">예정일</span>
+                                      <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-invoice-date-${inv.id}`} />
+                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-invoice-date-${inv.id}`}
+                                        onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}>
+                                        <Check className="h-3 w-3" />
                                       </Button>
-                                    ) : (
-                                      <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1 text-blue-600" data-testid={`button-issue-invoice-${inv.id}`}
-                                        onClick={() => { setIssuingInvoiceId(inv.id); setIssueDate(inv.plannedIssueDate || new Date().toISOString().split("T")[0]); }}>
-                                        <FileText className="h-3 w-3 mr-0.5" />발행처리
+                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-invoice-date-${inv.id}`}>
+                                        <X className="h-3 w-3" />
                                       </Button>
-                                    )}
-                                  </div>
+                                    </div>
+                                  ) : (
+                                    <span className={`cursor-pointer hover:underline ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
+                                      onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }}
+                                      data-testid={`text-invoice-date-${inv.id}`}>
+                                      {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정 (클릭하여 설정)"}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -995,56 +957,28 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                         </Button>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between mt-0.5 text-[10px]">
-                      <div className="flex items-center gap-1.5">
-                        {isIssued ? (
-                          <span className="text-green-700 dark:text-green-400">발행일 {inv.issueDate}</span>
-                        ) : issuingInvoiceId === inv.id ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-muted-foreground">발행일</span>
-                            <Input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-sales-issue-date-${inv.id}`} />
-                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-confirm-sales-issue-${inv.id}`}
-                              disabled={!issueDate}
-                              onClick={() => issueInvoiceMutation.mutate({ id: inv.id, issueDate })}>
-                              <Check className="h-3 w-3" />
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setIssuingInvoiceId(null)} data-testid={`button-cancel-sales-issue-${inv.id}`}>
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ) : isEditingDate ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-muted-foreground">예정일</span>
-                            <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-sales-invoice-date-${inv.id}`} />
-                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-sales-invoice-date-${inv.id}`}
-                              onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}>
-                              <Check className="h-3 w-3" />
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-sales-invoice-date-${inv.id}`}>
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className={`cursor-pointer hover:underline ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
-                            onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }}
-                            data-testid={`text-sales-invoice-date-${inv.id}`}>
-                            {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정 (클릭하여 설정)"}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-0.5">
-                        {isIssued ? (
-                          <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1 text-orange-600" data-testid={`button-cancel-sales-issued-${inv.id}`}
-                            onClick={() => issueInvoiceMutation.mutate({ id: inv.id, issueDate: null })}>
-                            <Undo2 className="h-3 w-3 mr-0.5" />발행취소
+                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+                      {isIssued ? (
+                        <span className="text-green-700 dark:text-green-400">발행일 {inv.issueDate}</span>
+                      ) : isEditingDate ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">예정일</span>
+                          <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-sales-invoice-date-${inv.id}`} />
+                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-sales-invoice-date-${inv.id}`}
+                            onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}>
+                            <Check className="h-3 w-3" />
                           </Button>
-                        ) : (
-                          <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1 text-blue-600" data-testid={`button-sales-issue-invoice-${inv.id}`}
-                            onClick={() => { setIssuingInvoiceId(inv.id); setIssueDate(inv.plannedIssueDate || new Date().toISOString().split("T")[0]); }}>
-                            <FileText className="h-3 w-3 mr-0.5" />발행처리
+                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-sales-invoice-date-${inv.id}`}>
+                            <X className="h-3 w-3" />
                           </Button>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <span className={`cursor-pointer hover:underline ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
+                          onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }}
+                          data-testid={`text-sales-invoice-date-${inv.id}`}>
+                          {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정 (클릭하여 설정)"}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
