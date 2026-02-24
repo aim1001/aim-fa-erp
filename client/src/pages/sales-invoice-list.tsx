@@ -7,7 +7,7 @@ import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { SalesInvoice, Customer, Payment } from "@shared/schema";
+import type { SalesInvoice, Customer, Payment, Project } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -311,6 +311,9 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
   const { data: customers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
   });
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
 
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -324,9 +327,26 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices", invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const projectLinkMutation = useMutation({
+    mutationFn: async (projectId: string | null) => {
+      const res = await apiRequest("PATCH", `/api/sales-invoices/${invoiceId}`, { projectId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices", invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "프로젝트 연결 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -381,6 +401,7 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
   }
 
   const customerName = customers?.find(c => c.id === invoice.customerId)?.companyName || "-";
+  const linkedProject = projects?.find(p => p.id === invoice.projectId);
 
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="modal-sales-invoice-detail">
@@ -403,6 +424,22 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
         </Select>
         <span className="text-muted-foreground text-xs">(현재: {customerName})</span>
         <span></span>
+        <span className="text-muted-foreground">프로젝트</span>
+        <div className="flex items-center gap-1">
+          <Select value={invoice.projectId || "__none__"} onValueChange={val => projectLinkMutation.mutate(val === "__none__" ? null : val)}>
+            <SelectTrigger className="h-7 text-sm" data-testid="select-project-link"><SelectValue placeholder="프로젝트 선택" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">연결 안함</SelectItem>
+              {(projects || []).map(p => <SelectItem key={p.id} value={p.id}>{p.projectNumber} {p.customerName}{p.description ? ` - ${p.description}` : ""}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        {linkedProject && (
+          <>
+            <span className="text-muted-foreground text-xs">(현재: {linkedProject.projectNumber} {linkedProject.customerName})</span>
+            <span></span>
+          </>
+        )}
         {renderField("상호", "companyName", invoice.companyName || "")}
         {renderField("사업자번호", "businessNumber", invoice.businessNumber || "")}
         {renderField("대표자", "representative", invoice.representative || "")}
@@ -446,6 +483,15 @@ export default function SalesInvoiceList() {
   const { data: invoiceYears } = useQuery<number[]>({
     queryKey: ["/api/invoice-years"],
   });
+  const { data: allProjects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
+
+  const projectMap = useMemo(() => {
+    const map = new Map<string, Project>();
+    allProjects?.forEach(p => map.set(p.id, p));
+    return map;
+  }, [allProjects]);
 
   const customerMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -674,7 +720,8 @@ export default function SalesInvoiceList() {
               <tr className="border-b bg-muted/50">
                 <th className="text-left py-2.5 px-4 font-medium">발급일</th>
                 <th className="text-left py-2.5 px-4 font-medium">상호</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자번호</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">프로젝트</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">사업자번호</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">공급가액</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">세액</th>
                 <th className="text-right py-2.5 px-4 font-medium">합계</th>
@@ -688,7 +735,14 @@ export default function SalesInvoiceList() {
                 <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(inv.id)} data-testid={`row-sales-invoice-${inv.id}`}>
                   <td className="py-2.5 px-4">{inv.issueDate || "-"}</td>
                   <td className="py-2.5 px-4">{inv.companyName || (inv.customerId ? customerMap.get(inv.customerId) : "-") || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{inv.businessNumber || "-"}</td>
+                  <td className="py-2.5 px-4 hidden md:table-cell">
+                    {inv.projectId && projectMap.get(inv.projectId) ? (
+                      <span className="text-xs font-medium text-muted-foreground" data-testid={`text-project-${inv.id}`}>
+                        {projectMap.get(inv.projectId)!.projectNumber} {projectMap.get(inv.projectId)!.customerName}
+                      </span>
+                    ) : <span className="text-xs text-muted-foreground/50">-</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{inv.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.supplyAmount)}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.taxAmount)}</td>
                   <td className="py-2.5 px-4 text-right font-medium">{formatAmount(inv.totalAmount)}</td>
