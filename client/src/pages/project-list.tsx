@@ -354,11 +354,6 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium flex items-center gap-1"><CalendarClock className="h-3 w-3" />수금 계획</span>
               <div className="flex items-center gap-1">
-                {incomePayments.length > 0 && (
-                  <span className="text-[10px] text-muted-foreground mr-1">
-                    수금 {fmt(paidIncome)}원 / 예정 {fmt(plannedIncome)}원
-                  </span>
-                )}
                 <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => genCollectionMutation.mutate()} disabled={genCollectionMutation.isPending} data-testid="button-gen-collection">
                   {genCollectionMutation.isPending ? "생성중..." : incomePayments.length > 0 ? "재생성" : "수금 계획 생성"}
                 </Button>
@@ -368,36 +363,56 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
               <div className="border rounded overflow-hidden">
                 {incomePayments.map(pay => {
                   const isEditing = editingPaymentId === pay.id;
+                  const amt = pay.amount || 0;
+                  const supply = Math.round(amt / 1.1);
+                  const vat = amt - supply;
+                  const ratioMap: Record<string, number> = { "계약금": project.depositRatio || 0, "중도금": project.midRatio || 0, "잔금": project.finalRatio || 0 };
+                  const matchedStage = Object.keys(ratioMap).find(k => pay.description?.includes(k));
+                  const pct = matchedStage ? ratioMap[matchedStage] : (project.totalAmount ? Math.round((supply / project.totalAmount) * 100) : 0);
+                  const isDone = pay.status === "completed" || !!pay.actualDate;
                   return (
                     <div key={pay.id} className="border-b last:border-b-0">
                       {isEditing ? (
-                        <div className="flex items-center gap-1.5 text-xs py-1.5 px-2 bg-muted/30">
-                          <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-6 text-xs w-[130px] px-1" data-testid={`input-edit-date-${pay.id}`} />
-                          <CommaInput value={editAmount} onChange={setEditAmount} className="h-6 text-xs w-[100px] px-1" data-testid={`input-edit-amount-${pay.id}`} />
-                          <span className="text-[10px] text-muted-foreground">원</span>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" data-testid={`button-save-payment-${pay.id}`}
-                            onClick={() => {
-                              updatePaymentMutation.mutate({ id: pay.id, data: { amount: editAmount, plannedDate: editDate || undefined } });
-                              setEditingPaymentId(null);
-                            }}>
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingPaymentId(null)} data-testid={`button-cancel-edit-${pay.id}`}>
-                            <X className="h-3 w-3" />
-                          </Button>
+                        <div className="p-2 bg-muted/30 space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-6 text-xs w-[130px] px-1" data-testid={`input-edit-date-${pay.id}`} />
+                            <span className="text-[10px] text-muted-foreground">합계(VAT포함)</span>
+                            <CommaInput value={editAmount} onChange={setEditAmount} className="h-6 text-xs w-[100px] px-1" data-testid={`input-edit-amount-${pay.id}`} />
+                            <span className="text-[10px] text-muted-foreground">원</span>
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" data-testid={`button-save-payment-${pay.id}`}
+                              onClick={() => {
+                                updatePaymentMutation.mutate({ id: pay.id, data: { amount: editAmount, plannedDate: editDate || undefined } });
+                                setEditingPaymentId(null);
+                              }}>
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingPaymentId(null)} data-testid={`button-cancel-edit-${pay.id}`}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          {editAmount > 0 && (
+                            <div className="text-[10px] text-muted-foreground pl-1">
+                              공급 {fmtComma(Math.round(editAmount / 1.1))} + VAT {fmtComma(editAmount - Math.round(editAmount / 1.1))} = {fmtComma(editAmount)}원
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="flex items-center justify-between text-xs py-1.5 px-2">
                           <div className="flex items-center gap-2">
                             <span className="text-muted-foreground whitespace-nowrap">{pay.plannedDate || "미정"}</span>
                             <span className="font-medium">{pay.description}</span>
+                            <span className="text-[10px] text-muted-foreground">({pct}%)</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-blue-600 font-medium whitespace-nowrap">{fmtComma(pay.amount || 0)}원</span>
-                            <span className={`text-[10px] px-1 py-0.5 rounded ${pay.status === "completed" || pay.actualDate ? "text-green-700 bg-green-50 dark:bg-green-900/30" : "text-orange-700 bg-orange-50 dark:bg-orange-900/30"}`}>
-                              {pay.status === "completed" || pay.actualDate ? "입금완료" : "예정"}
+                            <div className="flex items-center gap-1.5 text-muted-foreground">
+                              <span className="whitespace-nowrap">공급 {fmtComma(supply)}</span>
+                              <span className="whitespace-nowrap">VAT {fmtComma(vat)}</span>
+                            </div>
+                            <span className="text-blue-600 font-medium whitespace-nowrap">{fmtComma(amt)}원</span>
+                            <span className={`text-[10px] px-1 py-0.5 rounded ${isDone ? "text-green-700 bg-green-50 dark:bg-green-900/30" : "text-orange-700 bg-orange-50 dark:bg-orange-900/30"}`}>
+                              {isDone ? "입금완료" : "예정"}
                             </span>
-                            {pay.status !== "completed" && !pay.actualDate && (
+                            {!isDone && (
                               <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-edit-payment-${pay.id}`}
                                 onClick={() => { setEditingPaymentId(pay.id); setEditAmount(pay.amount || 0); setEditDate(pay.plannedDate || ""); }}>
                                 <Pencil className="h-3 w-3" />
@@ -409,6 +424,22 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                     </div>
                   );
                 })}
+                {(() => {
+                  const totalAmt = paidIncome + plannedIncome;
+                  const totalSupply = Math.round(totalAmt / 1.1);
+                  const totalVat = totalAmt - totalSupply;
+                  return (
+                    <div className="flex items-center justify-between text-[10px] py-1.5 px-2 bg-muted/30 font-medium">
+                      <span>합계 (100%)</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">공급 {fmtComma(totalSupply)}</span>
+                        <span className="text-muted-foreground">VAT {fmtComma(totalVat)}</span>
+                        <span className="text-blue-600">{fmtComma(totalAmt)}원</span>
+                        <span className="text-muted-foreground ml-1">수금 {fmtComma(paidIncome)} / 예정 {fmtComma(plannedIncome)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
