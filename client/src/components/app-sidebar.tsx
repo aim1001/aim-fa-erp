@@ -27,7 +27,8 @@ export function AppSidebar() {
     message: string;
     expiresAt?: string;
     accountInfo?: string;
-  }>({
+    errorType?: string;
+  } | null>({
     queryKey: ["/api/onedrive/status"],
     queryFn: getQueryFn({ on401: "returnNull" }),
     refetchInterval: 5 * 60 * 1000,
@@ -248,9 +249,15 @@ export function AppSidebar() {
                 <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
                 <span>{syncMutation.isPending ? "동기화 중..." : "OneDrive 동기화"}</span>
               </Button>
-              {!onedriveStatus?.connected && !statusLoading && (
+              {!onedriveStatus?.connected && !statusLoading && onedriveStatus && (
                 <p className="text-[10px] text-muted-foreground px-1" data-testid="text-onedrive-help">
-                  Replit 도구 패널에서 OneDrive를 연결해 주세요
+                  {onedriveStatus.errorType === 'needs_reauth' || onedriveStatus.errorType === 'needs_consent'
+                    ? 'Replit 도구 패널에서 OneDrive를 다시 연결해 주세요'
+                    : onedriveStatus.errorType === 'transient'
+                    ? '일시적 오류입니다. 잠시 후 다시 시도해 주세요'
+                    : onedriveStatus.errorType === 'not_configured'
+                    ? 'Replit 도구 패널에서 OneDrive를 연결해 주세요'
+                    : '연결 상태 새로고침 버튼을 눌러보세요'}
                 </p>
               )}
             </div>
