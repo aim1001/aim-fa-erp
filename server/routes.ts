@@ -1381,6 +1381,9 @@ export async function registerRoutes(
       const salesMap = new Map(salesInvoices.map(i => [i.id, i]));
       const purchaseMap = new Map(purchaseInvoices.map(i => [i.id, i]));
 
+      const projects = await storage.getProjects();
+      const projectMap = new Map(projects.map(p => [p.id, p]));
+
       const allPayments = await storage.getPayments();
       const paidBySalesInvoice = new Map<string, number>();
       const paidByPurchaseInvoice = new Map<string, number>();
@@ -1417,7 +1420,13 @@ export async function registerRoutes(
           invoicePaidAmount = paidByPurchaseInvoice.get(p.purchaseInvoiceId) || 0;
           invoiceRemainingAmount = Math.max((invoiceTotalAmount || 0) - invoicePaidAmount, 0);
         }
-        return { ...p, invoiceIssueDate, invoiceNumber, invoiceTotalAmount, invoiceItem, invoicePaidAmount, invoiceRemainingAmount };
+        const proj = p.projectId ? projectMap.get(p.projectId) : null;
+        return {
+          ...p,
+          invoiceIssueDate, invoiceNumber, invoiceTotalAmount, invoiceItem, invoicePaidAmount, invoiceRemainingAmount,
+          projectNumber: proj?.projectNumber || null,
+          projectCustomerName: proj?.customerName || null,
+        };
       });
 
       res.json(enriched);

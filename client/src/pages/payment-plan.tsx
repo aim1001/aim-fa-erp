@@ -19,6 +19,8 @@ type EnrichedPayment = Payment & {
   invoiceItem: string | null;
   invoicePaidAmount: number;
   invoiceRemainingAmount: number;
+  projectNumber: string | null;
+  projectCustomerName: string | null;
 };
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -77,6 +79,7 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
@@ -92,6 +95,7 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       onClose();
     },
   });
@@ -185,6 +189,12 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
           )}
         </div>
       )}
+      {payment.projectNumber && (
+        <div className="text-xs text-muted-foreground">
+          프로젝트: <span className="font-mono font-medium text-foreground">{payment.projectNumber}</span>
+          {payment.projectCustomerName && <span className="ml-1">{payment.projectCustomerName}</span>}
+        </div>
+      )}
       <div className="grid grid-cols-[100px_1fr] gap-y-2 gap-x-2 text-sm items-center">
         {renderField("거래처", "companyName", payment.companyName || "")}
         {renderField("설명", "description", payment.description || "")}
@@ -243,6 +253,7 @@ function AddPaymentDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       onOpenChange(false);
       setForm({ type: "expense", companyName: "", description: "", amount: "", paymentMethod: "end_of_next_month", plannedDate: "" });
       toast({ title: "결제 계획이 등록되었습니다" });
@@ -410,6 +421,7 @@ export default function PaymentPlan() {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
@@ -425,6 +437,7 @@ export default function PaymentPlan() {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       toast({ title: "잔액 결제 건이 생성되었습니다" });
     },
   });
@@ -581,6 +594,7 @@ export default function PaymentPlan() {
                   <th className="text-left py-1.5 px-2 font-medium text-xs w-12">구분</th>
                   <th className="text-left py-1.5 px-2 font-medium text-xs">예정일</th>
                   <th className="text-left py-1.5 px-2 font-medium text-xs hidden md:table-cell">계산서일</th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs hidden lg:table-cell">프로젝트</th>
                   <th className="text-left py-1.5 px-2 font-medium text-xs">거래처</th>
                   <th className="text-right py-1.5 px-2 font-medium text-xs">예정금액</th>
                   <th className="text-right py-1.5 px-2 font-medium text-xs hidden md:table-cell">실제금액</th>
@@ -648,9 +662,17 @@ export default function PaymentPlan() {
                         </Popover>
                       </td>
                       <td className="py-1.5 px-2 text-xs text-muted-foreground hidden md:table-cell">{p.invoiceIssueDate || "-"}</td>
+                      <td className="py-1.5 px-2 hidden lg:table-cell">
+                        {p.projectNumber ? (
+                          <div>
+                            <div className="text-xs font-mono text-muted-foreground">{p.projectNumber}</div>
+                            {p.projectCustomerName && <div className="text-[10px] text-muted-foreground truncate max-w-[120px]">{p.projectCustomerName}</div>}
+                          </div>
+                        ) : <span className="text-xs text-muted-foreground">-</span>}
+                      </td>
                       <td className="py-1.5 px-2">
                         <div className="text-xs font-medium truncate max-w-[160px]">{p.companyName || "-"}</div>
-                        {p.invoiceItem && <div className="text-[10px] text-muted-foreground truncate max-w-[160px]">{p.invoiceItem}</div>}
+                        {p.description && <div className="text-[10px] text-muted-foreground truncate max-w-[160px]">{p.description}</div>}
                       </td>
                       <td className="py-1.5 px-2 text-right" onClick={e => e.stopPropagation()}>
                         {isCompleted ? (
