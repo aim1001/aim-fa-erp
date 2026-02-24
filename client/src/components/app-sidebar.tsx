@@ -58,7 +58,7 @@ export function AppSidebar() {
     },
     onSuccess: (data) => {
       if (data.authUrl) {
-        window.location.href = data.authUrl;
+        window.open(data.authUrl, '_blank');
       }
     },
     onError: (err: Error) => {
