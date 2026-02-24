@@ -1488,6 +1488,7 @@ export async function registerRoutes(
         amount: actualAmount,
         actualAmount,
         actualDate,
+        plannedDate: actualDate,
         status: "completed",
       });
       if (!updated) return res.status(404).json({ message: "결제 항목을 찾을 수 없습니다" });

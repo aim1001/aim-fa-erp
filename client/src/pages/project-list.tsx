@@ -287,7 +287,10 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
 
   const invalidatePayments = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
     queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
   };
 
   const updatePaymentMutation = useMutation({

@@ -13,7 +13,7 @@ import {
   vendors, salesInvoices, purchaseInvoices, payments, projects,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, ilike, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
 
 function naturalSort(a: string, b: string): number {
   const ax: (string | number)[] = [];
@@ -552,9 +552,15 @@ export class DatabaseStorage implements IStorage {
     const endYear = month === 12 ? year + 1 : year;
     const endDate = `${endYear}-${String(endMonth).padStart(2, "0")}-01`;
     return db.select().from(payments)
-      .where(and(
-        gte(payments.plannedDate, startDate),
-        lte(payments.plannedDate, endDate)
+      .where(or(
+        and(
+          gte(payments.plannedDate, startDate),
+          lte(payments.plannedDate, endDate)
+        ),
+        and(
+          gte(payments.actualDate, startDate),
+          lte(payments.actualDate, endDate)
+        )
       ))
       .orderBy(payments.plannedDate);
   }
