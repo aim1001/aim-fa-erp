@@ -466,14 +466,19 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                         </div>
                       ) : isEditing ? (
                         <div className="p-2 bg-muted/30 space-y-1.5">
+                          <div className="text-[10px] font-medium text-muted-foreground">{isDone ? "입금 내역 수정" : "계획 수정"}: {pay.description}</div>
                           <div className="flex items-center gap-1.5 text-xs">
+                            <span className="text-[10px] text-muted-foreground">{isDone ? "입금일" : "예정일"}</span>
                             <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-6 text-xs w-[130px] px-1" data-testid={`input-edit-date-${pay.id}`} />
                             <span className="text-[10px] text-muted-foreground">합계(VAT포함)</span>
                             <CommaInput value={editAmount} onChange={setEditAmount} className="h-6 text-xs w-[100px] px-1" data-testid={`input-edit-amount-${pay.id}`} />
                             <span className="text-[10px] text-muted-foreground">원</span>
                             <Button size="sm" variant="ghost" className="h-6 w-6 p-0" data-testid={`button-save-payment-${pay.id}`}
                               onClick={() => {
-                                updatePaymentMutation.mutate({ id: pay.id, data: { amount: editAmount, plannedDate: editDate || undefined } });
+                                const data: Record<string, any> = isDone
+                                  ? { actualAmount: editAmount, actualDate: editDate || undefined, amount: editAmount }
+                                  : { amount: editAmount, plannedDate: editDate || undefined };
+                                updatePaymentMutation.mutate({ id: pay.id, data });
                                 setEditingPaymentId(null);
                               }}>
                               <Check className="h-3 w-3" />
@@ -500,20 +505,20 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                             </div>
                             <div className="flex items-center gap-1">
                               {!isDone && (
-                                <>
-                                  <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1 text-blue-600" data-testid={`button-confirm-start-${pay.id}`}
-                                    onClick={() => { setConfirmingPaymentId(pay.id); setConfirmAmount(pay.amount || 0); setConfirmDate(new Date().toISOString().split("T")[0]); }}>
-                                    <Banknote className="h-3 w-3 mr-0.5" />입금처리
-                                  </Button>
-                                  <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-edit-payment-${pay.id}`}
-                                    onClick={() => { setEditingPaymentId(pay.id); setEditAmount(pay.amount || 0); setEditDate(pay.plannedDate || ""); }}>
-                                    <Pencil className="h-3 w-3" />
-                                  </Button>
-                                  <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" data-testid={`button-delete-payment-${pay.id}`}
-                                    onClick={() => deletePaymentMutation.mutate(pay.id)}>
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </>
+                                <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1 text-blue-600" data-testid={`button-confirm-start-${pay.id}`}
+                                  onClick={() => { setConfirmingPaymentId(pay.id); setConfirmAmount(pay.amount || 0); setConfirmDate(new Date().toISOString().split("T")[0]); }}>
+                                  <Banknote className="h-3 w-3 mr-0.5" />입금처리
+                                </Button>
+                              )}
+                              <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-edit-payment-${pay.id}`}
+                                onClick={() => { setEditingPaymentId(pay.id); setEditAmount(isDone ? (pay.actualAmount || pay.amount || 0) : (pay.amount || 0)); setEditDate(isDone ? (pay.actualDate || pay.plannedDate || "") : (pay.plannedDate || "")); }}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              {!isDone && (
+                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" data-testid={`button-delete-payment-${pay.id}`}
+                                  onClick={() => deletePaymentMutation.mutate(pay.id)}>
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
                               )}
                             </div>
                           </div>
