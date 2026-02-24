@@ -3,8 +3,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Receipt, Wallet, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
+import { ProjectDetailModal } from "./project-list";
 
 type UnissuedInvoice = {
   invoiceId: string;
@@ -67,13 +68,13 @@ function daysFromToday(dateStr: string | null): string {
 }
 
 export default function ManagementDashboard() {
-  const [, navigate] = useLocation();
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/management-dashboard"],
   });
 
   const [showAllInvoices, setShowAllInvoices] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -178,7 +179,7 @@ export default function ManagementDashboard() {
               <div
                 key={inv.invoiceId}
                 className={`p-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-muted/40 transition-colors ${inv.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
-                onClick={() => inv.projectId && navigate(`/projects?open=${inv.projectId}`)}
+                onClick={() => inv.projectId && setSelectedProjectId(inv.projectId)}
                 data-testid={`row-unissued-invoice-${inv.invoiceId}`}
               >
                 <div className="flex-1 min-w-0">
@@ -244,7 +245,7 @@ export default function ManagementDashboard() {
               <div
                 key={pay.paymentId}
                 className={`p-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-muted/40 transition-colors ${pay.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
-                onClick={() => pay.projectId && navigate(`/projects?open=${pay.projectId}`)}
+                onClick={() => pay.projectId && setSelectedProjectId(pay.projectId)}
                 data-testid={`row-uncollected-payment-${pay.paymentId}`}
               >
                 <div className="flex-1 min-w-0">
@@ -284,6 +285,10 @@ export default function ManagementDashboard() {
           )}
         </div>
       </div>
+
+      <Dialog open={!!selectedProjectId} onOpenChange={open => { if (!open) setSelectedProjectId(null); }}>
+        {selectedProjectId && <ProjectDetailModal projectId={selectedProjectId} onClose={() => setSelectedProjectId(null)} />}
+      </Dialog>
     </div>
   );
 }

@@ -204,7 +204,7 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
   );
 }
 
-function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+export function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const { toast } = useToast();
   const { data: project, isLoading } = useQuery<ProjectDetail>({
     queryKey: ["/api/projects", projectId],
@@ -1082,15 +1082,6 @@ export default function ProjectList() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const openId = params.get("open");
-    if (openId) {
-      setSelectedId(openId);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, []);
 
   const { data: years, isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/projects/years"],
