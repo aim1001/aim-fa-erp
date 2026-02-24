@@ -262,9 +262,8 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton disabled className="opacity-50" data-testid="nav-products">
-                  <Package className="h-4 w-4" /><span>판매제품관리</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground">예정</span>
+                <SidebarMenuButton asChild data-active={location === "/items"} data-testid="nav-products">
+                  <Link href="/items"><Package className="h-4 w-4" /><span>판매제품관리</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

@@ -10,9 +10,12 @@ import {
   type Payment, type InsertPayment,
   type Project, type InsertProject,
   type OnedriveToken,
+  type ItemMaster, type InsertItemMaster,
+  type ItemInventory, type InsertItemInventory,
+  type ItemDocument, type InsertItemDocument,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
-  onedriveTokens,
+  onedriveTokens, itemMaster, itemInventory, itemDocument,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -133,6 +136,19 @@ export interface IStorage {
   getOnedriveToken(): Promise<OnedriveToken | undefined>;
   saveOnedriveToken(data: { accessToken: string; refreshToken: string; expiresAt: Date; accountName?: string; accountEmail?: string }): Promise<OnedriveToken>;
   deleteOnedriveToken(): Promise<void>;
+
+  getItems(): Promise<ItemMaster[]>;
+  getItemByCode(itemCode: string): Promise<ItemMaster | undefined>;
+  upsertItem(item: InsertItemMaster): Promise<ItemMaster>;
+  deleteItem(id: string): Promise<void>;
+  getItemInventory(itemCode: string): Promise<ItemInventory[]>;
+  upsertItemInventory(inv: InsertItemInventory): Promise<ItemInventory>;
+  getAllItemInventory(): Promise<ItemInventory[]>;
+  getItemDocuments(itemCode: string): Promise<ItemDocument[]>;
+  addItemDocument(doc: InsertItemDocument): Promise<ItemDocument>;
+  deleteItemDocument(id: string): Promise<void>;
+  deleteItemDocumentsByItemCode(itemCode: string): Promise<void>;
+  getItemsWithDetails(): Promise<Array<ItemMaster & { inventory: ItemInventory[]; documents: ItemDocument[] }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -658,6 +674,100 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOnedriveToken(): Promise<void> {
     await db.delete(onedriveTokens);
+  }
+
+  async getItems(): Promise<ItemMaster[]> {
+    return db.select().from(itemMaster).orderBy(itemMaster.category1, itemMaster.itemCode);
+  }
+
+  async getItemByCode(code: string): Promise<ItemMaster | undefined> {
+    const [row] = await db.select().from(itemMaster).where(eq(itemMaster.itemCode, code));
+    return row;
+  }
+
+  async upsertItem(item: InsertItemMaster): Promise<ItemMaster> {
+    const existing = await this.getItemByCode(item.itemCode);
+    if (existing) {
+      const [row] = await db.update(itemMaster).set(item).where(eq(itemMaster.id, existing.id)).returning();
+      return row;
+    }
+    const [row] = await db.insert(itemMaster).values(item).returning();
+    return row;
+  }
+
+  async deleteItem(id: string): Promise<void> {
+    const item = await db.select().from(itemMaster).where(eq(itemMaster.id, id));
+    if (item[0]) {
+      await db.delete(itemInventory).where(eq(itemInventory.itemCode, item[0].itemCode));
+      await db.delete(itemDocument).where(eq(itemDocument.itemCode, item[0].itemCode));
+    }
+    await db.delete(itemMaster).where(eq(itemMaster.id, id));
+  }
+
+  async getItemInventory(code: string): Promise<ItemInventory[]> {
+    return db.select().from(itemInventory).where(eq(itemInventory.itemCode, code));
+  }
+
+  async upsertItemInventory(inv: InsertItemInventory): Promise<ItemInventory> {
+    const [existing] = await db.select().from(itemInventory).where(
+      and(eq(itemInventory.itemCode, inv.itemCode), eq(itemInventory.stockType, inv.stockType))
+    );
+    if (existing) {
+      const [row] = await db.update(itemInventory)
+        .set({ qty: inv.qty, updatedAt: new Date() })
+        .where(eq(itemInventory.id, existing.id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(itemInventory).values(inv).returning();
+    return row;
+  }
+
+  async getAllItemInventory(): Promise<ItemInventory[]> {
+    return db.select().from(itemInventory);
+  }
+
+  async getItemDocuments(code: string): Promise<ItemDocument[]> {
+    return db.select().from(itemDocument).where(eq(itemDocument.itemCode, code));
+  }
+
+  async addItemDocument(doc: InsertItemDocument): Promise<ItemDocument> {
+    const [row] = await db.insert(itemDocument).values(doc).returning();
+    return row;
+  }
+
+  async deleteItemDocument(id: string): Promise<void> {
+    await db.delete(itemDocument).where(eq(itemDocument.id, id));
+  }
+
+  async deleteItemDocumentsByItemCode(code: string): Promise<void> {
+    await db.delete(itemDocument).where(eq(itemDocument.itemCode, code));
+  }
+
+  async getItemsWithDetails(): Promise<Array<ItemMaster & { inventory: ItemInventory[]; documents: ItemDocument[] }>> {
+    const items = await this.getItems();
+    const allInventory = await this.getAllItemInventory();
+    const allDocs = await db.select().from(itemDocument);
+
+    const invMap = new Map<string, ItemInventory[]>();
+    for (const inv of allInventory) {
+      const arr = invMap.get(inv.itemCode) || [];
+      arr.push(inv);
+      invMap.set(inv.itemCode, arr);
+    }
+
+    const docMap = new Map<string, ItemDocument[]>();
+    for (const doc of allDocs) {
+      const arr = docMap.get(doc.itemCode) || [];
+      arr.push(doc);
+      docMap.set(doc.itemCode, arr);
+    }
+
+    return items.map(item => ({
+      ...item,
+      inventory: invMap.get(item.itemCode) || [],
+      documents: docMap.get(item.itemCode) || [],
+    }));
   }
 }
 

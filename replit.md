@@ -34,6 +34,9 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보)
 - **projects** 테이블: 프로젝트 (프로젝트번호, 고객사명, 내용, 연도, OneDrive 폴더 정보, 상태)
+- **item_master** 테이블: 판매제품 마스터 (카테고리, 품목코드(unique), 품목명, 사양, 원가, 판매가, 활성여부, 제품유형)
+- **item_inventory** 테이블: 재고 관리 (품목코드, 재고유형(AVAILABLE/TEST/DEMO), 수량, 업데이트일)
+- **item_document** 테이블: 제품 문서 (품목코드, 문서유형, URL, 이름)
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
@@ -84,6 +87,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `client/src/pages/sales-invoice-list.tsx` - Sales invoice list page (매출계산서)
 - `client/src/pages/purchase-invoice-list.tsx` - Purchase invoice list page (매입계산서)
 - `client/src/pages/payment-plan.tsx` - Payment plan page (자금계획, 리스트+캘린더 뷰)
+- `client/src/pages/item-list.tsx` - Item/product list page (판매제품관리, OneDrive sync)
 - `client/src/components/app-sidebar.tsx` - Sidebar navigation (영업/경영지원/관리 섹션)
 
 ## Recent Changes
@@ -128,6 +132,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-23: Payment plan page with list + calendar views, monthly navigation, totals summary
 - 2026-02-23: Invoice detail modals now include payment plan section with generate/complete actions
 - 2026-02-23: Project↔Invoice↔Payment linking (projectId fields added, project detail modal with invoice linking/unlinking, financial summaries per project)
+- 2026-02-24: 판매제품관리 (item_master, item_inventory, item_document 3테이블 설계, OneDrive listprice.xlsx 동기화, /items 페이지)
 - 2026-02-24: OneDrive token management overhaul - graphCallWithRetry with fresh-client retry on 401/token errors, error classification (7 types), diagnostic token logging (length/type only, no secrets), Client.init callback pattern to avoid JWT parsing of opaque tokens, extractAccessToken with 5-field-path fallback, frontend error-type-specific guidance
 
 ## User Preferences

@@ -276,6 +276,85 @@ export async function parsePurchaseTaxInvoices(year: number): Promise<TaxInvoice
   return allRows;
 }
 
+export interface ListPriceItem {
+  category1: string;
+  category2: string;
+  itemCode: string;
+  itemName: string;
+  spec: string;
+  cost: number;
+  salesPrice: number;
+  active: boolean;
+  itemType: string;
+  availableQty: number;
+  testQty: number;
+  inventoryUpdateDate: string;
+  documents: { docType: string; url: string }[];
+}
+
+const DOC_COLUMNS: { col: number; docType: string }[] = [
+  { col: 9, docType: "THUMB" },
+  { col: 10, docType: "IMAGE" },
+  { col: 11, docType: "VIDEO" },
+  { col: 12, docType: "CERTIFICATE" },
+  { col: 13, docType: "DRAWING" },
+  { col: 14, docType: "MANUAL_USER" },
+  { col: 15, docType: "MANUAL_INSTALL" },
+  { col: 16, docType: "MANUAL_PROGRAM" },
+  { col: 17, docType: "DATASHEET" },
+];
+
+export async function parseListPriceFromOneDrive(): Promise<ListPriceItem[]> {
+  const buffer = await downloadFileByPath("1.영업/database/listprice.xlsx");
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const results: ListPriceItem[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+
+    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+
+    for (let r = 1; r <= range.e.r; r++) {
+      const itemCode = getCellValue(sheet, 2, r);
+      const itemName = getCellValue(sheet, 3, r);
+      if (!itemCode && !itemName) continue;
+
+      const costStr = getCellValue(sheet, 5, r);
+      const priceStr = getCellValue(sheet, 6, r);
+      const activeStr = getCellValue(sheet, 7, r);
+
+      const documents: { docType: string; url: string }[] = [];
+      for (const dc of DOC_COLUMNS) {
+        const val = getCellValue(sheet, dc.col, r);
+        if (val) documents.push({ docType: dc.docType, url: val });
+      }
+
+      const availableQtyStr = getCellValue(sheet, 18, r);
+      const testQtyStr = getCellValue(sheet, 19, r);
+      const updateDateStr = getCellValue(sheet, 20, r);
+
+      results.push({
+        category1: getCellValue(sheet, 0, r) || sheetName,
+        category2: getCellValue(sheet, 1, r),
+        itemCode: itemCode || itemName,
+        itemName: itemName || itemCode,
+        spec: getCellValue(sheet, 4, r),
+        cost: costStr ? parseInt(costStr.replace(/[^0-9-]/g, ""), 10) || 0 : 0,
+        salesPrice: priceStr ? parseInt(priceStr.replace(/[^0-9-]/g, ""), 10) || 0 : 0,
+        active: activeStr.toLowerCase() === "true" || activeStr === "1",
+        itemType: getCellValue(sheet, 8, r),
+        availableQty: availableQtyStr ? parseInt(availableQtyStr, 10) || 0 : 0,
+        testQty: testQtyStr ? parseInt(testQtyStr, 10) || 0 : 0,
+        inventoryUpdateDate: updateDateStr,
+        documents,
+      });
+    }
+  }
+
+  return results;
+}
+
 export async function getAvailableInvoiceYears(): Promise<number[]> {
   try {
     const folders = await listFoldersByPath("4.경영지원/database");

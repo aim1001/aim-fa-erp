@@ -18,6 +18,7 @@ import PurchaseInvoiceList from "@/pages/purchase-invoice-list";
 import PaymentPlan from "@/pages/payment-plan";
 import ProjectList from "@/pages/project-list";
 import ManagementDashboard from "@/pages/management-dashboard";
+import ItemList from "@/pages/item-list";
 import Login from "@/pages/login";
 import { getQueryFn } from "@/lib/queryClient";
 
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/payment-plan" component={PaymentPlan} />
       <Route path="/projects" component={ProjectList} />
       <Route path="/management" component={ManagementDashboard} />
+      <Route path="/items" component={ItemList} />
       <Route component={NotFound} />
     </Switch>
   );

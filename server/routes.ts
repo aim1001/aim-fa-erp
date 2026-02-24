@@ -17,7 +17,8 @@ import {
   getAuthUrl,
   exchangeCodeForTokens,
 } from "./onedrive";
-import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears } from "./excel-parser";
+import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears, parseListPriceFromOneDrive } from "./excel-parser";
+import { insertItemMasterSchema, insertItemInventorySchema } from "@shared/schema";
 
 declare module "express-session" {
   interface SessionData {
@@ -2147,51 +2148,125 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/listprice/preview", requireAuth, async (_req, res) => {
+  app.get("/api/items", requireAuth, async (_req, res) => {
     try {
-      const { downloadFileByPath } = await import("./onedrive");
-      const XLSX = await import("xlsx");
-      const buffer = await downloadFileByPath("1.영업/database/listprice.xlsx");
-      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const items = await storage.getItemsWithDetails();
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
-      const sheets: any[] = [];
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName];
-        if (!sheet) continue;
+  app.get("/api/items/:itemCode", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItemByCode(req.params.itemCode);
+      if (!item) return res.status(404).json({ message: "제품을 찾을 수 없습니다" });
+      const inventory = await storage.getItemInventory(req.params.itemCode);
+      const documents = await storage.getItemDocuments(req.params.itemCode);
+      res.json({ ...item, inventory, documents });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
-        const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
-        const totalRows = range.e.r + 1;
-        const totalCols = range.e.c + 1;
+  app.post("/api/items", requireAuth, async (req, res) => {
+    try {
+      const parsed = insertItemMasterSchema.parse(req.body);
+      const item = await storage.upsertItem(parsed);
+      res.json(item);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
 
-        const allRows: string[][] = [];
-        const previewRowCount = Math.min(totalRows, 30);
-        for (let r = 0; r < previewRowCount; r++) {
-          const row: string[] = [];
-          for (let c = 0; c <= range.e.c; c++) {
-            const cellRef = XLSX.utils.encode_cell({ r, c });
-            const cell = sheet[cellRef];
-            row.push(cell && cell.v !== undefined && cell.v !== null ? String(cell.v) : "");
-          }
-          allRows.push(row);
+  app.delete("/api/items/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteItem(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/items/:itemCode/inventory", requireAuth, async (req, res) => {
+    try {
+      const inventory = await storage.getItemInventory(req.params.itemCode);
+      res.json(inventory);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/items/:itemCode/inventory", requireAuth, async (req, res) => {
+    try {
+      const data = { ...req.body, itemCode: req.params.itemCode };
+      const parsed = insertItemInventorySchema.parse(data);
+      const inv = await storage.upsertItemInventory(parsed);
+      res.json(inv);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/items/sync-onedrive", requireAuth, async (_req, res) => {
+    try {
+      const parsed = await parseListPriceFromOneDrive();
+      let upserted = 0;
+      let inventoryCount = 0;
+      let docCount = 0;
+
+      for (const item of parsed) {
+        await storage.upsertItem({
+          category1: item.category1,
+          category2: item.category2,
+          itemCode: item.itemCode,
+          itemName: item.itemName,
+          spec: item.spec,
+          cost: item.cost,
+          salesPrice: item.salesPrice,
+          active: item.active,
+          itemType: item.itemType,
+        });
+        upserted++;
+
+        if (item.availableQty > 0) {
+          await storage.upsertItemInventory({
+            itemCode: item.itemCode,
+            stockType: "AVAILABLE",
+            qty: item.availableQty,
+          });
+          inventoryCount++;
+        }
+        if (item.testQty > 0) {
+          await storage.upsertItemInventory({
+            itemCode: item.itemCode,
+            stockType: "TEST",
+            qty: item.testQty,
+          });
+          inventoryCount++;
         }
 
-        const merges = (sheet["!merges"] || []).map((m: any) => ({
-          start: XLSX.utils.encode_cell(m.s),
-          end: XLSX.utils.encode_cell(m.e),
-        }));
-
-        sheets.push({
-          name: sheetName,
-          totalRows,
-          totalCols,
-          merges: merges.slice(0, 50),
-          rows: allRows,
-        });
+        if (item.documents.length > 0) {
+          await storage.deleteItemDocumentsByItemCode(item.itemCode);
+          for (const doc of item.documents) {
+            await storage.addItemDocument({
+              itemCode: item.itemCode,
+              docType: doc.docType,
+              url: doc.url,
+            });
+            docCount++;
+          }
+        }
       }
 
-      res.json({ sheetCount: workbook.SheetNames.length, sheets });
+      res.json({
+        message: `제품 ${upserted}건 동기화 완료 (재고 ${inventoryCount}건, 문서 ${docCount}건)`,
+        count: upserted,
+        inventoryCount,
+        docCount,
+      });
     } catch (err: any) {
-      console.error("[listprice preview]", err.message);
+      console.error("[items sync]", err.message);
       res.status(500).json({ message: err.message });
     }
   });

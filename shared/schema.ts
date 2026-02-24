@@ -271,6 +271,47 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = typeof projects.$inferSelect;
 
+export const itemMaster = pgTable("item_master", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  category1: text("category1").notNull(),
+  category2: text("category2"),
+  itemCode: text("item_code").notNull().unique(),
+  itemName: text("item_name").notNull(),
+  spec: text("spec"),
+  cost: integer("cost"),
+  salesPrice: integer("sales_price"),
+  active: boolean("active").default(true),
+  itemType: text("item_type"),
+  thumbUrl: text("thumb_url"),
+  mainImageUrl: text("main_image_url"),
+});
+
+export const itemInventory = pgTable("item_inventory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemCode: text("item_code").notNull(),
+  stockType: text("stock_type").notNull(),
+  qty: integer("qty").default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const itemDocument = pgTable("item_document", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemCode: text("item_code").notNull(),
+  docType: text("doc_type").notNull(),
+  url: text("url"),
+  name: text("name"),
+});
+
+export const insertItemMasterSchema = createInsertSchema(itemMaster).omit({ id: true });
+export const insertItemInventorySchema = createInsertSchema(itemInventory).omit({ id: true });
+export const insertItemDocumentSchema = createInsertSchema(itemDocument).omit({ id: true });
+export type InsertItemMaster = z.infer<typeof insertItemMasterSchema>;
+export type ItemMaster = typeof itemMaster.$inferSelect;
+export type InsertItemInventory = z.infer<typeof insertItemInventorySchema>;
+export type ItemInventory = typeof itemInventory.$inferSelect;
+export type InsertItemDocument = z.infer<typeof insertItemDocumentSchema>;
+export type ItemDocument = typeof itemDocument.$inferSelect;
+
 export const onedriveTokens = pgTable("onedrive_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   accessToken: text("access_token").notNull(),
