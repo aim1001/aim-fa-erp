@@ -1759,7 +1759,9 @@ export async function registerRoutes(
       const folderPath = `2.공사/${year}`;
       const folders = await listFoldersByPath(folderPath);
 
-      let created = 0, updated = 0, skipped = 0;
+      let created = 0, updated = 0, skipped = 0, deleted = 0;
+
+      const onedriveFolderNames = new Set(folders.map(f => f.name));
 
       for (const folder of folders) {
         const existing = await storage.getProjectByFolderName(folder.name);
@@ -1793,7 +1795,15 @@ export async function registerRoutes(
         }
       }
 
-      res.json({ message: `동기화 완료: ${created}건 생성, ${updated}건 갱신`, created, updated, skipped, total: folders.length });
+      const existingProjects = await storage.getProjects(year);
+      for (const project of existingProjects) {
+        if (project.folderName && !onedriveFolderNames.has(project.folderName)) {
+          await storage.deleteProject(project.id);
+          deleted++;
+        }
+      }
+
+      res.json({ message: `동기화 완료: ${created}건 생성, ${updated}건 갱신, ${deleted}건 삭제`, created, updated, deleted, skipped, total: folders.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
