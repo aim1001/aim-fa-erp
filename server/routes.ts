@@ -2025,7 +2025,7 @@ export async function registerRoutes(
         const proj = projects.find(p => p.id === pay.projectId);
         const entry = {
           paymentId: pay.id,
-          projectId: pay.projectId || "",
+          projectId: pay.projectId || null,
           projectNumber: proj?.projectNumber || "",
           customerName: pay.companyName || proj?.customerName || "",
           description: pay.description || "",

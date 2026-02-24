@@ -22,7 +22,7 @@ type UnissuedInvoice = {
 
 type UncollectedPayment = {
   paymentId: string;
-  projectId: string;
+  projectId: string | null;
   projectNumber: string;
   customerName: string;
   description: string;
@@ -244,7 +244,7 @@ export default function ManagementDashboard() {
             {displayPayments.map((pay) => (
               <div
                 key={pay.paymentId}
-                className={`p-2.5 text-xs flex items-center gap-3 cursor-pointer hover:bg-muted/40 transition-colors ${pay.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
+                className={`p-2.5 text-xs flex items-center gap-3 ${pay.projectId ? "cursor-pointer hover:bg-muted/40" : ""} transition-colors ${pay.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
                 onClick={() => pay.projectId && setSelectedProjectId(pay.projectId)}
                 data-testid={`row-uncollected-payment-${pay.paymentId}`}
               >
