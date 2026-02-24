@@ -590,7 +590,7 @@ export default function PaymentPlan() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="text-left py-1.5 px-2 font-medium text-xs w-12">상태</th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs w-20">상태</th>
                   <th className="text-left py-1.5 px-2 font-medium text-xs w-12">구분</th>
                   <th className="text-left py-1.5 px-2 font-medium text-xs">예정일</th>
                   <th className="text-left py-1.5 px-2 font-medium text-xs hidden md:table-cell">계산서일</th>
@@ -613,7 +613,7 @@ export default function PaymentPlan() {
                       data-testid={`row-payment-${p.id}`}
                     >
                       <td className="py-1.5 px-2">
-                        <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium ${statusInfo.className}`}>
+                        <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${statusInfo.className}`}>
                           <statusInfo.icon className="h-2.5 w-2.5" />
                           {statusInfo.label}
                         </span>
