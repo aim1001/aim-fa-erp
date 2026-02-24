@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check, Pencil } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -249,6 +249,22 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
     onError: (err: Error) => toast({ title: "수금 계획 생성 실패", description: err.message, variant: "destructive" }),
   });
 
+  const updatePaymentMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { amount?: number; plannedDate?: string; description?: string } }) => {
+      const res = await apiRequest("PATCH", `/api/payments/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+    },
+    onError: (err: Error) => toast({ title: "수정 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [editAmount, setEditAmount] = useState(0);
+  const [editDate, setEditDate] = useState("");
+
   const [showSalesPicker, setShowSalesPicker] = useState(false);
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -350,20 +366,49 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
             </div>
             {incomePayments.length > 0 && (
               <div className="border rounded overflow-hidden">
-                {incomePayments.map(pay => (
-                  <div key={pay.id} className="flex items-center justify-between text-xs py-1.5 px-2 border-b last:border-b-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground whitespace-nowrap">{pay.plannedDate || "미정"}</span>
-                      <span className="font-medium">{pay.description}</span>
+                {incomePayments.map(pay => {
+                  const isEditing = editingPaymentId === pay.id;
+                  return (
+                    <div key={pay.id} className="border-b last:border-b-0">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1.5 text-xs py-1.5 px-2 bg-muted/30">
+                          <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="h-6 text-xs w-[130px] px-1" data-testid={`input-edit-date-${pay.id}`} />
+                          <CommaInput value={editAmount} onChange={setEditAmount} className="h-6 text-xs w-[100px] px-1" data-testid={`input-edit-amount-${pay.id}`} />
+                          <span className="text-[10px] text-muted-foreground">원</span>
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" data-testid={`button-save-payment-${pay.id}`}
+                            onClick={() => {
+                              updatePaymentMutation.mutate({ id: pay.id, data: { amount: editAmount, plannedDate: editDate || undefined } });
+                              setEditingPaymentId(null);
+                            }}>
+                            <Check className="h-3 w-3" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingPaymentId(null)} data-testid={`button-cancel-edit-${pay.id}`}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between text-xs py-1.5 px-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground whitespace-nowrap">{pay.plannedDate || "미정"}</span>
+                            <span className="font-medium">{pay.description}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-blue-600 font-medium whitespace-nowrap">{fmtComma(pay.amount || 0)}원</span>
+                            <span className={`text-[10px] px-1 py-0.5 rounded ${pay.status === "completed" || pay.actualDate ? "text-green-700 bg-green-50 dark:bg-green-900/30" : "text-orange-700 bg-orange-50 dark:bg-orange-900/30"}`}>
+                              {pay.status === "completed" || pay.actualDate ? "입금완료" : "예정"}
+                            </span>
+                            {pay.status !== "completed" && !pay.actualDate && (
+                              <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-edit-payment-${pay.id}`}
+                                onClick={() => { setEditingPaymentId(pay.id); setEditAmount(pay.amount || 0); setEditDate(pay.plannedDate || ""); }}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-blue-600 font-medium whitespace-nowrap">{(pay.amount || 0).toLocaleString()}</span>
-                      <span className={`text-[10px] px-1 py-0.5 rounded ${pay.status === "completed" || pay.actualDate ? "text-green-700 bg-green-50 dark:bg-green-900/30" : "text-orange-700 bg-orange-50 dark:bg-orange-900/30"}`}>
-                        {pay.status === "completed" || pay.actualDate ? "입금완료" : "예정"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
