@@ -1904,5 +1904,82 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/management-dashboard", async (_req, res) => {
+    try {
+      const projects = await storage.getProjects();
+      const salesInvoices = await storage.getSalesInvoices();
+      const allPayments = await storage.getPayments();
+      const today = new Date().toISOString().split("T")[0];
+
+      const unissuedInvoices: any[] = [];
+      const overdueInvoices: any[] = [];
+      const uncollectedPayments: any[] = [];
+      const overduePayments: any[] = [];
+
+      for (const inv of salesInvoices) {
+        if (!inv.projectId) continue;
+        if (inv.issueDate) continue;
+        const proj = projects.find(p => p.id === inv.projectId);
+        const entry = {
+          invoiceId: inv.id,
+          projectId: inv.projectId,
+          projectNumber: proj?.projectNumber || "",
+          customerName: inv.companyName || proj?.customerName || "",
+          stage: inv.invoiceStage || "",
+          supplyAmount: inv.supplyAmount || 0,
+          taxAmount: inv.taxAmount || 0,
+          totalAmount: inv.totalAmount || 0,
+          plannedIssueDate: inv.plannedIssueDate || null,
+          isOverdue: !!(inv.plannedIssueDate && inv.plannedIssueDate < today),
+        };
+        unissuedInvoices.push(entry);
+        if (entry.isOverdue) overdueInvoices.push(entry);
+      }
+
+      for (const pay of allPayments) {
+        if (pay.type !== "income") continue;
+        if (pay.status === "completed" || pay.actualDate) continue;
+        const proj = projects.find(p => p.id === pay.projectId);
+        const entry = {
+          paymentId: pay.id,
+          projectId: pay.projectId || "",
+          projectNumber: proj?.projectNumber || "",
+          customerName: pay.companyName || proj?.customerName || "",
+          description: pay.description || "",
+          amount: pay.amount || 0,
+          plannedDate: pay.plannedDate || null,
+          isOverdue: !!(pay.plannedDate && pay.plannedDate < today),
+        };
+        uncollectedPayments.push(entry);
+        if (entry.isOverdue) overduePayments.push(entry);
+      }
+
+      unissuedInvoices.sort((a, b) => (a.plannedIssueDate || "9999").localeCompare(b.plannedIssueDate || "9999"));
+      uncollectedPayments.sort((a, b) => (a.plannedDate || "9999").localeCompare(b.plannedDate || "9999"));
+
+      const totalUnissuedAmount = unissuedInvoices.reduce((s, i) => s + i.supplyAmount, 0);
+      const totalOverdueAmount = overdueInvoices.reduce((s, i) => s + i.supplyAmount, 0);
+      const totalUncollected = uncollectedPayments.reduce((s, p) => s + p.amount, 0);
+      const totalOverduePayment = overduePayments.reduce((s, p) => s + p.amount, 0);
+
+      res.json({
+        summary: {
+          unissuedCount: unissuedInvoices.length,
+          overdueInvoiceCount: overdueInvoices.length,
+          uncollectedCount: uncollectedPayments.length,
+          overduePaymentCount: overduePayments.length,
+          totalUnissuedAmount,
+          totalOverdueAmount,
+          totalUncollected,
+          totalOverduePayment,
+        },
+        unissuedInvoices,
+        uncollectedPayments,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
