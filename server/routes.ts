@@ -1785,7 +1785,8 @@ export async function registerRoutes(
         if (!stage.ratio || stage.ratio <= 0) continue;
         if (completedStages.has(i + 1)) { skipped++; continue; }
         const supplyAmt = Math.round((project.totalAmount * stage.ratio) / 100);
-        const amount = Math.round(supplyAmt * 1.1);
+        const tax = Math.round(supplyAmt * 0.1);
+        const amount = supplyAmt + tax;
         const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
         const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
 
