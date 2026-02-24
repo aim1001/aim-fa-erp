@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2 } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type EnrichedProject = Project & {
   salesTotal: number;
@@ -341,7 +342,6 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
   const [showSalesPicker, setShowSalesPicker] = useState(false);
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [showConditions, setShowConditions] = useState(false);
   const [stagePicker, setStagePicker] = useState<string | null>(null);
   const [stageSearchTerm, setStageSearchTerm] = useState("");
 
@@ -457,27 +457,23 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
         </div>
       )}
 
-      <div className="space-y-3 mt-2">
-        <div className="border rounded-lg">
-          <button className="w-full flex items-center justify-between p-2.5 text-left hover:bg-muted/30 rounded-lg transition-colors" onClick={() => setShowConditions(!showConditions)} data-testid="button-toggle-conditions">
-            <span className="text-xs font-medium flex items-center gap-1"><Settings className="h-3 w-3" />계약조건</span>
-            <div className="flex items-center gap-2">
-              {hasConditions && (
-                <span className="text-[10px] text-muted-foreground">
-                  {fmtComma(project.totalAmount!)}원(VAT별도) | {project.depositRatio || 0}/{project.midRatio || 0}/{project.finalRatio || 0}% | {project.invoicePlan === "bulk" ? "일괄" : "분할"}
-                </span>
-              )}
-              {showConditions ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
-            </div>
-          </button>
-          {showConditions && (
-            <div className="px-2.5 pb-2.5 border-t pt-2">
-              <CollectionConditionsEditor project={project} onSave={() => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] })} />
-            </div>
-          )}
-        </div>
+      <Tabs defaultValue="conditions" className="mt-2">
+        <TabsList className="w-full grid grid-cols-2 h-8">
+          <TabsTrigger value="conditions" className="text-xs" data-testid="tab-conditions">
+            <Settings className="h-3 w-3 mr-1" />계약조건
+          </TabsTrigger>
+          <TabsTrigger value="plans" className="text-xs" data-testid="tab-plans">
+            <CalendarClock className="h-3 w-3 mr-1" />수금/발행계획
+          </TabsTrigger>
+        </TabsList>
 
-        {hasConditions && (
+        <TabsContent value="conditions" className="mt-2 space-y-3">
+          <CollectionConditionsEditor project={project} onSave={() => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] })} />
+        </TabsContent>
+
+        <TabsContent value="plans" className="mt-2 space-y-3">
+        {hasConditions ? (
+          <>
           <div className="border rounded-lg p-2.5 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium flex items-center gap-1"><CalendarClock className="h-3 w-3" />수금 계획 <span className="text-[9px] text-muted-foreground font-normal">(VAT포함 합계 기준)</span></span>
@@ -726,9 +722,8 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
               </Button>
             )}
           </div>
-        )}
 
-        {hasConditions && (() => {
+        {(() => {
           const stages = project.invoicePlan === "bulk"
             ? [{ name: "일괄", ratio: 100 }]
             : [
@@ -971,7 +966,16 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
             </div>
           </div>
         )}
-      </div>
+        </>
+        ) : (
+          <div className="text-center py-6 text-sm text-muted-foreground">
+            <Settings className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+            <p>계약조건을 먼저 설정해주세요.</p>
+            <p className="text-[10px] mt-1">계약조건 탭에서 총 금액과 비율을 입력하면 수금/발행 계획을 생성할 수 있습니다.</p>
+          </div>
+        )}
+        </TabsContent>
+      </Tabs>
     </DialogContent>
   );
 }
