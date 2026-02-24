@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check, Pencil, Trash2, Banknote, AlertTriangle } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, ChevronDown, ChevronUp, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -514,6 +514,12 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                                 onClick={() => { setEditingPaymentId(pay.id); setEditAmount(isDone ? (pay.actualAmount || pay.amount || 0) : (pay.amount || 0)); setEditDate(isDone ? (pay.actualDate || pay.plannedDate || "") : (pay.plannedDate || "")); }}>
                                 <Pencil className="h-3 w-3" />
                               </Button>
+                              {isDone && (
+                                <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1 text-orange-600" data-testid={`button-undo-payment-${pay.id}`}
+                                  onClick={() => updatePaymentMutation.mutate({ id: pay.id, data: { status: "planned", actualDate: null, actualAmount: null } })}>
+                                  <Undo2 className="h-3 w-3 mr-0.5" />입금취소
+                                </Button>
+                              )}
                               {!isDone && (
                                 <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" data-testid={`button-delete-payment-${pay.id}`}
                                   onClick={() => deletePaymentMutation.mutate(pay.id)}>
