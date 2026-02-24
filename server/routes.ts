@@ -1820,7 +1820,7 @@ export async function registerRoutes(
         const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
 
         const matchedInvoice = invoiceByStage.get(stage.name);
-        const salesInvoiceId = matchedInvoice?.id || null;
+        let salesInvoiceId = matchedInvoice?.id || null;
 
         if (salesInvoiceId) {
           const existingInvoicePayments = existingPayments.filter(p => p.salesInvoiceId === salesInvoiceId && !p.projectId);
@@ -1828,6 +1828,26 @@ export async function registerRoutes(
             if (dup.status !== "completed" && !dup.actualDate) {
               await storage.deletePayment(dup.id);
             }
+          }
+        } else {
+          const existingPlaceholder = projectInvoices.find(inv => inv.invoiceStage === stage.name && !inv.issueDate);
+          if (existingPlaceholder) {
+            salesInvoiceId = existingPlaceholder.id;
+          } else {
+            const newInvoice = await storage.createSalesInvoice({
+              projectId: project.id,
+              companyName: project.customerName || "",
+              issueDate: null,
+              year: project.year || new Date().getFullYear(),
+              item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
+              supplyAmount: supplyAmt,
+              taxAmount: tax,
+              totalAmount: amount,
+              invoiceStage: stage.name,
+              plannedIssueDate: plannedDate,
+              status: "pending",
+            });
+            salesInvoiceId = newInvoice.id;
           }
         }
 
@@ -1874,9 +1894,19 @@ export async function registerRoutes(
         });
       }
 
+      const allPayments = await storage.getPayments();
+      const projectPayments = allPayments.filter(p => p.projectId === project.id && p.type === "income");
+
       if (req.body.confirmed) {
+        const deletedInvoiceIds = new Set<string>();
         for (const inv of placeholderInvoices) {
+          const linkedPayments = projectPayments.filter(p => p.salesInvoiceId === inv.id);
+          for (const lp of linkedPayments) {
+            await storage.updatePayment(lp.id, { salesInvoiceId: null });
+            (lp as any).salesInvoiceId = null;
+          }
           await storage.deleteSalesInvoice(inv.id);
+          deletedInvoiceIds.add(inv.id);
         }
       }
 
@@ -1896,7 +1926,7 @@ export async function registerRoutes(
           const timingType = project.depositTimingType || project.finalTimingType || "end_of_next_month";
           const timingDays = project.depositTimingDays || project.finalTimingDays || null;
           const plannedDate = calcPaymentDate(baseDate, timingType, timingDays);
-          await storage.createSalesInvoice({
+          const newInv = await storage.createSalesInvoice({
             projectId: project.id,
             companyName: project.customerName || "",
             issueDate: null,
@@ -1910,8 +1940,13 @@ export async function registerRoutes(
             status: "pending",
           });
           created++;
+          const matchingPayment = projectPayments.find(p => !p.salesInvoiceId && p.splitIndex === 1);
+          if (matchingPayment) {
+            await storage.updatePayment(matchingPayment.id, { salesInvoiceId: newInv.id });
+          }
         } else { skipped++; }
       } else {
+        const stageIndexMap: Record<string, number> = { "계약금": 1, "중도금": 2, "잔금": 3 };
         const stages = [
           { name: "계약금", ratio: project.depositRatio || 0, timingType: project.depositTimingType, timingDays: project.depositTimingDays, afterDelivery: null as string | null },
           { name: "중도금", ratio: project.midRatio || 0, timingType: project.midTimingType, timingDays: project.midTimingDays, afterDelivery: project.midAfterDelivery },
@@ -1924,7 +1959,7 @@ export async function registerRoutes(
           const tax = Math.round(supply * 0.1);
           const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
           const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
-          await storage.createSalesInvoice({
+          const newInv = await storage.createSalesInvoice({
             projectId: project.id,
             companyName: project.customerName || "",
             issueDate: null,
@@ -1938,6 +1973,11 @@ export async function registerRoutes(
             status: "pending",
           });
           created++;
+          const idx = stageIndexMap[stage.name] || 0;
+          const matchingPayment = projectPayments.find(p => !p.salesInvoiceId && (p.splitIndex === idx || (p.description && p.description.includes(stage.name))));
+          if (matchingPayment) {
+            await storage.updatePayment(matchingPayment.id, { salesInvoiceId: newInv.id });
+          }
         }
       }
 
