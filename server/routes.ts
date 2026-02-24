@@ -2147,5 +2147,54 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/listprice/preview", requireAuth, async (_req, res) => {
+    try {
+      const { downloadFileByPath } = await import("./onedrive");
+      const XLSX = await import("xlsx");
+      const buffer = await downloadFileByPath("1.영업/database/listprice.xlsx");
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+
+      const sheets: any[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) continue;
+
+        const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+        const totalRows = range.e.r + 1;
+        const totalCols = range.e.c + 1;
+
+        const allRows: string[][] = [];
+        const previewRowCount = Math.min(totalRows, 30);
+        for (let r = 0; r < previewRowCount; r++) {
+          const row: string[] = [];
+          for (let c = 0; c <= range.e.c; c++) {
+            const cellRef = XLSX.utils.encode_cell({ r, c });
+            const cell = sheet[cellRef];
+            row.push(cell && cell.v !== undefined && cell.v !== null ? String(cell.v) : "");
+          }
+          allRows.push(row);
+        }
+
+        const merges = (sheet["!merges"] || []).map((m: any) => ({
+          start: XLSX.utils.encode_cell(m.s),
+          end: XLSX.utils.encode_cell(m.e),
+        }));
+
+        sheets.push({
+          name: sheetName,
+          totalRows,
+          totalCols,
+          merges: merges.slice(0, 50),
+          rows: allRows,
+        });
+      }
+
+      res.json({ sheetCount: workbook.SheetNames.length, sheets });
+    } catch (err: any) {
+      console.error("[listprice preview]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
