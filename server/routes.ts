@@ -1767,9 +1767,13 @@ export async function registerRoutes(
 
       const deleted = await storage.deletePlannedPaymentsByProject(project.id);
 
+      const completedPayments = projectPayments.filter(p => p.status === "completed" || p.actualDate);
+      const completedStages = new Set(completedPayments.map(p => p.splitIndex).filter(Boolean));
+
       const baseDate = req.body.baseDate || new Date().toISOString().split("T")[0];
       const deliveryDate = project.deliveryDate || baseDate;
       let created = 0;
+      let skipped = 0;
       const stages: { name: string; ratio: number | null; timingType: string | null; timingDays: number | null; afterDelivery?: string | null }[] = [
         { name: "계약금", ratio: project.depositRatio, timingType: project.depositTimingType, timingDays: project.depositTimingDays },
         { name: "중도금", ratio: project.midRatio, timingType: project.midTimingType, timingDays: project.midTimingDays, afterDelivery: project.midAfterDelivery },
@@ -1779,6 +1783,7 @@ export async function registerRoutes(
       for (let i = 0; i < stages.length; i++) {
         const stage = stages[i];
         if (!stage.ratio || stage.ratio <= 0) continue;
+        if (completedStages.has(i + 1)) { skipped++; continue; }
         const supplyAmt = Math.round((project.totalAmount * stage.ratio) / 100);
         const amount = Math.round(supplyAmt * 1.1);
         const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
@@ -1799,7 +1804,7 @@ export async function registerRoutes(
         created++;
       }
 
-      res.json({ message: `수금 계획 ${created}건 생성 완료`, created });
+      res.json({ message: `수금 계획 ${created}건 생성 완료${skipped > 0 ? ` (입금완료 ${skipped}건 유지)` : ""}`, created, skipped });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1813,17 +1818,22 @@ export async function registerRoutes(
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
 
       const existingSales = (await storage.getSalesInvoices()).filter(i => i.projectId === project.id);
-      if (existingSales.length > 0 && !req.body.confirmed) {
+      const issuedInvoices = existingSales.filter(i => !!i.issueDate);
+      const placeholderInvoices = existingSales.filter(i => !i.issueDate);
+      const issuedStages = new Set(issuedInvoices.map(i => i.invoiceStage).filter(Boolean));
+
+      if (placeholderInvoices.length > 0 && !req.body.confirmed) {
         return res.status(409).json({
-          message: `이미 연결된 계산서 ${existingSales.length}건이 있습니다. 기존 연결을 해제하고 새로 생성하시겠습니까?`,
+          message: `미발행 계산서 ${placeholderInvoices.length}건이 삭제되고 새로 생성됩니다.${issuedInvoices.length > 0 ? ` (발행완료 ${issuedInvoices.length}건은 유지됩니다)` : ""} 계속하시겠습니까?`,
           needConfirm: true,
-          existingCount: existingSales.length,
+          existingCount: placeholderInvoices.length,
+          preservedCount: issuedInvoices.length,
         });
       }
 
-      if (existingSales.length > 0 && req.body.confirmed) {
-        for (const inv of existingSales) {
-          await storage.updateSalesInvoice(inv.id, { projectId: null, invoiceStage: null });
+      if (req.body.confirmed) {
+        for (const inv of placeholderInvoices) {
+          await storage.deleteSalesInvoice(inv.id);
         }
       }
 
@@ -1831,30 +1841,33 @@ export async function registerRoutes(
       const today = new Date().toISOString().split("T")[0];
       const yearNum = project.year || new Date().getFullYear();
       let created = 0;
+      let skipped = 0;
 
       const baseDate = req.body.baseDate || today;
       const deliveryDate = project.deliveryDate || baseDate;
 
       if (invoicePlan === "bulk") {
-        const supply = project.totalAmount;
-        const tax = Math.round(supply * 0.1);
-        const timingType = project.depositTimingType || project.finalTimingType || "end_of_next_month";
-        const timingDays = project.depositTimingDays || project.finalTimingDays || null;
-        const plannedDate = calcPaymentDate(baseDate, timingType, timingDays);
-        await storage.createSalesInvoice({
-          projectId: project.id,
-          companyName: project.customerName || "",
-          issueDate: null,
-          year: yearNum,
-          item: `${project.projectNumber || ""} ${project.description || ""}`.trim() || null,
-          supplyAmount: supply,
-          taxAmount: tax,
-          totalAmount: supply + tax,
-          invoiceStage: "일괄",
-          plannedIssueDate: plannedDate,
-          status: "pending",
-        });
-        created++;
+        if (!issuedStages.has("일괄")) {
+          const supply = project.totalAmount;
+          const tax = Math.round(supply * 0.1);
+          const timingType = project.depositTimingType || project.finalTimingType || "end_of_next_month";
+          const timingDays = project.depositTimingDays || project.finalTimingDays || null;
+          const plannedDate = calcPaymentDate(baseDate, timingType, timingDays);
+          await storage.createSalesInvoice({
+            projectId: project.id,
+            companyName: project.customerName || "",
+            issueDate: null,
+            year: yearNum,
+            item: `${project.projectNumber || ""} ${project.description || ""}`.trim() || null,
+            supplyAmount: supply,
+            taxAmount: tax,
+            totalAmount: supply + tax,
+            invoiceStage: "일괄",
+            plannedIssueDate: plannedDate,
+            status: "pending",
+          });
+          created++;
+        } else { skipped++; }
       } else {
         const stages = [
           { name: "계약금", ratio: project.depositRatio || 0, timingType: project.depositTimingType, timingDays: project.depositTimingDays, afterDelivery: null as string | null },
@@ -1863,6 +1876,7 @@ export async function registerRoutes(
         ].filter(s => s.ratio > 0);
 
         for (const stage of stages) {
+          if (issuedStages.has(stage.name)) { skipped++; continue; }
           const supply = Math.round((project.totalAmount * stage.ratio) / 100);
           const tax = Math.round(supply * 0.1);
           const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
@@ -1884,7 +1898,7 @@ export async function registerRoutes(
         }
       }
 
-      res.json({ message: `계산서 ${created}건 생성 완료`, created });
+      res.json({ message: `계산서 ${created}건 생성 완료${skipped > 0 ? ` (발행완료 ${skipped}건 유지)` : ""}`, created, skipped });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

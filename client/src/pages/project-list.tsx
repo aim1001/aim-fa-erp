@@ -782,7 +782,13 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                     <AlertTriangle className="h-3 w-3" />계산서 재생성 확인
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    기존 연결된 계산서 {project.salesInvoices.length}건의 연결이 해제되고, 계약조건에 따라 새 계산서가 생성됩니다.
+                    {(() => {
+                      const issued = project.salesInvoices.filter((i: any) => !!i.issueDate).length;
+                      const placeholder = project.salesInvoices.filter((i: any) => !i.issueDate).length;
+                      if (issued > 0 && placeholder > 0) return `미발행 ${placeholder}건이 삭제되고 새로 생성됩니다. (발행완료 ${issued}건은 유지됩니다)`;
+                      if (issued > 0) return `발행완료 ${issued}건은 유지되며, 미발행 스테이지만 새로 생성됩니다.`;
+                      return `기존 미발행 계산서 ${placeholder}건이 삭제되고 계약조건에 따라 새로 생성됩니다.`;
+                    })()}
                   </div>
                   <div className="flex items-center gap-1">
                     <Button size="sm" variant="destructive" className="h-6 text-[10px] px-2" data-testid="button-confirm-invoice-regen"
