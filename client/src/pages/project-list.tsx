@@ -221,13 +221,16 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
   });
 
   const linkMutation = useMutation({
-    mutationFn: async ({ type, invoiceId, link }: { type: "sales" | "purchase"; invoiceId: string; link: boolean }) => {
+    mutationFn: async ({ type, invoiceId, link, invoiceStage }: { type: "sales" | "purchase"; invoiceId: string; link: boolean; invoiceStage?: string | null }) => {
       const endpoint = type === "sales" ? `/api/sales-invoices/${invoiceId}` : `/api/purchase-invoices/${invoiceId}`;
-      const res = await apiRequest("PATCH", endpoint, { projectId: link ? projectId : null });
+      const body: any = { projectId: link ? projectId : null };
+      if (type === "sales") body.invoiceStage = link ? (invoiceStage || null) : null;
+      const res = await apiRequest("PATCH", endpoint, body);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
     },
@@ -269,6 +272,13 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [showConditions, setShowConditions] = useState(false);
+  const [stagePicker, setStagePicker] = useState<string | null>(null);
+  const [stageSearchTerm, setStageSearchTerm] = useState("");
+
+  const stageUnlinkedSales = useMemo(() => {
+    if (!allSales || !project) return [];
+    return allSales.filter(i => !i.projectId && i.companyName?.toLowerCase().includes(stageSearchTerm.toLowerCase()));
+  }, [allSales, project, stageSearchTerm]);
 
   const unlinkedSales = useMemo(() => {
     if (!allSales || !project) return [];
@@ -461,24 +471,79 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
           return (
             <div className="border rounded-lg p-2.5 space-y-2">
               <span className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />계산서 발행 계획</span>
-              <div className="border rounded overflow-hidden">
+              <div className="space-y-1.5">
                 {stages.map(stage => {
                   const supply = Math.round(plannedTotal * stage.ratio / 100);
                   const vat = Math.round(supply * 0.1);
+                  const stageInvoices = project.salesInvoices.filter(i => i.invoiceStage === stage.name);
+                  const stageLinkedSupply = stageInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
+                  const stageDiff = supply - stageLinkedSupply;
+                  const isPickerOpen = stagePicker === stage.name;
+
                   return (
-                    <div key={stage.name} className="flex items-center justify-between text-xs py-1.5 px-2 border-b last:border-b-0">
-                      <span className="font-medium">{stage.name} ({stage.ratio}%)</span>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <span>공급 {fmtComma(supply)}</span>
-                        <span>VAT {fmtComma(vat)}</span>
-                        <span className="font-medium text-foreground">{fmtComma(supply + vat)}원</span>
+                    <div key={stage.name} className="border rounded overflow-hidden">
+                      <div className="flex items-center justify-between text-xs py-1.5 px-2 bg-muted/20">
+                        <span className="font-medium">{stage.name} ({stage.ratio}%)</span>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <span>공급 {fmtComma(supply)}</span>
+                          <span>VAT {fmtComma(vat)}</span>
+                          <span className="font-medium text-foreground">{fmtComma(supply + vat)}원</span>
+                          <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1" onClick={() => { setStagePicker(isPickerOpen ? null : stage.name); setStageSearchTerm(""); }} data-testid={`button-link-stage-${stage.name}`}>
+                            <Plus className="h-3 w-3 mr-0.5" />연결
+                          </Button>
+                        </div>
                       </div>
+                      {isPickerOpen && (
+                        <div className="p-2 bg-muted/10 border-t space-y-1">
+                          <Input placeholder="거래처/품목 검색..." value={stageSearchTerm} onChange={e => setStageSearchTerm(e.target.value)} className="h-6 text-xs" data-testid={`input-stage-search-${stage.name}`} />
+                          <div className="max-h-28 overflow-y-auto space-y-0.5">
+                            {stageUnlinkedSales.slice(0, 15).map(inv => (
+                              <div key={inv.id} className="flex items-center justify-between text-[10px] py-1 px-1 hover:bg-muted rounded cursor-pointer" onClick={() => { linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: true, invoiceStage: stage.name }); setStagePicker(null); }} data-testid={`link-stage-${stage.name}-${inv.id}`}>
+                                <span className="truncate">{inv.issueDate} {inv.companyName} {inv.item ? `(${inv.item})` : ""}</span>
+                                <span className="text-blue-600 ml-2 whitespace-nowrap">공급 {fmtComma(inv.supplyAmount || 0)}</span>
+                              </div>
+                            ))}
+                            {stageUnlinkedSales.length === 0 && <div className="text-[10px] text-muted-foreground py-1">연결 가능한 계산서가 없습니다</div>}
+                          </div>
+                        </div>
+                      )}
+                      {stageInvoices.length > 0 && (
+                        <div className="border-t">
+                          {stageInvoices.map(inv => (
+                            <div key={inv.id} className="flex items-center justify-between text-[10px] py-1 px-2 border-b last:border-b-0">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-muted-foreground">{inv.issueDate}</span>
+                                <span className="truncate">{inv.companyName}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-muted-foreground">공급 {fmtComma(inv.supplyAmount || 0)}</span>
+                                <span className="text-muted-foreground">VAT {fmtComma(inv.taxAmount || 0)}</span>
+                                <span className="text-blue-600 font-medium">{fmtComma(inv.totalAmount || 0)}원</span>
+                                <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-stage-${inv.id}`}>
+                                  <X className="h-2.5 w-2.5 text-muted-foreground" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {stageInvoices.length > 0 && (
+                        <div className="flex items-center justify-end text-[10px] py-1 px-2 bg-muted/10 border-t">
+                          {stageDiff === 0 ? (
+                            <span className="text-green-600 font-medium flex items-center gap-0.5"><Check className="h-2.5 w-2.5" />일치</span>
+                          ) : stageDiff > 0 ? (
+                            <span className="text-orange-600">미발행 공급 {fmtComma(stageDiff)}원</span>
+                          ) : (
+                            <span className="text-red-600">초과 공급 {fmtComma(Math.abs(stageDiff))}원</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
-              <div className="flex items-center justify-between text-[10px] px-1">
-                <span className="text-muted-foreground">연결된 계산서 공급가액: {fmtComma(linkedTotal)}원</span>
+              <div className="flex items-center justify-between text-[10px] px-1 pt-1">
+                <span className="text-muted-foreground">연결된 계산서 공급가액 합계: {fmtComma(linkedTotal)}원</span>
                 {diff === 0 ? (
                   <span className="text-green-600 font-medium flex items-center gap-0.5"><Check className="h-3 w-3" />일치</span>
                 ) : diff > 0 ? (
@@ -520,9 +585,10 @@ function ProjectDetailModal({ projectId, onClose }: { projectId: string; onClose
                     <span className="text-muted-foreground whitespace-nowrap">{inv.issueDate}</span>
                     <span className="font-medium truncate">{inv.companyName}</span>
                     {inv.item && <span className="text-muted-foreground truncate hidden md:inline">({inv.item})</span>}
+                    {inv.invoiceStage && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-600 dark:bg-blue-900/30 whitespace-nowrap">{inv.invoiceStage}</span>}
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-blue-600 font-medium whitespace-nowrap">{(inv.totalAmount || 0).toLocaleString()}</span>
+                    <span className="text-blue-600 font-medium whitespace-nowrap">{fmtComma(inv.totalAmount || 0)}원</span>
                     <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-sales-${inv.id}`}>
                       <X className="h-3 w-3 text-muted-foreground" />
                     </Button>

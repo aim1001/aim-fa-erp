@@ -1091,8 +1091,9 @@ export async function registerRoutes(
   app.patch("/api/sales-invoices/:id", async (req, res) => {
     try {
       const body = req.body;
-      if (Object.keys(body).length === 1 && "projectId" in body) {
-        const invoice = await storage.updateSalesInvoice(req.params.id, { projectId: body.projectId });
+      const linkKeys = Object.keys(body).every(k => ["projectId", "invoiceStage"].includes(k));
+      if (linkKeys && "projectId" in body) {
+        const invoice = await storage.updateSalesInvoice(req.params.id, { projectId: body.projectId, invoiceStage: body.invoiceStage ?? null });
         if (!invoice) return res.status(404).json({ message: "매출계산서를 찾을 수 없습니다" });
         return res.json(invoice);
       }
