@@ -234,17 +234,49 @@ function InlineDateInput({ value, field, inquiryId }: {
   field: string;
   inquiryId: string;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
   const mutation = useInlineUpdate(inquiryId);
 
+  const isValidDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v).getTime());
+
+  const handleSave = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed === "" && value !== "") {
+      mutation.mutate({ [field]: null });
+    } else if (trimmed !== value && isValidDate(trimmed)) {
+      mutation.mutate({ [field]: trimmed });
+    }
+    setEditing(false);
+  }, [editValue, value, field]);
+
+  if (editing) {
+    return (
+      <Input
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSave();
+          if (e.key === "Escape") { setEditValue(value); setEditing(false); }
+        }}
+        onBlur={handleSave}
+        className="h-7 text-sm w-[140px]"
+        autoFocus
+        placeholder="YYYY-MM-DD"
+        disabled={mutation.isPending}
+        data-testid={`input-inline-${field}`}
+      />
+    );
+  }
+
   return (
-    <Input
-      type="date"
-      value={value}
-      onChange={(e) => mutation.mutate({ [field]: e.target.value || null })}
-      className="h-7 text-sm w-auto"
-      disabled={mutation.isPending}
-      data-testid={`input-inline-${field}`}
-    />
+    <span
+      className="cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 min-h-[1.5rem] inline-block"
+      onClick={() => { setEditValue(value); setEditing(true); }}
+      data-testid={`text-editable-${field}`}
+    >
+      {value || <span className="text-muted-foreground">-</span>}
+    </span>
   );
 }
 
