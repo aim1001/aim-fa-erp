@@ -90,9 +90,13 @@ export async function registerRoutes(
         }
       }
 
+      const contactCounts = await storage.getCustomerContactCounts();
+
       const enriched = inquiries.map(i => ({
         ...i,
         isExistingCustomer: i.customerId ? tradedCustomerIds.has(i.customerId) : false,
+        hasContacts: i.customerId ? (contactCounts.get(i.customerId) || 0) > 0 : false,
+        contactCount: i.customerId ? (contactCounts.get(i.customerId) || 0) : 0,
       }));
 
       res.json(enriched);
@@ -913,6 +917,23 @@ export async function registerRoutes(
     try {
       const companies = await storage.getCompanies();
       res.json(companies);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/companies/by-customer/:customerId", async (req, res) => {
+    try {
+      const { customerId } = req.params;
+      if (!customerId || customerId.length < 1) {
+        return res.status(400).json({ message: "유효하지 않은 고객사 ID입니다" });
+      }
+      const customer = await storage.getCustomer(customerId);
+      if (!customer) {
+        return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+      }
+      const contacts = await storage.getCompaniesByCustomerId(customerId);
+      res.json(contacts);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

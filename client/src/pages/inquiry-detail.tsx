@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -724,6 +724,230 @@ function CustomerMatchDialog({ candidates, companyName, pendingInfo, inquiryId, 
   );
 }
 
+function ContactManagementSection({ customerId }: { customerId: string }) {
+  const { toast } = useToast();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({ contactName: "", email: "", phone: "" });
+  const [editForm, setEditForm] = useState({ contactName: "", email: "", phone: "" });
+
+  const { data: contacts = [], isLoading, isError } = useQuery<Company[]>({
+    queryKey: ["/api/companies/by-customer", customerId],
+    enabled: !!customerId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: { contactName: string; email: string; phone: string }) => {
+      const res = await apiRequest("POST", "/api/companies", {
+        companyName: "담당자",
+        contactName: data.contactName,
+        email: data.email,
+        phone: data.phone,
+        customerId,
+        isTemporary: false,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "담당자 등록 완료" });
+      setShowAddForm(false);
+      setForm({ contactName: "", email: "", phone: "" });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/companies/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "수정 완료" });
+      setEditingId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "수정 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/companies/${id}`);
+    },
+    onSuccess: () => {
+      toast({ title: "삭제 완료" });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "삭제 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const startEdit = (contact: Company) => {
+    setEditingId(contact.id);
+    setEditForm({
+      contactName: contact.contactName || "",
+      email: contact.email || "",
+      phone: contact.phone || "",
+    });
+  };
+
+  const saveEdit = () => {
+    if (!editingId) return;
+    updateMutation.mutate({ id: editingId, data: editForm });
+  };
+
+  if (isLoading) return <Skeleton className="h-16 w-full mt-2" />;
+  if (isError) return <p className="text-xs text-destructive mt-2">담당자 정보를 불러올 수 없습니다</p>;
+
+  return (
+    <div className="mt-3 border rounded-lg p-3 bg-muted/20">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-medium flex items-center gap-1.5">
+          <User className="h-3.5 w-3.5" />
+          담당자 ({contacts.length}명)
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => { setShowAddForm(!showAddForm); setForm({ contactName: "", email: "", phone: "" }); }}
+          data-testid="button-add-contact"
+        >
+          <UserPlus className="h-3 w-3 mr-1" />
+          추가
+        </Button>
+      </div>
+
+      {contacts.length === 0 && !showAddForm && (
+        <p className="text-xs text-muted-foreground text-center py-2">등록된 담당자가 없습니다</p>
+      )}
+
+      {contacts.map(contact => (
+        <div key={contact.id} className="flex items-center gap-2 py-1.5 border-b border-border/30 last:border-b-0 text-xs group" data-testid={`contact-row-${contact.id}`}>
+          {editingId === contact.id ? (
+            <div className="flex-1 flex flex-wrap items-center gap-2">
+              <Input
+                className="h-6 text-xs px-1.5 w-[100px]"
+                placeholder="이름"
+                value={editForm.contactName}
+                onChange={e => setEditForm(f => ({ ...f, contactName: e.target.value }))}
+                data-testid={`input-edit-contact-name-${contact.id}`}
+              />
+              <Input
+                className="h-6 text-xs px-1.5 w-[140px]"
+                placeholder="이메일"
+                value={editForm.email}
+                onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
+                data-testid={`input-edit-contact-email-${contact.id}`}
+              />
+              <Input
+                className="h-6 text-xs px-1.5 w-[110px]"
+                placeholder="전화번호"
+                value={editForm.phone}
+                onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                data-testid={`input-edit-contact-phone-${contact.id}`}
+              />
+              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={saveEdit} disabled={updateMutation.isPending} data-testid={`button-save-contact-${contact.id}`}>
+                <Save className="h-2.5 w-2.5" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setEditingId(null)} data-testid={`button-cancel-edit-contact-${contact.id}`}>
+                <X className="h-2.5 w-2.5" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 flex items-center gap-3 min-w-0">
+                <span className="font-medium flex items-center gap-1">
+                  <User className="h-3 w-3 text-muted-foreground shrink-0" />
+                  {contact.contactName || "-"}
+                </span>
+                {contact.email && (
+                  <span className="text-muted-foreground flex items-center gap-1 truncate">
+                    <Mail className="h-3 w-3 shrink-0" />
+                    {contact.email}
+                  </span>
+                )}
+                {contact.phone && (
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3 shrink-0" />
+                    {contact.phone}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <Button size="icon" variant="ghost" onClick={() => startEdit(contact)} data-testid={`button-edit-contact-${contact.id}`}>
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                <Button size="icon" variant="ghost" className="text-destructive" onClick={() => deleteMutation.mutate(contact.id)} data-testid={`button-delete-contact-${contact.id}`}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+
+      {showAddForm && (
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/30 mt-1">
+          <Input
+            className="h-7 text-xs px-2 w-[100px]"
+            placeholder="담당자명 *"
+            value={form.contactName}
+            onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))}
+            data-testid="input-new-contact-name"
+          />
+          <Input
+            className="h-7 text-xs px-2 w-[140px]"
+            placeholder="이메일"
+            value={form.email}
+            onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+            data-testid="input-new-contact-email"
+          />
+          <Input
+            className="h-7 text-xs px-2 w-[110px]"
+            placeholder="전화번호"
+            value={form.phone}
+            onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+            data-testid="input-new-contact-phone"
+          />
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => {
+              if (!form.contactName.trim()) {
+                toast({ title: "담당자명을 입력하세요", variant: "destructive" });
+                return;
+              }
+              createMutation.mutate(form);
+            }}
+            disabled={createMutation.isPending}
+            data-testid="button-submit-new-contact"
+          >
+            {createMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            <span className="ml-1">등록</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={() => setShowAddForm(false)}
+            data-testid="button-cancel-new-contact"
+          >
+            취소
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   inquiryId: string;
   inquiry: Inquiry;
@@ -903,6 +1127,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
               )}
             </div>
             <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
+            {inquiry.customerId && <ContactManagementSection customerId={inquiry.customerId} />}
           </div>
         ) : !scanResult ? (
           <div>
@@ -910,6 +1135,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
               {hasOneDrive ? "\"엑셀에서 가져오기\" 버튼을 눌러 고객 정보를 불러오세요." : "연결된 고객사가 없습니다."}
             </p>
             <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
+            {inquiry.customerId && <ContactManagementSection customerId={inquiry.customerId} />}
           </div>
         ) : null}
 

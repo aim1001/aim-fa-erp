@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown, UserX } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ko } from "date-fns/locale";
@@ -18,7 +19,7 @@ import { InquiryFormDialog } from "@/pages/inquiry-form";
 import { InquiryDetailDialog } from "@/pages/inquiry-detail";
 import type { Inquiry } from "@shared/schema";
 
-type InquiryWithTradeStatus = Inquiry & { isExistingCustomer: boolean };
+type InquiryWithTradeStatus = Inquiry & { isExistingCustomer: boolean; hasContacts: boolean; contactCount: number };
 
 function parseDateString(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -588,6 +589,23 @@ export default function InquiryList() {
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 no-default-active-elevate" data-testid={`badge-existing-${inq.id}`}>기존</Badge>
                           ) : (
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 no-default-active-elevate" data-testid={`badge-new-${inq.id}`}>신규</Badge>
+                          )}
+                          {inq.customerId && !inq.hasContacts && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex"
+                                  onClick={(e) => { e.stopPropagation(); setSelectedInquiryId(inq.id); }}
+                                  data-testid={`icon-no-contact-${inq.id}`}
+                                >
+                                  <UserX className="h-3.5 w-3.5 text-orange-500" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>담당자 미등록 — 클릭하여 등록</p>
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                         </div>
                       </TableCell>
