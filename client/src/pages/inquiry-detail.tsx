@@ -724,7 +724,7 @@ function CustomerMatchDialog({ candidates, companyName, pendingInfo, inquiryId, 
   );
 }
 
-function ContactManagementSection({ customerId }: { customerId: string }) {
+function ContactManagementSection({ customerId, inquiryId, customerName }: { customerId: string | null; inquiryId: string; customerName: string }) {
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
@@ -734,6 +734,31 @@ function ContactManagementSection({ customerId }: { customerId: string }) {
   const { data: contacts = [], isLoading, isError } = useQuery<Company[]>({
     queryKey: ["/api/companies/by-customer", customerId],
     enabled: !!customerId,
+  });
+
+  const createWithCustomerMutation = useMutation({
+    mutationFn: async (data: { contactName: string; email: string; phone: string }) => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/save-customer-info`, {
+        companyName: customerName,
+        contactName: data.contactName,
+        email: data.email,
+        phone: data.phone,
+        forceCreate: true,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "고객사 생성 및 담당자 등록 완료" });
+      setShowDialog(false);
+      setForm({ contactName: "", email: "", phone: "" });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
   });
 
   const createMutation = useMutation({
@@ -816,12 +841,14 @@ function ContactManagementSection({ customerId }: { customerId: string }) {
     }
     if (dialogMode === "edit" && editTargetId) {
       updateMutation.mutate({ id: editTargetId, data: form });
+    } else if (!customerId) {
+      createWithCustomerMutation.mutate(form);
     } else {
       createMutation.mutate(form);
     }
   };
 
-  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isSaving = createMutation.isPending || updateMutation.isPending || createWithCustomerMutation.isPending;
 
   if (isLoading) return <Skeleton className="h-16 w-full mt-2" />;
   if (isError) return <p className="text-xs text-destructive mt-2">담당자 정보를 불러올 수 없습니다</p>;
@@ -900,7 +927,9 @@ function ContactManagementSection({ customerId }: { customerId: string }) {
           <DialogHeader>
             <DialogTitle>{dialogMode === "add" ? "담당자 등록" : "담당자 수정"}</DialogTitle>
             <DialogDescription>
-              {dialogMode === "add" ? "고객사 담당자의 정보를 입력하세요." : "담당자 정보를 수정합니다."}
+              {dialogMode === "add"
+                ? (customerId ? "고객사 담당자의 정보를 입력하세요." : `"${customerName}" 고객사를 자동 생성하고 담당자를 등록합니다.`)
+                : "담당자 정보를 수정합니다."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -1115,7 +1144,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
               </div>
             )}
 
-            {inquiry.customerId && <ContactManagementSection customerId={inquiry.customerId} />}
+            <ContactManagementSection customerId={inquiry.customerId || null} inquiryId={inquiryId} customerName={inquiry.customerName || ""} />
 
             {hasSnapshot && (
               <div className="border rounded-lg p-3 bg-muted/20 mt-2">
