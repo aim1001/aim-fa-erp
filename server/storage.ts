@@ -140,6 +140,7 @@ export interface IStorage {
   getItems(): Promise<ItemMaster[]>;
   getItemByCode(itemCode: string): Promise<ItemMaster | undefined>;
   upsertItem(item: InsertItemMaster): Promise<ItemMaster>;
+  updateItemById(id: string, fields: Partial<InsertItemMaster>): Promise<ItemMaster>;
   deleteItem(id: string): Promise<void>;
   getItemInventory(itemCode: string): Promise<ItemInventory[]>;
   upsertItemInventory(inv: InsertItemInventory): Promise<ItemInventory>;
@@ -692,6 +693,12 @@ export class DatabaseStorage implements IStorage {
       return row;
     }
     const [row] = await db.insert(itemMaster).values(item).returning();
+    return row;
+  }
+
+  async updateItemById(id: string, fields: Partial<InsertItemMaster>): Promise<ItemMaster> {
+    const [row] = await db.update(itemMaster).set(fields).where(eq(itemMaster.id, id)).returning();
+    if (!row) throw new Error(`Item not found: ${id}`);
     return row;
   }
 

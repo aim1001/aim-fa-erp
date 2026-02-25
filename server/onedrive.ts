@@ -507,6 +507,17 @@ export async function listFoldersByPath(path: string): Promise<OneDriveFolder[]>
     }));
 }
 
+export async function uploadFileByPath(path: string, content: Buffer): Promise<void> {
+  const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
+  await graphCallWithRetry(
+    (token) => graphFetchDirect(`/me/drive/root:/${encodedPath}:/content`, token, {
+      method: 'PUT',
+      body: content,
+    }),
+    'uploadFileByPath'
+  );
+}
+
 export async function downloadFileByPath(path: string): Promise<Buffer> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const buffer = await graphCallWithRetry(

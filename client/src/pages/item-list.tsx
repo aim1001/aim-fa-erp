@@ -1,13 +1,14 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Package, RefreshCw, Search, ChevronDown, ChevronUp } from "lucide-react";
-import { useState, useMemo, Fragment } from "react";
+import { Package, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil } from "lucide-react";
+import { useState, useMemo, Fragment, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ItemMaster, ItemInventory, ItemDocument } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -39,35 +40,159 @@ function getStockQty(inventory: ItemInventory[], type: string): number {
   return found?.qty ?? 0;
 }
 
-function ItemDetailRow({ item }: { item: ItemWithDetails }) {
-  return (
-    <div className="p-4 bg-muted/30 border-t space-y-3">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <div>
-          <span className="text-muted-foreground">품목코드</span>
-          <p className="font-medium" data-testid={`text-detail-code-${item.itemCode}`}>{item.itemCode}</p>
-        </div>
-        <div>
-          <span className="text-muted-foreground">제품유형</span>
-          <p data-testid={`text-detail-type-${item.itemCode}`}>{item.itemType || "-"}</p>
-        </div>
-        <div>
-          <span className="text-muted-foreground">원가</span>
-          <p data-testid={`text-detail-cost-${item.itemCode}`}>{formatPrice(item.cost)}</p>
-        </div>
-        <div>
-          <span className="text-muted-foreground">판매가</span>
-          <p className="font-medium text-blue-600" data-testid={`text-detail-price-${item.itemCode}`}>{formatPrice(item.salesPrice)}</p>
+function EditableField({
+  label,
+  value,
+  onSave,
+  type = "text",
+  testId,
+}: {
+  label: string;
+  value: string;
+  onSave: (val: string) => void;
+  type?: "text" | "number";
+  testId: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const handleSave = useCallback(() => {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  }, [draft, value, onSave]);
+
+  const handleCancel = useCallback(() => {
+    setEditing(false);
+    setDraft(value);
+  }, [value]);
+
+  if (editing) {
+    return (
+      <div>
+        <span className="text-muted-foreground text-xs">{label}</span>
+        <div className="flex items-center gap-1 mt-0.5">
+          <Input
+            className="h-7 text-sm"
+            type={type}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") handleSave();
+              if (e.key === "Escape") handleCancel();
+            }}
+            autoFocus
+            data-testid={`input-edit-${testId}`}
+          />
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleSave} data-testid={`button-save-${testId}`}>
+            <Save className="h-3 w-3" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleCancel} data-testid={`button-cancel-${testId}`}>
+            <X className="h-3 w-3" />
+          </Button>
         </div>
       </div>
-      {item.cost && item.salesPrice ? (
-        <div className="text-sm">
-          <span className="text-muted-foreground">마진: </span>
-          <span className="font-medium text-green-600" data-testid={`text-detail-margin-${item.itemCode}`}>
-            {formatPrice(item.salesPrice - item.cost)} ({Math.round(((item.salesPrice - item.cost) / item.salesPrice) * 100)}%)
-          </span>
+    );
+  }
+
+  return (
+    <div
+      className="cursor-pointer group"
+      onClick={() => { setEditing(true); setDraft(value); }}
+      data-testid={`field-${testId}`}
+    >
+      <span className="text-muted-foreground text-xs">{label}</span>
+      <div className="flex items-center gap-1">
+        <p className="font-medium text-sm">{type === "number" ? formatPrice(Number(value) || null) : (value || "-")}</p>
+        <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </div>
+  );
+}
+
+function ItemDetailRow({ item }: { item: ItemWithDetails }) {
+  const { toast } = useToast();
+
+  const patchMutation = useMutation({
+    mutationFn: async (fields: Record<string, any>) => {
+      const res = await apiRequest("PATCH", `/api/items/${item.id}`, fields);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+      toast({ title: "저장 완료", description: "OneDrive 파일에도 반영됩니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="p-4 bg-muted/30 border-t space-y-3">
+      {patchMutation.isPending && (
+        <div className="flex items-center gap-2 text-xs text-blue-600">
+          <RefreshCw className="h-3 w-3 animate-spin" />
+          저장 중...
         </div>
-      ) : null}
+      )}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+        <div>
+          <span className="text-muted-foreground text-xs">품목코드</span>
+          <p className="font-medium" data-testid={`text-detail-code-${item.itemCode}`}>{item.itemCode}</p>
+        </div>
+        <EditableField
+          label="품목명"
+          value={item.itemName}
+          onSave={val => patchMutation.mutate({ itemName: val })}
+          testId={`name-${item.itemCode}`}
+        />
+        <EditableField
+          label="사양"
+          value={item.spec || ""}
+          onSave={val => patchMutation.mutate({ spec: val })}
+          testId={`spec-${item.itemCode}`}
+        />
+        <EditableField
+          label="제품유형"
+          value={item.itemType || ""}
+          onSave={val => patchMutation.mutate({ itemType: val })}
+          testId={`type-${item.itemCode}`}
+        />
+        <div>
+          <span className="text-muted-foreground text-xs">활성 상태</span>
+          <div className="flex items-center gap-2 mt-1">
+            <Switch
+              checked={item.active ?? true}
+              onCheckedChange={val => patchMutation.mutate({ active: val })}
+              data-testid={`switch-active-${item.itemCode}`}
+            />
+            <span className="text-sm">{item.active ? "활성" : "비활성"}</span>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <EditableField
+          label="원가"
+          value={String(item.cost || 0)}
+          type="number"
+          onSave={val => patchMutation.mutate({ cost: parseInt(val, 10) || 0 })}
+          testId={`cost-${item.itemCode}`}
+        />
+        <EditableField
+          label="판매가"
+          value={String(item.salesPrice || 0)}
+          type="number"
+          onSave={val => patchMutation.mutate({ salesPrice: parseInt(val, 10) || 0 })}
+          testId={`price-${item.itemCode}`}
+        />
+        {item.cost && item.salesPrice ? (
+          <div>
+            <span className="text-muted-foreground text-xs">마진</span>
+            <p className="font-medium text-green-600" data-testid={`text-detail-margin-${item.itemCode}`}>
+              {formatPrice(item.salesPrice - item.cost)} ({Math.round(((item.salesPrice - item.cost) / item.salesPrice) * 100)}%)
+            </p>
+          </div>
+        ) : null}
+      </div>
       {item.inventory.length > 0 && (
         <div className="text-sm">
           <span className="text-muted-foreground">재고 상세: </span>

@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
-import { downloadFile, listFolderFiles, downloadFileByPath, findFileInFolder, listFilesByPath, listFoldersByPath } from "./onedrive";
+import { downloadFile, listFolderFiles, downloadFileByPath, findFileInFolder, listFilesByPath, listFoldersByPath, uploadFileByPath } from "./onedrive";
+import { storage } from "./storage";
 
 export interface CustomerListRow {
   businessNumber: string;
@@ -353,6 +354,92 @@ export async function parseListPriceFromOneDrive(): Promise<ListPriceItem[]> {
   }
 
   return results;
+}
+
+const SHEET_ORDER = ["FEEDER", "Vision", "ACC", "CS"];
+
+const HEADER_ROW = [
+  "Category1", "Category2", "ItemCode", "ItemName", "Spec",
+  "Cost", "SalesPrice", "Active", "Item Type",
+  "TUMB", "IMAGE", "VIDEO", "CERTIFICATE", "DRAWING",
+  "MANUAL_USER", "MANUAL_INSTALL", "MANUAL_PROGRAM", "DATASHEET",
+  "재고수량", "테스트수량", "재고업데이트 일자",
+];
+
+function getSheetName(category1: string): string {
+  const upper = category1.toUpperCase();
+  if (upper === "FEEDER") return "FEEDER";
+  if (upper === "VISION") return "Vision";
+  if (upper === "SERVICE") return "CS";
+  return "ACC";
+}
+
+export async function writeListPriceToOneDrive(): Promise<void> {
+  const items = await storage.getItemsWithDetails();
+  const wb = XLSX.utils.book_new();
+
+  const sheetData = new Map<string, any[][]>();
+  for (const name of SHEET_ORDER) {
+    sheetData.set(name, [HEADER_ROW]);
+  }
+
+  for (const item of items) {
+    const sheetName = getSheetName(item.category1);
+    if (!sheetData.has(sheetName)) {
+      sheetData.set(sheetName, [HEADER_ROW]);
+    }
+
+    const docMap = new Map<string, string>();
+    for (const doc of item.documents) {
+      docMap.set(doc.docType, doc.url || "");
+    }
+
+    const availableQty = item.inventory.find(i => i.stockType === "AVAILABLE")?.qty ?? 0;
+    const testQty = item.inventory.find(i => i.stockType === "TEST")?.qty ?? 0;
+    const updatedAt = item.inventory.find(i => i.stockType === "AVAILABLE")?.updatedAt;
+    const updateDateStr = updatedAt ? new Date(updatedAt).toISOString().split("T")[0] : "";
+
+    const row = [
+      item.category1,
+      item.category2 || "",
+      item.itemCode,
+      item.itemName,
+      item.spec || "",
+      item.cost || 0,
+      item.salesPrice || 0,
+      item.active ? "true" : "false",
+      item.itemType || "",
+      docMap.get("THUMB") || "",
+      docMap.get("IMAGE") || "",
+      docMap.get("VIDEO") || "",
+      docMap.get("CERTIFICATE") || "",
+      docMap.get("DRAWING") || "",
+      docMap.get("MANUAL_USER") || "",
+      docMap.get("MANUAL_INSTALL") || "",
+      docMap.get("MANUAL_PROGRAM") || "",
+      docMap.get("DATASHEET") || "",
+      availableQty || "",
+      testQty || "",
+      updateDateStr,
+    ];
+
+    sheetData.get(sheetName)!.push(row);
+  }
+
+  for (const [name, rows] of sheetData) {
+    if (rows.length <= 1) continue;
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  }
+
+  if (wb.SheetNames.length === 0) {
+    const ws = XLSX.utils.aoa_to_sheet([HEADER_ROW]);
+    XLSX.utils.book_append_sheet(wb, ws, "FEEDER");
+  }
+
+  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  await uploadFileByPath("1.영업/database/listprice.xlsx", buffer);
+  console.log("[listprice] OneDrive에 listprice.xlsx 업로드 완료");
 }
 
 export async function getAvailableInvoiceYears(): Promise<number[]> {
