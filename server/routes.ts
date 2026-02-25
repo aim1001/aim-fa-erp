@@ -316,6 +316,7 @@ export async function registerRoutes(
           items: matching.map(i => ({
             id: i.id,
             customerName: i.customerName,
+            inquiryNumber: i.inquiryNumber,
             salesNumber: i.salesNumber ?? null,
             expectedDate: i.expectedDate!,
             probability: i.probability || 0,

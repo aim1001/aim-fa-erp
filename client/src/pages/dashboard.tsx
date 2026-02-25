@@ -92,7 +92,7 @@ export default function Dashboard() {
     byProbability: { range: string; count: number }[];
     byStatus: { status: string; count: number }[];
     byYear: { year: number; count: number }[];
-    upcomingByMonth: { month: string; label: string; count: number; items: { id: string; customerName: string; salesNumber: string | null; expectedDate: string; probability: number; status: string | null }[] }[];
+    upcomingByMonth: { month: string; label: string; count: number; items: { id: string; customerName: string; inquiryNumber: string; salesNumber: string | null; expectedDate: string; probability: number; status: string | null }[] }[];
   }>({
     queryKey: ["/api/dashboard", queryParam],
     queryFn: async () => {
@@ -266,9 +266,7 @@ export default function Dashboard() {
                             onClick={() => setSelectedInquiryId(item.id)}
                             data-testid={`item-upcoming-${item.id}`}
                           >
-                            {item.salesNumber && (
-                              <span className="font-mono text-muted-foreground shrink-0">{item.salesNumber}</span>
-                            )}
+                            <span className="font-mono text-muted-foreground shrink-0">{item.inquiryNumber}</span>
                             <span className="truncate flex-1">{item.customerName}</span>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${stageColors[item.probability] || stageColors[0]}`}>
                               {stageLabels[item.probability] || "-"}
