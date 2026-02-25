@@ -18,6 +18,8 @@ import { InquiryFormDialog } from "@/pages/inquiry-form";
 import { InquiryDetailDialog } from "@/pages/inquiry-detail";
 import type { Inquiry } from "@shared/schema";
 
+type InquiryWithTradeStatus = Inquiry & { isExistingCustomer: boolean };
+
 function parseDateString(dateStr: string): Date {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -142,7 +144,7 @@ export default function InquiryList() {
   if (statusFilter !== "all") queryParams.set("status", statusFilter);
   const queryString = queryParams.toString();
 
-  const { data: inquiries, isLoading } = useQuery<Inquiry[]>({
+  const { data: inquiries, isLoading } = useQuery<InquiryWithTradeStatus[]>({
     queryKey: ["/api/inquiries", queryString ? `?${queryString}` : ""],
   });
 
@@ -278,9 +280,9 @@ export default function InquiryList() {
       });
     }
     if (customerFilter === "existing") {
-      list = list.filter(i => i.customerId != null);
+      list = list.filter(i => i.isExistingCustomer);
     } else if (customerFilter === "new") {
-      list = list.filter(i => i.customerId == null);
+      list = list.filter(i => !i.isExistingCustomer);
     } else if (customerFilter === "bookmarked") {
       list = list.filter(i => i.isFavorite);
     }
@@ -454,7 +456,7 @@ export default function InquiryList() {
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-1.5">
                           {inq.customerName}
-                          {inq.customerId ? (
+                          {inq.isExistingCustomer ? (
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 no-default-active-elevate" data-testid={`badge-existing-${inq.id}`}>기존</Badge>
                           ) : (
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 no-default-active-elevate" data-testid={`badge-new-${inq.id}`}>신규</Badge>
@@ -559,7 +561,7 @@ export default function InquiryList() {
         총 {filtered.length}건
         {filtered.length > 0 && customerFilter === "all" && (
           <span className="ml-2">
-            (기존 {filtered.filter(i => i.customerId != null).length} / 신규 {filtered.filter(i => i.customerId == null).length})
+            (기존 {filtered.filter(i => i.isExistingCustomer).length} / 신규 {filtered.filter(i => !i.isExistingCustomer).length})
           </span>
         )}
       </div>

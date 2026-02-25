@@ -75,7 +75,27 @@ export async function registerRoutes(
         minProbability: minProbability ? parseInt(minProbability as string) : undefined,
         maxProbability: maxProbability ? parseInt(maxProbability as string) : undefined,
       });
-      res.json(inquiries);
+
+      const customerIds = [...new Set(inquiries.filter(i => i.customerId).map(i => i.customerId!))];
+      const tradedCustomerIds = new Set<string>();
+      if (customerIds.length > 0) {
+        const txDates = await storage.getCustomerLastTransactionDates();
+        const allCustomers = await storage.getCustomers();
+        const customerMap = new Map(allCustomers.map(c => [c.id, c]));
+        for (const cid of customerIds) {
+          const cust = customerMap.get(cid);
+          if (txDates.has(cid) || (cust && cust.businessNumber)) {
+            tradedCustomerIds.add(cid);
+          }
+        }
+      }
+
+      const enriched = inquiries.map(i => ({
+        ...i,
+        isExistingCustomer: i.customerId ? tradedCustomerIds.has(i.customerId) : false,
+      }));
+
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
