@@ -8,7 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays } from "lucide-react";
+import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -234,49 +237,67 @@ function InlineDateInput({ value, field, inquiryId }: {
   field: string;
   inquiryId: string;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value);
+  const [open, setOpen] = useState(false);
   const mutation = useInlineUpdate(inquiryId);
 
-  const isValidDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v).getTime());
+  const parseDateString = (dateStr: string): Date | undefined => {
+    if (!dateStr) return undefined;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
 
-  const handleSave = useCallback(() => {
-    const trimmed = editValue.trim();
-    if (trimmed === "" && value !== "") {
-      mutation.mutate({ [field]: null });
-    } else if (trimmed !== value && isValidDate(trimmed)) {
-      mutation.mutate({ [field]: trimmed });
-    }
-    setEditing(false);
-  }, [editValue, value, field]);
-
-  if (editing) {
-    return (
-      <Input
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") handleSave();
-          if (e.key === "Escape") { setEditValue(value); setEditing(false); }
-        }}
-        onBlur={handleSave}
-        className="h-7 text-sm w-[140px]"
-        autoFocus
-        placeholder="YYYY-MM-DD"
-        disabled={mutation.isPending}
-        data-testid={`input-inline-${field}`}
-      />
-    );
-  }
+  const formatDate = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
 
   return (
-    <span
-      className="cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1 min-h-[1.5rem] inline-block"
-      onClick={() => { setEditValue(value); setEditing(true); }}
-      data-testid={`text-editable-${field}`}
-    >
-      {value || <span className="text-muted-foreground">-</span>}
-    </span>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-sm justify-start px-1 -mx-1 font-normal hover:bg-muted/50"
+          data-testid={`button-date-${field}`}
+        >
+          <CalendarDays className="mr-1 h-3 w-3 text-muted-foreground" />
+          {value || <span className="text-muted-foreground">날짜 선택</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={parseDateString(value)}
+          onSelect={(date) => {
+            if (date) {
+              mutation.mutate({ [field]: formatDate(date) });
+              setOpen(false);
+            }
+          }}
+          locale={ko}
+        />
+        {value && (
+          <div className="p-2 border-t">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-xs h-7 text-destructive"
+              onClick={() => {
+                mutation.mutate({ [field]: null });
+                setOpen(false);
+              }}
+              disabled={mutation.isPending}
+              data-testid={`button-clear-date-${field}`}
+            >
+              <X className="h-3 w-3 mr-1" />
+              날짜 지우기
+            </Button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
