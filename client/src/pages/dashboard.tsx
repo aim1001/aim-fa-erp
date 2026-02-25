@@ -8,6 +8,25 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InquiryDetailDialog } from "@/pages/inquiry-detail";
+
+const stageLabels: Record<number, string> = {
+  0: "-",
+  1: "1.문의",
+  2: "2.미팅",
+  3: "3.사양협의",
+  4: "4.비딩",
+  5: "5.발주전",
+};
+
+const stageColors: Record<number, string> = {
+  0: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+  1: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  2: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
+  3: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+  4: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  5: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+};
 
 const CHART_COLORS = [
   "hsl(217, 91%, 60%)",
@@ -29,6 +48,7 @@ const EXCLUDED_BY_DEFAULT = [2020, 2021, 2022, 2023, 2024];
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
+  const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
 
   const { data: years } = useQuery<number[]>({
     queryKey: ["/api/years"],
@@ -225,31 +245,36 @@ export default function Dashboard() {
           {stats?.upcomingByMonth && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {stats.upcomingByMonth.map((m, idx) => (
-                <Card
-                  key={m.month}
-                  className="cursor-pointer transition-colors hover:bg-accent/50"
-                  onClick={() => navigate(`/inquiries?expectedMonth=${idx}`)}
-                  data-testid={`card-upcoming-${idx}`}
-                >
-                  <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                <Card key={m.month} data-testid={`card-upcoming-${idx}`}>
+                  <CardHeader
+                    className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 cursor-pointer hover:bg-accent/50 rounded-t-lg"
+                    onClick={() => navigate(`/inquiries?expectedMonth=${idx}`)}
+                  >
                     <CardTitle className="text-sm font-medium">{m.label} ({m.month})</CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex items-center gap-1">
+                      <span className="text-lg font-bold">{m.count}건</span>
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold mb-2">{m.count}건</div>
                     {m.items.length > 0 ? (
-                      <div className="space-y-1 max-h-32 overflow-auto">
-                        {m.items.slice(0, 5).map(item => (
-                          <div key={item.id} className="flex items-center justify-between text-xs">
-                            <span className="truncate flex-1 text-muted-foreground">{item.customerName}</span>
-                            <Badge variant="outline" className="text-[10px] ml-1 shrink-0">
-                              {item.probability ? `${item.probability}단계` : "-"}
-                            </Badge>
+                      <div className="space-y-1 max-h-40 overflow-auto">
+                        {m.items.map(item => (
+                          <div
+                            key={item.id}
+                            className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/60 cursor-pointer"
+                            onClick={() => setSelectedInquiryId(item.id)}
+                            data-testid={`item-upcoming-${item.id}`}
+                          >
+                            {item.salesNumber && (
+                              <span className="font-mono text-muted-foreground shrink-0">{item.salesNumber}</span>
+                            )}
+                            <span className="truncate flex-1">{item.customerName}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${stageColors[item.probability] || stageColors[0]}`}>
+                              {stageLabels[item.probability] || "-"}
+                            </span>
                           </div>
                         ))}
-                        {m.items.length > 5 && (
-                          <p className="text-xs text-muted-foreground text-center">+{m.items.length - 5}건 더</p>
-                        )}
                       </div>
                     ) : (
                       <p className="text-xs text-muted-foreground">예정된 인콰이어리가 없습니다</p>
@@ -336,6 +361,12 @@ export default function Dashboard() {
           )}
         </>
       )}
+
+      <InquiryDetailDialog
+        inquiryId={selectedInquiryId || ""}
+        open={!!selectedInquiryId}
+        onOpenChange={(open) => { if (!open) setSelectedInquiryId(null); }}
+      />
     </div>
   );
 }
