@@ -819,37 +819,124 @@ function CustomerPreviewDialog({ customerId, open, onOpenChange }: { customerId:
   );
 }
 
+function ContactMatchSelectionDialog({ candidates, customerName, pendingForm, isPending, onSelect, onForceCreate, onClose }: {
+  candidates: CustomerCandidate[];
+  customerName: string;
+  pendingForm: { contactName: string };
+  isPending: boolean;
+  onSelect: (customerId: string) => void;
+  onForceCreate: () => void;
+  onClose: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
+            유사 고객사 발견
+          </DialogTitle>
+          <DialogDescription>
+            "{customerName}"과(와) 유사한 기존 고객사가 {candidates.length}건 있습니다. 기존 고객사에 연결하거나 새로 생성할 수 있습니다.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="space-y-1.5 max-h-48 overflow-auto">
+            {candidates.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                className={`w-full text-left border rounded-md p-2.5 text-sm transition-colors ${selectedId === c.id ? "border-primary bg-primary/5" : "bg-background hover:bg-accent"}`}
+                onClick={() => setSelectedId(c.id)}
+                data-testid={`button-contact-match-candidate-${c.id}`}
+              >
+                <div className="font-medium flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                  {c.companyName}
+                </div>
+                {(c.businessNumber || c.address) && (
+                  <div className="text-xs text-muted-foreground mt-0.5 ml-5">
+                    {[c.businessNumber, c.address].filter(Boolean).join(" | ")}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 pt-2 border-t">
+            <Button
+              size="sm"
+              onClick={() => selectedId && onSelect(selectedId)}
+              disabled={!selectedId || isPending}
+              data-testid="button-contact-match-link"
+            >
+              {isPending ? <Loader2 className="animate-spin h-4 w-4 mr-1" /> : <Building2 className="h-4 w-4 mr-1" />}
+              기존 고객사에 연결
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onForceCreate}
+              disabled={isPending}
+              data-testid="button-contact-match-force-create"
+            >
+              새 고객사 생성
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onClose} data-testid="button-contact-match-cancel">
+              취소
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ContactManagementSection({ customerId, inquiryId, customerName }: { customerId: string | null; inquiryId: string; customerName: string }) {
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
   const [form, setForm] = useState({ contactName: "", email: "", phone: "", position: "", department: "" });
+  const [contactMatchCandidates, setContactMatchCandidates] = useState<{ candidates: CustomerCandidate[]; pendingForm: typeof form } | null>(null);
 
   const { data: contacts = [], isLoading, isError } = useQuery<Company[]>({
     queryKey: ["/api/companies/by-customer", customerId],
     enabled: !!customerId,
   });
 
+  const invalidateAfterCreate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+  };
+
   const createWithCustomerMutation = useMutation({
-    mutationFn: async (data: { contactName: string; email: string; phone: string; position: string; department: string }) => {
+    mutationFn: async (data: { contactName: string; email: string; phone: string; position: string; department: string; selectedCustomerId?: string; forceCreate?: boolean }) => {
       const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/save-customer-info`, {
         companyName: customerName,
         contactName: data.contactName,
         email: data.email,
         phone: data.phone,
-        forceCreate: true,
+        selectedCustomerId: data.selectedCustomerId || null,
+        forceCreate: data.forceCreate || false,
       });
-      return res.json();
+      return res.json() as Promise<SaveCustomerResponse>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.needsSelection && data.candidates && data.candidates.length > 0) {
+        setContactMatchCandidates({ candidates: data.candidates, pendingForm: { ...form } });
+        setShowDialog(false);
+        return;
+      }
       toast({ title: "고객사 생성 및 담당자 등록 완료" });
       setShowDialog(false);
       setForm({ contactName: "", email: "", phone: "", position: "", department: "" });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      invalidateAfterCreate();
     },
     onError: (err: Error) => {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
@@ -1103,6 +1190,22 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
           </div>
         </DialogContent>
       </Dialog>
+
+      {contactMatchCandidates && (
+        <ContactMatchSelectionDialog
+          candidates={contactMatchCandidates.candidates}
+          customerName={customerName}
+          pendingForm={contactMatchCandidates.pendingForm}
+          isPending={createWithCustomerMutation.isPending}
+          onSelect={(selectedCustomerId) => {
+            createWithCustomerMutation.mutate({ ...contactMatchCandidates.pendingForm, selectedCustomerId });
+          }}
+          onForceCreate={() => {
+            createWithCustomerMutation.mutate({ ...contactMatchCandidates.pendingForm, forceCreate: true });
+          }}
+          onClose={() => setContactMatchCandidates(null)}
+        />
+      )}
     </>
   );
 }
@@ -1119,6 +1222,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   const [selectedExistingId, setSelectedExistingId] = useState<string | null>(null);
   const [matchCandidates, setMatchCandidates] = useState<{ candidates: CustomerCandidate[]; companyName: string; pendingInfo: ExcelCustomerInfo } | null>(null);
   const [showCustomerPreview, setShowCustomerPreview] = useState(false);
+  const [scanFailMessage, setScanFailMessage] = useState<string | null>(null);
 
   const hasSnapshot = !!inquiry.snapshotCompanyName;
 
@@ -1128,6 +1232,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
       return res.json() as Promise<ScanResult>;
     },
     onSuccess: (data) => {
+      setScanFailMessage(null);
       setScanResult(data);
       if (data.scanned.length > 0) {
         setSelectedIdx(0);
@@ -1141,11 +1246,11 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
         }
       }
       if (data.scanned.length === 0) {
-        toast({ title: "고객 정보를 찾을 수 없습니다", description: "엑셀 파일에 유효한 고객 정보가 없습니다.", variant: "destructive" });
+        setScanFailMessage("엑셀 파일에서 유효한 고객 정보를 찾을 수 없습니다.");
       }
     },
     onError: (err: Error) => {
-      toast({ title: "엑셀 스캔 실패", description: err.message, variant: "destructive" });
+      setScanFailMessage(err.message || "엑셀 스캔 중 오류가 발생했습니다.");
     },
   });
 
@@ -1283,6 +1388,32 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
                   <span data-testid="text-company-email">{inquiry.snapshotEmail || "-"}</span>
                   <span className="text-muted-foreground">전화번호</span>
                   <span data-testid="text-company-phone">{inquiry.snapshotPhone || "-"}</span>
+                </div>
+              </div>
+            )}
+
+            {scanFailMessage && (
+              <div className="border border-amber-300 dark:border-amber-700 rounded-lg p-3 bg-amber-50/50 dark:bg-amber-950/30 mt-2" data-testid="scan-fail-banner">
+                <div className="flex items-start gap-2">
+                  <Search className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 space-y-1.5">
+                    <p className="text-sm font-medium text-amber-700 dark:text-amber-300">엑셀 스캔 결과 없음</p>
+                    <p className="text-xs text-muted-foreground">{scanFailMessage}</p>
+                    <p className="text-xs text-muted-foreground">아래 방법으로 고객사를 등록할 수 있습니다:</p>
+                    <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+                      <li>위의 <span className="font-medium text-foreground">담당자 등록</span> 버튼으로 직접 입력</li>
+                      <li>아래 검색란에서 기존 고객사를 찾아 연결</li>
+                    </ul>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs px-2 mt-1"
+                      onClick={() => setScanFailMessage(null)}
+                      data-testid="button-dismiss-scan-fail"
+                    >
+                      닫기
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

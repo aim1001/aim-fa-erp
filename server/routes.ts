@@ -902,9 +902,16 @@ export async function registerRoutes(
       const { customerId } = z.object({ customerId: z.string() }).parse(req.body);
       const customer = await storage.getCustomer(customerId);
       if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+      const contacts = await storage.getCompaniesByCustomer(customerId);
+      const firstContact = contacts.length > 0 ? contacts[0] : null;
       const updated = await storage.updateInquiry(inquiry.id, {
         customerId: customer.id,
         customerName: customer.companyName,
+        snapshotCompanyName: customer.companyName,
+        snapshotAddress: customer.address || null,
+        snapshotContactName: firstContact?.contactName || null,
+        snapshotEmail: firstContact?.email || null,
+        snapshotPhone: firstContact?.phone || null,
       });
       res.json(updated);
     } catch (err: any) {

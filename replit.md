@@ -138,6 +138,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-25: 구매품관리 기능 추가 (purchase_items 테이블, OneDrive 2.공사/database/purchaselist.xlsx 동기화, /purchase-items 페이지, CRUD + 인라인 편집 + 품목 추가 다이얼로그)
 - 2026-02-25: 구매품↔공급업체 연결 (vendorId FK 추가, 자동매칭 API, 연결/미연결 필터, 수동 공급업체 선택 드롭다운, 연결상태 아이콘 표시)
 - 2026-02-25: 인콰이어리 담당자 관리 (목록에 미등록 아이콘 표시, 상세에서 담당자 CRUD, GET /api/companies/by-customer/:customerId 엔드포인트)
+- 2026-02-25: 고객사 연결 흐름 개선 — ① 담당자 등록 시 중복 고객사 검사 추가 (forceCreate:true 제거, ContactMatchSelectionDialog 추가), ② CustomerLinkSection 연결 시 스냅샷 동기화 (고객사 주소+첫 담당자 연락처 → 스냅샷 필드), ③ 엑셀 스캔 실패/빈 결과 시 수동 입력 안내 배너 표시 (scanFailMessage state)
 - 2026-02-24: OneDrive token management overhaul - graphCallWithRetry with fresh-client retry on 401/token errors, error classification (7 types), diagnostic token logging (length/type only, no secrets), Client.init callback pattern to avoid JWT parsing of opaque tokens, extractAccessToken with 5-field-path fallback, frontend error-type-specific guidance
 
 ## User Preferences
