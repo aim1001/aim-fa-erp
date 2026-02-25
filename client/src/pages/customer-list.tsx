@@ -433,7 +433,7 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
 }
 
 type CustomerWithStats = Customer & { inquiryCount: number; contactCount: number; lastTransactionDate: string | null };
-type FilterTab = "traded" | "untraded" | "bookmarked" | "temporary";
+type FilterTab = "traded" | "untraded" | "bookmarked";
 
 export default function CustomerList() {
   const { toast } = useToast();
@@ -476,12 +476,11 @@ export default function CustomerList() {
 
   const { data: tempCompanies = [], isLoading: tempLoading } = useQuery<Company[]>({
     queryKey: ["/api/companies/temporary"],
-    enabled: tab === "temporary",
+    enabled: tab === "untraded",
   });
 
   const filtered = useMemo(() => {
     if (!customers) return [];
-    if (tab === "temporary") return [];
     let list = customers;
 
     if (tab === "traded") {
@@ -509,7 +508,7 @@ export default function CustomerList() {
   }, [customers, search, tab]);
 
   const filteredTemp = useMemo(() => {
-    if (tab !== "temporary" || !tempCompanies) return [];
+    if (tab !== "untraded" || !tempCompanies) return [];
     if (!search) return tempCompanies;
     const s = search.toLowerCase();
     return tempCompanies.filter(c =>
@@ -525,12 +524,12 @@ export default function CustomerList() {
   const unlinkedCount = unlinkedData?.count || 0;
 
   const tabCounts = useMemo(() => {
-    if (!customers) return { traded: 0, untraded: 0, bookmarked: 0, temporary: unlinkedCount };
+    if (!customers) return { traded: 0, untraded: unlinkedCount, bookmarked: 0 };
+    const untradedCustomers = customers.filter(c => c.lastTransactionDate == null && (!c.businessNumber || c.businessNumber.trim() === "")).length;
     return {
       traded: customers.filter(c => c.lastTransactionDate != null || (c.businessNumber && c.businessNumber.trim() !== "")).length,
-      untraded: customers.filter(c => c.lastTransactionDate == null && (!c.businessNumber || c.businessNumber.trim() === "")).length,
+      untraded: untradedCustomers + unlinkedCount,
       bookmarked: customers.filter(c => c.isFavorite).length,
-      temporary: unlinkedCount,
     };
   }, [customers, unlinkedCount]);
 
@@ -590,7 +589,6 @@ export default function CustomerList() {
     { key: "traded", label: "거래", count: tabCounts.traded },
     { key: "untraded", label: "미거래", count: tabCounts.untraded },
     { key: "bookmarked", label: "북마크", count: tabCounts.bookmarked },
-    { key: "temporary", label: "임시", count: tabCounts.temporary },
   ];
 
   return (
@@ -647,132 +645,124 @@ export default function CustomerList() {
         </div>
       </div>
 
-      {tab === "temporary" ? (
-        <>
-          <div className="flex items-center gap-2 mb-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => autoLinkMutation.mutate()}
-              disabled={autoLinkMutation.isPending || unlinkedCount === 0}
-              data-testid="button-auto-link"
-            >
-              <Link2 className={`h-4 w-4 mr-1 ${autoLinkMutation.isPending ? "animate-spin" : ""}`} />
-              {autoLinkMutation.isPending ? "매칭 중..." : "자동 매칭"}
-            </Button>
-            <span className="text-xs text-muted-foreground">인콰이어리에서 생성되었으나 고객사에 연결되지 않은 담당자 목록입니다.</span>
-          </div>
-          {tempLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12" />)}
-            </div>
-          ) : filteredTemp.length > 0 ? (
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12" />)}
+        </div>
+      ) : filtered.length > 0 || (tab === "untraded" && filteredTemp.length > 0) ? (
+        <div className="space-y-4">
+          {filtered.length > 0 && (
             <div className="border rounded-lg overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="text-left py-2.5 px-4 font-medium">회사명</th>
-                    <th className="text-left py-2.5 px-4 font-medium">담당자</th>
-                    <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">이메일</th>
-                    <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">전화번호</th>
+                    <th className="w-10 py-2.5 px-2"></th>
+                    <th className="text-left py-2.5 px-4 font-medium">상호명</th>
+                    <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자등록번호</th>
+                    <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
+                    <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">전화번호</th>
+                    <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
+                    <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">담당자</th>
+                    <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">인콰이어리</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTemp.map((tc) => (
-                    <tr key={tc.id} className="border-b last:border-b-0 hover:bg-muted/30" data-testid={`row-temp-${tc.id}`}>
+                  {filtered.map((customer) => (
+                    <tr
+                      key={customer.id}
+                      className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                      onClick={() => setSelectedCustomerId(customer.id)}
+                      data-testid={`row-customer-${customer.id}`}
+                    >
+                      <td className="py-2.5 px-2 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            favoriteMutation.mutate(customer.id);
+                          }}
+                          className="hover:scale-110 transition-transform"
+                          data-testid={`button-favorite-${customer.id}`}
+                        >
+                          <Star
+                            className={`h-4 w-4 ${customer.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`}
+                          />
+                        </button>
+                      </td>
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-2">
-                          <Users className="h-4 w-4 text-amber-500 shrink-0" />
-                          <span className="font-medium">{tc.companyName}</span>
+                          <Building2 className="h-4 w-4 text-primary shrink-0" />
+                          <span className="font-medium">{customer.companyName}</span>
                         </div>
                       </td>
-                      <td className="py-2.5 px-4 text-muted-foreground">{tc.contactName || "-"}</td>
-                      <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{tc.email || "-"}</td>
-                      <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{tc.phone || "-"}</td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.businessNumber || "-"}</td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.representative || "-"}</td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.phone || "-"}</td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.lastTransactionDate || "-"}</td>
+                      <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                        {customer.contactCount > 0 ? (
+                          <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5" data-testid={`text-contact-count-${customer.id}`}>{customer.contactCount}명</span>
+                        ) : (
+                          <span className="text-muted-foreground/50">-</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                        {customer.inquiryCount > 0 ? (
+                          <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5" data-testid={`text-inquiry-count-${customer.id}`}>{customer.inquiryCount}건</span>
+                        ) : (
+                          <span className="text-muted-foreground/50">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p>미연결 임시 담당자가 없습니다.</p>
-            </div>
           )}
-          <div className="text-xs text-muted-foreground">
-            {filteredTemp.length > 0 && `총 ${filteredTemp.length}건`}
-          </div>
-        </>
-      ) : isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12" />)}
-        </div>
-      ) : filtered.length > 0 ? (
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="w-10 py-2.5 px-2"></th>
-                <th className="text-left py-2.5 px-4 font-medium">상호명</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자등록번호</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">전화번호</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
-                <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">담당자</th>
-                <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">인콰이어리</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((customer) => (
-                <tr
-                  key={customer.id}
-                  className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
-                  onClick={() => setSelectedCustomerId(customer.id)}
-                  data-testid={`row-customer-${customer.id}`}
+
+          {tab === "untraded" && filteredTemp.length > 0 && (
+            <>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-medium text-muted-foreground">미연결 임시 담당자</h3>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => autoLinkMutation.mutate()}
+                  disabled={autoLinkMutation.isPending || unlinkedCount === 0}
+                  data-testid="button-auto-link"
                 >
-                  <td className="py-2.5 px-2 text-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        favoriteMutation.mutate(customer.id);
-                      }}
-                      className="hover:scale-110 transition-transform"
-                      data-testid={`button-favorite-${customer.id}`}
-                    >
-                      <Star
-                        className={`h-4 w-4 ${customer.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`}
-                      />
-                    </button>
-                  </td>
-                  <td className="py-2.5 px-4">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-primary shrink-0" />
-                      <span className="font-medium">{customer.companyName}</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.businessNumber || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.representative || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.phone || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.lastTransactionDate || "-"}</td>
-                  <td className="py-2.5 px-4 text-center hidden lg:table-cell">
-                    {customer.contactCount > 0 ? (
-                      <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5" data-testid={`text-contact-count-${customer.id}`}>{customer.contactCount}명</span>
-                    ) : (
-                      <span className="text-muted-foreground/50">-</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-4 text-center hidden lg:table-cell">
-                    {customer.inquiryCount > 0 ? (
-                      <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5" data-testid={`text-inquiry-count-${customer.id}`}>{customer.inquiryCount}건</span>
-                    ) : (
-                      <span className="text-muted-foreground/50">-</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <Link2 className={`h-4 w-4 mr-1 ${autoLinkMutation.isPending ? "animate-spin" : ""}`} />
+                  {autoLinkMutation.isPending ? "매칭 중..." : "자동 매칭"}
+                </Button>
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="text-left py-2.5 px-4 font-medium">회사명</th>
+                      <th className="text-left py-2.5 px-4 font-medium">담당자</th>
+                      <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">이메일</th>
+                      <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">전화번호</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTemp.map((tc) => (
+                      <tr key={tc.id} className="border-b last:border-b-0 hover:bg-muted/30" data-testid={`row-temp-${tc.id}`}>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-amber-500 shrink-0" />
+                            <span className="font-medium">{tc.companyName}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-muted-foreground">{tc.contactName || "-"}</td>
+                        <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{tc.email || "-"}</td>
+                        <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{tc.phone || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground">
@@ -791,7 +781,7 @@ export default function CustomerList() {
       )}
 
       <div className="text-xs text-muted-foreground">
-        {tab !== "temporary" && filtered.length > 0 && `총 ${filtered.length}개`}
+        {filtered.length > 0 && `총 ${filtered.length + (tab === "untraded" ? filteredTemp.length : 0)}개`}
       </div>
 
       <Dialog open={!!selectedCustomerId} onOpenChange={(open) => { if (!open) setSelectedCustomerId(null); }}>
