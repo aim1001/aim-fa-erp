@@ -230,11 +230,13 @@ export default function ItemList() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="w-[100px]">카테고리</TableHead>
+                <TableHead className="w-[90px]">대분류</TableHead>
+                <TableHead className="w-[90px]">소분류</TableHead>
                 <TableHead className="w-[120px]">품목코드</TableHead>
                 <TableHead>품목명</TableHead>
                 <TableHead className="hidden md:table-cell">사양</TableHead>
-                <TableHead className="text-right w-[110px]">판매가</TableHead>
+                <TableHead className="text-right w-[100px]">원가</TableHead>
+                <TableHead className="text-right w-[100px]">판매가</TableHead>
                 <TableHead className="text-center w-[60px]">재고</TableHead>
                 <TableHead className="text-center w-[60px]">상태</TableHead>
                 <TableHead className="w-[40px]"></TableHead>
@@ -248,13 +250,11 @@ export default function ItemList() {
                     onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
                     data-testid={`row-item-${item.itemCode}`}
                   >
-                    <TableCell>
-                      <div className="text-xs">
-                        <span className="font-medium">{item.category1}</span>
-                        {item.category2 && (
-                          <span className="text-muted-foreground block">{item.category2}</span>
-                        )}
-                      </div>
+                    <TableCell className="text-xs font-medium" data-testid={`text-cat1-${item.itemCode}`}>
+                      {item.category1}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground" data-testid={`text-cat2-${item.itemCode}`}>
+                      {item.category2 || "-"}
                     </TableCell>
                     <TableCell className="font-mono text-xs" data-testid={`text-code-${item.itemCode}`}>
                       {item.itemCode}
@@ -264,6 +264,9 @@ export default function ItemList() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[200px] truncate">
                       {item.spec || "-"}
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground" data-testid={`text-cost-${item.itemCode}`}>
+                      {formatPrice(item.cost)}
                     </TableCell>
                     <TableCell className="text-right font-medium" data-testid={`text-price-${item.itemCode}`}>
                       {formatPrice(item.salesPrice)}
@@ -298,7 +301,7 @@ export default function ItemList() {
                   </TableRow>
                   {expandedId === item.id && (
                     <TableRow>
-                      <TableCell colSpan={8} className="p-0">
+                      <TableCell colSpan={10} className="p-0">
                         <ItemDetailRow item={item} />
                       </TableCell>
                     </TableRow>
