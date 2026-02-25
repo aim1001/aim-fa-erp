@@ -325,7 +325,31 @@ export async function registerRoutes(
         });
       }
 
-      res.json({ ...stats, upcomingByMonth });
+      const futureThreshold = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+      const futureMonthStr = `${futureThreshold.getFullYear()}-${String(futureThreshold.getMonth() + 1).padStart(2, '0')}`;
+      const mapItem = (i: any) => ({
+        id: i.id,
+        customerName: i.customerName,
+        inquiryNumber: i.inquiryNumber,
+        salesNumber: i.salesNumber ?? null,
+        expectedDate: i.expectedDate || null,
+        probability: i.probability || 0,
+        status: i.status,
+      });
+
+      const beyondNextMonth = allInquiries.filter(i =>
+        i.expectedDate && i.expectedDate >= futureMonthStr && i.status === "active"
+      );
+      const noDate = allInquiries.filter(i =>
+        !i.expectedDate && i.status === "active"
+      );
+
+      res.json({
+        ...stats,
+        upcomingByMonth,
+        beyondNextMonth: { count: beyondNextMonth.length, items: beyondNextMonth.map(mapItem) },
+        noDate: { count: noDate.length, items: noDate.map(mapItem) },
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -44,6 +44,8 @@ const statusLabels: Record<string, string> = {
   lost: "실주",
 };
 
+type UpcomingItem = { id: string; customerName: string; inquiryNumber: string; salesNumber: string | null; expectedDate: string | null; probability: number; status: string | null };
+
 const EXCLUDED_BY_DEFAULT = [2020, 2021, 2022, 2023, 2024];
 
 export default function Dashboard() {
@@ -92,7 +94,9 @@ export default function Dashboard() {
     byProbability: { range: string; count: number }[];
     byStatus: { status: string; count: number }[];
     byYear: { year: number; count: number }[];
-    upcomingByMonth: { month: string; label: string; count: number; items: { id: string; customerName: string; inquiryNumber: string; salesNumber: string | null; expectedDate: string; probability: number; status: string | null }[] }[];
+    upcomingByMonth: { month: string; label: string; count: number; items: UpcomingItem[] }[];
+    beyondNextMonth: { count: number; items: UpcomingItem[] };
+    noDate: { count: number; items: UpcomingItem[] };
   }>({
     queryKey: ["/api/dashboard", queryParam],
     queryFn: async () => {
@@ -280,6 +284,70 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          )}
+
+          {(stats?.beyondNextMonth || stats?.noDate) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {stats?.beyondNextMonth && stats.beyondNextMonth.count > 0 && (
+                <Card data-testid="card-beyond">
+                  <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">다다음달 이후 (진행중)</CardTitle>
+                    <div className="flex items-center gap-1">
+                      <span className="text-lg font-bold">{stats.beyondNextMonth.count}건</span>
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-1 max-h-40 overflow-auto">
+                      {stats.beyondNextMonth.items.map(item => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/60 cursor-pointer"
+                          onClick={() => setSelectedInquiryId(item.id)}
+                          data-testid={`item-beyond-${item.id}`}
+                        >
+                          <span className="font-mono text-muted-foreground shrink-0">{item.inquiryNumber}</span>
+                          <span className="truncate flex-1">{item.customerName}</span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">{item.expectedDate}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${stageColors[item.probability] || stageColors[0]}`}>
+                            {stageLabels[item.probability] || "-"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              {stats?.noDate && stats.noDate.count > 0 && (
+                <Card data-testid="card-nodate">
+                  <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">일자 미정 (진행중)</CardTitle>
+                    <div className="flex items-center gap-1">
+                      <span className="text-lg font-bold">{stats.noDate.count}건</span>
+                      <XCircle className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-1 max-h-40 overflow-auto">
+                      {stats.noDate.items.map(item => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/60 cursor-pointer"
+                          onClick={() => setSelectedInquiryId(item.id)}
+                          data-testid={`item-nodate-${item.id}`}
+                        >
+                          <span className="font-mono text-muted-foreground shrink-0">{item.inquiryNumber}</span>
+                          <span className="truncate flex-1">{item.customerName}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${stageColors[item.probability] || stageColors[0]}`}>
+                            {stageLabels[item.probability] || "-"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
 
