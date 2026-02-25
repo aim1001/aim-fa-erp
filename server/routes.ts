@@ -101,6 +101,36 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/inquiries/bulk-rescan-dates", async (req, res) => {
+    try {
+      const allInquiries = await storage.getInquiries();
+      const withFolder = allInquiries.filter(inq => inq.onedriveFolderId);
+      let updated = 0;
+      let failed = 0;
+      for (const inq of withFolder) {
+        try {
+          const customerInfoList = await parseExcelCustomerInfo(inq.onedriveFolderId!);
+          const firstQuoteDate = customerInfoList
+            .map(info => info.quoteDate)
+            .find(d => d && d.trim().length > 0);
+          if (firstQuoteDate) {
+            const normalized = firstQuoteDate.replace(/[.\-\/]/g, '-');
+            const parsed = new Date(normalized);
+            if (!isNaN(parsed.getTime())) {
+              await storage.updateInquiry(inq.id, { createdAt: parsed });
+              updated++;
+            }
+          }
+        } catch {
+          failed++;
+        }
+      }
+      res.json({ total: withFolder.length, updated, failed });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/inquiries/:id", async (req, res) => {
     try {
       const inquiry = await storage.getInquiry(req.params.id);

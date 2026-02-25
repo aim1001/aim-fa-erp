@@ -171,6 +171,23 @@ export default function InquiryList() {
     },
   });
 
+  const bulkRescanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/inquiries/bulk-rescan-dates");
+      return res.json();
+    },
+    onSuccess: (data: { total: number; updated: number; failed: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      toast({
+        title: "발생일자 갱신 완료",
+        description: `${data.total}건 중 ${data.updated}건 갱신${data.failed > 0 ? `, ${data.failed}건 실패` : ""}`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "갱신 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const inlineUpdateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Inquiry> }) => {
       const res = await apiRequest("PATCH", `/api/inquiries/${id}`, data);
@@ -345,6 +362,19 @@ export default function InquiryList() {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            variant="outline"
+            onClick={() => bulkRescanMutation.mutate()}
+            disabled={bulkRescanMutation.isPending}
+            data-testid="button-bulk-rescan"
+          >
+            {bulkRescanMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CalendarIcon className="h-4 w-4" />
+            )}
+            <span>발생일자 갱신</span>
+          </Button>
           <Button onClick={() => setShowAddDialog(true)} data-testid="button-add-inquiry">
             <Plus />
             <span>추가</span>
