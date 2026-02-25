@@ -314,6 +314,32 @@ export type ItemInventory = typeof itemInventory.$inferSelect;
 export type InsertItemDocument = z.infer<typeof insertItemDocumentSchema>;
 export type ItemDocument = typeof itemDocument.$inferSelect;
 
+export const purchaseItems = pgTable("purchase_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  category1: text("category1").notNull(),
+  category2: text("category2"),
+  itemName: text("item_name").notNull(),
+  brand: text("brand"),
+  originCountry: text("origin_country"),
+  itemCode: text("item_code").notNull().unique(),
+  spec: text("spec"),
+  defaultVendor: text("default_vendor"),
+  cost: integer("cost"),
+  currency: text("currency").default("won"),
+  leadTimeDays: integer("lead_time_days"),
+  isStockItem: boolean("is_stock_item").default(false),
+  itemType: text("item_type"),
+  unit: text("unit").default("ea"),
+  active: boolean("active").default(true),
+  safetyStock: integer("safety_stock"),
+  moq: integer("moq"),
+  remark: text("remark"),
+});
+
+export const insertPurchaseItemSchema = createInsertSchema(purchaseItems).omit({ id: true });
+export type InsertPurchaseItem = z.infer<typeof insertPurchaseItemSchema>;
+export type PurchaseItem = typeof purchaseItems.$inferSelect;
+
 export const onedriveTokens = pgTable("onedrive_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   accessToken: text("access_token").notNull(),

@@ -256,9 +256,8 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton disabled className="opacity-50" data-testid="nav-purchasing">
-                  <ShoppingCart className="h-4 w-4" /><span>구매품관리</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground">예정</span>
+                <SidebarMenuButton asChild data-active={location === "/purchase-items"} data-testid="nav-purchasing">
+                  <Link href="/purchase-items"><ShoppingCart className="h-4 w-4" /><span>구매품관리</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

@@ -13,9 +13,10 @@ import {
   type ItemMaster, type InsertItemMaster,
   type ItemInventory, type InsertItemInventory,
   type ItemDocument, type InsertItemDocument,
+  type PurchaseItem, type InsertPurchaseItem,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
-  onedriveTokens, itemMaster, itemInventory, itemDocument,
+  onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -139,6 +140,15 @@ export interface IStorage {
   getOnedriveToken(): Promise<OnedriveToken | undefined>;
   saveOnedriveToken(data: { accessToken: string; refreshToken: string; expiresAt: Date; accountName?: string; accountEmail?: string }): Promise<OnedriveToken>;
   deleteOnedriveToken(): Promise<void>;
+
+  getPurchaseItems(filters?: { search?: string; category1?: string }): Promise<PurchaseItem[]>;
+  getPurchaseItem(id: string): Promise<PurchaseItem | undefined>;
+  createPurchaseItem(item: InsertPurchaseItem): Promise<PurchaseItem>;
+  updatePurchaseItem(id: string, item: Partial<InsertPurchaseItem>): Promise<PurchaseItem | undefined>;
+  deletePurchaseItem(id: string): Promise<void>;
+  getPurchaseItemByCode(itemCode: string): Promise<PurchaseItem | undefined>;
+  upsertPurchaseItem(item: InsertPurchaseItem): Promise<PurchaseItem>;
+  getPurchaseItemCategories(): Promise<string[]>;
 
   getItems(): Promise<ItemMaster[]>;
   getItemByCode(itemCode: string): Promise<ItemMaster | undefined>;
@@ -776,6 +786,66 @@ export class DatabaseStorage implements IStorage {
 
   async deleteItemDocumentsByItemCode(code: string): Promise<void> {
     await db.delete(itemDocument).where(eq(itemDocument.itemCode, code));
+  }
+
+  async getPurchaseItems(filters?: { search?: string; category1?: string }): Promise<PurchaseItem[]> {
+    const conditions: any[] = [];
+    if (filters?.search) {
+      const q = `%${filters.search}%`;
+      conditions.push(or(
+        ilike(purchaseItems.itemName, q),
+        ilike(purchaseItems.itemCode, q),
+        ilike(purchaseItems.spec, q),
+        ilike(purchaseItems.defaultVendor, q),
+        ilike(purchaseItems.brand, q),
+        ilike(purchaseItems.remark, q),
+      ));
+    }
+    if (filters?.category1) {
+      conditions.push(eq(purchaseItems.category1, filters.category1));
+    }
+    if (conditions.length > 0) {
+      return db.select().from(purchaseItems).where(and(...conditions));
+    }
+    return db.select().from(purchaseItems);
+  }
+
+  async getPurchaseItem(id: string): Promise<PurchaseItem | undefined> {
+    const [item] = await db.select().from(purchaseItems).where(eq(purchaseItems.id, id));
+    return item;
+  }
+
+  async createPurchaseItem(item: InsertPurchaseItem): Promise<PurchaseItem> {
+    const [created] = await db.insert(purchaseItems).values(item).returning();
+    return created;
+  }
+
+  async updatePurchaseItem(id: string, item: Partial<InsertPurchaseItem>): Promise<PurchaseItem | undefined> {
+    const [updated] = await db.update(purchaseItems).set(item).where(eq(purchaseItems.id, id)).returning();
+    return updated;
+  }
+
+  async deletePurchaseItem(id: string): Promise<void> {
+    await db.delete(purchaseItems).where(eq(purchaseItems.id, id));
+  }
+
+  async getPurchaseItemByCode(itemCode: string): Promise<PurchaseItem | undefined> {
+    const [item] = await db.select().from(purchaseItems).where(eq(purchaseItems.itemCode, itemCode));
+    return item;
+  }
+
+  async upsertPurchaseItem(item: InsertPurchaseItem): Promise<PurchaseItem> {
+    const existing = await this.getPurchaseItemByCode(item.itemCode);
+    if (existing) {
+      const [updated] = await db.update(purchaseItems).set(item).where(eq(purchaseItems.id, existing.id)).returning();
+      return updated;
+    }
+    return this.createPurchaseItem(item);
+  }
+
+  async getPurchaseItemCategories(): Promise<string[]> {
+    const rows = await db.selectDistinct({ category1: purchaseItems.category1 }).from(purchaseItems);
+    return rows.map(r => r.category1).sort();
   }
 
   async getItemsWithDetails(): Promise<Array<ItemMaster & { inventory: ItemInventory[]; documents: ItemDocument[] }>> {

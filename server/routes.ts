@@ -17,8 +17,8 @@ import {
   getAuthUrl,
   exchangeCodeForTokens,
 } from "./onedrive";
-import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive } from "./excel-parser";
-import { insertItemMasterSchema, insertItemInventorySchema } from "@shared/schema";
+import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive } from "./excel-parser";
+import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema } from "@shared/schema";
 
 declare module "express-session" {
   interface SessionData {
@@ -2571,6 +2571,98 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       console.error("[items sync]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-items", requireAuth, async (req, res) => {
+    try {
+      const search = req.query.search as string | undefined;
+      const category1 = req.query.category1 as string | undefined;
+      const items = await storage.getPurchaseItems({ search, category1 });
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-items/categories", requireAuth, async (_req, res) => {
+    try {
+      const categories = await storage.getPurchaseItemCategories();
+      res.json(categories);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-items/:id", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getPurchaseItem(req.params.id);
+      if (!item) return res.status(404).json({ message: "구매품을 찾을 수 없습니다" });
+      res.json(item);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-items", requireAuth, async (req, res) => {
+    try {
+      const parsed = insertPurchaseItemSchema.parse(req.body);
+      const item = await storage.createPurchaseItem(parsed);
+      res.json(item);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/purchase-items/:id", requireAuth, async (req, res) => {
+    try {
+      const body = { ...req.body };
+      if (body.cost !== undefined) body.cost = typeof body.cost === "string" ? parseInt(body.cost, 10) || 0 : body.cost;
+      if (body.leadTimeDays !== undefined) body.leadTimeDays = typeof body.leadTimeDays === "string" ? (parseInt(body.leadTimeDays, 10) || null) : body.leadTimeDays;
+      if (body.safetyStock !== undefined) body.safetyStock = typeof body.safetyStock === "string" ? (parseInt(body.safetyStock, 10) || null) : body.safetyStock;
+      if (body.moq !== undefined) body.moq = typeof body.moq === "string" ? (parseInt(body.moq, 10) || null) : body.moq;
+      const partial = insertPurchaseItemSchema.partial().parse(body);
+      const item = await storage.updatePurchaseItem(req.params.id, partial);
+      if (!item) return res.status(404).json({ message: "구매품을 찾을 수 없습니다" });
+      res.json(item);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/purchase-items/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deletePurchaseItem(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-items/sync-onedrive", requireAuth, async (_req, res) => {
+    try {
+      const rows = await parsePurchaseListFromOneDrive();
+      let created = 0;
+      let updated = 0;
+      for (const row of rows) {
+        const existing = await storage.getPurchaseItemByCode(row.itemCode);
+        if (existing) {
+          await storage.updatePurchaseItem(existing.id, row);
+          updated++;
+        } else {
+          await storage.createPurchaseItem(row);
+          created++;
+        }
+      }
+      res.json({
+        message: `동기화 완료: ${rows.length}건 처리 (신규 ${created}건, 업데이트 ${updated}건)`,
+        total: rows.length,
+        created,
+        updated,
+      });
+    } catch (err: any) {
+      console.error("[purchase-items sync]", err.message);
       res.status(500).json({ message: err.message });
     }
   });

@@ -442,6 +442,76 @@ export async function writeListPriceToOneDrive(): Promise<void> {
   console.log("[listprice] OneDrive에 listprice.xlsx 업로드 완료");
 }
 
+export interface PurchaseListItem {
+  category1: string;
+  category2: string;
+  itemName: string;
+  brand: string;
+  originCountry: string;
+  itemCode: string;
+  spec: string;
+  defaultVendor: string;
+  cost: number;
+  currency: string;
+  leadTimeDays: number | null;
+  isStockItem: boolean;
+  itemType: string;
+  unit: string;
+  active: boolean;
+  safetyStock: number | null;
+  moq: number | null;
+  remark: string;
+}
+
+export async function parsePurchaseListFromOneDrive(): Promise<PurchaseListItem[]> {
+  const buffer = await downloadFileByPath("2.공사/database/purchaselist.xlsx");
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const results: PurchaseListItem[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+
+    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+
+    for (let r = 1; r <= range.e.r; r++) {
+      const itemName = getCellValue(sheet, 2, r);
+      const itemCode = getCellValue(sheet, 5, r);
+      if (!itemName && !itemCode) continue;
+
+      const costStr = getCellValue(sheet, 8, r);
+      const leadTimeStr = getCellValue(sheet, 10, r);
+      const isStockStr = getCellValue(sheet, 11, r);
+      const activeStr = getCellValue(sheet, 14, r);
+      const safetyStockStr = getCellValue(sheet, 15, r);
+      const moqStr = getCellValue(sheet, 16, r);
+
+      results.push({
+        category1: getCellValue(sheet, 0, r) || sheetName,
+        category2: getCellValue(sheet, 1, r),
+        itemName: itemName || itemCode,
+        brand: getCellValue(sheet, 3, r),
+        originCountry: getCellValue(sheet, 4, r),
+        itemCode: itemCode || itemName,
+        spec: getCellValue(sheet, 6, r),
+        defaultVendor: getCellValue(sheet, 7, r),
+        cost: costStr ? parseInt(costStr.replace(/[^0-9-]/g, ""), 10) || 0 : 0,
+        currency: getCellValue(sheet, 9, r) || "won",
+        leadTimeDays: leadTimeStr ? parseInt(leadTimeStr, 10) || null : null,
+        isStockItem: isStockStr.toLowerCase() === "true" || isStockStr === "1",
+        itemType: getCellValue(sheet, 12, r),
+        unit: getCellValue(sheet, 13, r) || "ea",
+        active: activeStr === "" || activeStr.toLowerCase() === "true" || activeStr === "1",
+        safetyStock: safetyStockStr ? parseInt(safetyStockStr, 10) || null : null,
+        moq: moqStr ? parseInt(moqStr, 10) || null : null,
+        remark: getCellValue(sheet, 17, r),
+      });
+    }
+  }
+
+  return results;
+}
+
 export async function getAvailableInvoiceYears(): Promise<number[]> {
   try {
     const folders = await listFoldersByPath("4.경영지원/database");
