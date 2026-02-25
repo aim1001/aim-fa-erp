@@ -182,6 +182,26 @@ export async function registerRoutes(
         data.source = "manual";
       }
 
+      if (data.customerName) {
+        try {
+          const allCustomers = await storage.getCustomers();
+          const nameKey = data.customerName.trim().toLowerCase();
+          let matched = allCustomers.find(c => c.companyName.trim().toLowerCase() === nameKey);
+          if (!matched) {
+            matched = allCustomers.find(c => {
+              const key = c.companyName.trim().toLowerCase();
+              return key.includes(nameKey) || nameKey.includes(key);
+            });
+          }
+          if (!matched) {
+            matched = await storage.createCustomer({ companyName: data.customerName });
+          }
+          data.customerId = matched.id;
+        } catch (linkErr: any) {
+          console.warn("Auto-link customer on create error:", linkErr.message);
+        }
+      }
+
       const inquiry = await storage.createInquiry(data);
       res.status(201).json(inquiry);
     } catch (err: any) {

@@ -724,9 +724,13 @@ function CustomerMatchDialog({ candidates, companyName, pendingInfo, inquiryId, 
   );
 }
 
-function CustomerPreviewDialog({ customerId, open, onOpenChange }: { customerId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
+function CustomerPreviewDialog({ customerId, inquiryId, open, onOpenChange }: { customerId: string; inquiryId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ companyName: "", address: "", phone: "", businessNumber: "", representative: "" });
+
   const { data: customer } = useQuery<Customer>({
-    queryKey: [`/api/customers/${customerId}`],
+    queryKey: ["/api/customers", customerId],
     enabled: open && !!customerId,
   });
 
@@ -735,8 +739,43 @@ function CustomerPreviewDialog({ customerId, open, onOpenChange }: { customerId:
     enabled: open && !!customerId,
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (data: typeof editForm) => {
+      const res = await apiRequest("PATCH", `/api/customers/${customerId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "고객사 정보 수정 완료" });
+      setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", customerId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "수정 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const startEdit = () => {
+    if (customer) {
+      setEditForm({
+        companyName: customer.companyName || "",
+        address: customer.address || "",
+        phone: customer.phone || "",
+        businessNumber: customer.businessNumber || "",
+        representative: customer.representative || "",
+      });
+      setIsEditing(true);
+    }
+  };
+
+  const handleSave = () => {
+    updateMutation.mutate(editForm);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) setIsEditing(false); onOpenChange(v); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -749,15 +788,69 @@ function CustomerPreviewDialog({ customerId, open, onOpenChange }: { customerId:
         {customer ? (
           <div className="space-y-4">
             <div className="border rounded-lg p-3 bg-muted/20">
-              <p className="text-xs font-medium text-muted-foreground mb-2">사업자 정보</p>
-              <div className="grid grid-cols-[70px_1fr] gap-y-1.5 gap-x-2 text-sm">
-                <span className="text-muted-foreground flex items-center gap-1"><Building2 className="h-3 w-3" />상호명</span>
-                <span className="font-medium" data-testid="text-preview-company-name">{customer.companyName}</span>
-                <span className="text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />주소</span>
-                <span data-testid="text-preview-address">{customer.address || "-"}</span>
-                <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
-                <span data-testid="text-preview-phone">{customer.phone || "-"}</span>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-muted-foreground">사업자 정보</p>
+                {!isEditing && (
+                  <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={startEdit} data-testid="button-edit-customer-info">
+                    <Pencil className="h-3 w-3 mr-1" />
+                    편집
+                  </Button>
+                )}
               </div>
+              {isEditing ? (
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">상호명</label>
+                    <Input className="h-8 text-sm" value={editForm.companyName} onChange={e => setEditForm(f => ({ ...f, companyName: e.target.value }))} data-testid="input-edit-company-name" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">사업자번호</label>
+                    <Input className="h-8 text-sm" placeholder="000-00-00000" value={editForm.businessNumber} onChange={e => setEditForm(f => ({ ...f, businessNumber: e.target.value }))} data-testid="input-edit-business-number" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">대표자</label>
+                    <Input className="h-8 text-sm" value={editForm.representative} onChange={e => setEditForm(f => ({ ...f, representative: e.target.value }))} data-testid="input-edit-representative" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">주소</label>
+                    <Input className="h-8 text-sm" value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} data-testid="input-edit-address" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">전화</label>
+                    <Input className="h-8 text-sm" value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} data-testid="input-edit-phone" />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" className="h-7 text-xs" onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save-customer-edit">
+                      {updateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                      저장
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setIsEditing(false)} data-testid="button-cancel-customer-edit">
+                      취소
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-[80px_1fr] gap-y-1.5 gap-x-2 text-sm">
+                  <span className="text-muted-foreground flex items-center gap-1"><Building2 className="h-3 w-3" />상호명</span>
+                  <span className="font-medium" data-testid="text-preview-company-name">{customer.companyName}</span>
+                  {customer.businessNumber && (
+                    <>
+                      <span className="text-muted-foreground text-xs">사업자번호</span>
+                      <span className="text-xs" data-testid="text-preview-business-number">{customer.businessNumber}</span>
+                    </>
+                  )}
+                  {customer.representative && (
+                    <>
+                      <span className="text-muted-foreground text-xs">대표자</span>
+                      <span className="text-xs" data-testid="text-preview-representative">{customer.representative}</span>
+                    </>
+                  )}
+                  <span className="text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />주소</span>
+                  <span data-testid="text-preview-address">{customer.address || "-"}</span>
+                  <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
+                  <span data-testid="text-preview-phone">{customer.phone || "-"}</span>
+                </div>
+              )}
             </div>
 
             <div className="border rounded-lg p-3 bg-muted/20">
@@ -1562,6 +1655,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
       {inquiry.customerId && (
         <CustomerPreviewDialog
           customerId={inquiry.customerId}
+          inquiryId={inquiryId}
           open={showCustomerPreview}
           onOpenChange={setShowCustomerPreview}
         />
