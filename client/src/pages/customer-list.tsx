@@ -433,7 +433,7 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
 }
 
 type CustomerWithStats = Customer & { inquiryCount: number; contactCount: number; lastTransactionDate: string | null };
-type FilterTab = "traded" | "untraded" | "bookmarked";
+type FilterTab = "traded" | "untraded" | "bookmarked" | "temporary";
 
 export default function CustomerList() {
   const { toast } = useToast();
@@ -474,16 +474,22 @@ export default function CustomerList() {
     },
   });
 
+  const { data: tempCompanies = [], isLoading: tempLoading } = useQuery<Company[]>({
+    queryKey: ["/api/companies/temporary"],
+    enabled: tab === "temporary",
+  });
+
   const filtered = useMemo(() => {
     if (!customers) return [];
+    if (tab === "temporary") return [];
     let list = customers;
 
     if (tab === "traded") {
-      list = list.filter(c => c.lastTransactionDate != null);
+      list = list.filter(c => c.lastTransactionDate != null || (c.businessNumber && c.businessNumber.trim() !== ""));
     } else if (tab === "untraded") {
-      list = list.filter(c => c.lastTransactionDate == null);
+      list = list.filter(c => c.lastTransactionDate == null && (!c.businessNumber || c.businessNumber.trim() === ""));
     } else if (tab === "bookmarked") {
-      list = list.filter(c => c.lastTransactionDate == null && c.isFavorite);
+      list = list.filter(c => c.isFavorite);
     }
 
     if (search) {
@@ -502,19 +508,31 @@ export default function CustomerList() {
     });
   }, [customers, search, tab]);
 
-  const tabCounts = useMemo(() => {
-    if (!customers) return { traded: 0, untraded: 0, bookmarked: 0 };
-    return {
-      traded: customers.filter(c => c.lastTransactionDate != null).length,
-      untraded: customers.filter(c => c.lastTransactionDate == null).length,
-      bookmarked: customers.filter(c => c.lastTransactionDate == null && c.isFavorite).length,
-    };
-  }, [customers]);
+  const filteredTemp = useMemo(() => {
+    if (tab !== "temporary" || !tempCompanies) return [];
+    if (!search) return tempCompanies;
+    const s = search.toLowerCase();
+    return tempCompanies.filter(c =>
+      c.companyName.toLowerCase().includes(s) ||
+      (c.contactName && c.contactName.toLowerCase().includes(s)) ||
+      (c.email && c.email.toLowerCase().includes(s))
+    );
+  }, [tempCompanies, search, tab]);
 
   const { data: unlinkedData } = useQuery<{ count: number }>({
     queryKey: ["/api/companies/unlinked-count"],
   });
   const unlinkedCount = unlinkedData?.count || 0;
+
+  const tabCounts = useMemo(() => {
+    if (!customers) return { traded: 0, untraded: 0, bookmarked: 0, temporary: unlinkedCount };
+    return {
+      traded: customers.filter(c => c.lastTransactionDate != null || (c.businessNumber && c.businessNumber.trim() !== "")).length,
+      untraded: customers.filter(c => c.lastTransactionDate == null && (!c.businessNumber || c.businessNumber.trim() === "")).length,
+      bookmarked: customers.filter(c => c.isFavorite).length,
+      temporary: unlinkedCount,
+    };
+  }, [customers, unlinkedCount]);
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -542,6 +560,7 @@ export default function CustomerList() {
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies/unlinked-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies/temporary"] });
       toast({ title: data.message || "자동 매칭 완료" });
     },
     onError: (err: Error) => {
@@ -571,6 +590,7 @@ export default function CustomerList() {
     { key: "traded", label: "거래", count: tabCounts.traded },
     { key: "untraded", label: "미거래", count: tabCounts.untraded },
     { key: "bookmarked", label: "북마크", count: tabCounts.bookmarked },
+    { key: "temporary", label: "임시", count: tabCounts.temporary },
   ];
 
   return (
@@ -578,24 +598,6 @@ export default function CustomerList() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-customer-list-title">고객사 목록</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          {unlinkedCount > 0 && (
-            <Badge variant="secondary" className="no-default-active-elevate" data-testid="badge-unlinked-count">
-              <Users className="h-3 w-3 mr-1" />
-              미연결 담당자 {unlinkedCount}건
-            </Badge>
-          )}
-          {unlinkedCount > 0 && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => autoLinkMutation.mutate()}
-              disabled={autoLinkMutation.isPending}
-              data-testid="button-auto-link"
-            >
-              <Link2 className={`h-4 w-4 mr-1 ${autoLinkMutation.isPending ? "animate-spin" : ""}`} />
-              {autoLinkMutation.isPending ? "매칭 중..." : "자동 매칭"}
-            </Button>
-          )}
           <Button
             size="sm"
             variant="secondary"
@@ -645,7 +647,64 @@ export default function CustomerList() {
         </div>
       </div>
 
-      {isLoading ? (
+      {tab === "temporary" ? (
+        <>
+          <div className="flex items-center gap-2 mb-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => autoLinkMutation.mutate()}
+              disabled={autoLinkMutation.isPending || unlinkedCount === 0}
+              data-testid="button-auto-link"
+            >
+              <Link2 className={`h-4 w-4 mr-1 ${autoLinkMutation.isPending ? "animate-spin" : ""}`} />
+              {autoLinkMutation.isPending ? "매칭 중..." : "자동 매칭"}
+            </Button>
+            <span className="text-xs text-muted-foreground">인콰이어리에서 생성되었으나 고객사에 연결되지 않은 담당자 목록입니다.</span>
+          </div>
+          {tempLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12" />)}
+            </div>
+          ) : filteredTemp.length > 0 ? (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="text-left py-2.5 px-4 font-medium">회사명</th>
+                    <th className="text-left py-2.5 px-4 font-medium">담당자</th>
+                    <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">이메일</th>
+                    <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">전화번호</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTemp.map((tc) => (
+                    <tr key={tc.id} className="border-b last:border-b-0 hover:bg-muted/30" data-testid={`row-temp-${tc.id}`}>
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-amber-500 shrink-0" />
+                          <span className="font-medium">{tc.companyName}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4 text-muted-foreground">{tc.contactName || "-"}</td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{tc.email || "-"}</td>
+                      <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{tc.phone || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-4 opacity-30" />
+              <p>미연결 임시 담당자가 없습니다.</p>
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground">
+            {filteredTemp.length > 0 && `총 ${filteredTemp.length}건`}
+          </div>
+        </>
+      ) : isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-12" />)}
         </div>
@@ -732,7 +791,7 @@ export default function CustomerList() {
       )}
 
       <div className="text-xs text-muted-foreground">
-        {filtered.length > 0 && `총 ${filtered.length}개`}
+        {tab !== "temporary" && filtered.length > 0 && `총 ${filtered.length}개`}
       </div>
 
       <Dialog open={!!selectedCustomerId} onOpenChange={(open) => { if (!open) setSelectedCustomerId(null); }}>

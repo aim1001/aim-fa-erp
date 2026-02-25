@@ -561,6 +561,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/companies/temporary", async (_req, res) => {
+    try {
+      const list = await storage.getTemporaryCompanies();
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/companies/auto-link", async (_req, res) => {
     try {
       const tempCompanies = await storage.getTemporaryCompanies();
