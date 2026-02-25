@@ -492,44 +492,80 @@ function CustomerLinkSection({ inquiryId, inquiry }: { inquiryId: string; inquir
     },
   });
 
-  if (inquiry.customerId) return null;
+  const [showChangeSearch, setShowChangeSearch] = useState(false);
+  const isLinked = !!inquiry.customerId;
 
   return (
-    <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20 mt-2">
-      <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">고객사 미연결 - 기존 고객사를 검색하여 연결하세요</p>
-      <div className="relative" ref={ref}>
-        <Input
-          placeholder="고객사명으로 검색..."
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            setShowDropdown(true);
-          }}
-          onFocus={() => setShowDropdown(true)}
-          className="h-8 text-sm"
-          data-testid="input-link-customer-search"
-        />
-        {showDropdown && searchResults.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto">
-            {searchResults.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
-                onClick={() => linkMutation.mutate(c.id)}
-                disabled={linkMutation.isPending}
-                data-testid={`option-link-customer-${c.id}`}
+    <div className={`border rounded-lg p-3 mt-2 ${isLinked ? "bg-muted/30" : "bg-amber-50 dark:bg-amber-950/20"}`}>
+      {isLinked && !showChangeSearch ? (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">다른 고객사로 변경하려면 버튼을 누르세요</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setShowChangeSearch(true)}
+            data-testid="button-change-customer"
+          >
+            고객 변경
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              {isLinked ? "변경할 고객사를 검색하세요" : "고객사 미연결 - 기존 고객사를 검색하여 연결하세요"}
+            </p>
+            {isLinked && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs px-2"
+                onClick={() => { setShowChangeSearch(false); setSearchQuery(""); }}
+                data-testid="button-cancel-change-customer"
               >
-                <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
-                <div>
-                  <span className="font-medium">{c.companyName}</span>
-                  {c.businessNumber && <span className="text-muted-foreground ml-2 text-xs">{c.businessNumber}</span>}
-                </div>
-              </button>
-            ))}
+                취소
+              </Button>
+            )}
           </div>
-        )}
-      </div>
+          <div className="relative" ref={ref}>
+            <Input
+              placeholder="고객사명으로 검색..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowDropdown(true);
+              }}
+              onFocus={() => setShowDropdown(true)}
+              className="h-8 text-sm"
+              data-testid="input-link-customer-search"
+            />
+            {showDropdown && searchResults.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto">
+                {searchResults.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
+                    onClick={() => {
+                      linkMutation.mutate(c.id);
+                      setShowChangeSearch(false);
+                    }}
+                    disabled={linkMutation.isPending}
+                    data-testid={`option-link-customer-${c.id}`}
+                  >
+                    <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <div>
+                      <span className="font-medium">{c.companyName}</span>
+                      {c.businessNumber && <span className="text-muted-foreground ml-2 text-xs">{c.businessNumber}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
