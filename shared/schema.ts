@@ -36,6 +36,8 @@ export const companies = pgTable("companies", {
   phone: text("phone"),
   fax: text("fax"),
   memo: text("memo"),
+  position: text("position"),
+  department: text("department"),
   isTemporary: boolean("is_temporary").default(true),
 });
 
