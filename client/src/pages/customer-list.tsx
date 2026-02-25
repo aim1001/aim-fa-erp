@@ -169,12 +169,18 @@ function ContactCard({ contact, onDeleted }: { contact: Company; onDeleted: () =
   );
 }
 
+type CustomerWithStats = Customer & { inquiryCount: number; contactCount: number; lastTransactionDate: string | null };
+type FilterTab = "traded" | "untraded" | "bookmarked";
+
 function CustomerDetailModal({ customerId, onClose }: { customerId: string; onClose: () => void }) {
   const { toast } = useToast();
   const [showAddContact, setShowAddContact] = useState(false);
   const [newContactName, setNewContactName] = useState("");
   const [newContactEmail, setNewContactEmail] = useState("");
   const [newContactPhone, setNewContactPhone] = useState("");
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState("");
+  const [mergeTargetId, setMergeTargetId] = useState<string | null>(null);
 
   const { data: customer } = useQuery<Customer>({
     queryKey: [`/api/customers/${customerId}`],
@@ -191,6 +197,38 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
   });
 
   const relatedInquiries = allInquiries?.filter(i => i.customerId === customerId) || [];
+
+  const { data: allCustomers = [] } = useQuery<CustomerWithStats[]>({
+    queryKey: ["/api/customers-with-stats"],
+  });
+
+  const isUntraded = customer && !customer.businessNumber?.trim() &&
+    !allCustomers.find(c => c.id === customerId)?.lastTransactionDate;
+
+  const mergeTargets = allCustomers.filter(c => {
+    if (c.id === customerId) return false;
+    if (!mergeSearch) return c.lastTransactionDate != null || (c.businessNumber && c.businessNumber.trim() !== "");
+    const s = mergeSearch.toLowerCase();
+    return c.companyName.toLowerCase().includes(s);
+  }).slice(0, 20);
+
+  const mergeMutation = useMutation({
+    mutationFn: async (targetId: string) => {
+      const res = await apiRequest("POST", `/api/customers/${customerId}/merge-into/${targetId}`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: data.message || "병합 완료" });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      setShowMergeDialog(false);
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "병합 실패", description: err.message, variant: "destructive" });
+    },
+  });
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -250,18 +288,31 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
             <Building2 className="h-5 w-5 text-primary" />
             {customer.companyName}
           </DialogTitle>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              if (confirm("이 고객사와 소속 담당자가 모두 삭제됩니다. 계속하시겠습니까?")) deleteMutation.mutate();
-            }}
-            disabled={deleteMutation.isPending}
-            data-testid="button-delete-customer"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span>삭제</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            {isUntraded && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => { setMergeSearch(""); setMergeTargetId(null); setShowMergeDialog(true); }}
+                data-testid="button-merge-customer"
+              >
+                <Link2 className="h-4 w-4" />
+                <span>거래처에 병합</span>
+              </Button>
+            )}
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (confirm("이 고객사와 소속 담당자가 모두 삭제됩니다. 계속하시겠습니까?")) deleteMutation.mutate();
+              }}
+              disabled={deleteMutation.isPending}
+              data-testid="button-delete-customer"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>삭제</span>
+            </Button>
+          </div>
         </div>
       </DialogHeader>
 
@@ -428,12 +479,58 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>거래처에 병합</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            "{customer.companyName}"의 인콰이어리와 담당자를 선택한 거래처로 이전하고, 현재 고객사는 삭제됩니다.
+          </p>
+          <Input
+            value={mergeSearch}
+            onChange={e => setMergeSearch(e.target.value)}
+            placeholder="거래처 검색..."
+            data-testid="input-merge-search"
+          />
+          <div className="max-h-60 overflow-y-auto border rounded-md">
+            {mergeTargets.length > 0 ? mergeTargets.map(t => (
+              <button
+                key={t.id}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 border-b last:border-b-0 transition-colors ${mergeTargetId === t.id ? "bg-primary/10" : ""}`}
+                onClick={() => setMergeTargetId(t.id)}
+                data-testid={`merge-target-${t.id}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{t.companyName}</span>
+                  <span className="text-xs text-muted-foreground">{t.businessNumber || ""}</span>
+                </div>
+                {t.lastTransactionDate && (
+                  <span className="text-xs text-muted-foreground">최근 거래: {t.lastTransactionDate}</span>
+                )}
+              </button>
+            )) : (
+              <p className="text-sm text-muted-foreground text-center py-4">검색 결과가 없습니다</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setShowMergeDialog(false)} data-testid="button-cancel-merge">
+              취소
+            </Button>
+            <Button
+              onClick={() => { if (mergeTargetId) mergeMutation.mutate(mergeTargetId); }}
+              disabled={!mergeTargetId || mergeMutation.isPending}
+              data-testid="button-confirm-merge"
+            >
+              {mergeMutation.isPending ? "병합 중..." : "병합"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DialogContent>
   );
 }
-
-type CustomerWithStats = Customer & { inquiryCount: number; contactCount: number; lastTransactionDate: string | null };
-type FilterTab = "traded" | "untraded" | "bookmarked";
 
 export default function CustomerList() {
   const { toast } = useToast();

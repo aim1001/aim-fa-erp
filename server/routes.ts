@@ -622,6 +622,36 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/customers/:id/merge-into/:targetId", async (req, res) => {
+    try {
+      const { id: sourceId, targetId } = req.params;
+      const source = await storage.getCustomer(sourceId);
+      const target = await storage.getCustomer(targetId);
+      if (!source) return res.status(404).json({ message: "Source customer not found" });
+      if (!target) return res.status(404).json({ message: "Target customer not found" });
+
+      const sourceInquiries = await storage.getInquiriesByCustomerId(sourceId);
+      for (const inq of sourceInquiries) {
+        await storage.updateInquiry(inq.id, { customerId: targetId });
+      }
+
+      const sourceCompanies = await storage.getCompaniesByCustomerId(sourceId);
+      for (const comp of sourceCompanies) {
+        await storage.updateCompany(comp.id, { customerId: targetId });
+      }
+
+      await storage.deleteCustomer(sourceId);
+
+      res.json({
+        message: `${source.companyName} → ${target.companyName} 병합 완료`,
+        movedInquiries: sourceInquiries.length,
+        movedCompanies: sourceCompanies.length,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/customers/:id/contacts", async (req, res) => {
     try {
       const contacts = await storage.getCompaniesByCustomerId(req.params.id);
