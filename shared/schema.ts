@@ -353,3 +353,14 @@ export const onedriveTokens = pgTable("onedrive_tokens", {
 });
 
 export type OnedriveToken = typeof onedriveTokens.$inferSelect;
+
+export const inquiryMemos = pgTable("inquiry_memos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inquiryId: varchar("inquiry_id").notNull(),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertInquiryMemoSchema = createInsertSchema(inquiryMemos).omit({ id: true });
+export type InsertInquiryMemo = z.infer<typeof insertInquiryMemoSchema>;
+export type InquiryMemo = typeof inquiryMemos.$inferSelect;

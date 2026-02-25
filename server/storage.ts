@@ -14,9 +14,11 @@ import {
   type ItemInventory, type InsertItemInventory,
   type ItemDocument, type InsertItemDocument,
   type PurchaseItem, type InsertPurchaseItem,
+  type InquiryMemo, type InsertInquiryMemo,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
+  inquiryMemos,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -872,6 +874,23 @@ export class DatabaseStorage implements IStorage {
       inventory: invMap.get(item.itemCode) || [],
       documents: docMap.get(item.itemCode) || [],
     }));
+  }
+  async getInquiryMemos(inquiryId: string): Promise<InquiryMemo[]> {
+    return db.select().from(inquiryMemos).where(eq(inquiryMemos.inquiryId, inquiryId)).orderBy(desc(inquiryMemos.createdAt));
+  }
+
+  async createInquiryMemo(data: InsertInquiryMemo): Promise<InquiryMemo> {
+    const [memo] = await db.insert(inquiryMemos).values(data).returning();
+    return memo;
+  }
+
+  async updateInquiryMemo(id: string, content: string): Promise<InquiryMemo | undefined> {
+    const [memo] = await db.update(inquiryMemos).set({ content }).where(eq(inquiryMemos.id, id)).returning();
+    return memo;
+  }
+
+  async deleteInquiryMemo(id: string): Promise<void> {
+    await db.delete(inquiryMemos).where(eq(inquiryMemos.id, id));
   }
 }
 

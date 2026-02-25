@@ -10,13 +10,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { Inquiry, InquiryFile, Company, ProductImage, Customer } from "@shared/schema";
+import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo } from "@shared/schema";
 
 function useInlineUpdate(inquiryId: string) {
   const { toast } = useToast();
@@ -1324,6 +1324,160 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
   );
 }
 
+function MemoSection({ inquiryId, legacyMemo }: { inquiryId: string; legacyMemo: string }) {
+  const { toast } = useToast();
+  const [newContent, setNewContent] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+
+  const { data: memos = [], isLoading } = useQuery<InquiryMemo[]>({
+    queryKey: ["/api/inquiries", inquiryId, "memos"],
+    queryFn: () => fetch(`/api/inquiries/${inquiryId}/memos`).then(r => r.json()),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (content: string) => apiRequest("POST", `/api/inquiries/${inquiryId}/memos`, { content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "memos"] });
+      setNewContent("");
+    },
+    onError: () => toast({ title: "메모 추가 실패", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) => apiRequest("PATCH", `/api/inquiry-memos/${id}`, { content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "memos"] });
+      setEditingId(null);
+    },
+    onError: () => toast({ title: "메모 수정 실패", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/inquiry-memos/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "memos"] });
+    },
+    onError: () => toast({ title: "메모 삭제 실패", variant: "destructive" }),
+  });
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const h = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${y}-${m}-${day} ${h}:${min}`;
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <StickyNote className="h-4 w-4" />
+          메모
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex gap-2">
+          <Textarea
+            value={newContent}
+            onChange={(e) => setNewContent(e.target.value)}
+            placeholder="새 메모를 입력하세요..."
+            rows={2}
+            className="text-sm"
+            data-testid="input-new-memo"
+          />
+          <Button
+            size="sm"
+            onClick={() => newContent.trim() && createMutation.mutate(newContent.trim())}
+            disabled={!newContent.trim() || createMutation.isPending}
+            className="self-end"
+            data-testid="button-add-memo"
+          >
+            <Plus className="h-3 w-3 mr-1" />추가
+          </Button>
+        </div>
+
+        {isLoading && <div className="text-sm text-muted-foreground">불러오는 중...</div>}
+
+        {memos.length > 0 && (
+          <div className="space-y-2">
+            {memos.map((memo) => (
+              <div key={memo.id} className="border rounded-md p-3 space-y-1" data-testid={`memo-item-${memo.id}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {formatDate(memo.createdAt)}
+                  </span>
+                  <div className="flex gap-1">
+                    {editingId !== memo.id && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0"
+                          onClick={() => { setEditingId(memo.id); setEditContent(memo.content); }}
+                          data-testid={`button-edit-memo-${memo.id}`}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-destructive"
+                          onClick={() => deleteMutation.mutate(memo.id)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-memo-${memo.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {editingId === memo.id ? (
+                  <div className="space-y-1">
+                    <Textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      rows={2}
+                      className="text-sm"
+                      autoFocus
+                      data-testid={`input-edit-memo-${memo.id}`}
+                    />
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => editContent.trim() && updateMutation.mutate({ id: memo.id, content: editContent.trim() })}
+                        disabled={updateMutation.isPending}
+                      >
+                        <Check className="h-3 w-3 mr-1" />저장
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>취소</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap">{memo.content}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {legacyMemo && memos.length === 0 && !isLoading && (
+          <div className="border rounded-md p-3 bg-muted/30">
+            <span className="text-xs text-muted-foreground">기존 메모</span>
+            <p className="text-sm whitespace-pre-wrap mt-1">{legacyMemo}</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   inquiryId: string;
   inquiry: Inquiry;
@@ -1825,12 +1979,12 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
               <span className="text-muted-foreground">납품일자</span>
               <InlineDateInput value={inquiry.deliveryDate || ""} field="deliveryDate" inquiryId={id!} />
 
-              <span className="text-muted-foreground">메모</span>
-              <InlineTextarea value={inquiry.memo || ""} field="memo" inquiryId={id!} placeholder="클릭하여 입력" />
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <MemoSection inquiryId={id!} legacyMemo={inquiry.memo || ""} />
 
       <CustomerInfoSection inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
 

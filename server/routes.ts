@@ -939,6 +939,51 @@ export async function registerRoutes(
     }
   });
 
+  // Inquiry Memo routes
+  app.get("/api/inquiries/:id/memos", async (req, res) => {
+    try {
+      const memos = await storage.getInquiryMemos(req.params.id);
+      res.json(memos);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/inquiries/:id/memos", async (req, res) => {
+    try {
+      const { content } = z.object({ content: z.string().min(1) }).parse(req.body);
+      const now = new Date().toISOString();
+      const memo = await storage.createInquiryMemo({
+        inquiryId: req.params.id,
+        content,
+        createdAt: now,
+      });
+      res.status(201).json(memo);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/inquiry-memos/:id", async (req, res) => {
+    try {
+      const { content } = z.object({ content: z.string().min(1) }).parse(req.body);
+      const memo = await storage.updateInquiryMemo(req.params.id, content);
+      if (!memo) return res.status(404).json({ message: "메모를 찾을 수 없습니다" });
+      res.json(memo);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/inquiry-memos/:id", async (req, res) => {
+    try {
+      await storage.deleteInquiryMemo(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Company routes (담당자/연락처)
   app.get("/api/companies", async (req, res) => {
     try {
