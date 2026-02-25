@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Save, Building2, Loader2 } from "lucide-react";
+import { Save, Building2, Loader2, User, Phone, Mail } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Customer } from "@shared/schema";
+import type { Customer, Company } from "@shared/schema";
 
 const formSchema = z.object({
   customerName: z.string().min(1, "고객명을 입력하세요"),
@@ -77,6 +77,13 @@ function InquiryFormContent({ onSuccess }: { onSuccess: () => void }) {
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [contactName, setContactName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [showContactDropdown, setShowContactDropdown] = useState(false);
+  const contactDropdownRef = useRef<HTMLDivElement>(null);
+
   const { data: searchResults = [] } = useQuery<Customer[]>({
     queryKey: ["/api/customers/search", customerSearch],
     queryFn: async () => {
@@ -87,10 +94,27 @@ function InquiryFormContent({ onSuccess }: { onSuccess: () => void }) {
     enabled: customerSearch.length >= 1,
   });
 
+  const { data: customerContacts = [] } = useQuery<Company[]>({
+    queryKey: ["/api/customers", selectedCustomer?.id, "contacts"],
+    queryFn: async () => {
+      if (!selectedCustomer) return [];
+      const res = await fetch(`/api/customers/${selectedCustomer.id}/contacts`);
+      return res.json();
+    },
+    enabled: !!selectedCustomer,
+  });
+
+  const filteredContacts = customerContacts.filter(c =>
+    !contactName || c.contactName?.toLowerCase().includes(contactName.toLowerCase())
+  );
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowCustomerDropdown(false);
+      }
+      if (contactDropdownRef.current && !contactDropdownRef.current.contains(e.target as Node)) {
+        setShowContactDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -144,6 +168,10 @@ function InquiryFormContent({ onSuccess }: { onSuccess: () => void }) {
         ...values,
         inquiryNumber: "",
         customerId: selectedCustomer?.id || null,
+        companyId: selectedCompany?.id || null,
+        _contactName: contactName || null,
+        _contactPhone: contactPhone || null,
+        _contactEmail: contactEmail || null,
         productInfo: values.productInfo || null,
         expectedDate: values.expectedDate || null,
         memo: values.memo || null,
@@ -211,6 +239,10 @@ function InquiryFormContent({ onSuccess }: { onSuccess: () => void }) {
                           setShowCustomerDropdown(true);
                           if (selectedCustomer && e.target.value !== selectedCustomer.companyName) {
                             setSelectedCustomer(null);
+                            setSelectedCompany(null);
+                            setContactName("");
+                            setContactPhone("");
+                            setContactEmail("");
                           }
                         }}
                         onFocus={() => {
@@ -272,6 +304,97 @@ function InquiryFormContent({ onSuccess }: { onSuccess: () => void }) {
                 </FormItem>
               )}
             />
+          </div>
+
+          <div className="mt-4 border rounded-md p-4 space-y-3 bg-muted/20">
+            <h4 className="text-sm font-medium flex items-center gap-1.5 text-muted-foreground">
+              <User className="h-3.5 w-3.5" />담당자 정보
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="relative" ref={contactDropdownRef}>
+                <label className="text-sm font-medium">담당자명</label>
+                <Input
+                  placeholder={selectedCustomer ? "기존 담당자 검색 가능" : "담당자명"}
+                  value={contactName}
+                  onChange={(e) => {
+                    setContactName(e.target.value);
+                    if (selectedCompany && e.target.value !== selectedCompany.contactName) {
+                      setSelectedCompany(null);
+                      setContactPhone("");
+                      setContactEmail("");
+                    }
+                    if (selectedCustomer) setShowContactDropdown(true);
+                  }}
+                  onFocus={() => {
+                    if (selectedCustomer && customerContacts.length > 0) setShowContactDropdown(true);
+                  }}
+                  className="mt-1"
+                  data-testid="input-contact-name"
+                />
+                {selectedCompany && (
+                  <Badge variant="secondary" className="absolute right-2 top-[calc(50%+10px)] -translate-y-1/2 text-xs gap-1">
+                    <User className="h-3 w-3" />연결됨
+                  </Badge>
+                )}
+                {showContactDropdown && selectedCustomer && filteredContacts.length > 0 && !selectedCompany && (
+                  <div className="absolute z-[60] w-full mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-auto">
+                    {filteredContacts.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                        onClick={() => {
+                          setSelectedCompany(c);
+                          setContactName(c.contactName || "");
+                          setContactPhone(c.phone || "");
+                          setContactEmail(c.email || "");
+                          setShowContactDropdown(false);
+                        }}
+                        data-testid={`option-contact-${c.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <User className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <span className="font-medium">{c.contactName || "(이름 없음)"}</span>
+                          {c.position && <span className="text-muted-foreground text-xs">{c.position}</span>}
+                        </div>
+                        {(c.phone || c.email) && (
+                          <div className="text-xs text-muted-foreground ml-5 mt-0.5">
+                            {c.phone && <span className="mr-2">{c.phone}</span>}
+                            {c.email && <span>{c.email}</span>}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedCustomer && !selectedCompany && contactName && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">새 담당자로 등록됩니다</p>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium">전화번호</label>
+                <Input
+                  placeholder="전화번호"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  className="mt-1"
+                  data-testid="input-contact-phone"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">이메일</label>
+                <Input
+                  placeholder="이메일"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  className="mt-1"
+                  data-testid="input-contact-email"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <FormField
               control={form.control}
               name="year"

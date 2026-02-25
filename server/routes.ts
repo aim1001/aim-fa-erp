@@ -158,7 +158,8 @@ export async function registerRoutes(
 
   app.post("/api/inquiries", async (req, res) => {
     try {
-      const data = insertInquirySchema.parse(req.body);
+      const { _contactName, _contactPhone, _contactEmail, ...body } = req.body;
+      const data = insertInquirySchema.parse(body);
       if (data.probability != null) {
         const p = Number(data.probability);
         data.probability = Number.isFinite(p) && p >= 0 && p <= 5 ? Math.round(p) : 0;
@@ -199,6 +200,48 @@ export async function registerRoutes(
           data.customerId = matched.id;
         } catch (linkErr: any) {
           console.warn("Auto-link customer on create error:", linkErr.message);
+        }
+      }
+
+      if (data.customerId) {
+        try {
+          const customer = await storage.getCustomer(data.customerId);
+          if (customer) {
+            data.snapshotCompanyName = customer.companyName || null;
+            data.snapshotAddress = customer.address || null;
+          }
+        } catch (e: any) {
+          console.warn("Snapshot customer info error:", e.message);
+        }
+      }
+
+      if (data.companyId) {
+        try {
+          const company = await storage.getCompany(data.companyId);
+          if (company) {
+            data.snapshotContactName = company.contactName || null;
+            data.snapshotEmail = company.email || null;
+            data.snapshotPhone = company.phone || null;
+          }
+        } catch (e: any) {
+          console.warn("Snapshot from existing company error:", e.message);
+        }
+      } else if (_contactName && data.customerId) {
+        try {
+          const newCompany = await storage.createCompany({
+            customerId: data.customerId,
+            contactName: _contactName,
+            phone: _contactPhone || null,
+            email: _contactEmail || null,
+            companyName: data.customerName || "",
+            isTemporary: false,
+          });
+          data.companyId = newCompany.id;
+          data.snapshotContactName = _contactName;
+          data.snapshotEmail = _contactEmail || null;
+          data.snapshotPhone = _contactPhone || null;
+        } catch (e: any) {
+          console.warn("Create contact on inquiry create error:", e.message);
         }
       }
 
