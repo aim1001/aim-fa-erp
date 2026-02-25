@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Link2, AlertCircle } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ko } from "date-fns/locale";
@@ -85,6 +85,7 @@ export default function InquiryList() {
   const urlParams = new URLSearchParams(searchString);
   const yearFilter = urlParams.get("year") || "all";
   const statusFilter = urlParams.get("status") || "all";
+  const customerFilter = urlParams.get("customer") || "all";
   const periodFilter = urlParams.get("period") || "";
 
   const handleYearChange = (value: string) => {
@@ -105,6 +106,17 @@ export default function InquiryList() {
       params.delete("status");
     } else {
       params.set("status", value);
+    }
+    const qs = params.toString();
+    navigate(qs ? `/inquiries?${qs}` : "/inquiries");
+  };
+
+  const handleCustomerFilterChange = (value: string) => {
+    const params = new URLSearchParams(searchString);
+    if (value === "all") {
+      params.delete("customer");
+    } else {
+      params.set("customer", value);
     }
     const qs = params.toString();
     navigate(qs ? `/inquiries?${qs}` : "/inquiries");
@@ -225,6 +237,12 @@ export default function InquiryList() {
         return false;
       });
     }
+    if (customerFilter === "existing") {
+      list = list.filter(i => i.customerId != null);
+    } else if (customerFilter === "new") {
+      list = list.filter(i => i.customerId == null);
+    }
+
     if (!search) return list;
     const s = search.toLowerCase();
     return list.filter(i =>
@@ -232,7 +250,7 @@ export default function InquiryList() {
       i.inquiryNumber.toLowerCase().includes(s) ||
       (i.productInfo && i.productInfo.toLowerCase().includes(s))
     );
-  }, [inquiries, search, periodFilter]);
+  }, [inquiries, search, periodFilter, customerFilter]);
 
   const syncYearOptions = useMemo(() => {
     const allYears = new Set<number>();
@@ -319,6 +337,16 @@ export default function InquiryList() {
                 <SelectItem value="lost">실주</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={customerFilter} onValueChange={handleCustomerFilterChange}>
+              <SelectTrigger className="w-32" data-testid="select-customer-filter">
+                <SelectValue placeholder="고객구분" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 고객</SelectItem>
+                <SelectItem value="existing">기존고객</SelectItem>
+                <SelectItem value="new">신규</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -363,9 +391,9 @@ export default function InquiryList() {
                         <div className="flex items-center gap-1.5">
                           {inq.customerName}
                           {inq.customerId ? (
-                            <Link2 className="h-3 w-3 text-primary shrink-0" />
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 no-default-active-elevate" data-testid={`badge-existing-${inq.id}`}>기존</Badge>
                           ) : (
-                            <AlertCircle className="h-3 w-3 text-amber-500 shrink-0" />
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 no-default-active-elevate" data-testid={`badge-new-${inq.id}`}>신규</Badge>
                           )}
                         </div>
                       </TableCell>
@@ -465,6 +493,11 @@ export default function InquiryList() {
 
       <div className="text-sm text-muted-foreground" data-testid="text-result-count">
         총 {filtered.length}건
+        {filtered.length > 0 && customerFilter === "all" && (
+          <span className="ml-2">
+            (기존 {filtered.filter(i => i.customerId != null).length} / 신규 {filtered.filter(i => i.customerId == null).length})
+          </span>
+        )}
       </div>
 
       <InquiryFormDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
