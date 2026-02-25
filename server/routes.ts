@@ -941,6 +941,17 @@ export async function registerRoutes(
 
       const customerInfoList = await parseExcelCustomerInfo(inquiry.onedriveFolderId);
 
+      const firstQuoteDate = customerInfoList
+        .map(info => info.quoteDate)
+        .find(d => d && d.trim().length > 0);
+      if (firstQuoteDate) {
+        const normalized = firstQuoteDate.replace(/[.\-\/]/g, '-');
+        const parsed = new Date(normalized);
+        if (!isNaN(parsed.getTime())) {
+          await storage.updateInquiry(req.params.id, { createdAt: parsed });
+        }
+      }
+
       const existingMatches: Record<string, any[]> = {};
       for (const info of customerInfoList) {
         const keywords = info.companyName.replace(/[()（）]/g, ' ').split(/\s+/).filter(k => k.length >= 2);
