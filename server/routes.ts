@@ -449,11 +449,52 @@ export async function registerRoutes(
         }
       }
 
+      let linkedCount = 0;
+      try {
+        const allInquiries = await storage.getInquiries(targetYear ? { year: targetYear } : {});
+        const unlinked = allInquiries.filter(i => !i.customerId && i.customerName);
+        if (unlinked.length > 0) {
+          const allCustomers = await storage.getCustomers();
+          const customersByName = new Map<string, typeof allCustomers[0]>();
+          for (const c of allCustomers) {
+            customersByName.set(c.companyName.trim().toLowerCase(), c);
+          }
+
+          for (const inq of unlinked) {
+            const nameKey = inq.customerName.trim().toLowerCase();
+            let matched = customersByName.get(nameKey);
+
+            if (!matched) {
+              for (const [key, c] of customersByName) {
+                if (key.includes(nameKey) || nameKey.includes(key)) {
+                  matched = c;
+                  break;
+                }
+              }
+            }
+
+            if (!matched) {
+              const newCustomer = await storage.createCustomer({
+                companyName: inq.customerName,
+              });
+              customersByName.set(newCustomer.companyName.trim().toLowerCase(), newCustomer);
+              matched = newCustomer;
+            }
+
+            await storage.updateInquiry(inq.id, { customerId: matched.id });
+            linkedCount++;
+          }
+        }
+      } catch (linkErr: any) {
+        console.warn("Auto-link customers error:", linkErr.message);
+      }
+
       res.json({
-        message: `${synced}개 인콰이어리 동기화 완료`,
+        message: `${synced}개 동기화, ${linkedCount}개 고객 연결 완료`,
         synced,
         skipped,
         total,
+        linked: linkedCount,
         year: targetYear || "전체",
       });
     } catch (err: any) {
