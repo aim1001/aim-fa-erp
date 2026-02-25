@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin } from "lucide-react";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -724,12 +724,107 @@ function CustomerMatchDialog({ candidates, companyName, pendingInfo, inquiryId, 
   );
 }
 
+function CustomerPreviewDialog({ customerId, open, onOpenChange }: { customerId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { data: customer } = useQuery<Customer>({
+    queryKey: [`/api/customers/${customerId}`],
+    enabled: open && !!customerId,
+  });
+
+  const { data: contacts = [] } = useQuery<Company[]>({
+    queryKey: ["/api/companies/by-customer", customerId],
+    enabled: open && !!customerId,
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            {customer?.companyName || "고객사 정보"}
+          </DialogTitle>
+          <DialogDescription>고객사 및 담당자 정보를 확인합니다.</DialogDescription>
+        </DialogHeader>
+
+        {customer ? (
+          <div className="space-y-4">
+            <div className="border rounded-lg p-3 bg-muted/20">
+              <p className="text-xs font-medium text-muted-foreground mb-2">사업자 정보</p>
+              <div className="grid grid-cols-[70px_1fr] gap-y-1.5 gap-x-2 text-sm">
+                <span className="text-muted-foreground flex items-center gap-1"><Building2 className="h-3 w-3" />상호명</span>
+                <span className="font-medium" data-testid="text-preview-company-name">{customer.companyName}</span>
+                <span className="text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />주소</span>
+                <span data-testid="text-preview-address">{customer.address || "-"}</span>
+                <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
+                <span data-testid="text-preview-phone">{customer.phone || "-"}</span>
+              </div>
+            </div>
+
+            <div className="border rounded-lg p-3 bg-muted/20">
+              <p className="text-xs font-medium text-muted-foreground mb-2">담당자 ({contacts.length}명)</p>
+              {contacts.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-2">등록된 담당자가 없습니다</p>
+              ) : (
+                <div className="space-y-2">
+                  {contacts.map(contact => (
+                    <div key={contact.id} className="border rounded p-2 bg-background text-sm" data-testid={`preview-contact-${contact.id}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium flex items-center gap-1">
+                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                          {contact.contactName || "-"}
+                        </span>
+                        {(contact.department || contact.position) && (
+                          <span className="text-xs text-muted-foreground">
+                            {[contact.department, contact.position].filter(Boolean).join(" / ")}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap text-xs text-muted-foreground">
+                        {contact.email && (
+                          <span className="flex items-center gap-1">
+                            <Mail className="h-3 w-3" />
+                            {contact.email}
+                          </span>
+                        )}
+                        {contact.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {contact.phone}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <Skeleton className="h-32 w-full" />
+        )}
+
+        <div className="flex justify-between items-center pt-2">
+          <Link href={`/customers/${customerId}`}>
+            <Button variant="outline" size="sm" data-testid="button-goto-customer-detail">
+              <ExternalLink className="h-3.5 w-3.5 mr-1" />
+              상세 페이지로 이동
+            </Button>
+          </Link>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} data-testid="button-close-customer-preview">
+            닫기
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ContactManagementSection({ customerId, inquiryId, customerName }: { customerId: string | null; inquiryId: string; customerName: string }) {
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
   const [editTargetId, setEditTargetId] = useState<string | null>(null);
-  const [form, setForm] = useState({ contactName: "", email: "", phone: "" });
+  const [form, setForm] = useState({ contactName: "", email: "", phone: "", position: "", department: "" });
 
   const { data: contacts = [], isLoading, isError } = useQuery<Company[]>({
     queryKey: ["/api/companies/by-customer", customerId],
@@ -737,7 +832,7 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
   });
 
   const createWithCustomerMutation = useMutation({
-    mutationFn: async (data: { contactName: string; email: string; phone: string }) => {
+    mutationFn: async (data: { contactName: string; email: string; phone: string; position: string; department: string }) => {
       const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/save-customer-info`, {
         companyName: customerName,
         contactName: data.contactName,
@@ -750,7 +845,7 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
     onSuccess: () => {
       toast({ title: "고객사 생성 및 담당자 등록 완료" });
       setShowDialog(false);
-      setForm({ contactName: "", email: "", phone: "" });
+      setForm({ contactName: "", email: "", phone: "", position: "", department: "" });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
       queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer"] });
@@ -762,12 +857,14 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: { contactName: string; email: string; phone: string }) => {
+    mutationFn: async (data: { contactName: string; email: string; phone: string; position: string; department: string }) => {
       const res = await apiRequest("POST", "/api/companies", {
         companyName: data.contactName,
         contactName: data.contactName,
         email: data.email,
         phone: data.phone,
+        position: data.position || null,
+        department: data.department || null,
         customerId,
         isTemporary: false,
       });
@@ -776,7 +873,7 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
     onSuccess: () => {
       toast({ title: "담당자 등록 완료" });
       setShowDialog(false);
-      setForm({ contactName: "", email: "", phone: "" });
+      setForm({ contactName: "", email: "", phone: "", position: "", department: "" });
       queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
     },
@@ -819,7 +916,7 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
   const openAddDialog = () => {
     setDialogMode("add");
     setEditTargetId(null);
-    setForm({ contactName: "", email: "", phone: "" });
+    setForm({ contactName: "", email: "", phone: "", position: "", department: "" });
     setShowDialog(true);
   };
 
@@ -830,6 +927,8 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
       contactName: contact.contactName || "",
       email: contact.email || "",
       phone: contact.phone || "",
+      position: contact.position || "",
+      department: contact.department || "",
     });
     setShowDialog(true);
   };
@@ -892,23 +991,32 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
 
         {contacts.map(contact => (
           <div key={contact.id} className="flex items-center gap-2 py-2 border-b border-border/30 last:border-b-0 text-sm" data-testid={`contact-row-${contact.id}`}>
-            <div className="flex-1 flex items-center gap-3 min-w-0">
-              <span className="font-medium flex items-center gap-1">
-                <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                {contact.contactName || "-"}
-              </span>
-              {contact.email && (
-                <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                  <Mail className="h-3 w-3 shrink-0" />
-                  {contact.email}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium flex items-center gap-1">
+                  <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {contact.contactName || "-"}
                 </span>
-              )}
-              {contact.phone && (
-                <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                  <Phone className="h-3 w-3 shrink-0" />
-                  {contact.phone}
-                </span>
-              )}
+                {(contact.position || contact.department) && (
+                  <span className="text-xs text-muted-foreground">
+                    {[contact.department, contact.position].filter(Boolean).join(" / ")}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                {contact.email && (
+                  <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                    <Mail className="h-3 w-3 shrink-0" />
+                    {contact.email}
+                  </span>
+                )}
+                {contact.phone && (
+                  <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                    <Phone className="h-3 w-3 shrink-0" />
+                    {contact.phone}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-0.5 shrink-0">
               <Button size="icon" variant="ghost" onClick={() => openEditDialog(contact)} data-testid={`button-edit-contact-${contact.id}`}>
@@ -963,6 +1071,26 @@ function ContactManagementSection({ customerId, inquiryId, customerName }: { cus
                 data-testid="input-dialog-contact-phone"
               />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">부서</label>
+                <Input
+                  placeholder="영업부"
+                  value={form.department}
+                  onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+                  data-testid="input-dialog-contact-department"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">직함</label>
+                <Input
+                  placeholder="과장"
+                  value={form.position}
+                  onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
+                  data-testid="input-dialog-contact-position"
+                />
+              </div>
+            </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowDialog(false)} data-testid="button-dialog-cancel">
@@ -990,6 +1118,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [selectedExistingId, setSelectedExistingId] = useState<string | null>(null);
   const [matchCandidates, setMatchCandidates] = useState<{ candidates: CustomerCandidate[]; companyName: string; pendingInfo: ExcelCustomerInfo } | null>(null);
+  const [showCustomerPreview, setShowCustomerPreview] = useState(false);
 
   const hasSnapshot = !!inquiry.snapshotCompanyName;
 
@@ -1118,14 +1247,13 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-green-700 dark:text-green-300">고객사 연결됨</p>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <Link href={`/customers/${inquiry.customerId}`}>
-                      <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-customer">고객사 정보 보기 →</span>
-                    </Link>
-                    {inquiry.companyId && (
-                      <Link href={`/companies/${inquiry.companyId}`}>
-                        <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 보기 →</span>
-                      </Link>
-                    )}
+                    <span
+                      className="text-xs text-primary hover:underline cursor-pointer"
+                      onClick={() => setShowCustomerPreview(true)}
+                      data-testid="link-customer"
+                    >
+                      고객사 정보 보기 →
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1134,13 +1262,8 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
                 <Search className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-amber-700 dark:text-amber-300">고객사 미연결</p>
-                  <p className="text-xs text-muted-foreground">아래에서 기존 고객사를 검색하여 연결하세요</p>
+                  <p className="text-xs text-muted-foreground">아래에서 기존 고객사를 검색하여 연결하거나, 담당자를 등록하세요</p>
                 </div>
-                {inquiry.companyId && (
-                  <Link href={`/companies/${inquiry.companyId}`}>
-                    <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 →</span>
-                  </Link>
-                )}
               </div>
             )}
 
@@ -1304,6 +1427,14 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
           </div>
         )}
       </CardContent>
+
+      {inquiry.customerId && (
+        <CustomerPreviewDialog
+          customerId={inquiry.customerId}
+          open={showCustomerPreview}
+          onOpenChange={setShowCustomerPreview}
+        />
+      )}
     </Card>
   );
 }
