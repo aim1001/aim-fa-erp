@@ -90,11 +90,16 @@ export default function InquiryList() {
 
   const handleYearChange = (value: string) => {
     const params = new URLSearchParams(searchString);
-    params.delete("period");
-    if (value === "all") {
+    if (value === "3m" || value === "6m") {
       params.delete("year");
+      params.set("period", value);
     } else {
-      params.set("year", value);
+      params.delete("period");
+      if (value === "all") {
+        params.delete("year");
+      } else {
+        params.set("year", value);
+      }
     }
     const qs = params.toString();
     navigate(qs ? `/inquiries?${qs}` : "/inquiries");
@@ -129,6 +134,8 @@ export default function InquiryList() {
   const { data: onedriveYears } = useQuery<number[]>({
     queryKey: ["/api/onedrive/years"],
   });
+
+  const activeYearSelectValue = periodFilter || yearFilter;
 
   const queryParams = new URLSearchParams();
   if (yearFilter !== "all" && !periodFilter) queryParams.set("year", yearFilter);
@@ -252,24 +259,22 @@ export default function InquiryList() {
     if (periodFilter) {
       const now = new Date();
       let cutoff: Date;
-      if (periodFilter === "6m") {
+      if (periodFilter === "3m") {
+        cutoff = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+      } else if (periodFilter === "6m") {
         cutoff = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
       } else {
         cutoff = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
       }
-      const cutoffYear = cutoff.getFullYear();
-      const cutoffMonth = cutoff.getMonth() + 1;
       list = list.filter(i => {
+        if (i.createdAt) {
+          return new Date(i.createdAt) >= cutoff;
+        }
         if (i.expectedDate) {
           return parseDateString(i.expectedDate) >= cutoff;
         }
-        const yearNum = i.year || parseInt(i.inquiryNumber.split("-")[0]) + 2000;
-        if (yearNum > cutoffYear) return true;
-        if (yearNum === cutoffYear) {
-          const num = parseInt(i.inquiryNumber.split("-")[1]) || 0;
-          return num >= cutoffMonth;
-        }
-        return false;
+        const cutoffYear = cutoff.getFullYear();
+        return (i.year || 0) >= cutoffYear;
       });
     }
     if (customerFilter === "existing") {
@@ -358,12 +363,14 @@ export default function InquiryList() {
                 data-testid="input-search"
               />
             </div>
-            <Select value={yearFilter} onValueChange={handleYearChange}>
+            <Select value={activeYearSelectValue} onValueChange={handleYearChange}>
               <SelectTrigger className="w-32" data-testid="select-year">
                 <SelectValue placeholder="연도" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체 연도</SelectItem>
+                <SelectItem value="3m">최근 3개월</SelectItem>
+                <SelectItem value="6m">최근 6개월</SelectItem>
                 {(years || []).map(y => (
                   <SelectItem key={y} value={String(y)}>{y}년</SelectItem>
                 ))}

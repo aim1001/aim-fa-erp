@@ -81,6 +81,7 @@ export const inquiries = pgTable("inquiries", {
   snapshotEmail: text("snapshot_email"),
   snapshotPhone: text("snapshot_phone"),
   isFavorite: boolean("is_favorite").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const inquiryFiles = pgTable("inquiry_files", {
