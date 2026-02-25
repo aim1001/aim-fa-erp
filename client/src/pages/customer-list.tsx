@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus, RefreshCw, Search, Trash2, UserPlus, Users, Check, X, FileText, Star } from "lucide-react";
+import { Building2, Plus, RefreshCw, Search, Trash2, UserPlus, Users, Check, X, FileText, Star, Link2 } from "lucide-react";
 import { useState, useCallback, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 function InlineField({ value, field, entityId, entityType, placeholder }: {
   value: string;
@@ -431,7 +432,7 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
   );
 }
 
-type CustomerWithStats = Customer & { inquiryCount: number; lastTransactionDate: string | null };
+type CustomerWithStats = Customer & { inquiryCount: number; contactCount: number; lastTransactionDate: string | null };
 type FilterTab = "traded" | "untraded" | "bookmarked";
 
 export default function CustomerList() {
@@ -510,6 +511,11 @@ export default function CustomerList() {
     };
   }, [customers]);
 
+  const { data: unlinkedData } = useQuery<{ count: number }>({
+    queryKey: ["/api/companies/unlinked-count"],
+  });
+  const unlinkedCount = unlinkedData?.count || 0;
+
   const syncMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/sync-customers");
@@ -523,6 +529,23 @@ export default function CustomerList() {
     },
     onError: (err: Error) => {
       toast({ title: "동기화 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const autoLinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/companies/auto-link");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies/unlinked-count"] });
+      toast({ title: data.message || "자동 매칭 완료" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "자동 매칭 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -554,7 +577,25 @@ export default function CustomerList() {
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-customer-list-title">고객사 목록</h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {unlinkedCount > 0 && (
+            <Badge variant="secondary" className="no-default-active-elevate" data-testid="badge-unlinked-count">
+              <Users className="h-3 w-3 mr-1" />
+              미연결 담당자 {unlinkedCount}건
+            </Badge>
+          )}
+          {unlinkedCount > 0 && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => autoLinkMutation.mutate()}
+              disabled={autoLinkMutation.isPending}
+              data-testid="button-auto-link"
+            >
+              <Link2 className={`h-4 w-4 mr-1 ${autoLinkMutation.isPending ? "animate-spin" : ""}`} />
+              {autoLinkMutation.isPending ? "매칭 중..." : "자동 매칭"}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="secondary"
@@ -619,6 +660,7 @@ export default function CustomerList() {
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">전화번호</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
+                <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">담당자</th>
                 <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">인콰이어리</th>
               </tr>
             </thead>
@@ -655,8 +697,15 @@ export default function CustomerList() {
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.phone || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.lastTransactionDate || "-"}</td>
                   <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                    {customer.contactCount > 0 ? (
+                      <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5" data-testid={`text-contact-count-${customer.id}`}>{customer.contactCount}명</span>
+                    ) : (
+                      <span className="text-muted-foreground/50">-</span>
+                    )}
+                  </td>
+                  <td className="py-2.5 px-4 text-center hidden lg:table-cell">
                     {customer.inquiryCount > 0 ? (
-                      <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5">{customer.inquiryCount}건</span>
+                      <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5" data-testid={`text-inquiry-count-${customer.id}`}>{customer.inquiryCount}건</span>
                     ) : (
                       <span className="text-muted-foreground/50">-</span>
                     )}

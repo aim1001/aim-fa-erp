@@ -520,10 +520,12 @@ export async function registerRoutes(
     try {
       const list = await storage.getCustomers();
       const inquiryCounts = await storage.getCustomerInquiryCounts();
+      const contactCounts = await storage.getCustomerContactCounts();
       const lastTxDates = await storage.getCustomerLastTransactionDates();
       const result = list.map(c => ({
         ...c,
         inquiryCount: inquiryCounts.get(c.id) || 0,
+        contactCount: contactCounts.get(c.id) || 0,
         lastTransactionDate: lastTxDates.get(c.id) || null,
       }));
       res.json(result);
@@ -545,6 +547,55 @@ export async function registerRoutes(
     try {
       const contacts = await storage.getCompaniesByCustomerId(req.params.id);
       res.json(contacts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/companies/unlinked-count", async (_req, res) => {
+    try {
+      const count = await storage.getTemporaryCompanyCount();
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/companies/auto-link", async (_req, res) => {
+    try {
+      const tempCompanies = await storage.getTemporaryCompanies();
+      const allCustomers = await storage.getCustomers();
+      let linked = 0;
+      let unmatched = 0;
+
+      for (const tc of tempCompanies) {
+        const tcName = tc.companyName.trim().toLowerCase();
+        const exactMatch = allCustomers.find(c => c.companyName.trim().toLowerCase() === tcName);
+        if (exactMatch) {
+          await storage.updateCompany(tc.id, { customerId: exactMatch.id, isTemporary: false });
+          linked++;
+          continue;
+        }
+
+        const partialMatches = allCustomers.filter(c => {
+          const cName = c.companyName.trim().toLowerCase();
+          return cName.includes(tcName) || tcName.includes(cName);
+        });
+        if (partialMatches.length === 1) {
+          await storage.updateCompany(tc.id, { customerId: partialMatches[0].id, isTemporary: false });
+          linked++;
+          continue;
+        }
+
+        unmatched++;
+      }
+
+      res.json({
+        message: `자동 매칭 완료: ${linked}건 연결, ${unmatched}건 미매칭`,
+        linked,
+        unmatched,
+        total: tempCompanies.length,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -801,6 +852,8 @@ export async function registerRoutes(
     contactName: z.string().nullable().optional(),
     email: z.string().nullable().optional(),
     phone: z.string().nullable().optional(),
+    selectedCustomerId: z.string().nullable().optional(),
+    forceCreate: z.boolean().optional(),
   });
 
   app.post("/api/inquiries/:id/save-customer-info", async (req, res) => {
@@ -810,14 +863,36 @@ export async function registerRoutes(
         return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
       }
 
-      const { companyName, address, contactName, email, phone } = saveCustomerInfoSchema.parse(req.body);
+      const { companyName, address, contactName, email, phone, selectedCustomerId, forceCreate } = saveCustomerInfoSchema.parse(req.body);
 
-      let customer = await storage.getCustomerByName(companyName);
-      if (!customer) {
-        customer = await storage.createCustomer({
-          companyName,
-          address: address || null,
-        });
+      let customer;
+
+      if (selectedCustomerId) {
+        customer = await storage.getCustomer(selectedCustomerId);
+        if (!customer) {
+          return res.status(404).json({ message: "선택한 고객사를 찾을 수 없습니다" });
+        }
+      } else {
+        customer = await storage.getCustomerByName(companyName);
+        if (!customer && !forceCreate) {
+          const candidates = await storage.searchCustomers(companyName);
+          const fuzzyMatches = candidates.filter(c => {
+            const a = c.companyName.trim().toLowerCase();
+            const b = companyName.trim().toLowerCase();
+            return a.includes(b) || b.includes(a);
+          });
+          if (fuzzyMatches.length === 1) {
+            customer = fuzzyMatches[0];
+          } else if (fuzzyMatches.length > 1) {
+            return res.json({ needsSelection: true, candidates: fuzzyMatches, companyName });
+          }
+        }
+        if (!customer) {
+          customer = await storage.createCustomer({
+            companyName,
+            address: address || null,
+          });
+        }
       }
 
       let company = await storage.getCompanyByName(companyName);

@@ -70,6 +70,8 @@ export interface IStorage {
   getCompany(id: string): Promise<Company | undefined>;
   getCompanyByName(name: string): Promise<Company | undefined>;
   getTemporaryCompaniesByName(name: string): Promise<Company[]>;
+  getTemporaryCompanies(): Promise<Company[]>;
+  getTemporaryCompanyCount(): Promise<number>;
   getCompaniesByCustomerId(customerId: string): Promise<Company[]>;
   searchCompanies(query: string): Promise<Company[]>;
   createCompany(company: InsertCompany): Promise<Company>;
@@ -77,6 +79,7 @@ export interface IStorage {
   deleteCompany(id: string): Promise<void>;
   linkCompanyToCustomer(companyId: string, customerId: string): Promise<Company | undefined>;
   getCustomerInquiryCounts(): Promise<Map<string, number>>;
+  getCustomerContactCounts(): Promise<Map<string, number>>;
   getCustomerLastTransactionDates(): Promise<Map<string, string>>;
   getVendorLastTransactionDates(): Promise<Map<string, string>>;
   getInquiriesByCustomerId(customerId: string): Promise<Inquiry[]>;
@@ -308,6 +311,15 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
+  async getTemporaryCompanies(): Promise<Company[]> {
+    return db.select().from(companies).where(eq(companies.isTemporary, true)).orderBy(companies.companyName);
+  }
+
+  async getTemporaryCompanyCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(companies).where(eq(companies.isTemporary, true));
+    return Number(result[0]?.count || 0);
+  }
+
   async getCompaniesByCustomerId(customerId: string): Promise<Company[]> {
     return db.select().from(companies).where(eq(companies.customerId, customerId)).orderBy(companies.contactName);
   }
@@ -346,6 +358,21 @@ export class DatabaseStorage implements IStorage {
       .from(inquiries)
       .where(sql`${inquiries.customerId} is not null`)
       .groupBy(inquiries.customerId);
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      if (row.customerId) map.set(row.customerId, row.count);
+    }
+    return map;
+  }
+
+  async getCustomerContactCounts(): Promise<Map<string, number>> {
+    const rows = await db.select({
+      customerId: companies.customerId,
+      count: sql<number>`count(*)::int`,
+    })
+      .from(companies)
+      .where(sql`${companies.customerId} is not null`)
+      .groupBy(companies.customerId);
     const map = new Map<string, number>();
     for (const row of rows) {
       if (row.customerId) map.set(row.customerId, row.count);

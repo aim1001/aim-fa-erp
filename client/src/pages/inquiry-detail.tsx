@@ -534,6 +534,128 @@ function CustomerLinkSection({ inquiryId, inquiry }: { inquiryId: string; inquir
   );
 }
 
+interface CustomerCandidate {
+  id: string;
+  companyName: string;
+  businessNumber?: string | null;
+  address?: string | null;
+}
+
+interface SaveCustomerResponse {
+  needsSelection?: boolean;
+  candidates?: CustomerCandidate[];
+  companyName?: string;
+  customer?: Customer;
+  company?: Company;
+  inquiryId?: string;
+}
+
+function CustomerMatchDialog({ candidates, companyName, pendingInfo, inquiryId, onClose }: {
+  candidates: CustomerCandidate[];
+  companyName: string;
+  pendingInfo: ExcelCustomerInfo;
+  inquiryId: string;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+
+  const saveWithSelectionMutation = useMutation({
+    mutationFn: async (params: { selectedCustomerId?: string; forceCreate?: boolean }) => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/save-customer-info`, {
+        companyName: pendingInfo.companyName,
+        address: pendingInfo.address,
+        contactName: pendingInfo.contactName,
+        email: pendingInfo.email,
+        phone: pendingInfo.phone,
+        selectedCustomerId: params.selectedCustomerId || null,
+        forceCreate: params.forceCreate || false,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "고객 정보 저장 완료" });
+      onClose();
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
+            유사 고객사 발견
+          </DialogTitle>
+          <DialogDescription>
+            "{companyName}"과(와) 유사한 기존 고객사가 {candidates.length}건 발견되었습니다. 기존 고객사에 연결하거나 새로 생성할 수 있습니다.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <p className="text-sm font-medium">기존 고객사에 연결</p>
+          <div className="space-y-1.5 max-h-48 overflow-auto">
+            {candidates.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                className={`w-full text-left border rounded-md p-2.5 text-sm transition-colors ${selectedCandidateId === c.id ? "border-primary bg-primary/5" : "bg-background hover-elevate"}`}
+                onClick={() => setSelectedCandidateId(c.id)}
+                data-testid={`button-candidate-customer-${c.id}`}
+              >
+                <div className="font-medium flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                  {c.companyName}
+                </div>
+                {(c.businessNumber || c.address) && (
+                  <div className="text-xs text-muted-foreground mt-0.5 ml-5">
+                    {[c.businessNumber, c.address].filter(Boolean).join(" | ")}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 pt-2 border-t">
+            <Button
+              size="sm"
+              onClick={() => saveWithSelectionMutation.mutate({ selectedCustomerId: selectedCandidateId! })}
+              disabled={!selectedCandidateId || saveWithSelectionMutation.isPending}
+              data-testid="button-confirm-link-customer"
+            >
+              {saveWithSelectionMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Building2 className="h-4 w-4" />}
+              <span>선택한 고객사에 연결</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => saveWithSelectionMutation.mutate({ forceCreate: true })}
+              disabled={saveWithSelectionMutation.isPending}
+              data-testid="button-force-create-customer"
+            >
+              <span>새 고객사 생성</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onClose}
+              data-testid="button-cancel-match"
+            >
+              취소
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   inquiryId: string;
   inquiry: Inquiry;
@@ -544,6 +666,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [selectedExistingId, setSelectedExistingId] = useState<string | null>(null);
+  const [matchCandidates, setMatchCandidates] = useState<{ candidates: CustomerCandidate[]; companyName: string; pendingInfo: ExcelCustomerInfo } | null>(null);
 
   const hasSnapshot = !!inquiry.snapshotCompanyName;
 
@@ -583,9 +706,13 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
         email: info.email,
         phone: info.phone,
       });
-      return res.json();
+      return res.json() as Promise<SaveCustomerResponse>;
     },
-    onSuccess: () => {
+    onSuccess: (data, info) => {
+      if (data.needsSelection && data.candidates && data.candidates.length > 0) {
+        setMatchCandidates({ candidates: data.candidates, companyName: data.companyName || info.companyName, pendingInfo: info });
+        return;
+      }
       toast({ title: "고객 정보 저장 완료" });
       resetScan();
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
@@ -619,6 +746,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
     setSelectedIdx(null);
     setMode("new");
     setSelectedExistingId(null);
+    setMatchCandidates(null);
   };
 
   const selected = scanResult && selectedIdx !== null ? scanResult.scanned[selectedIdx] : null;
@@ -673,23 +801,37 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
               <span className="text-muted-foreground">전화번호</span>
               <span data-testid="text-company-phone">{inquiry.snapshotPhone || "-"}</span>
             </div>
-            <div className="pt-1 flex gap-3 items-center">
+            <div className="pt-2">
               {inquiry.customerId ? (
-                <>
-                  <Badge variant="secondary" className="text-xs gap-1">
-                    <Building2 className="h-3 w-3" />연결됨
-                  </Badge>
-                  <Link href={`/customers/${inquiry.customerId}`}>
-                    <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-customer">고객사 정보 보기 →</span>
-                  </Link>
-                </>
+                <div className="flex items-center gap-2 p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800" data-testid="status-customer-linked">
+                  <Check className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-green-700 dark:text-green-300">고객사 연결됨</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link href={`/customers/${inquiry.customerId}`}>
+                        <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-customer">고객사 정보 보기 →</span>
+                      </Link>
+                      {inquiry.companyId && (
+                        <Link href={`/companies/${inquiry.companyId}`}>
+                          <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 보기 →</span>
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <Badge variant="outline" className="text-xs gap-1 border-amber-500 text-amber-600">임시</Badge>
-              )}
-              {inquiry.companyId && (
-                <Link href={`/companies/${inquiry.companyId}`}>
-                  <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 보기 →</span>
-                </Link>
+                <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800" data-testid="status-customer-unlinked">
+                  <Search className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-amber-700 dark:text-amber-300">고객사 미연결</p>
+                    <p className="text-xs text-muted-foreground">아래에서 기존 고객사를 검색하여 연결하세요</p>
+                  </div>
+                  {inquiry.companyId && (
+                    <Link href={`/companies/${inquiry.companyId}`}>
+                      <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 →</span>
+                    </Link>
+                  )}
+                </div>
               )}
             </div>
             <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
@@ -702,6 +844,19 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
             <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
           </div>
         ) : null}
+
+        {matchCandidates && (
+          <CustomerMatchDialog
+            candidates={matchCandidates.candidates}
+            companyName={matchCandidates.companyName}
+            pendingInfo={matchCandidates.pendingInfo}
+            inquiryId={inquiryId}
+            onClose={() => {
+              setMatchCandidates(null);
+              resetScan();
+            }}
+          />
+        )}
 
         {scanResult && scanResult.scanned.length > 0 && (
           <div className="space-y-3">
