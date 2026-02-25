@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { FileText, TrendingUp, Target, Calendar, XCircle, Clock, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, TrendingUp, Target, Calendar, XCircle, Clock, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InquiryDetailDialog } from "@/pages/inquiry-detail";
+import { InquiryFormDialog } from "@/pages/inquiry-form";
 
 const stageLabels: Record<number, string> = {
   0: "-",
@@ -53,6 +54,7 @@ const EXCLUDED_BY_DEFAULT = [2020, 2021, 2022, 2023, 2024];
 export default function Dashboard() {
   const [, navigate] = useLocation();
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
+  const [showNewInquiry, setShowNewInquiry] = useState(false);
   const [upcomingPage, setUpcomingPage] = useState(0);
   const [noDateOpen, setNoDateOpen] = useState(false);
 
@@ -139,7 +141,12 @@ export default function Dashboard() {
     <div className="p-6 space-y-6 overflow-auto h-full">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-semibold" data-testid="text-dashboard-title">영업 대시보드</h1>
+        <Button onClick={() => setShowNewInquiry(true)} data-testid="button-new-inquiry-dashboard">
+          <Plus className="h-4 w-4 mr-1" />신규 인콰이어리
+        </Button>
       </div>
+
+      <InquiryFormDialog open={showNewInquiry} onOpenChange={setShowNewInquiry} />
 
       <Card>
         <CardContent className="pt-4 pb-3">
