@@ -80,6 +80,7 @@ export const inquiries = pgTable("inquiries", {
   snapshotContactName: text("snapshot_contact_name"),
   snapshotEmail: text("snapshot_email"),
   snapshotPhone: text("snapshot_phone"),
+  isFavorite: boolean("is_favorite").default(false),
 });
 
 export const inquiryFiles = pgTable("inquiry_files", {

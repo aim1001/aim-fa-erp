@@ -149,6 +149,9 @@ export async function registerRoutes(
       if (data.status && !["active", "won", "lost"].includes(data.status)) {
         return res.status(400).json({ message: "유효하지 않은 상태값입니다" });
       }
+      if (data.status === "won") {
+        data.isFavorite = false;
+      }
       const inquiry = await storage.updateInquiry(req.params.id, data);
       if (!inquiry) return res.status(404).json({ message: "Not found" });
 
@@ -190,6 +193,21 @@ export async function registerRoutes(
       res.json(inquiry);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/inquiries/:id/favorite", async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      const newFav = !inquiry.isFavorite;
+      const updated = await storage.updateInquiry(req.params.id, { isFavorite: newFav });
+      if (newFav && inquiry.customerId) {
+        await storage.updateCustomer(inquiry.customerId, { isFavorite: true });
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

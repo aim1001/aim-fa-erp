@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ko } from "date-fns/locale";
@@ -208,8 +208,43 @@ export default function InquiryList() {
   });
 
   const handleInlineUpdate = useCallback((id: string, data: Partial<Inquiry>) => {
+    if (data.status === "won") {
+      data.isFavorite = false;
+    }
     inlineUpdateMutation.mutate({ id, data });
   }, [inlineUpdateMutation]);
+
+  const favoriteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${id}/favorite`);
+      return res.json();
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/inquiries"], exact: false });
+      const allCaches = queryClient.getQueriesData<Inquiry[]>({ queryKey: ["/api/inquiries"] });
+      const snapshots = allCaches.map(([key, val]) => [key, val] as const);
+      allCaches.forEach(([key, list]) => {
+        if (Array.isArray(list)) {
+          queryClient.setQueryData<Inquiry[]>(key, list.map(inq =>
+            inq.id === id ? { ...inq, isFavorite: !inq.isFavorite } : inq
+          ));
+        }
+      });
+      return { snapshots };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.snapshots) {
+        context.snapshots.forEach(([key, val]) => {
+          if (val) queryClient.setQueryData(key, val);
+        });
+      }
+      toast({ title: "북마크 변경 실패", variant: "destructive" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
+    },
+  });
 
   const filtered = useMemo(() => {
     if (!inquiries) return [];
@@ -241,15 +276,24 @@ export default function InquiryList() {
       list = list.filter(i => i.customerId != null);
     } else if (customerFilter === "new") {
       list = list.filter(i => i.customerId == null);
+    } else if (customerFilter === "bookmarked") {
+      list = list.filter(i => i.isFavorite);
     }
 
-    if (!search) return list;
-    const s = search.toLowerCase();
-    return list.filter(i =>
-      i.customerName.toLowerCase().includes(s) ||
-      i.inquiryNumber.toLowerCase().includes(s) ||
-      (i.productInfo && i.productInfo.toLowerCase().includes(s))
-    );
+    if (search) {
+      const s = search.toLowerCase();
+      list = list.filter(i =>
+        i.customerName.toLowerCase().includes(s) ||
+        i.inquiryNumber.toLowerCase().includes(s) ||
+        (i.productInfo && i.productInfo.toLowerCase().includes(s))
+      );
+    }
+
+    return list.sort((a, b) => {
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+      return 0;
+    });
   }, [inquiries, search, periodFilter, customerFilter]);
 
   const syncYearOptions = useMemo(() => {
@@ -345,6 +389,7 @@ export default function InquiryList() {
                 <SelectItem value="all">전체 고객</SelectItem>
                 <SelectItem value="existing">기존고객</SelectItem>
                 <SelectItem value="new">신규</SelectItem>
+                <SelectItem value="bookmarked">북마크</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -361,6 +406,7 @@ export default function InquiryList() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10"></TableHead>
                   <TableHead>영업번호</TableHead>
                   <TableHead>고객명</TableHead>
                   <TableHead>제품정보</TableHead>
@@ -374,7 +420,7 @@ export default function InquiryList() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       {search ? "검색 결과가 없습니다" : "인콰이어리가 없습니다. OneDrive를 동기화하거나 새로 추가하세요."}
                     </TableCell>
                   </TableRow>
@@ -386,6 +432,17 @@ export default function InquiryList() {
                       onClick={() => setSelectedInquiryId(inq.id)}
                       data-testid={`row-inquiry-${inq.id}`}
                     >
+                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => favoriteMutation.mutate(inq.id)}
+                          className="hover:scale-110 transition-transform"
+                          data-testid={`button-favorite-${inq.id}`}
+                        >
+                          <Star
+                            className={`h-4 w-4 ${inq.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`}
+                          />
+                        </button>
+                      </TableCell>
                       <TableCell className="font-mono text-sm">{inq.inquiryNumber}</TableCell>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-1.5">
