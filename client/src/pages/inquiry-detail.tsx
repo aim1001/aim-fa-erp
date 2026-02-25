@@ -1079,65 +1079,63 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
         )}
       </CardHeader>
       <CardContent>
-        {hasSnapshot && !scanResult ? (
+        {!scanResult && (
           <div className="space-y-2">
-            <div className="grid grid-cols-[80px_1fr] gap-y-2 gap-x-2 text-sm">
-              <span className="text-muted-foreground">회사명</span>
-              <span className="font-medium" data-testid="text-company-name">{inquiry.snapshotCompanyName}</span>
-              <span className="text-muted-foreground">주소</span>
-              <span data-testid="text-company-address">{inquiry.snapshotAddress || "-"}</span>
-              <span className="text-muted-foreground">담당자</span>
-              <span data-testid="text-company-contact">{inquiry.snapshotContactName || "-"}</span>
-              <span className="text-muted-foreground">이메일</span>
-              <span data-testid="text-company-email">{inquiry.snapshotEmail || "-"}</span>
-              <span className="text-muted-foreground">전화번호</span>
-              <span data-testid="text-company-phone">{inquiry.snapshotPhone || "-"}</span>
-            </div>
-            <div className="pt-2">
-              {inquiry.customerId ? (
-                <div className="flex items-center gap-2 p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800" data-testid="status-customer-linked">
-                  <Check className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-green-700 dark:text-green-300">고객사 연결됨</p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Link href={`/customers/${inquiry.customerId}`}>
-                        <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-customer">고객사 정보 보기 →</span>
-                      </Link>
-                      {inquiry.companyId && (
-                        <Link href={`/companies/${inquiry.companyId}`}>
-                          <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 보기 →</span>
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800" data-testid="status-customer-unlinked">
-                  <Search className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-amber-700 dark:text-amber-300">고객사 미연결</p>
-                    <p className="text-xs text-muted-foreground">아래에서 기존 고객사를 검색하여 연결하세요</p>
-                  </div>
-                  {inquiry.companyId && (
-                    <Link href={`/companies/${inquiry.companyId}`}>
-                      <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 →</span>
+            {inquiry.customerId ? (
+              <div className="flex items-center gap-2 p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800" data-testid="status-customer-linked">
+                <Check className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-green-700 dark:text-green-300">고객사 연결됨</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link href={`/customers/${inquiry.customerId}`}>
+                      <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-customer">고객사 정보 보기 →</span>
                     </Link>
-                  )}
+                    {inquiry.companyId && (
+                      <Link href={`/companies/${inquiry.companyId}`}>
+                        <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 보기 →</span>
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-            <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800" data-testid="status-customer-unlinked">
+                <Search className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">고객사 미연결</p>
+                  <p className="text-xs text-muted-foreground">아래에서 기존 고객사를 검색하여 연결하세요</p>
+                </div>
+                {inquiry.companyId && (
+                  <Link href={`/companies/${inquiry.companyId}`}>
+                    <span className="text-xs text-primary hover:underline cursor-pointer" data-testid="link-original-company">담당자 정보 →</span>
+                  </Link>
+                )}
+              </div>
+            )}
+
             {inquiry.customerId && <ContactManagementSection customerId={inquiry.customerId} />}
-          </div>
-        ) : !scanResult ? (
-          <div>
-            <p className="text-sm text-muted-foreground py-2 text-center">
-              {hasOneDrive ? "\"엑셀에서 가져오기\" 버튼을 눌러 고객 정보를 불러오세요." : "연결된 고객사가 없습니다."}
-            </p>
+
+            {hasSnapshot && (
+              <div className="border rounded-lg p-3 bg-muted/20 mt-2">
+                <p className="text-xs font-medium text-muted-foreground mb-2">스냅샷 정보 (엑셀에서 가져온 원본)</p>
+                <div className="grid grid-cols-[80px_1fr] gap-y-1.5 gap-x-2 text-sm">
+                  <span className="text-muted-foreground">회사명</span>
+                  <span className="font-medium" data-testid="text-company-name">{inquiry.snapshotCompanyName}</span>
+                  <span className="text-muted-foreground">주소</span>
+                  <span data-testid="text-company-address">{inquiry.snapshotAddress || "-"}</span>
+                  <span className="text-muted-foreground">담당자</span>
+                  <span data-testid="text-company-contact">{inquiry.snapshotContactName || "-"}</span>
+                  <span className="text-muted-foreground">이메일</span>
+                  <span data-testid="text-company-email">{inquiry.snapshotEmail || "-"}</span>
+                  <span className="text-muted-foreground">전화번호</span>
+                  <span data-testid="text-company-phone">{inquiry.snapshotPhone || "-"}</span>
+                </div>
+              </div>
+            )}
+
             <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
-            {inquiry.customerId && <ContactManagementSection customerId={inquiry.customerId} />}
           </div>
-        ) : null}
+        )}
 
         {matchCandidates && (
           <CustomerMatchDialog
