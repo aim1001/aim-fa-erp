@@ -420,6 +420,7 @@ export default function InquiryList() {
                   <TableHead>고객명</TableHead>
                   <TableHead>제품정보</TableHead>
                   <TableHead>연도</TableHead>
+                  <TableHead>발생일자</TableHead>
                   <TableHead>단계</TableHead>
                   <TableHead>상태</TableHead>
                   <TableHead>예상일자</TableHead>
@@ -429,7 +430,7 @@ export default function InquiryList() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       {search ? "검색 결과가 없습니다" : "인콰이어리가 없습니다. OneDrive를 동기화하거나 새로 추가하세요."}
                     </TableCell>
                   </TableRow>
@@ -465,6 +466,9 @@ export default function InquiryList() {
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
                       <TableCell>{inq.year}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {inq.createdAt ? new Date(inq.createdAt).toISOString().split('T')[0] : "-"}
+                      </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Select
                           value={String(inq.probability || 0)}
