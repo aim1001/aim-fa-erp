@@ -47,6 +47,78 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+function VendorSearchSelect({ vendorId, vendors, onSelect, testId }: {
+  vendorId: string | null;
+  vendors: Vendor[];
+  onSelect: (id: string | null) => void;
+  testId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const selectedVendor = vendors.find(v => v.id === vendorId);
+  const filtered = vendors.filter(v =>
+    !search || v.companyName.toLowerCase().includes(search.toLowerCase())
+  );
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(""); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="h-6 text-xs px-2 w-[160px] border border-dashed rounded-md text-left truncate flex items-center justify-between hover:bg-muted/50"
+          data-testid={testId}
+        >
+          <span className={selectedVendor ? "" : "text-muted-foreground"}>
+            {selectedVendor?.companyName || "공급업체 선택"}
+          </span>
+          <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[220px] p-0" align="start">
+        <div className="p-2 border-b">
+          <Input
+            placeholder="업체명 검색..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-7 text-xs"
+            autoFocus
+            data-testid={`${testId}-search`}
+          />
+        </div>
+        <ScrollArea className="max-h-[200px]">
+          <button
+            type="button"
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted text-muted-foreground"
+            onClick={() => { onSelect(null); setOpen(false); setSearch(""); }}
+            data-testid={`${testId}-none`}
+          >
+            연결 해제
+          </button>
+          {filtered.map(v => (
+            <button
+              key={v.id}
+              type="button"
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${v.id === vendorId ? "bg-primary/10 font-medium" : ""}`}
+              onClick={() => { onSelect(v.id); setOpen(false); setSearch(""); }}
+              data-testid={`${testId}-opt-${v.id}`}
+            >
+              {v.companyName}
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <div className="px-3 py-2 text-xs text-muted-foreground">검색 결과 없음</div>
+          )}
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 type PurchaseItemWithVendor = PurchaseItem & { vendor: Vendor | null };
 
@@ -239,30 +311,12 @@ function PurchaseItemDetailRow({ item, vendors }: { item: PurchaseItemWithVendor
 
         <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
           <span className="text-muted-foreground">공급업체</span>
-          <Select
-            value={item.vendorId || "__none__"}
-            onValueChange={val => {
-              if (val === "__none__") {
-                patchMutation.mutate({ vendorId: null });
-              } else {
-                patchMutation.mutate({ vendorId: val });
-              }
-            }}
-          >
-            <SelectTrigger className="h-6 text-xs px-2 w-[160px] border-dashed" data-testid={`select-vendor-${item.id}`}>
-              <SelectValue placeholder="공급업체 선택" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">
-                <span className="text-muted-foreground">연결 해제</span>
-              </SelectItem>
-              {vendors.map(v => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.companyName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <VendorSearchSelect
+            vendorId={item.vendorId}
+            vendors={vendors}
+            onSelect={val => patchMutation.mutate({ vendorId: val })}
+            testId={`select-vendor-${item.id}`}
+          />
           {item.defaultVendor && !item.vendorId && (
             <span className="text-muted-foreground">(원본: {item.defaultVendor})</span>
           )}
