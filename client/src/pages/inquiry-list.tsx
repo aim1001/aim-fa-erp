@@ -318,11 +318,7 @@ export default function InquiryList() {
         if (i.createdAt) {
           return new Date(i.createdAt) >= cutoff;
         }
-        if (i.expectedDate) {
-          return parseDateString(i.expectedDate) >= cutoff;
-        }
-        const cutoffYear = cutoff.getFullYear();
-        return (i.year || 0) >= cutoffYear;
+        return (i.year || 0) >= cutoff.getFullYear();
       });
     }
     if (customerFilter === "existing") {
