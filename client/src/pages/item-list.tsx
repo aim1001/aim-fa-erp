@@ -40,18 +40,18 @@ function getStockQty(inventory: ItemInventory[], type: string): number {
   return found?.qty ?? 0;
 }
 
-function EditableField({
-  label,
+function InlineEdit({
   value,
   onSave,
   type = "text",
   testId,
+  className = "",
 }: {
-  label: string;
   value: string;
   onSave: (val: string) => void;
   type?: "text" | "number";
   testId: string;
+  className?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -68,48 +68,43 @@ function EditableField({
 
   if (editing) {
     return (
-      <div>
-        <span className="text-muted-foreground text-xs">{label}</span>
-        <div className="flex items-center gap-1 mt-0.5">
-          <Input
-            className="h-7 text-sm"
-            type={type}
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === "Enter") handleSave();
-              if (e.key === "Escape") handleCancel();
-            }}
-            autoFocus
-            data-testid={`input-edit-${testId}`}
-          />
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleSave} data-testid={`button-save-${testId}`}>
-            <Save className="h-3 w-3" />
-          </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleCancel} data-testid={`button-cancel-${testId}`}>
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
+      <div className="flex items-center gap-1">
+        <Input
+          className="h-6 text-xs px-1.5 w-full min-w-[60px]"
+          type={type}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter") handleSave();
+            if (e.key === "Escape") handleCancel();
+          }}
+          onBlur={handleSave}
+          autoFocus
+          data-testid={`input-edit-${testId}`}
+        />
+        <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" onClick={handleSave} data-testid={`button-save-${testId}`}>
+          <Save className="h-2.5 w-2.5" />
+        </Button>
+        <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" onClick={handleCancel} data-testid={`button-cancel-${testId}`}>
+          <X className="h-2.5 w-2.5" />
+        </Button>
       </div>
     );
   }
 
   return (
-    <div
-      className="cursor-pointer group"
-      onClick={() => { setEditing(true); setDraft(value); }}
+    <span
+      className={`cursor-pointer group/edit inline-flex items-center gap-1 ${className}`}
+      onClick={e => { e.stopPropagation(); setEditing(true); setDraft(value); }}
       data-testid={`field-${testId}`}
     >
-      <span className="text-muted-foreground text-xs">{label}</span>
-      <div className="flex items-center gap-1">
-        <p className="font-medium text-sm">{type === "number" ? formatPrice(Number(value) || null) : (value || "-")}</p>
-        <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-      </div>
-    </div>
+      <span>{type === "number" ? formatPrice(Number(value) || null) : (value || "-")}</span>
+      <Pencil className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover/edit:opacity-100 transition-opacity shrink-0" />
+    </span>
   );
 }
 
-function ItemDetailRow({ item }: { item: ItemWithDetails }) {
+function ItemDetailRow({ item, itemTypes }: { item: ItemWithDetails; itemTypes: string[] }) {
   const { toast } = useToast();
 
   const patchMutation = useMutation({
@@ -126,93 +121,117 @@ function ItemDetailRow({ item }: { item: ItemWithDetails }) {
     },
   });
 
+  const margin = item.cost && item.salesPrice ? item.salesPrice - item.cost : null;
+  const marginPct = margin && item.salesPrice ? Math.round((margin / item.salesPrice) * 100) : null;
+
   return (
-    <div className="p-4 bg-muted/30 border-t space-y-3">
-      {patchMutation.isPending && (
-        <div className="flex items-center gap-2 text-xs text-blue-600">
-          <RefreshCw className="h-3 w-3 animate-spin" />
-          저장 중...
-        </div>
-      )}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-        <div>
-          <span className="text-muted-foreground text-xs">품목코드</span>
-          <p className="font-medium" data-testid={`text-detail-code-${item.itemCode}`}>{item.itemCode}</p>
-        </div>
-        <EditableField
-          label="품목명"
-          value={item.itemName}
-          onSave={val => patchMutation.mutate({ itemName: val })}
-          testId={`name-${item.itemCode}`}
-        />
-        <EditableField
-          label="사양"
-          value={item.spec || ""}
-          onSave={val => patchMutation.mutate({ spec: val })}
-          testId={`spec-${item.itemCode}`}
-        />
-        <EditableField
-          label="제품유형"
-          value={item.itemType || ""}
-          onSave={val => patchMutation.mutate({ itemType: val })}
-          testId={`type-${item.itemCode}`}
-        />
-        <div>
-          <span className="text-muted-foreground text-xs">활성 상태</span>
-          <div className="flex items-center gap-2 mt-1">
-            <Switch
-              checked={item.active ?? true}
-              onCheckedChange={val => patchMutation.mutate({ active: val })}
-              data-testid={`switch-active-${item.itemCode}`}
-            />
-            <span className="text-sm">{item.active ? "활성" : "비활성"}</span>
+    <div className="relative bg-blue-50/60 dark:bg-blue-950/20 border-l-[3px] border-l-blue-500">
+      <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+        {patchMutation.isPending && (
+          <div className="flex items-center gap-1 text-blue-600">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            <span>저장 중...</span>
           </div>
+        )}
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">품목명</span>
+          <InlineEdit
+            value={item.itemName}
+            onSave={val => patchMutation.mutate({ itemName: val })}
+            testId={`name-${item.itemCode}`}
+            className="font-medium"
+          />
         </div>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <EditableField
-          label="원가"
-          value={String(item.cost || 0)}
-          type="number"
-          onSave={val => patchMutation.mutate({ cost: parseInt(val, 10) || 0 })}
-          testId={`cost-${item.itemCode}`}
-        />
-        <EditableField
-          label="판매가"
-          value={String(item.salesPrice || 0)}
-          type="number"
-          onSave={val => patchMutation.mutate({ salesPrice: parseInt(val, 10) || 0 })}
-          testId={`price-${item.itemCode}`}
-        />
-        {item.cost && item.salesPrice ? (
-          <div>
-            <span className="text-muted-foreground text-xs">마진</span>
-            <p className="font-medium text-green-600" data-testid={`text-detail-margin-${item.itemCode}`}>
-              {formatPrice(item.salesPrice - item.cost)} ({Math.round(((item.salesPrice - item.cost) / item.salesPrice) * 100)}%)
-            </p>
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">사양</span>
+          <InlineEdit
+            value={item.spec || ""}
+            onSave={val => patchMutation.mutate({ spec: val })}
+            testId={`spec-${item.itemCode}`}
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          <span className="text-muted-foreground">유형</span>
+          <Select
+            value={item.itemType || ""}
+            onValueChange={val => patchMutation.mutate({ itemType: val })}
+          >
+            <SelectTrigger className="h-6 text-xs px-2 w-[100px] border-dashed" data-testid={`select-type-${item.itemCode}`}>
+              <SelectValue placeholder="-" />
+            </SelectTrigger>
+            <SelectContent>
+              {itemTypes.map(t => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">원가</span>
+          <InlineEdit
+            value={String(item.cost || 0)}
+            type="number"
+            onSave={val => patchMutation.mutate({ cost: parseInt(val, 10) || 0 })}
+            testId={`cost-${item.itemCode}`}
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">판매가</span>
+          <InlineEdit
+            value={String(item.salesPrice || 0)}
+            type="number"
+            onSave={val => patchMutation.mutate({ salesPrice: parseInt(val, 10) || 0 })}
+            testId={`price-${item.itemCode}`}
+            className="font-medium text-blue-700 dark:text-blue-400"
+          />
+        </div>
+
+        {margin !== null && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">마진</span>
+            <span className="font-medium text-green-700 dark:text-green-400" data-testid={`text-detail-margin-${item.itemCode}`}>
+              {formatPrice(margin)} ({marginPct}%)
+            </span>
           </div>
-        ) : null}
+        )}
+
+        <div className="flex items-center gap-1.5 ml-auto" onClick={e => e.stopPropagation()}>
+          <span className="text-muted-foreground">활성</span>
+          <Switch
+            checked={item.active ?? true}
+            onCheckedChange={val => patchMutation.mutate({ active: val })}
+            className="scale-75"
+            data-testid={`switch-active-${item.itemCode}`}
+          />
+        </div>
+
+        {item.inventory.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">재고</span>
+            {item.inventory.map(inv => (
+              <Badge key={inv.id} variant="outline" className="text-[10px] h-4 px-1.5 font-normal">
+                {inv.stockType} {inv.qty}
+              </Badge>
+            ))}
+          </div>
+        )}
+
+        {item.documents.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">문서</span>
+            {item.documents.map(doc => (
+              <Badge key={doc.id} variant="secondary" className="text-[10px] h-4 px-1.5 font-normal">
+                {doc.docType}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
-      {item.inventory.length > 0 && (
-        <div className="text-sm">
-          <span className="text-muted-foreground">재고 상세: </span>
-          {item.inventory.map(inv => (
-            <Badge key={inv.id} variant="outline" className="mr-1">
-              {inv.stockType}: {inv.qty}
-            </Badge>
-          ))}
-        </div>
-      )}
-      {item.documents.length > 0 && (
-        <div className="text-sm">
-          <span className="text-muted-foreground">문서: </span>
-          {item.documents.map(doc => (
-            <Badge key={doc.id} variant="secondary" className="mr-1">
-              {doc.docType}
-            </Badge>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -355,84 +374,79 @@ export default function ItemList() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="w-[90px]">대분류</TableHead>
-                <TableHead className="w-[90px]">소분류</TableHead>
-                <TableHead className="w-[120px]">품목코드</TableHead>
+                <TableHead className="w-[80px]">대분류</TableHead>
+                <TableHead className="w-[80px]">소분류</TableHead>
+                <TableHead className="w-[110px]">품목코드</TableHead>
                 <TableHead>품목명</TableHead>
                 <TableHead className="hidden md:table-cell">사양</TableHead>
-                <TableHead className="text-right w-[100px]">원가</TableHead>
-                <TableHead className="text-right w-[100px]">판매가</TableHead>
-                <TableHead className="text-center w-[60px]">재고</TableHead>
-                <TableHead className="text-center w-[60px]">상태</TableHead>
-                <TableHead className="w-[40px]"></TableHead>
+                <TableHead className="text-right w-[90px]">원가</TableHead>
+                <TableHead className="text-right w-[90px]">판매가</TableHead>
+                <TableHead className="text-center w-[50px]">재고</TableHead>
+                <TableHead className="text-center w-[50px]">활성</TableHead>
+                <TableHead className="w-[32px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map(item => (
-                <Fragment key={item.id}>
-                  <TableRow
-                    className="cursor-pointer hover:bg-muted/30"
-                    onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                    data-testid={`row-item-${item.itemCode}`}
-                  >
-                    <TableCell className="text-xs font-medium" data-testid={`text-cat1-${item.itemCode}`}>
-                      {item.category1}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground" data-testid={`text-cat2-${item.itemCode}`}>
-                      {item.category2 || "-"}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs" data-testid={`text-code-${item.itemCode}`}>
-                      {item.itemCode}
-                    </TableCell>
-                    <TableCell className="font-medium" data-testid={`text-name-${item.itemCode}`}>
-                      {item.itemName}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[200px] truncate">
-                      {item.spec || "-"}
-                    </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground" data-testid={`text-cost-${item.itemCode}`}>
-                      {formatPrice(item.cost)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium" data-testid={`text-price-${item.itemCode}`}>
-                      {formatPrice(item.salesPrice)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {getStockQty(item.inventory, "AVAILABLE") > 0 ? (
-                        <Badge variant="secondary" data-testid={`badge-stock-${item.itemCode}`}>
-                          {getStockQty(item.inventory, "AVAILABLE")}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {item.active ? (
-                        <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" data-testid={`badge-active-${item.itemCode}`}>
-                          활성
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-inactive-${item.itemCode}`}>
-                          비활성
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {expandedId === item.id ? (
-                        <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </TableCell>
-                  </TableRow>
-                  {expandedId === item.id && (
-                    <TableRow>
-                      <TableCell colSpan={10} className="p-0">
-                        <ItemDetailRow item={item} />
+              {filtered.map(item => {
+                const isExpanded = expandedId === item.id;
+                return (
+                  <Fragment key={item.id}>
+                    <TableRow
+                      className={`cursor-pointer transition-colors ${isExpanded ? "bg-blue-50/40 dark:bg-blue-950/10" : "hover:bg-muted/30"}`}
+                      onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                      data-testid={`row-item-${item.itemCode}`}
+                    >
+                      <TableCell className="text-xs font-medium py-2" data-testid={`text-cat1-${item.itemCode}`}>
+                        {item.category1}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground py-2" data-testid={`text-cat2-${item.itemCode}`}>
+                        {item.category2 || "-"}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs py-2" data-testid={`text-code-${item.itemCode}`}>
+                        {item.itemCode}
+                      </TableCell>
+                      <TableCell className="font-medium text-sm py-2" data-testid={`text-name-${item.itemCode}`}>
+                        {item.itemName}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[200px] truncate py-2">
+                        {item.spec || "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground py-2" data-testid={`text-cost-${item.itemCode}`}>
+                        {formatPrice(item.cost)}
+                      </TableCell>
+                      <TableCell className="text-right text-xs font-medium py-2" data-testid={`text-price-${item.itemCode}`}>
+                        {formatPrice(item.salesPrice)}
+                      </TableCell>
+                      <TableCell className="text-center py-2">
+                        {getStockQty(item.inventory, "AVAILABLE") > 0 ? (
+                          <Badge variant="secondary" className="text-[10px] h-5 px-1.5" data-testid={`badge-stock-${item.itemCode}`}>
+                            {getStockQty(item.inventory, "AVAILABLE")}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center py-2">
+                        <div className={`w-2 h-2 rounded-full mx-auto ${item.active ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`} data-testid={`indicator-active-${item.itemCode}`} />
+                      </TableCell>
+                      <TableCell className="py-2">
+                        {isExpanded ? (
+                          <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
                       </TableCell>
                     </TableRow>
-                  )}
-                </Fragment>
-              ))}
+                    {isExpanded && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={10} className="p-0">
+                          <ItemDetailRow item={item} itemTypes={itemTypes} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
