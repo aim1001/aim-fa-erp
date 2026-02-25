@@ -298,35 +298,6 @@ export async function registerRoutes(
 
       const allInquiries = await storage.getInquiries();
       const now = new Date();
-      const upcomingByMonth: { month: string; label: string; count: number; items: { id: string; customerName: string; salesNumber: string | null; expectedDate: string; probability: number; status: string | null }[] }[] = [];
-      for (let offset = 0; offset < 3; offset++) {
-        const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-        const targetYear = target.getFullYear();
-        const targetMonth = target.getMonth();
-        const label = offset === 0 ? "이번달" : offset === 1 ? "다음달" : "다다음달";
-        const monthStr = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`;
-        const matching = allInquiries.filter(i => {
-          if (!i.expectedDate) return false;
-          return i.expectedDate.startsWith(monthStr);
-        });
-        upcomingByMonth.push({
-          month: monthStr,
-          label,
-          count: matching.length,
-          items: matching.map(i => ({
-            id: i.id,
-            customerName: i.customerName,
-            inquiryNumber: i.inquiryNumber,
-            salesNumber: i.salesNumber ?? null,
-            expectedDate: i.expectedDate!,
-            probability: i.probability || 0,
-            status: i.status,
-          })),
-        });
-      }
-
-      const futureThreshold = new Date(now.getFullYear(), now.getMonth() + 3, 1);
-      const futureMonthStr = `${futureThreshold.getFullYear()}-${String(futureThreshold.getMonth() + 1).padStart(2, '0')}`;
       const mapItem = (i: any) => ({
         id: i.id,
         customerName: i.customerName,
@@ -337,9 +308,31 @@ export async function registerRoutes(
         status: i.status,
       });
 
-      const beyondNextMonth = allInquiries.filter(i =>
-        i.expectedDate && i.expectedDate >= futureMonthStr && i.status === "active"
-      );
+      const futureMonths = new Set<string>();
+      for (const inq of allInquiries) {
+        if (inq.expectedDate) {
+          const m = inq.expectedDate.substring(0, 7);
+          const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          if (m >= thisMonth) futureMonths.add(m);
+        }
+      }
+      for (let offset = 0; offset < 3; offset++) {
+        const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+        futureMonths.add(`${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}`);
+      }
+      const sortedMonths = Array.from(futureMonths).sort();
+
+      const labels = ["이번달", "다음달", "다다음달"];
+      const upcomingByMonth = sortedMonths.map((monthStr, idx) => {
+        const matching = allInquiries.filter(i => i.expectedDate?.startsWith(monthStr));
+        return {
+          month: monthStr,
+          label: idx < 3 ? labels[idx] : monthStr,
+          count: matching.length,
+          items: matching.map(mapItem),
+        };
+      });
+
       const noDate = allInquiries.filter(i =>
         !i.expectedDate && i.status === "active"
       );
@@ -347,7 +340,6 @@ export async function registerRoutes(
       res.json({
         ...stats,
         upcomingByMonth,
-        beyondNextMonth: { count: beyondNextMonth.length, items: beyondNextMonth.map(mapItem) },
         noDate: { count: noDate.length, items: noDate.map(mapItem) },
       });
     } catch (err: any) {

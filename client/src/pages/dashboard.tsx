@@ -53,8 +53,7 @@ const EXCLUDED_BY_DEFAULT = [2020, 2021, 2022, 2023, 2024];
 export default function Dashboard() {
   const [, navigate] = useLocation();
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
-  const [upcomingMonthIndex, setUpcomingMonthIndex] = useState(0);
-  const [beyondOpen, setBeyondOpen] = useState(false);
+  const [upcomingPage, setUpcomingPage] = useState(0);
   const [noDateOpen, setNoDateOpen] = useState(false);
 
   const { data: years } = useQuery<number[]>({
@@ -100,7 +99,6 @@ export default function Dashboard() {
     byStatus: { status: string; count: number }[];
     byYear: { year: number; count: number }[];
     upcomingByMonth: { month: string; label: string; count: number; items: UpcomingItem[] }[];
-    beyondNextMonth: { count: number; items: UpcomingItem[] };
     noDate: { count: number; items: UpcomingItem[] };
   }>({
     queryKey: ["/api/dashboard", queryParam],
@@ -252,105 +250,78 @@ export default function Dashboard() {
           </div>
 
           {stats?.upcomingByMonth && stats.upcomingByMonth.length > 0 && (() => {
-            const m = stats.upcomingByMonth[upcomingMonthIndex];
-            if (!m) return null;
+            const totalPages = Math.ceil(stats.upcomingByMonth.length / 3);
+            const pageItems = stats.upcomingByMonth.slice(upcomingPage * 3, upcomingPage * 3 + 3);
+            const hasPrev = upcomingPage > 0;
+            const hasNext = upcomingPage < totalPages - 1;
             return (
-              <Card data-testid={`card-upcoming-${upcomingMonthIndex}`}>
-                <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      disabled={upcomingMonthIndex === 0}
-                      onClick={() => setUpcomingMonthIndex(i => i - 1)}
-                      data-testid="btn-upcoming-prev"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <CardTitle
-                      className="text-sm font-medium cursor-pointer hover:underline"
-                      onClick={() => navigate(`/inquiries?expectedMonth=${upcomingMonthIndex}`)}
-                    >
-                      {m.label} ({m.month})
-                    </CardTitle>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      disabled={upcomingMonthIndex >= stats.upcomingByMonth.length - 1}
-                      onClick={() => setUpcomingMonthIndex(i => i + 1)}
-                      data-testid="btn-upcoming-next"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-lg font-bold">{m.count}건</span>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {m.items.length > 0 ? (
-                    <div className="space-y-1 max-h-48 overflow-auto">
-                      {m.items.map(item => (
-                        <div
-                          key={item.id}
-                          className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/60 cursor-pointer"
-                          onClick={() => setSelectedInquiryId(item.id)}
-                          data-testid={`item-upcoming-${item.id}`}
+              <div className="flex items-center gap-2">
+                {hasPrev && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => setUpcomingPage(p => p - 1)}
+                    data-testid="btn-upcoming-prev"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+                  {pageItems.map((m, idx) => {
+                    const globalIdx = upcomingPage * 3 + idx;
+                    return (
+                      <Card key={m.month} data-testid={`card-upcoming-${globalIdx}`}>
+                        <CardHeader
+                          className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2 cursor-pointer hover:bg-accent/50 rounded-t-lg"
+                          onClick={() => navigate(`/inquiries?expectedMonth=${globalIdx}`)}
                         >
-                          <span className="font-mono text-muted-foreground shrink-0">{item.inquiryNumber}</span>
-                          <span className="truncate flex-1">{item.customerName}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${stageColors[item.probability] || stageColors[0]}`}>
-                            {stageLabels[item.probability] || "-"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">예정된 인콰이어리가 없습니다</p>
-                  )}
-                </CardContent>
-              </Card>
+                          <CardTitle className="text-sm font-medium">{m.label} ({m.month})</CardTitle>
+                          <div className="flex items-center gap-1">
+                            <span className="text-lg font-bold">{m.count}건</span>
+                            <Clock className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          {m.items.length > 0 ? (
+                            <div className="space-y-1 max-h-40 overflow-auto">
+                              {m.items.map(item => (
+                                <div
+                                  key={item.id}
+                                  className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/60 cursor-pointer"
+                                  onClick={() => setSelectedInquiryId(item.id)}
+                                  data-testid={`item-upcoming-${item.id}`}
+                                >
+                                  <span className="font-mono text-muted-foreground shrink-0">{item.inquiryNumber}</span>
+                                  <span className="truncate flex-1">{item.customerName}</span>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${stageColors[item.probability] || stageColors[0]}`}>
+                                    {stageLabels[item.probability] || "-"}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">예정된 인콰이어리가 없습니다</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+                {hasNext && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => setUpcomingPage(p => p + 1)}
+                    data-testid="btn-upcoming-next"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             );
           })()}
-
-          {stats?.beyondNextMonth && stats.beyondNextMonth.count > 0 && (
-            <Collapsible open={beyondOpen} onOpenChange={setBeyondOpen} data-testid="card-beyond">
-              <CollapsibleTrigger asChild>
-                <div className="flex items-center justify-between p-3 rounded-lg border bg-card cursor-pointer hover:bg-accent/50">
-                  <div className="flex items-center gap-2">
-                    {beyondOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                    <span className="text-sm font-medium">다다음달 이후 (진행중)</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm font-bold">{stats.beyondNextMonth.count}건</span>
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </div>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="space-y-1 mt-2 p-3 rounded-lg border bg-card max-h-48 overflow-auto">
-                  {stats.beyondNextMonth.items.map(item => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-2 text-xs p-1.5 rounded hover:bg-muted/60 cursor-pointer"
-                      onClick={() => setSelectedInquiryId(item.id)}
-                      data-testid={`item-beyond-${item.id}`}
-                    >
-                      <span className="font-mono text-muted-foreground shrink-0">{item.inquiryNumber}</span>
-                      <span className="truncate flex-1">{item.customerName}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">{item.expectedDate}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${stageColors[item.probability] || stageColors[0]}`}>
-                        {stageLabels[item.probability] || "-"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
 
           {stats?.noDate && stats.noDate.count > 0 && (
             <Collapsible open={noDateOpen} onOpenChange={setNoDateOpen} data-testid="card-nodate">
