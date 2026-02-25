@@ -1027,6 +1027,159 @@ export async function registerRoutes(
     }
   });
 
+  // Quotation routes
+  app.get("/api/inquiries/:id/quotations", async (req, res) => {
+    try {
+      const list = await storage.getQuotationsByInquiry(req.params.id);
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/inquiries/:id/quotations", async (req, res) => {
+    try {
+      const { quoteNumber, quoteDate, validUntil, notes } = req.body;
+      const now = new Date().toISOString();
+      const q = await storage.createQuotation({
+        inquiryId: req.params.id,
+        quoteNumber: quoteNumber || "",
+        quoteDate: quoteDate || now.split("T")[0],
+        validUntil: validUntil || null,
+        notes: notes || null,
+        status: "draft",
+        createdAt: now,
+      });
+      res.status(201).json(q);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/quotations/:id", async (req, res) => {
+    try {
+      const result = await storage.getQuotationWithItems(req.params.id);
+      if (!result) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/quotations/:id", async (req, res) => {
+    try {
+      const q = await storage.updateQuotation(req.params.id, req.body);
+      if (!q) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      res.json(q);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/quotations/:id", async (req, res) => {
+    try {
+      await storage.deleteQuotation(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/quotations/:id/items", async (req, res) => {
+    try {
+      const { itemCode, itemName, spec, quantity, unitPrice, sortOrder } = req.body;
+      const qty = quantity || 1;
+      const price = unitPrice || 0;
+      const item = await storage.createQuotationItem({
+        quotationId: req.params.id,
+        itemCode: itemCode || null,
+        itemName: itemName || "",
+        spec: spec || null,
+        quantity: qty,
+        unitPrice: price,
+        amount: qty * price,
+        sortOrder: sortOrder || 0,
+      });
+      res.status(201).json(item);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/quotation-items/:id", async (req, res) => {
+    try {
+      const data = { ...req.body };
+      if (data.quantity != null || data.unitPrice != null) {
+        const qty = data.quantity ?? 0;
+        const price = data.unitPrice ?? 0;
+        data.amount = qty * price;
+      }
+      const item = await storage.updateQuotationItem(req.params.id, data);
+      if (!item) return res.status(404).json({ message: "항목을 찾을 수 없습니다" });
+      res.json(item);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/quotation-items/:id", async (req, res) => {
+    try {
+      await storage.deleteQuotationItem(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/quotations/:id/export", async (req, res) => {
+    try {
+      const result = await storage.getQuotationWithItems(req.params.id);
+      if (!result) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      const inquiry = await storage.getInquiry(result.quotation.inquiryId);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      if (!inquiry.onedriveFolderId) return res.status(400).json({ message: "OneDrive 폴더가 연결되지 않은 인콰이어리입니다" });
+      const { exportQuotationToOneDrive } = await import("./quotation-export");
+      const resp = await exportQuotationToOneDrive(req.params.id, result.quotation.inquiryId);
+      res.json(resp);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/quotations/:id/download/pdf", async (req, res) => {
+    try {
+      const result = await storage.getQuotationWithItems(req.params.id);
+      if (!result) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      const inquiry = await storage.getInquiry(result.quotation.inquiryId);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      const { generateQuotationPDF } = await import("./quotation-export");
+      const buf = await generateQuotationPDF(req.params.id, inquiry);
+      const safeNumber = result.quotation.quoteNumber.replace(/[/\\:*?"<>|]/g, "_");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="quotation_${safeNumber}.pdf"`);
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/quotations/:id/download/xlsx", async (req, res) => {
+    try {
+      const result = await storage.getQuotationWithItems(req.params.id);
+      if (!result) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      const inquiry = await storage.getInquiry(result.quotation.inquiryId);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      const { generateQuotationExcel } = await import("./quotation-export");
+      const buf = await generateQuotationExcel(req.params.id, inquiry);
+      const safeNumber = result.quotation.quoteNumber.replace(/[/\\:*?"<>|]/g, "_");
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="quotation_${safeNumber}.xlsx"`);
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Company routes (담당자/연락처)
   app.get("/api/companies", async (req, res) => {
     try {

@@ -364,3 +364,34 @@ export const inquiryMemos = pgTable("inquiry_memos", {
 export const insertInquiryMemoSchema = createInsertSchema(inquiryMemos).omit({ id: true });
 export type InsertInquiryMemo = z.infer<typeof insertInquiryMemoSchema>;
 export type InquiryMemo = typeof inquiryMemos.$inferSelect;
+
+export const quotations = pgTable("quotations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inquiryId: varchar("inquiry_id").notNull(),
+  quoteNumber: text("quote_number").notNull(),
+  quoteDate: text("quote_date").notNull(),
+  validUntil: text("valid_until"),
+  notes: text("notes"),
+  status: text("status").default("draft"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertQuotationSchema = createInsertSchema(quotations).omit({ id: true });
+export type InsertQuotation = z.infer<typeof insertQuotationSchema>;
+export type Quotation = typeof quotations.$inferSelect;
+
+export const quotationItems = pgTable("quotation_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quotationId: varchar("quotation_id").notNull(),
+  itemCode: text("item_code"),
+  itemName: text("item_name").notNull(),
+  spec: text("spec"),
+  quantity: integer("quantity").notNull().default(1),
+  unitPrice: integer("unit_price").notNull().default(0),
+  amount: integer("amount").notNull().default(0),
+  sortOrder: integer("sort_order").default(0),
+});
+
+export const insertQuotationItemSchema = createInsertSchema(quotationItems).omit({ id: true });
+export type InsertQuotationItem = z.infer<typeof insertQuotationItemSchema>;
+export type QuotationItem = typeof quotationItems.$inferSelect;

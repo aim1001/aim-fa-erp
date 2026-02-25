@@ -473,6 +473,24 @@ export async function writeInfoJson(folderId: string, data: Record<string, any>)
   );
 }
 
+export async function uploadFileToFolder(folderId: string, fileName: string, content: Buffer): Promise<void> {
+  const folderItem = await graphCallWithRetry(
+    (token) => graphFetchDirect(`/me/drive/items/${folderId}`, token, { select: 'parentReference,name' }),
+    'uploadFileToFolder.getFolder'
+  );
+  const driveId = folderItem.parentReference?.driveId;
+  const encodedName = encodeURIComponent(fileName);
+
+  const uploadPath = driveId
+    ? `/drives/${driveId}/items/${folderId}:/${encodedName}:/content`
+    : `/me/drive/items/${folderId}:/${encodedName}:/content`;
+
+  await graphCallWithRetry(
+    (token) => graphFetchDirect(uploadPath, token, { method: 'PUT', body: content }),
+    'uploadFileToFolder.put'
+  );
+}
+
 export async function listFilesByPath(path: string): Promise<OneDriveFile[]> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const result = await graphCallWithRetry(

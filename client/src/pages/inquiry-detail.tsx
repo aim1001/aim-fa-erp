@@ -17,6 +17,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo } from "@shared/schema";
+import { QuotationSection } from "@/components/quotation-section";
 
 function useInlineUpdate(inquiryId: string) {
   const { toast } = useToast();
@@ -1985,6 +1986,8 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
       </div>
 
       <MemoSection inquiryId={id!} legacyMemo={inquiry.memo || ""} />
+
+      <QuotationSection inquiryId={id!} inquiry={inquiry} />
 
       <CustomerInfoSection inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
 

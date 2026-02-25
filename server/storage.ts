@@ -15,10 +15,12 @@ import {
   type ItemDocument, type InsertItemDocument,
   type PurchaseItem, type InsertPurchaseItem,
   type InquiryMemo, type InsertInquiryMemo,
+  type Quotation, type InsertQuotation,
+  type QuotationItem, type InsertQuotationItem,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
-  inquiryMemos,
+  inquiryMemos, quotations, quotationItems,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -165,6 +167,15 @@ export interface IStorage {
   deleteItemDocument(id: string): Promise<void>;
   deleteItemDocumentsByItemCode(itemCode: string): Promise<void>;
   getItemsWithDetails(): Promise<Array<ItemMaster & { inventory: ItemInventory[]; documents: ItemDocument[] }>>;
+
+  getQuotationsByInquiry(inquiryId: string): Promise<Quotation[]>;
+  getQuotationWithItems(id: string): Promise<{ quotation: Quotation; items: QuotationItem[] } | undefined>;
+  createQuotation(data: InsertQuotation): Promise<Quotation>;
+  updateQuotation(id: string, data: Partial<InsertQuotation>): Promise<Quotation | undefined>;
+  deleteQuotation(id: string): Promise<void>;
+  createQuotationItem(data: InsertQuotationItem): Promise<QuotationItem>;
+  updateQuotationItem(id: string, data: Partial<InsertQuotationItem>): Promise<QuotationItem | undefined>;
+  deleteQuotationItem(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -891,6 +902,46 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInquiryMemo(id: string): Promise<void> {
     await db.delete(inquiryMemos).where(eq(inquiryMemos.id, id));
+  }
+
+  async getQuotationsByInquiry(inquiryId: string): Promise<Quotation[]> {
+    return db.select().from(quotations).where(eq(quotations.inquiryId, inquiryId)).orderBy(desc(quotations.createdAt));
+  }
+
+  async getQuotationWithItems(id: string): Promise<{ quotation: Quotation; items: QuotationItem[] } | undefined> {
+    const [quotation] = await db.select().from(quotations).where(eq(quotations.id, id));
+    if (!quotation) return undefined;
+    const items = await db.select().from(quotationItems).where(eq(quotationItems.quotationId, id)).orderBy(quotationItems.sortOrder);
+    return { quotation, items };
+  }
+
+  async createQuotation(data: InsertQuotation): Promise<Quotation> {
+    const [q] = await db.insert(quotations).values(data).returning();
+    return q;
+  }
+
+  async updateQuotation(id: string, data: Partial<InsertQuotation>): Promise<Quotation | undefined> {
+    const [q] = await db.update(quotations).set(data).where(eq(quotations.id, id)).returning();
+    return q;
+  }
+
+  async deleteQuotation(id: string): Promise<void> {
+    await db.delete(quotationItems).where(eq(quotationItems.quotationId, id));
+    await db.delete(quotations).where(eq(quotations.id, id));
+  }
+
+  async createQuotationItem(data: InsertQuotationItem): Promise<QuotationItem> {
+    const [item] = await db.insert(quotationItems).values(data).returning();
+    return item;
+  }
+
+  async updateQuotationItem(id: string, data: Partial<InsertQuotationItem>): Promise<QuotationItem | undefined> {
+    const [item] = await db.update(quotationItems).set(data).where(eq(quotationItems.id, id)).returning();
+    return item;
+  }
+
+  async deleteQuotationItem(id: string): Promise<void> {
+    await db.delete(quotationItems).where(eq(quotationItems.id, id));
   }
 }
 
