@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ko } from "date-fns/locale";
@@ -84,11 +84,24 @@ export default function InquiryList() {
     }
   }, [detailParam, searchString, navigate]);
 
+  const [sortColumn, setSortColumn] = useState<string>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const handleSort = useCallback((column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortColumn(column);
+      setSortDirection(column === "createdAt" || column === "expectedDate" ? "desc" : "asc");
+    }
+  }, [sortColumn]);
+
   const urlParams = new URLSearchParams(searchString);
   const yearFilter = urlParams.get("year") || "all";
   const statusFilter = urlParams.get("status") || "all";
   const customerFilter = urlParams.get("customer") || "all";
   const periodFilter = urlParams.get("period") || "";
+  const expectedMonthFilter = urlParams.get("expectedMonth") || "";
 
   const handleYearChange = (value: string) => {
     const params = new URLSearchParams(searchString);
@@ -124,6 +137,17 @@ export default function InquiryList() {
       params.delete("customer");
     } else {
       params.set("customer", value);
+    }
+    const qs = params.toString();
+    navigate(qs ? `/inquiries?${qs}` : "/inquiries");
+  };
+
+  const handleExpectedMonthToggle = (offset: string) => {
+    const params = new URLSearchParams(searchString);
+    if (expectedMonthFilter === offset) {
+      params.delete("expectedMonth");
+    } else {
+      params.set("expectedMonth", offset);
     }
     const qs = params.toString();
     navigate(qs ? `/inquiries?${qs}` : "/inquiries");
@@ -309,6 +333,14 @@ export default function InquiryList() {
       list = list.filter(i => i.isFavorite);
     }
 
+    if (expectedMonthFilter !== "") {
+      const now = new Date();
+      const offset = parseInt(expectedMonthFilter);
+      const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      const monthStr = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}`;
+      list = list.filter(i => i.expectedDate && i.expectedDate.startsWith(monthStr));
+    }
+
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(i =>
@@ -321,9 +353,51 @@ export default function InquiryList() {
     return list.sort((a, b) => {
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
-      return 0;
+
+      const dir = sortDirection === "asc" ? 1 : -1;
+      let valA: string | number | null = null;
+      let valB: string | number | null = null;
+      switch (sortColumn) {
+        case "salesNumber":
+          valA = a.salesNumber || a.inquiryNumber || "";
+          valB = b.salesNumber || b.inquiryNumber || "";
+          break;
+        case "customerName":
+          valA = a.customerName;
+          valB = b.customerName;
+          break;
+        case "productInfo":
+          valA = a.productInfo || "";
+          valB = b.productInfo || "";
+          break;
+        case "year":
+          valA = a.year;
+          valB = b.year;
+          break;
+        case "createdAt":
+          valA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          valB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return (Number(valA) - Number(valB)) * dir;
+        case "probability":
+          valA = a.probability || 0;
+          valB = b.probability || 0;
+          return (Number(valA) - Number(valB)) * dir;
+        case "status":
+          valA = a.status || "";
+          valB = b.status || "";
+          break;
+        case "expectedDate":
+          valA = a.expectedDate || "";
+          valB = b.expectedDate || "";
+          break;
+        default:
+          return 0;
+      }
+      if (valA === valB) return 0;
+      if (typeof valA === "number" && typeof valB === "number") return (valA - valB) * dir;
+      return String(valA).localeCompare(String(valB)) * dir;
     });
-  }, [inquiries, search, periodFilter, customerFilter]);
+  }, [inquiries, search, periodFilter, customerFilter, expectedMonthFilter, sortColumn, sortDirection]);
 
   const syncYearOptions = useMemo(() => {
     const allYears = new Set<number>();
@@ -424,6 +498,24 @@ export default function InquiryList() {
               </SelectContent>
             </Select>
           </div>
+          <div className="flex gap-1.5 mt-2">
+            {[
+              { offset: "0", label: "이번달 예정" },
+              { offset: "1", label: "다음달 예정" },
+              { offset: "2", label: "다다음달 예정" },
+            ].map(({ offset, label }) => (
+              <Button
+                key={offset}
+                variant={expectedMonthFilter === offset ? "default" : "outline"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => handleExpectedMonthToggle(offset)}
+                data-testid={`button-expected-month-${offset}`}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -438,14 +530,31 @@ export default function InquiryList() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10"></TableHead>
-                  <TableHead>영업번호</TableHead>
-                  <TableHead>고객명</TableHead>
-                  <TableHead>제품정보</TableHead>
-                  <TableHead>연도</TableHead>
-                  <TableHead>발생일자</TableHead>
-                  <TableHead>단계</TableHead>
-                  <TableHead>상태</TableHead>
-                  <TableHead>예상일자</TableHead>
+                  {[
+                    { key: "salesNumber", label: "영업번호" },
+                    { key: "customerName", label: "고객명" },
+                    { key: "productInfo", label: "제품정보" },
+                    { key: "year", label: "연도" },
+                    { key: "createdAt", label: "발생일자" },
+                    { key: "probability", label: "단계" },
+                    { key: "status", label: "상태" },
+                    { key: "expectedDate", label: "예상일자" },
+                  ].map(({ key, label }) => (
+                    <TableHead
+                      key={key}
+                      className="cursor-pointer select-none hover:bg-muted/50"
+                      onClick={() => handleSort(key)}
+                    >
+                      <div className="flex items-center gap-1">
+                        {label}
+                        {sortColumn === key ? (
+                          sortDirection === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                        ) : (
+                          <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
+                        )}
+                      </div>
+                    </TableHead>
+                  ))}
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>

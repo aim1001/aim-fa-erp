@@ -295,7 +295,36 @@ export async function registerRoutes(
         ? yearsParam.split(",").map(y => parseInt(y.trim())).filter(y => !isNaN(y))
         : undefined;
       const stats = await storage.getDashboardStats(years);
-      res.json(stats);
+
+      const allInquiries = await storage.getInquiries();
+      const now = new Date();
+      const upcomingByMonth: { month: string; label: string; count: number; items: { id: string; customerName: string; salesNumber: string | null; expectedDate: string; probability: number; status: string | null }[] }[] = [];
+      for (let offset = 0; offset < 3; offset++) {
+        const target = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+        const targetYear = target.getFullYear();
+        const targetMonth = target.getMonth();
+        const label = offset === 0 ? "이번달" : offset === 1 ? "다음달" : "다다음달";
+        const monthStr = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`;
+        const matching = allInquiries.filter(i => {
+          if (!i.expectedDate) return false;
+          return i.expectedDate.startsWith(monthStr);
+        });
+        upcomingByMonth.push({
+          month: monthStr,
+          label,
+          count: matching.length,
+          items: matching.map(i => ({
+            id: i.id,
+            customerName: i.customerName,
+            salesNumber: i.salesNumber ?? null,
+            expectedDate: i.expectedDate!,
+            probability: i.probability || 0,
+            status: i.status,
+          })),
+        });
+      }
+
+      res.json({ ...stats, upcomingByMonth });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
