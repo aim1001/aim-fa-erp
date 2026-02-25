@@ -376,11 +376,11 @@ export default function ItemList() {
               <TableRow className="bg-muted/50">
                 <TableHead className="w-[80px]">대분류</TableHead>
                 <TableHead className="w-[80px]">소분류</TableHead>
-                <TableHead className="w-[110px]">품목코드</TableHead>
-                <TableHead>품목명</TableHead>
-                <TableHead className="hidden md:table-cell">사양</TableHead>
-                <TableHead className="text-right w-[90px]">원가</TableHead>
-                <TableHead className="text-right w-[90px]">판매가</TableHead>
+                <TableHead className="w-[130px]">품목코드</TableHead>
+                <TableHead className="max-w-[200px]">품목명</TableHead>
+                <TableHead className="hidden md:table-cell max-w-[180px]">사양</TableHead>
+                <TableHead className="text-right w-[110px]">원가</TableHead>
+                <TableHead className="text-right w-[110px]">판매가</TableHead>
                 <TableHead className="text-center w-[50px]">재고</TableHead>
                 <TableHead className="text-center w-[50px]">활성</TableHead>
                 <TableHead className="w-[32px]"></TableHead>
@@ -402,19 +402,19 @@ export default function ItemList() {
                       <TableCell className="text-xs text-muted-foreground py-2" data-testid={`text-cat2-${item.itemCode}`}>
                         {item.category2 || "-"}
                       </TableCell>
-                      <TableCell className="font-mono text-xs py-2" data-testid={`text-code-${item.itemCode}`}>
+                      <TableCell className="font-mono text-xs py-2 max-w-[130px] truncate" data-testid={`text-code-${item.itemCode}`}>
                         {item.itemCode}
                       </TableCell>
-                      <TableCell className="font-medium text-sm py-2" data-testid={`text-name-${item.itemCode}`}>
+                      <TableCell className="font-medium text-sm py-2 max-w-[200px] truncate" data-testid={`text-name-${item.itemCode}`}>
                         {item.itemName}
                       </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[200px] truncate py-2">
+                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[180px] truncate py-2">
                         {item.spec || "-"}
                       </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground py-2" data-testid={`text-cost-${item.itemCode}`}>
+                      <TableCell className="text-right text-xs text-muted-foreground py-2 whitespace-nowrap" data-testid={`text-cost-${item.itemCode}`}>
                         {formatPrice(item.cost)}
                       </TableCell>
-                      <TableCell className="text-right text-xs font-medium py-2" data-testid={`text-price-${item.itemCode}`}>
+                      <TableCell className="text-right text-xs font-medium py-2 whitespace-nowrap" data-testid={`text-price-${item.itemCode}`}>
                         {formatPrice(item.salesPrice)}
                       </TableCell>
                       <TableCell className="text-center py-2">
