@@ -324,6 +324,7 @@ export const purchaseItems = pgTable("purchase_items", {
   itemCode: text("item_code").notNull().unique(),
   spec: text("spec"),
   defaultVendor: text("default_vendor"),
+  vendorId: varchar("vendor_id"),
   cost: integer("cost"),
   currency: text("currency").default("won"),
   leadTimeDays: integer("lead_time_days"),

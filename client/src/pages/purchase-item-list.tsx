@@ -1,12 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2 } from "lucide-react";
+import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { PurchaseItem } from "@shared/schema";
+import type { PurchaseItem, Vendor } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -42,6 +42,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+type PurchaseItemWithVendor = PurchaseItem & { vendor: Vendor | null };
 
 function formatPrice(val: number | null | undefined) {
   if (!val) return "-";
@@ -112,7 +119,46 @@ function InlineEdit({
   );
 }
 
-function PurchaseItemDetailRow({ item }: { item: PurchaseItem }) {
+function VendorBadge({ item }: { item: PurchaseItemWithVendor }) {
+  if (item.vendor) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400" data-testid={`vendor-linked-${item.id}`}>
+            <Link2 className="h-3 w-3 shrink-0" />
+            <span className="truncate">{item.vendor.companyName}</span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>공급업체 연결됨: {item.vendor.companyName}</p>
+          {item.vendor.contactName && <p>담당자: {item.vendor.contactName}</p>}
+          {item.vendor.phone && <p>전화: {item.vendor.phone}</p>}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  if (item.defaultVendor) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 text-xs text-foreground/50" data-testid={`vendor-unlinked-${item.id}`}>
+            <Unlink className="h-3 w-3 shrink-0 text-orange-400" />
+            <span className="truncate">{item.defaultVendor}</span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>미연결: "{item.defaultVendor}"</p>
+          <p className="text-xs text-muted-foreground">공급업체 목록에 매칭되는 업체가 없습니다</p>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return <span className="text-xs text-foreground/30">-</span>;
+}
+
+function PurchaseItemDetailRow({ item, vendors }: { item: PurchaseItemWithVendor; vendors: Vendor[] }) {
   const { toast } = useToast();
 
   const patchMutation = useMutation({
@@ -191,14 +237,35 @@ function PurchaseItemDetailRow({ item }: { item: PurchaseItem }) {
           />
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
           <span className="text-muted-foreground">공급업체</span>
-          <InlineEdit
-            value={item.defaultVendor || ""}
-            onSave={val => patchMutation.mutate({ defaultVendor: val })}
-            testId={`pvendor-${item.id}`}
-            className="font-medium text-blue-700 dark:text-blue-400"
-          />
+          <Select
+            value={item.vendorId || "__none__"}
+            onValueChange={val => {
+              if (val === "__none__") {
+                patchMutation.mutate({ vendorId: null });
+              } else {
+                patchMutation.mutate({ vendorId: val });
+              }
+            }}
+          >
+            <SelectTrigger className="h-6 text-xs px-2 w-[160px] border-dashed" data-testid={`select-vendor-${item.id}`}>
+              <SelectValue placeholder="공급업체 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">
+                <span className="text-muted-foreground">연결 해제</span>
+              </SelectItem>
+              {vendors.map(v => (
+                <SelectItem key={v.id} value={v.id}>
+                  {v.companyName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {item.defaultVendor && !item.vendorId && (
+            <span className="text-muted-foreground">(원본: {item.defaultVendor})</span>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -322,13 +389,20 @@ export default function PurchaseItemList() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [vendorFilter, setVendorFilter] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const { data: items, isLoading } = useQuery<PurchaseItem[]>({
+  const { data: items, isLoading } = useQuery<PurchaseItemWithVendor[]>({
     queryKey: ["/api/purchase-items"],
   });
+
+  const { data: vendorList } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const vendors = vendorList || [];
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -341,6 +415,20 @@ export default function PurchaseItemList() {
     },
     onError: (err: Error) => {
       toast({ title: "동기화 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const autoLinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/purchase-items/auto-link-vendors");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "자동 연결 완료", description: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-items"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "자동 연결 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -370,6 +458,8 @@ export default function PurchaseItemList() {
     if (!items) return [];
     return items.filter(item => {
       if (categoryFilter !== "all" && item.category1 !== categoryFilter) return false;
+      if (vendorFilter === "linked" && !item.vendorId) return false;
+      if (vendorFilter === "unlinked" && item.vendorId) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -377,20 +467,23 @@ export default function PurchaseItemList() {
           item.itemName.toLowerCase().includes(q) ||
           (item.spec || "").toLowerCase().includes(q) ||
           (item.defaultVendor || "").toLowerCase().includes(q) ||
+          (item.vendor?.companyName || "").toLowerCase().includes(q) ||
           (item.brand || "").toLowerCase().includes(q) ||
           (item.remark || "").toLowerCase().includes(q)
         );
       }
       return true;
     });
-  }, [items, search, categoryFilter]);
+  }, [items, search, categoryFilter, vendorFilter]);
 
   const stats = useMemo(() => {
-    if (!items) return { total: 0, active: 0, categories: 0 };
+    if (!items) return { total: 0, active: 0, categories: 0, linked: 0, unlinked: 0 };
     return {
       total: items.length,
       active: items.filter(i => i.active).length,
       categories: new Set(items.map(i => i.category1)).size,
+      linked: items.filter(i => i.vendorId).length,
+      unlinked: items.filter(i => !i.vendorId && i.defaultVendor).length,
     };
   }, [items]);
 
@@ -419,10 +512,12 @@ export default function PurchaseItemList() {
             구매품관리
           </h1>
           <p className="text-sm text-muted-foreground mt-1" data-testid="text-purchase-item-stats">
-            전체 {stats.total}개 | 활성 {stats.active}개 | {stats.categories}개 카테고리
+            전체 {stats.total}개 | 활성 {stats.active}개 | {stats.categories}개 카테고리 | 
+            <span className="text-green-600 dark:text-green-400"> 연결 {stats.linked}</span> / 
+            <span className="text-orange-500"> 미연결 {stats.unlinked}</span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           <Button
             variant="outline"
             onClick={() => { setForm(EMPTY_FORM); setShowAddDialog(true); }}
@@ -430,6 +525,15 @@ export default function PurchaseItemList() {
           >
             <Plus className="h-4 w-4" />
             <span>품목 추가</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => autoLinkMutation.mutate()}
+            disabled={autoLinkMutation.isPending}
+            data-testid="button-auto-link-vendors"
+          >
+            <Link2 className={autoLinkMutation.isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            <span>{autoLinkMutation.isPending ? "연결 중..." : "공급업체 자동연결"}</span>
           </Button>
           <Button
             onClick={() => syncMutation.mutate()}
@@ -464,6 +568,16 @@ export default function PurchaseItemList() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={vendorFilter} onValueChange={setVendorFilter}>
+          <SelectTrigger className="w-[140px]" data-testid="select-vendor-filter">
+            <SelectValue placeholder="공급업체" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체</SelectItem>
+            <SelectItem value="linked">연결됨</SelectItem>
+            <SelectItem value="unlinked">미연결</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
@@ -488,7 +602,7 @@ export default function PurchaseItemList() {
                 <TableHead className="w-[150px] text-xs h-9 px-3">품목코드</TableHead>
                 <TableHead className="max-w-[180px] text-xs h-9 px-3">품명</TableHead>
                 <TableHead className="hidden md:table-cell max-w-[140px] text-xs h-9 px-3">규격</TableHead>
-                <TableHead className="hidden lg:table-cell w-[100px] text-xs h-9 px-3">공급업체</TableHead>
+                <TableHead className="hidden lg:table-cell w-[130px] text-xs h-9 px-3">공급업체</TableHead>
                 <TableHead className="text-right w-[100px] text-xs h-9 px-3">단가</TableHead>
                 <TableHead className="hidden lg:table-cell text-center w-[60px] text-xs h-9 px-3">L/T</TableHead>
                 <TableHead className="hidden xl:table-cell w-[80px] text-xs h-9 px-3">유형</TableHead>
@@ -521,8 +635,8 @@ export default function PurchaseItemList() {
                       <TableCell className="hidden md:table-cell text-xs py-1.5 px-3 text-foreground/70 max-w-[140px] truncate">
                         {item.spec || "-"}
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs py-1.5 px-3 text-foreground/70 truncate">
-                        {item.defaultVendor || "-"}
+                      <TableCell className="hidden lg:table-cell text-xs py-1.5 px-3 max-w-[130px]" data-testid={`text-pvendor-${item.id}`}>
+                        <VendorBadge item={item} />
                       </TableCell>
                       <TableCell className="text-right text-xs py-1.5 px-3 text-foreground whitespace-nowrap" data-testid={`text-pcost-${item.id}`}>
                         {formatPrice(item.cost)}
@@ -547,7 +661,7 @@ export default function PurchaseItemList() {
                     {isExpanded && (
                       <TableRow className="hover:bg-transparent border-b border-border/20">
                         <TableCell colSpan={11} className="p-0">
-                          <PurchaseItemDetailRow item={item} />
+                          <PurchaseItemDetailRow item={item} vendors={vendors} />
                         </TableCell>
                       </TableRow>
                     )}

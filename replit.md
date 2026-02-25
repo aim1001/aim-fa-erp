@@ -37,7 +37,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **item_master** 테이블: 판매제품 마스터 (카테고리, 품목코드(unique), 품목명, 사양, 원가, 판매가, 활성여부, 제품유형)
 - **item_inventory** 테이블: 재고 관리 (품목코드, 재고유형(AVAILABLE/TEST/DEMO), 수량, 업데이트일)
 - **item_document** 테이블: 제품 문서 (품목코드, 문서유형, URL, 이름)
-- **purchase_items** 테이블: 구매품 마스터 (대분류, 소분류, 품목코드, 품명, 브랜드, 원산지, 규격, 공급업체, 단가, 통화, 리드타임, 재고품여부, 유형, 단위, 활성여부, 안전재고, MOQ, 비고)
+- **purchase_items** 테이블: 구매품 마스터 (대분류, 소분류, 품목코드, 품명, 브랜드, 원산지, 규격, 공급업체텍스트, vendorId FK→vendors, 단가, 통화, 리드타임, 재고품여부, 유형, 단위, 활성여부, 안전재고, MOQ, 비고)
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
@@ -136,6 +136,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-23: Project↔Invoice↔Payment linking (projectId fields added, project detail modal with invoice linking/unlinking, financial summaries per project)
 - 2026-02-24: 판매제품관리 (item_master, item_inventory, item_document 3테이블 설계, OneDrive listprice.xlsx 동기화, /items 페이지)
 - 2026-02-25: 구매품관리 기능 추가 (purchase_items 테이블, OneDrive 2.공사/database/purchaselist.xlsx 동기화, /purchase-items 페이지, CRUD + 인라인 편집 + 품목 추가 다이얼로그)
+- 2026-02-25: 구매품↔공급업체 연결 (vendorId FK 추가, 자동매칭 API, 연결/미연결 필터, 수동 공급업체 선택 드롭다운, 연결상태 아이콘 표시)
 - 2026-02-24: OneDrive token management overhaul - graphCallWithRetry with fresh-client retry on 401/token errors, error classification (7 types), diagnostic token logging (length/type only, no secrets), Client.init callback pattern to avoid JWT parsing of opaque tokens, extractAccessToken with 5-field-path fallback, frontend error-type-specific guidance
 
 ## User Preferences

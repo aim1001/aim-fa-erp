@@ -2580,7 +2580,13 @@ export async function registerRoutes(
       const search = req.query.search as string | undefined;
       const category1 = req.query.category1 as string | undefined;
       const items = await storage.getPurchaseItems({ search, category1 });
-      res.json(items);
+      const allVendors = await storage.getVendors();
+      const vendorMap = new Map(allVendors.map(v => [v.id, v]));
+      const result = items.map(item => ({
+        ...item,
+        vendor: item.vendorId ? vendorMap.get(item.vendorId) || null : null,
+      }));
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -2636,6 +2642,50 @@ export async function registerRoutes(
       await storage.deletePurchaseItem(req.params.id);
       res.json({ ok: true });
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-items/auto-link-vendors", requireAuth, async (_req, res) => {
+    try {
+      const items = await storage.getPurchaseItems();
+      const allVendors = await storage.getVendors();
+      let linked = 0;
+      let alreadyLinked = 0;
+      let noMatch = 0;
+
+      for (const item of items) {
+        if (item.vendorId) {
+          alreadyLinked++;
+          continue;
+        }
+        if (!item.defaultVendor) {
+          noMatch++;
+          continue;
+        }
+        const vendorName = item.defaultVendor.trim().toLowerCase();
+        const match = allVendors.find(v =>
+          v.companyName.trim().toLowerCase() === vendorName ||
+          v.companyName.trim().toLowerCase().includes(vendorName) ||
+          vendorName.includes(v.companyName.trim().toLowerCase())
+        );
+        if (match) {
+          await storage.updatePurchaseItem(item.id, { vendorId: match.id });
+          linked++;
+        } else {
+          noMatch++;
+        }
+      }
+
+      res.json({
+        message: `공급업체 연결 완료: 연결 ${linked}건, 기연결 ${alreadyLinked}건, 미매칭 ${noMatch}건`,
+        linked,
+        alreadyLinked,
+        noMatch,
+        total: items.length,
+      });
+    } catch (err: any) {
+      console.error("[auto-link-vendors]", err.message);
       res.status(500).json({ message: err.message });
     }
   });
