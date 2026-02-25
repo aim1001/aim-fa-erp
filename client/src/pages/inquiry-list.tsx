@@ -171,20 +171,25 @@ export default function InquiryList() {
     },
   });
 
-  const bulkRescanMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/inquiries/bulk-rescan-dates");
+  const [scanningId, setScanningId] = useState<string | null>(null);
+  const scanMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setScanningId(id);
+      const res = await apiRequest("POST", `/api/inquiries/${id}/scan-excel`);
       return res.json();
     },
-    onSuccess: (data: { total: number; updated: number; failed: number }) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      const count = data.scanned?.length || 0;
       toast({
-        title: "발생일자 갱신 완료",
-        description: `${data.total}건 중 ${data.updated}건 갱신${data.failed > 0 ? `, ${data.failed}건 실패` : ""}`,
+        title: "스캔 완료",
+        description: `${count}건의 고객정보를 취득했습니다`,
       });
+      setScanningId(null);
     },
     onError: (err: any) => {
-      toast({ title: "갱신 실패", description: err.message, variant: "destructive" });
+      toast({ title: "스캔 실패", description: err.message, variant: "destructive" });
+      setScanningId(null);
     },
   });
 
@@ -362,19 +367,6 @@ export default function InquiryList() {
               ))}
             </SelectContent>
           </Select>
-          <Button
-            variant="outline"
-            onClick={() => bulkRescanMutation.mutate()}
-            disabled={bulkRescanMutation.isPending}
-            data-testid="button-bulk-rescan"
-          >
-            {bulkRescanMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CalendarIcon className="h-4 w-4" />
-            )}
-            <span>발생일자 갱신</span>
-          </Button>
           <Button onClick={() => setShowAddDialog(true)} data-testid="button-add-inquiry">
             <Plus />
             <span>추가</span>
@@ -497,7 +489,16 @@ export default function InquiryList() {
                       <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
                       <TableCell>{inq.year}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">
-                        {inq.createdAt ? new Date(inq.createdAt).toISOString().split('T')[0] : "-"}
+                        {inq.createdAt ? (() => {
+                          const d = new Date(inq.createdAt);
+                          const isBackfilled = d.getMonth() === 0 && d.getDate() === 1;
+                          return (
+                            <div className="flex items-center gap-1">
+                              <span>{d.toISOString().split('T')[0]}</span>
+                              {isBackfilled && <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-500 border-orange-300">예전자료</Badge>}
+                            </div>
+                          );
+                        })() : "-"}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Select
@@ -577,10 +578,29 @@ export default function InquiryList() {
                           </PopoverContent>
                         </Popover>
                       </TableCell>
-                      <TableCell>
-                        <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); setSelectedInquiryId(inq.id); }}>
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-0.5">
+                          {inq.onedriveFolderId && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              disabled={scanningId === inq.id}
+                              onClick={() => scanMutation.mutate(inq.id)}
+                              title="엑셀 스캔 (발생일자/고객정보 취득)"
+                              data-testid={`button-scan-${inq.id}`}
+                            >
+                              {scanningId === inq.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          )}
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSelectedInquiryId(inq.id)}>
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
