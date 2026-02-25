@@ -726,10 +726,10 @@ function CustomerMatchDialog({ candidates, companyName, pendingInfo, inquiryId, 
 
 function ContactManagementSection({ customerId }: { customerId: string }) {
   const { toast } = useToast();
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showDialog, setShowDialog] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
+  const [editTargetId, setEditTargetId] = useState<string | null>(null);
   const [form, setForm] = useState({ contactName: "", email: "", phone: "" });
-  const [editForm, setEditForm] = useState({ contactName: "", email: "", phone: "" });
 
   const { data: contacts = [], isLoading, isError } = useQuery<Company[]>({
     queryKey: ["/api/companies/by-customer", customerId],
@@ -739,7 +739,7 @@ function ContactManagementSection({ customerId }: { customerId: string }) {
   const createMutation = useMutation({
     mutationFn: async (data: { contactName: string; email: string; phone: string }) => {
       const res = await apiRequest("POST", "/api/companies", {
-        companyName: "담당자",
+        companyName: data.contactName,
         contactName: data.contactName,
         email: data.email,
         phone: data.phone,
@@ -750,7 +750,7 @@ function ContactManagementSection({ customerId }: { customerId: string }) {
     },
     onSuccess: () => {
       toast({ title: "담당자 등록 완료" });
-      setShowAddForm(false);
+      setShowDialog(false);
       setForm({ contactName: "", email: "", phone: "" });
       queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
@@ -767,7 +767,8 @@ function ContactManagementSection({ customerId }: { customerId: string }) {
     },
     onSuccess: () => {
       toast({ title: "수정 완료" });
-      setEditingId(null);
+      setShowDialog(false);
+      setEditTargetId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
     },
@@ -790,161 +791,162 @@ function ContactManagementSection({ customerId }: { customerId: string }) {
     },
   });
 
-  const startEdit = (contact: Company) => {
-    setEditingId(contact.id);
-    setEditForm({
+  const openAddDialog = () => {
+    setDialogMode("add");
+    setEditTargetId(null);
+    setForm({ contactName: "", email: "", phone: "" });
+    setShowDialog(true);
+  };
+
+  const openEditDialog = (contact: Company) => {
+    setDialogMode("edit");
+    setEditTargetId(contact.id);
+    setForm({
       contactName: contact.contactName || "",
       email: contact.email || "",
       phone: contact.phone || "",
     });
+    setShowDialog(true);
   };
 
-  const saveEdit = () => {
-    if (!editingId) return;
-    updateMutation.mutate({ id: editingId, data: editForm });
+  const handleSubmit = () => {
+    if (!form.contactName.trim()) {
+      toast({ title: "담당자명을 입력하세요", variant: "destructive" });
+      return;
+    }
+    if (dialogMode === "edit" && editTargetId) {
+      updateMutation.mutate({ id: editTargetId, data: form });
+    } else {
+      createMutation.mutate(form);
+    }
   };
+
+  const isSaving = createMutation.isPending || updateMutation.isPending;
 
   if (isLoading) return <Skeleton className="h-16 w-full mt-2" />;
   if (isError) return <p className="text-xs text-destructive mt-2">담당자 정보를 불러올 수 없습니다</p>;
 
   return (
-    <div className="mt-3 border rounded-lg p-3 bg-muted/20">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-medium flex items-center gap-1.5">
-          <User className="h-3.5 w-3.5" />
-          담당자 ({contacts.length}명)
-        </p>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => { setShowAddForm(!showAddForm); setForm({ contactName: "", email: "", phone: "" }); }}
-          data-testid="button-add-contact"
-        >
-          <UserPlus className="h-3 w-3 mr-1" />
-          추가
-        </Button>
-      </div>
+    <>
+      <div className="mt-3 border rounded-lg p-3 bg-muted/20">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5" />
+            담당자 ({contacts.length}명)
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={openAddDialog}
+            data-testid="button-add-contact"
+          >
+            <UserPlus className="h-3 w-3 mr-1" />
+            추가
+          </Button>
+        </div>
 
-      {contacts.length === 0 && !showAddForm && (
-        <p className="text-xs text-muted-foreground text-center py-2">등록된 담당자가 없습니다</p>
-      )}
+        {contacts.length === 0 && (
+          <div className="flex flex-col items-center gap-3 py-4 px-2 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
+            <div className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-orange-500" />
+              <p className="text-sm font-medium text-orange-700 dark:text-orange-300">담당자 정보가 없습니다</p>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">고객사의 담당자 이름, 이메일, 전화번호를 등록하세요</p>
+            <Button
+              onClick={openAddDialog}
+              size="sm"
+              data-testid="button-register-contact-cta"
+            >
+              <UserPlus className="h-4 w-4 mr-1" />
+              지금 담당자 등록하기
+            </Button>
+          </div>
+        )}
 
-      {contacts.map(contact => (
-        <div key={contact.id} className="flex items-center gap-2 py-1.5 border-b border-border/30 last:border-b-0 text-xs group" data-testid={`contact-row-${contact.id}`}>
-          {editingId === contact.id ? (
-            <div className="flex-1 flex flex-wrap items-center gap-2">
-              <Input
-                className="h-6 text-xs px-1.5 w-[100px]"
-                placeholder="이름"
-                value={editForm.contactName}
-                onChange={e => setEditForm(f => ({ ...f, contactName: e.target.value }))}
-                data-testid={`input-edit-contact-name-${contact.id}`}
-              />
-              <Input
-                className="h-6 text-xs px-1.5 w-[140px]"
-                placeholder="이메일"
-                value={editForm.email}
-                onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))}
-                data-testid={`input-edit-contact-email-${contact.id}`}
-              />
-              <Input
-                className="h-6 text-xs px-1.5 w-[110px]"
-                placeholder="전화번호"
-                value={editForm.phone}
-                onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
-                data-testid={`input-edit-contact-phone-${contact.id}`}
-              />
-              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={saveEdit} disabled={updateMutation.isPending} data-testid={`button-save-contact-${contact.id}`}>
-                <Save className="h-2.5 w-2.5" />
+        {contacts.map(contact => (
+          <div key={contact.id} className="flex items-center gap-2 py-2 border-b border-border/30 last:border-b-0 text-sm" data-testid={`contact-row-${contact.id}`}>
+            <div className="flex-1 flex items-center gap-3 min-w-0">
+              <span className="font-medium flex items-center gap-1">
+                <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                {contact.contactName || "-"}
+              </span>
+              {contact.email && (
+                <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                  <Mail className="h-3 w-3 shrink-0" />
+                  {contact.email}
+                </span>
+              )}
+              {contact.phone && (
+                <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                  <Phone className="h-3 w-3 shrink-0" />
+                  {contact.phone}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button size="icon" variant="ghost" onClick={() => openEditDialog(contact)} data-testid={`button-edit-contact-${contact.id}`}>
+                <Pencil className="h-3 w-3" />
               </Button>
-              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setEditingId(null)} data-testid={`button-cancel-edit-contact-${contact.id}`}>
-                <X className="h-2.5 w-2.5" />
+              <Button size="icon" variant="ghost" className="text-destructive" onClick={() => deleteMutation.mutate(contact.id)} data-testid={`button-delete-contact-${contact.id}`}>
+                <Trash2 className="h-3 w-3" />
               </Button>
             </div>
-          ) : (
-            <>
-              <div className="flex-1 flex items-center gap-3 min-w-0">
-                <span className="font-medium flex items-center gap-1">
-                  <User className="h-3 w-3 text-muted-foreground shrink-0" />
-                  {contact.contactName || "-"}
-                </span>
-                {contact.email && (
-                  <span className="text-muted-foreground flex items-center gap-1 truncate">
-                    <Mail className="h-3 w-3 shrink-0" />
-                    {contact.email}
-                  </span>
-                )}
-                {contact.phone && (
-                  <span className="text-muted-foreground flex items-center gap-1">
-                    <Phone className="h-3 w-3 shrink-0" />
-                    {contact.phone}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-0.5 shrink-0">
-                <Button size="icon" variant="ghost" onClick={() => startEdit(contact)} data-testid={`button-edit-contact-${contact.id}`}>
-                  <Pencil className="h-3 w-3" />
-                </Button>
-                <Button size="icon" variant="ghost" className="text-destructive" onClick={() => deleteMutation.mutate(contact.id)} data-testid={`button-delete-contact-${contact.id}`}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      ))}
+          </div>
+        ))}
+      </div>
 
-      {showAddForm && (
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/30 mt-1">
-          <Input
-            className="h-7 text-xs px-2 w-[100px]"
-            placeholder="담당자명 *"
-            value={form.contactName}
-            onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))}
-            data-testid="input-new-contact-name"
-          />
-          <Input
-            className="h-7 text-xs px-2 w-[140px]"
-            placeholder="이메일"
-            value={form.email}
-            onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-            data-testid="input-new-contact-email"
-          />
-          <Input
-            className="h-7 text-xs px-2 w-[110px]"
-            placeholder="전화번호"
-            value={form.phone}
-            onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-            data-testid="input-new-contact-phone"
-          />
-          <Button
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => {
-              if (!form.contactName.trim()) {
-                toast({ title: "담당자명을 입력하세요", variant: "destructive" });
-                return;
-              }
-              createMutation.mutate(form);
-            }}
-            disabled={createMutation.isPending}
-            data-testid="button-submit-new-contact"
-          >
-            {createMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-            <span className="ml-1">등록</span>
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 text-xs"
-            onClick={() => setShowAddForm(false)}
-            data-testid="button-cancel-new-contact"
-          >
-            취소
-          </Button>
-        </div>
-      )}
-    </div>
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{dialogMode === "add" ? "담당자 등록" : "담당자 수정"}</DialogTitle>
+            <DialogDescription>
+              {dialogMode === "add" ? "고객사 담당자의 정보를 입력하세요." : "담당자 정보를 수정합니다."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">담당자명 *</label>
+              <Input
+                placeholder="홍길동"
+                value={form.contactName}
+                onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))}
+                autoFocus
+                data-testid="input-dialog-contact-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">이메일</label>
+              <Input
+                type="email"
+                placeholder="example@company.com"
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                data-testid="input-dialog-contact-email"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">전화번호</label>
+              <Input
+                type="tel"
+                placeholder="010-1234-5678"
+                value={form.phone}
+                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                data-testid="input-dialog-contact-phone"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowDialog(false)} data-testid="button-dialog-cancel">
+              취소
+            </Button>
+            <Button onClick={handleSubmit} disabled={isSaving} data-testid="button-dialog-submit">
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+              {dialogMode === "add" ? "등록" : "저장"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
