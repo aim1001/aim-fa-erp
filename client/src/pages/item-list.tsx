@@ -370,76 +370,90 @@ export default function ItemList() {
           <p className="text-sm mt-1">OneDrive 동기화 버튼을 눌러 listprice.xlsx에서 제품을 가져오세요</p>
         </div>
       ) : (
-        <div className="border rounded-lg overflow-hidden">
+        <div className="rounded-lg overflow-hidden border border-border/40">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="w-[80px]">대분류</TableHead>
-                <TableHead className="w-[80px]">소분류</TableHead>
-                <TableHead className="w-[130px]">품목코드</TableHead>
-                <TableHead className="max-w-[200px]">품목명</TableHead>
-                <TableHead className="hidden md:table-cell max-w-[180px]">사양</TableHead>
-                <TableHead className="text-right w-[110px]">원가</TableHead>
-                <TableHead className="text-right w-[110px]">판매가</TableHead>
-                <TableHead className="text-center w-[50px]">재고</TableHead>
-                <TableHead className="text-center w-[50px]">활성</TableHead>
-                <TableHead className="w-[32px]"></TableHead>
+              <TableRow className="bg-muted/30 border-b border-border/40">
+                <TableHead className="w-[70px] text-xs h-9 px-3">대분류</TableHead>
+                <TableHead className="w-[70px] text-xs h-9 px-3">소분류</TableHead>
+                <TableHead className="w-[130px] text-xs h-9 px-3">품목코드</TableHead>
+                <TableHead className="max-w-[180px] text-xs h-9 px-3">품목명</TableHead>
+                <TableHead className="hidden md:table-cell max-w-[160px] text-xs h-9 px-3">사양</TableHead>
+                <TableHead className="w-[70px] text-xs h-9 px-3">유형</TableHead>
+                <TableHead className="text-right w-[100px] text-xs h-9 px-3">원가</TableHead>
+                <TableHead className="text-right w-[100px] text-xs h-9 px-3">판매가</TableHead>
+                <TableHead className="text-right w-[90px] text-xs h-9 px-3 hidden lg:table-cell">마진</TableHead>
+                <TableHead className="text-center w-[45px] text-xs h-9 px-2">재고</TableHead>
+                <TableHead className="text-center w-[35px] text-xs h-9 px-1"></TableHead>
+                <TableHead className="w-[28px] h-9 px-1"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map(item => {
                 const isExpanded = expandedId === item.id;
+                const margin = item.cost && item.salesPrice ? item.salesPrice - item.cost : null;
+                const marginPct = margin && item.salesPrice ? Math.round((margin / item.salesPrice) * 100) : null;
                 return (
                   <Fragment key={item.id}>
                     <TableRow
-                      className={`cursor-pointer transition-colors ${isExpanded ? "bg-blue-50/40 dark:bg-blue-950/10" : "hover:bg-muted/30"}`}
+                      className={`cursor-pointer transition-colors border-b border-border/20 ${isExpanded ? "bg-blue-50/40 dark:bg-blue-950/10" : "hover:bg-muted/20"}`}
                       onClick={() => setExpandedId(isExpanded ? null : item.id)}
                       data-testid={`row-item-${item.itemCode}`}
                     >
-                      <TableCell className="text-xs font-medium py-2" data-testid={`text-cat1-${item.itemCode}`}>
+                      <TableCell className="text-xs py-1.5 px-3 text-foreground" data-testid={`text-cat1-${item.itemCode}`}>
                         {item.category1}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground py-2" data-testid={`text-cat2-${item.itemCode}`}>
+                      <TableCell className="text-xs py-1.5 px-3 text-foreground/70" data-testid={`text-cat2-${item.itemCode}`}>
                         {item.category2 || "-"}
                       </TableCell>
-                      <TableCell className="font-mono text-xs py-2 max-w-[130px] truncate" data-testid={`text-code-${item.itemCode}`}>
+                      <TableCell className="text-xs py-1.5 px-3 text-foreground max-w-[130px] truncate" data-testid={`text-code-${item.itemCode}`}>
                         {item.itemCode}
                       </TableCell>
-                      <TableCell className="font-medium text-sm py-2 max-w-[200px] truncate" data-testid={`text-name-${item.itemCode}`}>
+                      <TableCell className="text-xs py-1.5 px-3 text-foreground max-w-[180px] truncate" data-testid={`text-name-${item.itemCode}`}>
                         {item.itemName}
                       </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground max-w-[180px] truncate py-2">
+                      <TableCell className="hidden md:table-cell text-xs py-1.5 px-3 text-foreground/70 max-w-[160px] truncate">
                         {item.spec || "-"}
                       </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground py-2 whitespace-nowrap" data-testid={`text-cost-${item.itemCode}`}>
+                      <TableCell className="text-xs py-1.5 px-3 text-foreground/70" data-testid={`text-type-${item.itemCode}`}>
+                        {item.itemType || "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-xs py-1.5 px-3 text-foreground whitespace-nowrap" data-testid={`text-cost-${item.itemCode}`}>
                         {formatPrice(item.cost)}
                       </TableCell>
-                      <TableCell className="text-right text-xs font-medium py-2 whitespace-nowrap" data-testid={`text-price-${item.itemCode}`}>
+                      <TableCell className="text-right text-xs py-1.5 px-3 text-foreground whitespace-nowrap" data-testid={`text-price-${item.itemCode}`}>
                         {formatPrice(item.salesPrice)}
                       </TableCell>
-                      <TableCell className="text-center py-2">
+                      <TableCell className="text-right text-xs py-1.5 px-3 whitespace-nowrap hidden lg:table-cell" data-testid={`text-margin-${item.itemCode}`}>
+                        {marginPct !== null ? (
+                          <span className={marginPct >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+                            {marginPct}%
+                          </span>
+                        ) : "-"}
+                      </TableCell>
+                      <TableCell className="text-center text-xs py-1.5 px-2 text-foreground">
                         {getStockQty(item.inventory, "AVAILABLE") > 0 ? (
-                          <Badge variant="secondary" className="text-[10px] h-5 px-1.5" data-testid={`badge-stock-${item.itemCode}`}>
+                          <span data-testid={`text-stock-${item.itemCode}`}>
                             {getStockQty(item.inventory, "AVAILABLE")}
-                          </Badge>
+                          </span>
                         ) : (
-                          <span className="text-muted-foreground text-xs">-</span>
+                          <span className="text-foreground/30">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-center py-2">
-                        <div className={`w-2 h-2 rounded-full mx-auto ${item.active ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`} data-testid={`indicator-active-${item.itemCode}`} />
+                      <TableCell className="text-center py-1.5 px-1">
+                        <div className={`w-1.5 h-1.5 rounded-full mx-auto ${item.active ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`} data-testid={`indicator-active-${item.itemCode}`} />
                       </TableCell>
-                      <TableCell className="py-2">
+                      <TableCell className="py-1.5 px-1">
                         {isExpanded ? (
-                          <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                          <ChevronUp className="h-3 w-3 text-foreground/40" />
                         ) : (
-                          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                          <ChevronDown className="h-3 w-3 text-foreground/40" />
                         )}
                       </TableCell>
                     </TableRow>
                     {isExpanded && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={10} className="p-0">
+                      <TableRow className="hover:bg-transparent border-b border-border/20">
+                        <TableCell colSpan={12} className="p-0">
                           <ItemDetailRow item={item} itemTypes={itemTypes} />
                         </TableCell>
                       </TableRow>
