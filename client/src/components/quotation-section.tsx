@@ -1,18 +1,15 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   FileText, Plus, Trash2, Search, Pencil, Check, X,
-  Upload, FileDown, Package, Loader2, ChevronRight,
+  Upload, FileDown, Package, Loader2,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -680,17 +677,15 @@ function ExportTab({ quotation, items, inquiry, inquiryId }: {
   );
 }
 
-function QuotationModal({ quotationId, inquiryId, inquiry, open, onClose }: {
+function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
   quotationId: string;
   inquiryId: string;
   inquiry: Inquiry;
-  open: boolean;
-  onClose: () => void;
 }) {
   const { data, isLoading } = useQuery<{ quotation: Quotation; items: QuotationItem[] }>({
     queryKey: ["/api/quotations", quotationId],
     queryFn: () => fetch(`/api/quotations/${quotationId}`).then(r => r.json()),
-    enabled: open && !!quotationId,
+    enabled: !!quotationId,
   });
 
   const onRefresh = () => {
@@ -699,50 +694,32 @@ function QuotationModal({ quotationId, inquiryId, inquiry, open, onClose }: {
 
   const quotation = data?.quotation;
   const items = data?.items || [];
-  const statusLabel: Record<string, string> = { draft: "작성중", sent: "발송", accepted: "수주" };
+
+  if (isLoading || !quotation) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            {quotation ? (
-              <>
-                {quotation.quoteNumber}
-                <Badge variant={quotation.status === "accepted" ? "default" : "secondary"} className="ml-2">
-                  {statusLabel[quotation.status || "draft"] || quotation.status}
-                </Badge>
-                <span className="text-sm text-muted-foreground font-normal ml-2">{quotation.quoteDate}</span>
-              </>
-            ) : "견적서"}
-          </DialogTitle>
-        </DialogHeader>
+    <div className="space-y-6">
+      <ExportTab quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} />
 
-        {isLoading || !quotation ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <Tabs defaultValue="items" className="mt-2">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="items" data-testid="tab-items">품목</TabsTrigger>
-              <TabsTrigger value="pricing" data-testid="tab-pricing">가격·합계</TabsTrigger>
-              <TabsTrigger value="export" data-testid="tab-export">생성·내보내기</TabsTrigger>
-            </TabsList>
-            <TabsContent value="items" className="mt-4">
-              <ItemsTab quotation={quotation} items={items} onRefresh={onRefresh} />
-            </TabsContent>
-            <TabsContent value="pricing" className="mt-4">
-              <PricingTab quotation={quotation} items={items} inquiryId={inquiryId} onRefresh={onRefresh} />
-            </TabsContent>
-            <TabsContent value="export" className="mt-4">
-              <ExportTab quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} />
-            </TabsContent>
-          </Tabs>
-        )}
-      </DialogContent>
-    </Dialog>
+      <div>
+        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+          <Package className="h-4 w-4" />
+          품목 목록
+        </h3>
+        <ItemsTab quotation={quotation} items={items} onRefresh={onRefresh} />
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold mb-3">가격 · 합계</h3>
+        <PricingTab quotation={quotation} items={items} inquiryId={inquiryId} onRefresh={onRefresh} />
+      </div>
+    </div>
   );
 }
 
@@ -781,8 +758,9 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/quotations/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "quotations"] });
+      if (selectedId === deletedId) setSelectedId(null);
       toast({ title: "견적서 삭제됨" });
     },
     onError: () => toast({ title: "삭제 실패", variant: "destructive" }),
@@ -791,51 +769,33 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
   const statusLabel: Record<string, string> = { draft: "작성중", sent: "발송", accepted: "수주" };
 
   return (
-    <>
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              견적서
-              {quotationList.length > 0 && (
-                <Badge variant="secondary" className="text-xs">{quotationList.length}</Badge>
-              )}
-            </CardTitle>
-            <Button size="sm" onClick={() => createMut.mutate()} disabled={createMut.isPending} data-testid="button-new-quotation">
-              <Plus className="h-3 w-3 mr-1" />새 견적서
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-1.5">
-          {isLoading && <div className="text-sm text-muted-foreground">불러오는 중...</div>}
-
-          {quotationList.length === 0 && !isLoading && (
-            <div className="text-sm text-muted-foreground text-center py-4">
-              아직 견적서가 없습니다. "새 견적서" 버튼으로 작성을 시작하세요.
-            </div>
-          )}
-
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap flex-1">
+          {isLoading && <span className="text-xs text-muted-foreground">불러오는 중...</span>}
           {quotationList.map(q => (
-            <div
-              key={q.id}
-              className="flex items-center justify-between px-3 py-2 rounded-md border hover:bg-muted/50 cursor-pointer group"
-              onClick={() => setSelectedId(q.id)}
-              data-testid={`quotation-row-${q.id}`}
-            >
-              <div className="flex items-center gap-2">
-                <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="font-medium text-sm">{q.quoteNumber}</span>
-                <Badge variant={q.status === "accepted" ? "default" : "secondary"} className="text-[10px]">
+            <div key={q.id} className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant={selectedId === q.id ? "default" : "outline"}
+                className="text-xs px-3"
+                onClick={() => setSelectedId(selectedId === q.id ? null : q.id)}
+                data-testid={`quotation-row-${q.id}`}
+              >
+                <FileText className="h-3 w-3 mr-1" />
+                {q.quoteNumber}
+                <Badge
+                  variant={q.status === "accepted" ? "default" : "secondary"}
+                  className="text-[9px] ml-1.5 px-1"
+                >
                   {statusLabel[q.status || "draft"] || q.status}
                 </Badge>
-                <span className="text-xs text-muted-foreground">{q.quoteDate}</span>
-              </div>
-              <div className="flex items-center gap-2">
+              </Button>
+              {selectedId === q.id && (
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-destructive"
+                  className="text-destructive"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (confirm("이 견적서를 삭제하시겠습니까?")) deleteMut.mutate(q.id);
@@ -844,22 +804,34 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </div>
+              )}
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+        <Button size="sm" onClick={() => createMut.mutate()} disabled={createMut.isPending} data-testid="button-new-quotation">
+          <Plus className="h-3 w-3 mr-1" />새 견적서
+        </Button>
+      </div>
+
+      {!selectedId && quotationList.length === 0 && !isLoading && (
+        <div className="text-sm text-muted-foreground text-center py-8 border rounded-md">
+          아직 견적서가 없습니다. "새 견적서" 버튼으로 작성을 시작하세요.
+        </div>
+      )}
+
+      {!selectedId && quotationList.length > 0 && (
+        <div className="text-sm text-muted-foreground text-center py-8 border rounded-md">
+          위에서 견적서를 선택하세요.
+        </div>
+      )}
 
       {selectedId && (
-        <QuotationModal
+        <QuotationDetailInline
           quotationId={selectedId}
           inquiryId={inquiryId}
           inquiry={inquiry}
-          open={!!selectedId}
-          onClose={() => setSelectedId(null)}
         />
       )}
-    </>
+    </div>
   );
 }
