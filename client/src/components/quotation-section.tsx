@@ -437,6 +437,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const [newAdj, setNewAdj] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [editingAdjId, setEditingAdjId] = useState<string | null>(null);
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
+  const [discountType, setDiscountType] = useState<string>(quotation.discountType || "amount");
   const [discountValue, setDiscountValue] = useState(quotation.discountValue || 0);
   const [discountTruncUnit, setDiscountTruncUnit] = useState<string>(quotation.discountTruncUnit || "none");
   const [deliveryDays, setDeliveryDays] = useState<number | null>(quotation.deliveryDays ?? null);
@@ -452,12 +453,18 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
   const supplyAmount = regularSubtotal + adjTotal;
 
+  const discountAmount = useMemo(() => {
+    if (discountValue <= 0) return 0;
+    if (discountType === "percent") return Math.round(supplyAmount * discountValue / 100);
+    return discountValue;
+  }, [discountType, discountValue, supplyAmount]);
+
   const afterDiscount = useMemo(() => {
-    const raw = supplyAmount - (discountValue > 0 ? discountValue : 0);
+    const raw = supplyAmount - discountAmount;
     const unit = parseInt(discountTruncUnit);
-    if (unit > 0 && discountValue > 0) return Math.floor(raw / unit) * unit;
+    if (unit > 0 && discountAmount > 0) return Math.floor(raw / unit) * unit;
     return raw;
-  }, [discountValue, discountTruncUnit, supplyAmount]);
+  }, [discountAmount, discountTruncUnit, supplyAmount]);
 
   const actualDiscount = supplyAmount - afterDiscount;
   const tax = Math.round(afterDiscount * 0.1);
@@ -515,7 +522,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const handleSave = () => {
     updateMut.mutate({
       notes,
-      discountType: "amount",
+      discountType,
       discountValue,
       discountTruncUnit,
       deliveryDays: deliveryDays || null,
@@ -676,53 +683,64 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
         </div>
 
         <div className="border-t pt-3 space-y-2">
-          <label className="text-sm font-medium">할인</label>
           <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">할인</label>
+            <Select value={discountType} onValueChange={(v) => { setDiscountType(v); setDiscountValue(0); }}>
+              <SelectTrigger className="w-20 h-7 text-xs" data-testid="select-discount-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percent">비율(%)</SelectItem>
+                <SelectItem value="amount">금액(원)</SelectItem>
+              </SelectContent>
+            </Select>
             <Input
               type="number"
               value={discountValue || ""}
-              onChange={e => setDiscountValue(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
-              placeholder="할인금액"
-              className="h-8 text-xs w-36"
+              onChange={e => setDiscountValue(e.target.value === "" ? 0 : (discountType === "percent" ? parseFloat(e.target.value) || 0 : parseInt(e.target.value) || 0))}
+              placeholder={discountType === "percent" ? "할인율" : "할인금액"}
+              className="h-7 text-xs w-28"
               data-testid="input-discount-value"
             />
-            <span className="text-xs text-muted-foreground">원</span>
+            <span className="text-xs text-muted-foreground">{discountType === "percent" ? "%" : "원"}</span>
+            {discountType === "percent" && discountAmount > 0 && (
+              <span className="text-xs text-muted-foreground">= -{fmtNum(discountAmount)}원</span>
+            )}
           </div>
         </div>
 
-        {discountValue > 0 && (
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium">절사</label>
+          <Select value={discountTruncUnit} onValueChange={setDiscountTruncUnit}>
+            <SelectTrigger className="w-28 h-7 text-xs" data-testid="select-discount-trunc-unit">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">절사 없음</SelectItem>
+              <SelectItem value="1000">천원 절사</SelectItem>
+              <SelectItem value="10000">만원 절사</SelectItem>
+              <SelectItem value="100000">십만원 절사</SelectItem>
+              <SelectItem value="1000000">백만원 절사</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {actualDiscount > 0 && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">할인</span>
-            <span className="text-red-500">-{fmtNum(discountValue)}원</span>
+            <span className="text-red-500">-{fmtNum(actualDiscount)}원 ({supplyAmount > 0 ? ((actualDiscount / supplyAmount) * 100).toFixed(1) : "0"}%)</span>
           </div>
         )}
 
-        {discountValue > 0 && (
+        {actualDiscount > 0 && (
           <div className="bg-primary/10 rounded-md px-3 py-2 -mx-1 space-y-1">
             <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">최종 공급가액</span>
-                <Select value={discountTruncUnit} onValueChange={setDiscountTruncUnit}>
-                  <SelectTrigger className="w-24 h-7 text-xs" data-testid="select-discount-trunc-unit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">절사 없음</SelectItem>
-                    <SelectItem value="1000">천원 절사</SelectItem>
-                    <SelectItem value="10000">만원 절사</SelectItem>
-                    <SelectItem value="100000">십만원 절사</SelectItem>
-                    <SelectItem value="1000000">백만원 절사</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <span className="font-semibold">최종 공급가액</span>
               <span className="font-semibold">{fmtNum(afterDiscount)}원</span>
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground pl-2">
               <span>마진 {fmtNum(afterDiscount - totalCost)}</span>
               <span>마진율 {afterDiscount > 0 ? (((afterDiscount - totalCost) / afterDiscount) * 100).toFixed(1) : "0.0"}%</span>
-              {actualDiscount !== discountValue && (
-                <span>실제 할인 {fmtNum(actualDiscount)}원 ({supplyAmount > 0 ? ((actualDiscount / supplyAmount) * 100).toFixed(2) : "0"}%)</span>
-              )}
             </div>
           </div>
         )}
