@@ -427,6 +427,51 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       y = Math.max(leftBottomY, rightBottomY);
     }
 
+    const signBoxH = 80;
+    const signHeaderH = 20;
+    const footerBarH = 22;
+    const signTotalH = signBoxH + signHeaderH + footerBarH + 20;
+
+    if (y + signTotalH > 780) { doc.addPage(); y = 50; }
+    y += 15;
+
+    const signGap = 10;
+    const signW = (PAGE_WIDTH - signGap) / 2;
+    const signLeftX = PAGE_LEFT;
+    const signRightX = PAGE_LEFT + signW + signGap;
+
+    doc.rect(signLeftX, y, signW, signHeaderH).fill("#E8E8E8");
+    doc.font("Bold").fontSize(8).fillColor("#000");
+    doc.text("Buyer (Sign)", signLeftX, y + 5, { width: signW, align: "center" });
+
+    doc.rect(signRightX, y, signW, signHeaderH).fill("#E8E8E8");
+    doc.text("Seller (Sign)", signRightX, y + 5, { width: signW, align: "center" });
+
+    const signBodyY = y + signHeaderH;
+    doc.rect(signLeftX, signBodyY, signW, signBoxH).lineWidth(0.5).stroke("#999");
+    doc.rect(signRightX, signBodyY, signW, signBoxH).lineWidth(0.5).stroke("#999");
+
+    if (companyInfo) {
+      const sellerName = companyInfo.companyName ? `${companyInfo.companyName}` : "";
+      const sellerRep = companyInfo.representative ? `대표이사 ${companyInfo.representative}` : "";
+      const sellerLine = [sellerName, sellerRep].filter(Boolean).join(" ");
+      if (sellerLine) {
+        doc.font("Regular").fontSize(8).fillColor("#000");
+        doc.text(sellerLine, signRightX + 10, signBodyY + 8, { width: signW - 20, align: "center" });
+      }
+    }
+
+    doc.font("Regular").fontSize(8).fillColor("#000");
+    doc.text(fmtDate(quotation.quoteDate), signRightX + 10, signBodyY + signBoxH - 18, { width: signW - 20, align: "right" });
+
+    const footerY = signBodyY + signBoxH + 10;
+    doc.rect(PAGE_LEFT, footerY, PAGE_WIDTH, footerBarH).fill("#555");
+    doc.font("Regular").fontSize(8).fillColor("#fff");
+    const websiteUrl = companyInfo?.email ? `www.${companyInfo.email.split("@")[1]}` : "";
+    if (websiteUrl) {
+      doc.text(websiteUrl, PAGE_LEFT, footerY + 6, { width: PAGE_WIDTH, align: "center" });
+    }
+
     doc.end();
   });
 }
