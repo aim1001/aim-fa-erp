@@ -193,81 +193,49 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.moveDown(0.8);
 
     const tableTop = doc.y;
-    const colX = [50, 75, 165, 310, 355, 410, 470];
-    const colW = [25, 90, 145, 45, 55, 60, 75];
-    const headers = ["No", "품목", "규격", "수량", "단가", "금액", "비고"];
+    const sumColX = [50, 75, 310, 410];
+    const sumColW = [25, 235, 100, 135];
+    const sumHeaders = ["No", "카테고리", "수량", "금액"];
 
     doc.rect(50, tableTop, 495, 20).fill("#E8E8E8");
     doc.fillColor("#000").font("Bold").fontSize(8);
-    headers.forEach((h, i) => {
-      doc.text(h, colX[i], tableTop + 5, { width: colW[i], align: i >= 3 ? "right" : "left" });
+    sumHeaders.forEach((h, i) => {
+      doc.text(h, sumColX[i], tableTop + 5, { width: sumColW[i], align: i >= 2 ? "right" : "left" });
     });
 
     let y = tableTop + 22;
-    let globalIdx = 0;
+    let catIdx = 0;
 
-    const renderItemRow = (item: QuotationItem) => {
-      globalIdx++;
-      doc.font("Regular").fontSize(8);
-      const specText = item.spec || "";
-      const specH = specText ? doc.heightOfString(specText, { width: colW[2] - 4 }) : 0;
-      const minRowH = 16;
-      const rowH = Math.max(minRowH, specH + 6);
-
-      if (y + rowH > 750) { doc.addPage(); y = 50; }
-      if (globalIdx % 2 === 0) {
+    for (const [cat, catItems] of grouped) {
+      catIdx++;
+      const catQty = catItems.reduce((s, i) => s + (i.quantity || 0), 0);
+      const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
+      const rowH = 16;
+      if (catIdx % 2 === 0) {
         doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
       }
       doc.fillColor("#000").font("Regular").fontSize(8);
-      doc.text(String(globalIdx), colX[0], y, { width: colW[0] });
-      doc.text(item.itemName || "-", colX[1], y, { width: colW[1] });
-      if (specText) {
-        doc.text(specText, colX[2], y, { width: colW[2] - 4 });
-      }
-      doc.text(fmtNum(item.quantity), colX[3], y, { width: colW[3], align: "right" });
-      doc.text(fmtNum(item.unitPrice), colX[4], y, { width: colW[4], align: "right" });
-      doc.text(fmtNum(item.amount), colX[5], y, { width: colW[5], align: "right" });
+      doc.text(String(catIdx), sumColX[0], y, { width: sumColW[0] });
+      doc.text(cat, sumColX[1], y, { width: sumColW[1] });
+      doc.text(fmtNum(catQty), sumColX[2], y, { width: sumColW[2], align: "right" });
+      doc.text(`${fmtNum(catSubtotal)}원`, sumColX[3], y, { width: sumColW[3], align: "right" });
       y += rowH;
-    };
-
-    for (const [cat, catItems] of grouped) {
-      if (y > 730) { doc.addPage(); y = 50; }
-      doc.rect(50, y - 2, 495, 16).fill("#F0F4F8");
-      doc.fillColor("#333").font("Bold").fontSize(8);
-      doc.text(cat, 55, y, { width: 300 });
-      y += 18;
-
-      for (const item of catItems) {
-        renderItemRow(item);
-      }
-
-      const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
-      if (y > 750) { doc.addPage(); y = 50; }
-      doc.font("Bold").fontSize(8);
-      doc.text(`소계`, 310, y, { width: 110, align: "right" });
-      doc.text(`${fmtNum(catSubtotal)}원`, 420, y, { width: 125, align: "right" });
-      y += 18;
-      doc.font("Regular").fontSize(8);
     }
 
     if (adjustmentItems.length > 0) {
-      if (y > 730) { doc.addPage(); y = 50; }
-      doc.rect(50, y - 2, 495, 16).fill("#F0F4F8");
-      doc.fillColor("#333").font("Bold").fontSize(8);
-      doc.text("추가", 55, y, { width: 300 });
-      y += 18;
-
-      for (const item of adjustmentItems) {
-        renderItemRow(item);
-      }
-
+      catIdx++;
+      const adjQty = adjustmentItems.reduce((s, i) => s + (i.quantity || 0), 0);
       const adjSubtotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
-      if (y > 750) { doc.addPage(); y = 50; }
-      doc.font("Bold").fontSize(8);
-      doc.text(`소계`, 310, y, { width: 110, align: "right" });
-      doc.text(`${fmtNum(adjSubtotal)}원`, 420, y, { width: 125, align: "right" });
-      y += 18;
-      doc.font("Regular").fontSize(8);
+      const rowH = 16;
+      if (catIdx % 2 === 0) {
+        doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
+      }
+      doc.fillColor("#000").font("Regular").fontSize(8);
+      doc.text(String(catIdx), sumColX[0], y, { width: sumColW[0] });
+      doc.text("추가", sumColX[1], y, { width: sumColW[1] });
+      doc.text(fmtNum(adjQty), sumColX[2], y, { width: sumColW[2], align: "right" });
+      doc.text(`${fmtNum(adjSubtotal)}원`, sumColX[3], y, { width: sumColW[3], align: "right" });
+      y += rowH;
     }
 
     y += 5;
@@ -522,6 +490,106 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     const websiteUrl = companyInfo?.email ? `www.${companyInfo.email.split("@")[1]}` : "";
     if (websiteUrl) {
       doc.text(websiteUrl, PAGE_LEFT, footerY + 4, { width: PAGE_WIDTH, align: "center" });
+    }
+
+    const detColX = [50, 75, 165, 310, 355, 410, 470];
+    const detColW = [25, 90, 145, 45, 55, 60, 75];
+    const detHeaders = ["No", "품목", "규격", "수량", "단가", "금액", "비고"];
+
+    let dy = 0;
+
+    const renderDetailPageHeader = () => {
+      doc.addPage();
+      doc.font("Bold").fontSize(14).fillColor("#000");
+      doc.text("품목 상세", PAGE_LEFT, 40);
+      doc.font("Regular").fontSize(8).fillColor("#555");
+      doc.text(`${quotation.quoteNumber}`, PAGE_LEFT + 120, 44);
+      dy = 65;
+      renderDetailTableHeader();
+    };
+
+    const renderDetailTableHeader = () => {
+      doc.rect(50, dy, 495, 18).fill("#E8E8E8");
+      doc.fillColor("#000").font("Bold").fontSize(8);
+      detHeaders.forEach((h, i) => {
+        doc.text(h, detColX[i], dy + 4, { width: detColW[i], align: i >= 3 ? "right" : "left" });
+      });
+      dy += 20;
+    };
+
+    const checkDetailPageBreak = (needed: number) => {
+      if (dy + needed > 780) {
+        doc.addPage();
+        dy = 50;
+        renderDetailTableHeader();
+      }
+    };
+
+    renderDetailPageHeader();
+
+    let detIdx = 0;
+
+    const renderDetailRow = (item: QuotationItem) => {
+      detIdx++;
+      doc.font("Regular").fontSize(8);
+      const specText = item.spec || "";
+      const specH = specText ? doc.heightOfString(specText, { width: detColW[2] - 4 }) : 0;
+      const minRowH = 16;
+      const rowH = Math.max(minRowH, specH + 6);
+
+      checkDetailPageBreak(rowH);
+      if (detIdx % 2 === 0) {
+        doc.rect(50, dy - 2, 495, rowH).fill("#FAFAFA");
+      }
+      doc.fillColor("#000").font("Regular").fontSize(8);
+      doc.text(String(detIdx), detColX[0], dy, { width: detColW[0] });
+      doc.text(item.itemName || "-", detColX[1], dy, { width: detColW[1] });
+      if (specText) {
+        doc.text(specText, detColX[2], dy, { width: detColW[2] - 4 });
+      }
+      doc.text(fmtNum(item.quantity), detColX[3], dy, { width: detColW[3], align: "right" });
+      doc.text(fmtNum(item.unitPrice), detColX[4], dy, { width: detColW[4], align: "right" });
+      doc.text(fmtNum(item.amount), detColX[5], dy, { width: detColW[5], align: "right" });
+      dy += rowH;
+    };
+
+    for (const [cat, catItems] of grouped) {
+      checkDetailPageBreak(16);
+      doc.rect(50, dy - 2, 495, 16).fill("#F0F4F8");
+      doc.fillColor("#333").font("Bold").fontSize(8);
+      doc.text(cat, 55, dy, { width: 300 });
+      dy += 18;
+
+      for (const item of catItems) {
+        renderDetailRow(item);
+      }
+
+      const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
+      checkDetailPageBreak(18);
+      doc.font("Bold").fontSize(8).fillColor("#000");
+      doc.text(`소계`, 310, dy, { width: 110, align: "right" });
+      doc.text(`${fmtNum(catSubtotal)}원`, 420, dy, { width: 125, align: "right" });
+      dy += 18;
+      doc.font("Regular").fontSize(8);
+    }
+
+    if (adjustmentItems.length > 0) {
+      checkDetailPageBreak(16);
+      doc.rect(50, dy - 2, 495, 16).fill("#F0F4F8");
+      doc.fillColor("#333").font("Bold").fontSize(8);
+      doc.text("추가", 55, dy, { width: 300 });
+      dy += 18;
+
+      for (const item of adjustmentItems) {
+        renderDetailRow(item);
+      }
+
+      const adjSubtotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+      checkDetailPageBreak(18);
+      doc.font("Bold").fontSize(8).fillColor("#000");
+      doc.text(`소계`, 310, dy, { width: 110, align: "right" });
+      doc.text(`${fmtNum(adjSubtotal)}원`, 420, dy, { width: 125, align: "right" });
+      dy += 18;
     }
 
     doc.end();
