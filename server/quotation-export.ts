@@ -237,14 +237,13 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     doc.rect(ptX, ptY, ptTableW, ptRowH).fill("#E8E8E8");
     doc.fillColor("#333").font("Bold").fontSize(7.5);
-    doc.text("결재조건", ptX + 2, ptY + 3, { width: ptTableW - 4, align: "center" });
+    doc.text("결재조건 (현금)", ptX + 2, ptY + 3, { width: ptTableW - 4, align: "center" });
     ptY += ptRowH;
 
     const ptRows = [
       { label: "계약금", value: inquiry.contractRatio ? `${inquiry.contractRatio}%` : "-" },
       { label: "중도금", value: inquiry.midRatio ? `${inquiry.midRatio}%` : "-" },
       { label: "잔금", value: inquiry.finalRatio ? `${inquiry.finalRatio}%` : "-" },
-      { label: "현금결재", value: inquiry.paymentTerms || "-" },
     ];
 
     doc.font("Regular").fontSize(7.5);
