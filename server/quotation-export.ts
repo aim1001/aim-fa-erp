@@ -306,10 +306,25 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       y = doc.y;
     }
 
-    const hasClause = inquiry.contractClauses && inquiry.contractClauses.trim();
-    const hasWarranty = inquiry.warrantyTerms && inquiry.warrantyTerms.trim();
+    let deliveryText = "";
+    let warrantyText = inquiry.warrantyTerms || "";
 
-    if (hasClause || hasWarranty) {
+    if (inquiry.contractClauses) {
+      const raw = inquiry.contractClauses as string;
+      const splitPattern = /■\s*보증\s*(및|&)\s*책임\s*범위/;
+      const splitMatch = raw.match(splitPattern);
+      if (splitMatch && splitMatch.index != null && !warrantyText.trim()) {
+        deliveryText = raw.substring(0, splitMatch.index).trim();
+        warrantyText = raw.substring(splitMatch.index).trim();
+      } else {
+        deliveryText = raw.trim();
+      }
+    }
+
+    const deliveryClean = deliveryText.replace(/^■\s*지급\s*(및|&)\s*납기\s*\n*/i, "").trim();
+    const warrantyClean = warrantyText.replace(/^■\s*보증\s*(및|&)\s*책임\s*범위\s*\n*/i, "").trim();
+
+    if (deliveryClean || warrantyClean) {
       y += 12;
       if (y > 700) { doc.addPage(); y = 50; }
 
@@ -321,26 +336,35 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       const rightColX = PAGE_LEFT + colW + colGap;
       const termsTopY = y;
 
+      doc.font("Bold").fontSize(7);
+      const labelH = doc.heightOfString("■ 지급 및 납기", { width: colW });
+
       let leftBottomY = termsTopY;
-      if (hasClause) {
-        doc.font("Bold").fontSize(7).fillColor("#000");
-        doc.text("■ 지급 및 납기", PAGE_LEFT, termsTopY, { width: colW });
-        const lLabelH = doc.heightOfString("■ 지급 및 납기", { width: colW });
-        const lLabelEndY = termsTopY + lLabelH + 2;
-        doc.font("Regular").fontSize(6.5).fillColor("#333");
-        doc.text(inquiry.contractClauses!, PAGE_LEFT, lLabelEndY, { width: colW, lineGap: 1.5 });
-        leftBottomY = lLabelEndY + doc.heightOfString(inquiry.contractClauses!, { width: colW, lineGap: 1.5 });
+      if (deliveryClean) {
+        doc.font("Regular").fontSize(6.5);
+        const contentH = doc.heightOfString(deliveryClean, { width: colW, lineGap: 1.5 });
+        leftBottomY = termsTopY + labelH + 2 + contentH;
       }
 
       let rightBottomY = termsTopY;
-      if (hasWarranty) {
+      if (warrantyClean) {
+        doc.font("Regular").fontSize(6.5);
+        const contentH = doc.heightOfString(warrantyClean, { width: colW, lineGap: 1.5 });
+        rightBottomY = termsTopY + labelH + 2 + contentH;
+      }
+
+      if (deliveryClean) {
+        doc.font("Bold").fontSize(7).fillColor("#000");
+        doc.text("■ 지급 및 납기", PAGE_LEFT, termsTopY, { width: colW });
+        doc.font("Regular").fontSize(6.5).fillColor("#333");
+        doc.text(deliveryClean, PAGE_LEFT, termsTopY + labelH + 2, { width: colW, lineGap: 1.5 });
+      }
+
+      if (warrantyClean) {
         doc.font("Bold").fontSize(7).fillColor("#000");
         doc.text("■ 보증 및 책임 범위", rightColX, termsTopY, { width: colW });
-        const rLabelH = doc.heightOfString("■ 보증 및 책임 범위", { width: colW });
-        const rLabelEndY = termsTopY + rLabelH + 2;
         doc.font("Regular").fontSize(6.5).fillColor("#333");
-        doc.text(inquiry.warrantyTerms!, rightColX, rLabelEndY, { width: colW, lineGap: 1.5 });
-        rightBottomY = rLabelEndY + doc.heightOfString(inquiry.warrantyTerms!, { width: colW, lineGap: 1.5 });
+        doc.text(warrantyClean, rightColX, termsTopY + labelH + 2, { width: colW, lineGap: 1.5 });
       }
 
       y = Math.max(leftBottomY, rightBottomY);
