@@ -15,17 +15,62 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
-const DEPARTMENTS = ["경영지원", "영업", "지원", "제조", "개발"] as const;
+const DEFAULT_DEPARTMENTS = ["경영지원", "영업", "지원", "제조", "개발"];
+const DEFAULT_TITLES = ["대표이사", "매니저", "팀원"];
 
-function StaffDetailModal({ staffId, onClose }: { staffId: string; onClose: () => void }) {
+function AutocompleteInput({
+  value,
+  onChange,
+  onBlur,
+  onKeyDown,
+  suggestions,
+  placeholder,
+  autoFocus,
+  "data-testid": testId,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onBlur?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
+  suggestions: string[];
+  placeholder?: string;
+  autoFocus?: boolean;
+  "data-testid"?: string;
+}) {
+  const listId = `list-${testId || "ac"}`;
+  return (
+    <>
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        list={listId}
+        data-testid={testId}
+      />
+      <datalist id={listId}>
+        {suggestions.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
+    </>
+  );
+}
+
+function StaffDetailModal({
+  staffId,
+  onClose,
+  deptSuggestions,
+  titleSuggestions,
+}: {
+  staffId: string;
+  onClose: () => void;
+  deptSuggestions: string[];
+  titleSuggestions: string[];
+}) {
   const { toast } = useToast();
   const { data: staffMember } = useQuery<Staff>({
     queryKey: ["/api/staff", staffId],
@@ -68,8 +113,12 @@ function StaffDetailModal({ staffId, onClose }: { staffId: string; onClose: () =
   };
 
   const saveEdit = (field: string) => {
-    if (editValue !== (staffMember as any)?.[field]) {
-      updateMutation.mutate({ [field]: editValue || null });
+    const currentVal = (staffMember as any)?.[field] || "";
+    let newVal = editValue;
+    if (field === "title" && newVal === "대표이사") {
+      updateMutation.mutate({ [field]: newVal, department: "-" });
+    } else if (newVal !== currentVal) {
+      updateMutation.mutate({ [field]: newVal || null });
     }
     setEditing(null);
   };
@@ -85,9 +134,10 @@ function StaffDetailModal({ staffId, onClose }: { staffId: string; onClose: () =
     );
   }
 
-  const fields: { key: string; label: string }[] = [
+  const fields: { key: string; label: string; suggestions?: string[]; placeholder?: string }[] = [
     { key: "name", label: "이름" },
-    { key: "role", label: "담당" },
+    { key: "title", label: "직함", suggestions: titleSuggestions, placeholder: "대표이사, 매니저, 팀원..." },
+    { key: "department", label: "부서", suggestions: deptSuggestions, placeholder: "부서명 입력" },
     { key: "email", label: "이메일" },
     { key: "phone", label: "휴대폰" },
   ];
@@ -101,35 +151,31 @@ function StaffDetailModal({ staffId, onClose }: { staffId: string; onClose: () =
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
-        <div>
-          <Label className="text-xs text-muted-foreground">부서</Label>
-          <Select
-            value={staffMember.department}
-            onValueChange={(val) => updateMutation.mutate({ department: val })}
-          >
-            <SelectTrigger data-testid="select-department-detail">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {DEPARTMENTS.map((d) => (
-                <SelectItem key={d} value={d}>{d}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {fields.map(({ key, label }) => (
+        {fields.map(({ key, label, suggestions, placeholder }) => (
           <div key={key}>
             <Label className="text-xs text-muted-foreground">{label}</Label>
             {editing === key ? (
-              <Input
-                autoFocus
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={() => saveEdit(key)}
-                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(key); if (e.key === "Escape") setEditing(null); }}
-                data-testid={`input-edit-${key}`}
-              />
+              suggestions ? (
+                <AutocompleteInput
+                  autoFocus
+                  value={editValue}
+                  onChange={setEditValue}
+                  onBlur={() => saveEdit(key)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(key); if (e.key === "Escape") setEditing(null); }}
+                  suggestions={suggestions}
+                  placeholder={placeholder}
+                  data-testid={`input-edit-${key}`}
+                />
+              ) : (
+                <Input
+                  autoFocus
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={() => saveEdit(key)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(key); if (e.key === "Escape") setEditing(null); }}
+                  data-testid={`input-edit-${key}`}
+                />
+              )
             ) : (
               <div
                 className="px-3 py-2 border rounded-md cursor-pointer hover:bg-muted/50 min-h-[40px] flex items-center"
@@ -158,25 +204,46 @@ function StaffDetailModal({ staffId, onClose }: { staffId: string; onClose: () =
   );
 }
 
-function AddStaffDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AddStaffDialog({
+  open,
+  onClose,
+  deptSuggestions,
+  titleSuggestions,
+}: {
+  open: boolean;
+  onClose: () => void;
+  deptSuggestions: string[];
+  titleSuggestions: string[];
+}) {
   const { toast } = useToast();
-  const [form, setForm] = useState({ name: "", department: "영업", role: "", email: "", phone: "" });
+  const [form, setForm] = useState({ name: "", department: "", title: "", email: "", phone: "" });
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/staff", form);
+      const payload = { ...form };
+      if (payload.title === "대표이사") payload.department = "-";
+      if (!payload.department) payload.department = "-";
+      const res = await apiRequest("POST", "/api/staff", payload);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
       toast({ title: "추가 완료" });
-      setForm({ name: "", department: "영업", role: "", email: "", phone: "" });
+      setForm({ name: "", department: "", title: "", email: "", phone: "" });
       onClose();
     },
     onError: (err: Error) => {
       toast({ title: "추가 실패", description: err.message, variant: "destructive" });
     },
   });
+
+  const handleTitleChange = (v: string) => {
+    setForm((p) => ({
+      ...p,
+      title: v,
+      department: v === "대표이사" ? "-" : p.department,
+    }));
+  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -195,26 +262,27 @@ function AddStaffDialog({ open, onClose }: { open: boolean; onClose: () => void 
             />
           </div>
           <div>
-            <Label>부서 *</Label>
-            <Select value={form.department} onValueChange={(v) => setForm((p) => ({ ...p, department: v }))}>
-              <SelectTrigger data-testid="select-add-department">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DEPARTMENTS.map((d) => (
-                  <SelectItem key={d} value={d}>{d}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>직함</Label>
+            <AutocompleteInput
+              value={form.title}
+              onChange={handleTitleChange}
+              suggestions={titleSuggestions}
+              placeholder="대표이사, 매니저, 팀원..."
+              data-testid="input-add-title"
+            />
           </div>
           <div>
-            <Label>담당</Label>
-            <Input
-              value={form.role}
-              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
-              placeholder="담당 업무"
-              data-testid="input-add-role"
+            <Label>부서 {form.title !== "대표이사" && "*"}</Label>
+            <AutocompleteInput
+              value={form.department}
+              onChange={(v) => setForm((p) => ({ ...p, department: v }))}
+              suggestions={deptSuggestions}
+              placeholder="부서명 입력"
+              data-testid="input-add-department"
             />
+            {form.title === "대표이사" && (
+              <p className="text-xs text-muted-foreground mt-1">대표이사는 부서가 자동으로 "-"로 설정됩니다</p>
+            )}
           </div>
           <div>
             <Label>이메일</Label>
@@ -260,6 +328,24 @@ export default function StaffList() {
     queryKey: ["/api/staff"],
   });
 
+  const deptSuggestions = useMemo(() => {
+    const fromData = staffList?.map((s) => s.department).filter((d) => d && d !== "-") || [];
+    const all = new Set([...DEFAULT_DEPARTMENTS, ...fromData]);
+    return Array.from(all).sort();
+  }, [staffList]);
+
+  const titleSuggestions = useMemo(() => {
+    const fromData = staffList?.map((s) => s.title).filter(Boolean) as string[] || [];
+    const all = new Set([...DEFAULT_TITLES, ...fromData]);
+    return Array.from(all).sort();
+  }, [staffList]);
+
+  const departments = useMemo(() => {
+    if (!staffList) return [];
+    const depts = new Set(staffList.map((s) => s.department));
+    return Array.from(depts).sort();
+  }, [staffList]);
+
   const filtered = useMemo(() => {
     if (!staffList) return [];
     return staffList.filter((s) => {
@@ -268,7 +354,7 @@ export default function StaffList() {
         const q = search.toLowerCase();
         return (
           s.name.toLowerCase().includes(q) ||
-          (s.role || "").toLowerCase().includes(q) ||
+          (s.title || "").toLowerCase().includes(q) ||
           (s.email || "").toLowerCase().includes(q) ||
           (s.phone || "").includes(q)
         );
@@ -280,7 +366,6 @@ export default function StaffList() {
   const deptCounts = useMemo(() => {
     if (!staffList) return {};
     const counts: Record<string, number> = { all: staffList.length };
-    for (const d of DEPARTMENTS) counts[d] = 0;
     for (const s of staffList) counts[s.department] = (counts[s.department] || 0) + 1;
     return counts;
   }, [staffList]);
@@ -300,7 +385,7 @@ export default function StaffList() {
         </div>
 
         <div className="flex flex-wrap gap-1">
-          {[{ key: "all", label: "전체" }, ...DEPARTMENTS.map((d) => ({ key: d, label: d }))].map(({ key, label }) => (
+          {[{ key: "all", label: "전체" }, ...departments.map((d) => ({ key: d, label: d }))].map(({ key, label }) => (
             <Button
               key={key}
               variant={deptFilter === key ? "default" : "outline"}
@@ -319,7 +404,7 @@ export default function StaffList() {
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="이름, 담당, 이메일 검색..."
+            placeholder="이름, 직함, 이메일 검색..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -344,8 +429,8 @@ export default function StaffList() {
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="text-left px-4 py-3 font-medium">이름</th>
-                  <th className="text-left px-4 py-3 font-medium">부서</th>
-                  <th className="text-left px-4 py-3 font-medium hidden md:table-cell">담당</th>
+                  <th className="text-left px-4 py-3 font-medium">직함</th>
+                  <th className="text-left px-4 py-3 font-medium hidden md:table-cell">부서</th>
                   <th className="text-left px-4 py-3 font-medium hidden md:table-cell">이메일</th>
                   <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">휴대폰</th>
                 </tr>
@@ -359,12 +444,12 @@ export default function StaffList() {
                     data-testid={`row-staff-${s.id}`}
                   >
                     <td className="px-4 py-3 font-medium">{s.name}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-muted-foreground">{s.title || "-"}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
                         {s.department}
                       </span>
                     </td>
-                    <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{s.role || "-"}</td>
                     <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{s.email || "-"}</td>
                     <td className="px-4 py-3 hidden lg:table-cell text-muted-foreground">{s.phone || "-"}</td>
                   </tr>
@@ -376,10 +461,22 @@ export default function StaffList() {
       </div>
 
       <Dialog open={!!selectedId} onOpenChange={(v) => { if (!v) setSelectedId(null); }}>
-        {selectedId && <StaffDetailModal staffId={selectedId} onClose={() => setSelectedId(null)} />}
+        {selectedId && (
+          <StaffDetailModal
+            staffId={selectedId}
+            onClose={() => setSelectedId(null)}
+            deptSuggestions={deptSuggestions}
+            titleSuggestions={titleSuggestions}
+          />
+        )}
       </Dialog>
 
-      <AddStaffDialog open={showAdd} onClose={() => setShowAdd(false)} />
+      <AddStaffDialog
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        deptSuggestions={deptSuggestions}
+        titleSuggestions={titleSuggestions}
+      />
     </div>
   );
 }

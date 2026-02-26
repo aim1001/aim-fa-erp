@@ -3088,9 +3088,9 @@ export async function registerRoutes(
 
   app.post("/api/staff", requireAuth, async (req, res) => {
     try {
-      const { name, department, role, email, phone } = req.body;
+      const { name, department, title, email, phone } = req.body;
       if (!name || !department) return res.status(400).json({ message: "이름과 부서는 필수입니다" });
-      const created = await storage.createStaff({ name, department, role: role || null, email: email || null, phone: phone || null });
+      const created = await storage.createStaff({ name, department, title: title || null, email: email || null, phone: phone || null });
       res.json(created);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3099,7 +3099,7 @@ export async function registerRoutes(
 
   app.patch("/api/staff/:id", requireAuth, async (req, res) => {
     try {
-      const allowedFields = ["name", "department", "role", "email", "phone"];
+      const allowedFields = ["name", "department", "title", "email", "phone"];
       const patch: Record<string, any> = {};
       for (const key of allowedFields) {
         if (key in req.body) patch[key] = req.body[key];
