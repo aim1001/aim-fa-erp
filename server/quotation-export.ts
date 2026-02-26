@@ -188,9 +188,9 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.moveDown(0.8);
 
     const tableTop = doc.y;
-    const colX = [50, 75, 150, 310, 365, 420, 480];
-    const colW = [25, 75, 160, 55, 55, 60, 65];
-    const headers = ["No", "품목코드", "품목명/사양", "수량", "단가", "금액", "비고"];
+    const colX = [50, 75, 310, 365, 420, 480];
+    const colW = [25, 235, 55, 55, 60, 65];
+    const headers = ["No", "품목명/사양", "수량", "단가", "금액", "비고"];
 
     doc.rect(50, tableTop, 495, 20).fill("#E8E8E8");
     doc.fillColor("#000").font("Bold").fontSize(8);
@@ -218,12 +218,11 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
           doc.fillColor("#000");
         }
         doc.text(String(globalIdx), colX[0], y, { width: colW[0] });
-        doc.text(item.itemCode || "-", colX[1], y, { width: colW[1] });
         const nameSpec = item.spec ? `${item.itemName} (${item.spec})` : item.itemName;
-        doc.text(nameSpec, colX[2], y, { width: colW[2] });
-        doc.text(fmtNum(item.quantity), colX[3], y, { width: colW[3], align: "right" });
-        doc.text(fmtNum(item.unitPrice), colX[4], y, { width: colW[4], align: "right" });
-        doc.text(fmtNum(item.amount), colX[5], y, { width: colW[5], align: "right" });
+        doc.text(nameSpec, colX[1], y, { width: colW[1] });
+        doc.text(fmtNum(item.quantity), colX[2], y, { width: colW[2], align: "right" });
+        doc.text(fmtNum(item.unitPrice), colX[3], y, { width: colW[3], align: "right" });
+        doc.text(fmtNum(item.amount), colX[4], y, { width: colW[4], align: "right" });
         y += rowH;
       }
 
@@ -253,12 +252,11 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
           doc.fillColor("#000");
         }
         doc.text(String(globalIdx), colX[0], y, { width: colW[0] });
-        doc.text(item.itemCode || "-", colX[1], y, { width: colW[1] });
         const nameSpec = item.spec ? `${item.itemName} (${item.spec})` : item.itemName;
-        doc.text(nameSpec, colX[2], y, { width: colW[2] });
-        doc.text(fmtNum(item.quantity), colX[3], y, { width: colW[3], align: "right" });
-        doc.text(fmtNum(item.unitPrice), colX[4], y, { width: colW[4], align: "right" });
-        doc.text(fmtNum(item.amount), colX[5], y, { width: colW[5], align: "right" });
+        doc.text(nameSpec, colX[1], y, { width: colW[1] });
+        doc.text(fmtNum(item.quantity), colX[2], y, { width: colW[2], align: "right" });
+        doc.text(fmtNum(item.unitPrice), colX[3], y, { width: colW[3], align: "right" });
+        doc.text(fmtNum(item.amount), colX[4], y, { width: colW[4], align: "right" });
         y += rowH;
       }
 
@@ -464,25 +462,27 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       y = Math.max(leftBottomY, rightBottomY);
     }
 
-    const signBoxH = 55;
-    const signHeaderH = 16;
-    const footerBarH = 18;
-    const signTotalH = signBoxH + signHeaderH + footerBarH + 15;
+    const signBoxH = 35;
+    const signHeaderH = 14;
+    const footerBarH = 16;
+    const signInset = 40;
+    const signTotalH = signBoxH + signHeaderH + 10;
 
-    if (y + signTotalH > 780) { doc.addPage(); y = 50; }
-    y += 10;
+    if (y + signTotalH > 720) { doc.addPage(); y = 50; }
+    y += 8;
 
-    const signGap = 8;
-    const signW = (PAGE_WIDTH - signGap) / 2;
-    const signLeftX = PAGE_LEFT;
-    const signRightX = PAGE_LEFT + signW + signGap;
+    const signAreaW = PAGE_WIDTH - signInset * 2;
+    const signGap = 12;
+    const signW = (signAreaW - signGap) / 2;
+    const signLeftX = PAGE_LEFT + signInset;
+    const signRightX = signLeftX + signW + signGap;
 
     doc.rect(signLeftX, y, signW, signHeaderH).fill("#E8E8E8");
     doc.font("Bold").fontSize(7).fillColor("#000");
-    doc.text("Buyer (Sign)", signLeftX, y + 4, { width: signW, align: "center" });
+    doc.text("Buyer (Sign)", signLeftX, y + 3, { width: signW, align: "center" });
 
     doc.rect(signRightX, y, signW, signHeaderH).fill("#E8E8E8");
-    doc.text("Seller (Sign)", signRightX, y + 4, { width: signW, align: "center" });
+    doc.text("Seller (Sign)", signRightX, y + 3, { width: signW, align: "center" });
 
     const signBodyY = y + signHeaderH;
     doc.rect(signLeftX, signBodyY, signW, signBoxH).lineWidth(0.5).stroke("#999");
@@ -493,33 +493,34 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       const sellerRep = companyInfo.representative ? `대표이사 ${companyInfo.representative}` : "";
       const sellerLine = [sellerName, sellerRep].filter(Boolean).join(" ");
       if (sellerLine) {
-        doc.font("Regular").fontSize(7).fillColor("#000");
-        doc.text(sellerLine, signRightX + 5, signBodyY + 5, { width: signW - 10, align: "center" });
+        doc.font("Regular").fontSize(6.5).fillColor("#000");
+        doc.text(sellerLine, signRightX + 4, signBodyY + 3, { width: signW - 8, align: "center" });
       }
 
       if (companyInfo.signatureUrl) {
         const sigPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.signatureUrl));
         if (fs.existsSync(sigPath)) {
           try {
-            const sigW = 50;
-            const sigH = 25;
-            const sigX = signRightX + (signW - sigW) / 2;
-            const sigY = signBodyY + 16;
-            doc.image(sigPath, sigX, sigY, { width: sigW, height: sigH, fit: [sigW, sigH] });
+            const sigImgW = 40;
+            const sigImgH = 18;
+            const sigX = signRightX + 10;
+            const sigY = signBodyY + 13;
+            doc.image(sigPath, sigX, sigY, { width: sigImgW, height: sigImgH, fit: [sigImgW, sigImgH] });
           } catch (e) {}
         }
       }
+
+      doc.font("Regular").fontSize(6.5).fillColor("#000");
+      doc.text(fmtDate(quotation.quoteDate), signRightX + 4, signBodyY + 16, { width: signW - 8, align: "right" });
     }
 
-    doc.font("Regular").fontSize(7).fillColor("#000");
-    doc.text(fmtDate(quotation.quoteDate), signRightX + 5, signBodyY + signBoxH - 12, { width: signW - 10, align: "right" });
-
-    const footerY = signBodyY + signBoxH + 6;
+    const pageBottom = 842 - 30;
+    const footerY = pageBottom - footerBarH;
     doc.rect(PAGE_LEFT, footerY, PAGE_WIDTH, footerBarH).fill("#555");
     doc.font("Regular").fontSize(7).fillColor("#fff");
     const websiteUrl = companyInfo?.email ? `www.${companyInfo.email.split("@")[1]}` : "";
     if (websiteUrl) {
-      doc.text(websiteUrl, PAGE_LEFT, footerY + 5, { width: PAGE_WIDTH, align: "center" });
+      doc.text(websiteUrl, PAGE_LEFT, footerY + 4, { width: PAGE_WIDTH, align: "center" });
     }
 
     doc.end();
