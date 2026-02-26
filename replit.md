@@ -41,6 +41,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **inquiry_memos** 테이블: 인콰이어리 메모 (inquiryId FK→inquiries, content, createdAt ISO string) - 날짜별 메모 누적 관리
 - **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, adjustmentAmount, adjustmentNote, createdAt)
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder)
+- **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 

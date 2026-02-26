@@ -17,10 +17,11 @@ import {
   type InquiryMemo, type InsertInquiryMemo,
   type Quotation, type InsertQuotation,
   type QuotationItem, type InsertQuotationItem,
+  type ContractTemplate, type InsertContractTemplate,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
-  inquiryMemos, quotations, quotationItems,
+  inquiryMemos, quotations, quotationItems, contractTemplates,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -176,6 +177,12 @@ export interface IStorage {
   createQuotationItem(data: InsertQuotationItem): Promise<QuotationItem>;
   updateQuotationItem(id: string, data: Partial<InsertQuotationItem>): Promise<QuotationItem | undefined>;
   deleteQuotationItem(id: string): Promise<void>;
+
+  getContractTemplates(): Promise<ContractTemplate[]>;
+  getContractTemplate(id: string): Promise<ContractTemplate | undefined>;
+  createContractTemplate(data: InsertContractTemplate): Promise<ContractTemplate>;
+  updateContractTemplate(id: string, data: Partial<InsertContractTemplate>): Promise<ContractTemplate | undefined>;
+  deleteContractTemplate(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -942,6 +949,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteQuotationItem(id: string): Promise<void> {
     await db.delete(quotationItems).where(eq(quotationItems.id, id));
+  }
+
+  async getContractTemplates(): Promise<ContractTemplate[]> {
+    return db.select().from(contractTemplates).orderBy(desc(contractTemplates.createdAt));
+  }
+
+  async getContractTemplate(id: string): Promise<ContractTemplate | undefined> {
+    const [t] = await db.select().from(contractTemplates).where(eq(contractTemplates.id, id));
+    return t;
+  }
+
+  async createContractTemplate(data: InsertContractTemplate): Promise<ContractTemplate> {
+    const [t] = await db.insert(contractTemplates).values(data).returning();
+    return t;
+  }
+
+  async updateContractTemplate(id: string, data: Partial<InsertContractTemplate>): Promise<ContractTemplate | undefined> {
+    const [t] = await db.update(contractTemplates).set(data).where(eq(contractTemplates.id, id)).returning();
+    return t;
+  }
+
+  async deleteContractTemplate(id: string): Promise<void> {
+    await db.delete(contractTemplates).where(eq(contractTemplates.id, id));
   }
 }
 

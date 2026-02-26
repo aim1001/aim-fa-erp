@@ -82,6 +82,7 @@ export const inquiries = pgTable("inquiries", {
   snapshotContactName: text("snapshot_contact_name"),
   snapshotEmail: text("snapshot_email"),
   snapshotPhone: text("snapshot_phone"),
+  contractClauses: text("contract_clauses"),
   isFavorite: boolean("is_favorite").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -401,3 +402,15 @@ export const quotationItems = pgTable("quotation_items", {
 export const insertQuotationItemSchema = createInsertSchema(quotationItems).omit({ id: true });
 export type InsertQuotationItem = z.infer<typeof insertQuotationItemSchema>;
 export type QuotationItem = typeof quotationItems.$inferSelect;
+
+export const contractTemplates = pgTable("contract_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  content: text("content").notNull(),
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertContractTemplateSchema = createInsertSchema(contractTemplates).omit({ id: true, createdAt: true });
+export type InsertContractTemplate = z.infer<typeof insertContractTemplateSchema>;
+export type ContractTemplate = typeof contractTemplates.$inferSelect;

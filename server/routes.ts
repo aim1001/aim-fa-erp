@@ -3020,5 +3020,83 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/contract-templates", async (_req, res) => {
+    try {
+      const templates = await storage.getContractTemplates();
+      res.json(templates);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/contract-templates", requireAuth, async (req, res) => {
+    try {
+      const { name, content, isDefault } = req.body;
+      if (!name || !content) return res.status(400).json({ message: "이름과 내용은 필수입니다" });
+      const template = await storage.createContractTemplate({ name, content, isDefault: isDefault || false });
+      res.json(template);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/contract-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const { name, content, isDefault } = req.body;
+      const fields: Record<string, any> = {};
+      if (name !== undefined) fields.name = name;
+      if (content !== undefined) fields.content = content;
+      if (isDefault !== undefined) fields.isDefault = isDefault;
+      const template = await storage.updateContractTemplate(req.params.id, fields);
+      if (!template) return res.status(404).json({ message: "Not found" });
+      res.json(template);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/contract-templates/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteContractTemplate(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  (async () => {
+    try {
+      const existing = await storage.getContractTemplates();
+      if (existing.length === 0) {
+        await storage.createContractTemplate({
+          name: "기본 계약조건",
+          isDefault: true,
+          content: `■ 지급 및 납기
+
+납기는 계약금 입금일을 기준으로 산정됩니다.
+
+지급이 지연될 경우 납기 일정은 자동으로 조정될 수 있습니다.
+
+잔금은 납품 완료 시 지급을 원칙으로 하며, 잔금 완납 전까지 장비의 소유권은 당사에 있습니다.
+
+잔금이 지급되지 않을 경우 기술 지원 및 유지보수는 제한될 수 있습니다.
+
+■ 보증 및 책임 범위
+
+설치 및 시운전은 별도 계약 또는 발주 내역에 포함된 경우에 한하여 수행됩니다.
+
+제품은 사전 협의된 사양 기준으로 공급되며, 설치 환경 및 당사 제공 범위 외 요인에 따른 시스템 전체 성능은 보장하지 않습니다.
+
+사양 변경 또는 추가 요청 시 금액 및 납기는 조정될 수 있습니다.
+
+납품일로부터 1년간 하드웨어에 한하여 무상 보증을 제공합니다.`,
+        });
+        console.log("[seed] 기본 계약조건 템플릿 생성됨");
+      }
+    } catch (err: any) {
+      console.error("[seed] 계약조건 템플릿 시드 실패:", err.message);
+    }
+  })();
+
   return httpServer;
 }

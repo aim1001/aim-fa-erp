@@ -12,13 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo } from "@shared/schema";
+import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo, ContractTemplate } from "@shared/schema";
 import { QuotationSection } from "@/components/quotation-section";
 
 function useInlineUpdate(inquiryId: string) {
@@ -2153,7 +2153,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
         <TabsContent value="contract" className="flex-1 min-h-0 mt-3 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="space-y-4 pr-4">
-              <ContractConditionsTab key={`contract-${inquiry.contractRatio}-${inquiry.midRatio}-${inquiry.finalRatio}-${inquiry.contractTimingType}-${inquiry.midTimingType}-${inquiry.finalTimingType}`} inquiryId={id!} inquiry={inquiry} />
+              <ContractConditionsTab key={`contract-${inquiry.contractRatio}-${inquiry.midRatio}-${inquiry.finalRatio}-${inquiry.contractTimingType}-${inquiry.midTimingType}-${inquiry.finalTimingType}-${inquiry.midAfterDelivery}-${inquiry.finalAfterDelivery}-${(inquiry.contractClauses || "").length}`} inquiryId={id!} inquiry={inquiry} />
             </div>
           </ScrollArea>
         </TabsContent>
@@ -2199,6 +2199,18 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
     inquiry.finalAfterDelivery === "true" || inquiry.finalAfterDelivery === "yes" || (inquiry.finalAfterDelivery == null)
   );
 
+  const [clauses, setClauses] = useState(inquiry.contractClauses || "");
+  const [showClauses, setShowClauses] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+  const [editTemplateName, setEditTemplateName] = useState("");
+  const [editTemplateContent, setEditTemplateContent] = useState("");
+
+  const { data: templates = [] } = useQuery<ContractTemplate[]>({
+    queryKey: ["/api/contract-templates"],
+  });
+
   const ratioSum = contractRatio + midRatio + finalRatio;
 
   const saveMutation = useMutation({
@@ -2215,6 +2227,7 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
         finalTimingType,
         finalTimingDays,
         finalAfterDelivery: finalAfterDelivery ? "true" : "false",
+        contractClauses: clauses,
       });
       return res.json();
     },
@@ -2226,106 +2239,336 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
     onError: (err: Error) => toast({ title: "저장 실패", description: err.message, variant: "destructive" }),
   });
 
-  function fmtComma(n: number): string {
-    if (!n && n !== 0) return "";
-    return n.toLocaleString("ko-KR");
-  }
+  const saveTemplateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/contract-templates", { name: templateName, content: clauses });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "템플릿 저장 완료" });
+      queryClient.invalidateQueries({ queryKey: ["/api/contract-templates"] });
+      setShowSaveTemplate(false);
+      setTemplateName("");
+    },
+    onError: (err: Error) => toast({ title: "저장 실패", description: err.message, variant: "destructive" }),
+  });
 
-  function timingLabel(t: string): string {
-    return TIMING_OPTIONS.find(o => o.value === t)?.label || "-";
-  }
+  const updateTemplateMutation = useMutation({
+    mutationFn: async ({ id, name, content }: { id: string; name: string; content: string }) => {
+      const res = await apiRequest("PATCH", `/api/contract-templates/${id}`, { name, content });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "템플릿 수정 완료" });
+      queryClient.invalidateQueries({ queryKey: ["/api/contract-templates"] });
+      setEditingTemplate(null);
+    },
+    onError: (err: Error) => toast({ title: "수정 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/contract-templates/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "템플릿 삭제 완료" });
+      queryClient.invalidateQueries({ queryKey: ["/api/contract-templates"] });
+    },
+    onError: (err: Error) => toast({ title: "삭제 실패", description: err.message, variant: "destructive" }),
+  });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">계약조건</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          <div className="space-y-2">
-            {[
-              { label: "계약금", ratio: contractRatio, setRatio: setContractRatio, timing: contractTimingType, setTiming: setContractTimingType, days: contractTimingDays, setDays: setContractTimingDays, after: false, setAfter: () => {}, showAfter: false },
-              { label: "중도금", ratio: midRatio, setRatio: setMidRatio, timing: midTimingType, setTiming: setMidTimingType, days: midTimingDays, setDays: setMidTimingDays, after: midAfterDelivery, setAfter: setMidAfterDelivery, showAfter: true },
-              { label: "잔금", ratio: finalRatio, setRatio: setFinalRatio, timing: finalTimingType, setTiming: setFinalTimingType, days: finalTimingDays, setDays: setFinalTimingDays, after: finalAfterDelivery, setAfter: setFinalAfterDelivery, showAfter: true },
-            ].map(stage => (
-              <div key={stage.label} className="border rounded p-3 bg-muted/20">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-medium w-10">{stage.label}</span>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">결제 조건</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              {[
+                { label: "계약금", ratio: contractRatio, setRatio: setContractRatio, timing: contractTimingType, setTiming: setContractTimingType, days: contractTimingDays, setDays: setContractTimingDays, after: false, setAfter: () => {}, showAfter: false },
+                { label: "중도금", ratio: midRatio, setRatio: setMidRatio, timing: midTimingType, setTiming: setMidTimingType, days: midTimingDays, setDays: setMidTimingDays, after: midAfterDelivery, setAfter: setMidAfterDelivery, showAfter: true },
+                { label: "잔금", ratio: finalRatio, setRatio: setFinalRatio, timing: finalTimingType, setTiming: setFinalTimingType, days: finalTimingDays, setDays: setFinalTimingDays, after: finalAfterDelivery, setAfter: setFinalAfterDelivery, showAfter: true },
+              ].map(stage => (
+                <div key={stage.label} className="border rounded p-3 bg-muted/20">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-medium w-10">{stage.label}</span>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        className="h-7 w-16 text-xs"
+                        value={stage.ratio}
+                        onChange={e => stage.setRatio(Number(e.target.value))}
+                        data-testid={`input-contract-${stage.label}-ratio`}
+                      />
+                      <span className="text-xs text-muted-foreground">%</span>
+                    </div>
+                    {stage.showAfter && (
+                      <div className="flex items-center gap-1">
+                        <Switch
+                          checked={stage.after}
+                          onCheckedChange={stage.setAfter}
+                          className="scale-75"
+                          data-testid={`switch-contract-${stage.label}-after`}
+                        />
+                        <span className="text-[10px] text-muted-foreground">납품후</span>
+                      </div>
+                    )}
+                    <Select value={stage.timing} onValueChange={stage.setTiming}>
+                      <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-contract-${stage.label}-timing`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIMING_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {stage.timing === "specific_days" && (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          className="h-7 w-14 text-xs"
+                          value={stage.days}
+                          onChange={e => stage.setDays(Number(e.target.value))}
+                          data-testid={`input-contract-${stage.label}-days`}
+                        />
+                        <span className="text-[10px] text-muted-foreground">일</span>
+                      </div>
+                    )}
+                    {stage.timing === "within_days" && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground">{stage.showAfter && stage.after ? "납품후" : "계약후"}</span>
+                        <Input
+                          type="number"
+                          className="h-7 w-14 text-xs"
+                          value={stage.days}
+                          onChange={e => stage.setDays(Number(e.target.value))}
+                          data-testid={`input-contract-${stage.label}-within-days`}
+                        />
+                        <span className="text-[10px] text-muted-foreground">일 이내</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {ratioSum !== 100 && (
+                <div className="text-[10px] text-destructive">비율 합계: {ratioSum}% (100%가 되어야 합니다)</div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-base">계약 세부내용</CardTitle>
+          <div className="flex items-center gap-1">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline" className="h-7 text-xs" data-testid="button-load-template">
+                  <Download className="h-3 w-3 mr-1" />템플릿 불러오기
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[300px] p-0" align="end">
+                <div className="p-2 border-b">
+                  <span className="text-xs font-medium">템플릿 선택</span>
+                </div>
+                <ScrollArea className="max-h-[200px]">
+                  {templates.length === 0 && (
+                    <div className="px-3 py-4 text-xs text-center text-muted-foreground">등록된 템플릿이 없습니다</div>
+                  )}
+                  {templates.map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b last:border-0 flex items-center justify-between"
+                      onClick={() => {
+                        setClauses(t.content);
+                        setShowClauses(true);
+                        toast({ title: `"${t.name}" 템플릿 적용됨` });
+                      }}
+                      data-testid={`button-template-${t.id}`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium">{t.name}</span>
+                        {t.isDefault && <Badge variant="secondary" className="text-[9px] px-1">기본</Badge>}
+                      </div>
+                    </button>
+                  ))}
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => setShowClauses(!showClauses)}
+              data-testid="button-toggle-clauses"
+            >
+              <Pencil className="h-3 w-3 mr-1" />{showClauses ? "접기" : "편집"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {showClauses ? (
+            <div className="space-y-2">
+              <Textarea
+                className="text-xs min-h-[200px] font-mono leading-relaxed"
+                value={clauses}
+                onChange={e => setClauses(e.target.value)}
+                placeholder="계약 세부내용을 입력하세요..."
+                data-testid="textarea-contract-clauses"
+              />
+              <div className="flex items-center gap-1">
+                {!showSaveTemplate ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setShowSaveTemplate(true)}
+                    disabled={!clauses.trim()}
+                    data-testid="button-save-as-template"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />템플릿으로 저장
+                  </Button>
+                ) : (
                   <div className="flex items-center gap-1">
                     <Input
-                      type="number"
-                      className="h-7 w-16 text-xs"
-                      value={stage.ratio}
-                      onChange={e => stage.setRatio(Number(e.target.value))}
-                      data-testid={`input-contract-${stage.label}-ratio`}
+                      className="h-7 text-xs w-40"
+                      placeholder="템플릿 이름"
+                      value={templateName}
+                      onChange={e => setTemplateName(e.target.value)}
+                      data-testid="input-template-name"
                     />
-                    <span className="text-xs text-muted-foreground">%</span>
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => saveTemplateMutation.mutate()}
+                      disabled={!templateName.trim() || saveTemplateMutation.isPending}
+                      data-testid="button-confirm-save-template"
+                    >
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => { setShowSaveTemplate(false); setTemplateName(""); }}
+                      data-testid="button-cancel-save-template"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
                   </div>
-                  {stage.showAfter && (
-                    <div className="flex items-center gap-1">
-                      <Switch
-                        checked={stage.after}
-                        onCheckedChange={stage.setAfter}
-                        className="scale-75"
-                        data-testid={`switch-contract-${stage.label}-after`}
-                      />
-                      <span className="text-[10px] text-muted-foreground">납품후</span>
-                    </div>
-                  )}
-                  <Select value={stage.timing} onValueChange={stage.setTiming}>
-                    <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-contract-${stage.label}-timing`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIMING_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {stage.timing === "specific_days" && (
-                    <div className="flex items-center gap-1">
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground whitespace-pre-line leading-relaxed">
+              {clauses ? clauses : <span className="italic">세부내용이 없습니다. 편집 버튼을 눌러 추가하세요.</span>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {templates.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">템플릿 관리</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {templates.map(t => (
+                <div key={t.id} className="border rounded p-2 bg-muted/10">
+                  {editingTemplate === t.id ? (
+                    <div className="space-y-2">
                       <Input
-                        type="number"
-                        className="h-7 w-14 text-xs"
-                        value={stage.days}
-                        onChange={e => stage.setDays(Number(e.target.value))}
-                        data-testid={`input-contract-${stage.label}-days`}
+                        className="h-7 text-xs"
+                        value={editTemplateName}
+                        onChange={e => setEditTemplateName(e.target.value)}
+                        data-testid={`input-edit-template-name-${t.id}`}
                       />
-                      <span className="text-[10px] text-muted-foreground">일</span>
+                      <Textarea
+                        className="text-xs min-h-[120px] font-mono leading-relaxed"
+                        value={editTemplateContent}
+                        onChange={e => setEditTemplateContent(e.target.value)}
+                        data-testid={`textarea-edit-template-${t.id}`}
+                      />
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => updateTemplateMutation.mutate({ id: t.id, name: editTemplateName, content: editTemplateContent })}
+                          disabled={updateTemplateMutation.isPending}
+                          data-testid={`button-save-edit-template-${t.id}`}
+                        >
+                          <Check className="h-3 w-3 mr-1" />저장
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => setEditingTemplate(null)}
+                          data-testid={`button-cancel-edit-template-${t.id}`}
+                        >
+                          취소
+                        </Button>
+                      </div>
                     </div>
-                  )}
-                  {stage.timing === "within_days" && (
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground">{stage.showAfter && stage.after ? "납품후" : "계약후"}</span>
-                      <Input
-                        type="number"
-                        className="h-7 w-14 text-xs"
-                        value={stage.days}
-                        onChange={e => stage.setDays(Number(e.target.value))}
-                        data-testid={`input-contract-${stage.label}-within-days`}
-                      />
-                      <span className="text-[10px] text-muted-foreground">일 이내</span>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-xs font-medium">{t.name}</span>
+                        {t.isDefault && <Badge variant="secondary" className="text-[9px] px-1">기본</Badge>}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0"
+                          onClick={() => {
+                            setEditingTemplate(t.id);
+                            setEditTemplateName(t.name);
+                            setEditTemplateContent(t.content);
+                          }}
+                          data-testid={`button-edit-template-${t.id}`}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-destructive"
+                          onClick={() => {
+                            if (confirm("이 템플릿을 삭제하시겠습니까?")) deleteTemplateMutation.mutate(t.id);
+                          }}
+                          data-testid={`button-delete-template-${t.id}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            ))}
-            {ratioSum !== 100 && (
-              <div className="text-[10px] text-destructive">비율 합계: {ratioSum}% (100%가 되어야 합니다)</div>
-            )}
-          </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-          <Button
-            size="sm"
-            className="w-full h-8 text-xs"
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending || ratioSum !== 100}
-            data-testid="button-save-contract-conditions"
-          >
-            <Check className="h-3 w-3 mr-1" />
-            {saveMutation.isPending ? "저장중..." : "계약조건 저장"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      <Button
+        size="sm"
+        className="w-full h-8 text-xs"
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending || ratioSum !== 100}
+        data-testid="button-save-contract-conditions"
+      >
+        <Check className="h-3 w-3 mr-1" />
+        {saveMutation.isPending ? "저장중..." : "계약조건 전체 저장"}
+      </Button>
+    </div>
   );
 }
 
