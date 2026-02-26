@@ -2153,7 +2153,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
         <TabsContent value="contract" className="flex-1 min-h-0 mt-3 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="space-y-4 pr-4">
-              <ContractConditionsTab key={`contract-${inquiry.contractRatio}-${inquiry.midRatio}-${inquiry.finalRatio}-${inquiry.contractTimingType}-${inquiry.midTimingType}-${inquiry.finalTimingType}-${inquiry.midAfterDelivery}-${inquiry.finalAfterDelivery}-${(inquiry.contractClauses || "").length}`} inquiryId={id!} inquiry={inquiry} />
+              <ContractConditionsTab key={`contract-${inquiry.contractRatio}-${inquiry.midRatio}-${inquiry.finalRatio}-${inquiry.contractTimingType}-${inquiry.midTimingType}-${inquiry.finalTimingType}-${inquiry.midAfterDelivery}-${inquiry.finalAfterDelivery}-${(inquiry.contractClauses || "").length}-${(inquiry.warrantyTerms || "").length}`} inquiryId={id!} inquiry={inquiry} />
             </div>
           </ScrollArea>
         </TabsContent>
@@ -2200,7 +2200,9 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
   );
 
   const [clauses, setClauses] = useState(inquiry.contractClauses || "");
+  const [warrantyTerms, setWarrantyTerms] = useState(inquiry.warrantyTerms || "");
   const [showClauses, setShowClauses] = useState(false);
+  const [showWarranty, setShowWarranty] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
@@ -2228,6 +2230,7 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
         finalTimingDays,
         finalAfterDelivery: finalAfterDelivery ? "true" : "false",
         contractClauses: clauses,
+        warrantyTerms,
       });
       return res.json();
     },
@@ -2467,6 +2470,38 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
           ) : (
             <div className="text-xs text-muted-foreground whitespace-pre-line leading-relaxed">
               {clauses ? clauses : <span className="italic">세부내용이 없습니다. 편집 버튼을 눌러 추가하세요.</span>}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="py-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">보증 및 책임범위</CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => setShowWarranty(!showWarranty)}
+              data-testid="button-toggle-warranty"
+            >
+              <Pencil className="h-3 w-3 mr-1" />{showWarranty ? "접기" : "편집"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {showWarranty ? (
+            <Textarea
+              className="text-xs min-h-[150px] font-mono leading-relaxed"
+              value={warrantyTerms}
+              onChange={e => setWarrantyTerms(e.target.value)}
+              placeholder="보증 및 책임범위 내용을 입력하세요..."
+              data-testid="textarea-warranty-terms"
+            />
+          ) : (
+            <div className="text-xs text-muted-foreground whitespace-pre-line leading-relaxed">
+              {warrantyTerms ? warrantyTerms : <span className="italic">내용이 없습니다. 편집 버튼을 눌러 추가하세요.</span>}
             </div>
           )}
         </CardContent>

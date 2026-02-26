@@ -226,43 +226,80 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.moveTo(50, y).lineTo(545, y).stroke("#ccc");
     y += 10;
 
-    doc.font("Regular").fontSize(9);
-    doc.text(`공급가액:`, 360, y, { width: 100, align: "right" });
-    doc.text(`${fmtNum(subtotal)}원`, 465, y, { width: 80, align: "right" });
-    y += 15;
+    const sumStartY = y;
+
+    const ptLabelW = 55;
+    const ptValW = 80;
+    const ptTableW = ptLabelW + ptValW + 10;
+    const ptRowH = 15;
+    const ptX = PAGE_LEFT;
+    let ptY = sumStartY;
+
+    doc.rect(ptX, ptY, ptTableW, ptRowH).fill("#E8E8E8");
+    doc.fillColor("#333").font("Bold").fontSize(7.5);
+    doc.text("결재조건", ptX + 2, ptY + 3, { width: ptTableW - 4, align: "center" });
+    ptY += ptRowH;
+
+    const ptRows = [
+      { label: "계약금", value: inquiry.contractRatio ? `${inquiry.contractRatio}%` : "-" },
+      { label: "중도금", value: inquiry.midRatio ? `${inquiry.midRatio}%` : "-" },
+      { label: "잔금", value: inquiry.finalRatio ? `${inquiry.finalRatio}%` : "-" },
+      { label: "현금결재", value: inquiry.paymentTerms || "-" },
+    ];
+
+    doc.font("Regular").fontSize(7.5);
+    for (const row of ptRows) {
+      doc.rect(ptX, ptY, ptLabelW, ptRowH).fill("#F5F5F5");
+      doc.fillColor("#333").font("Bold").fontSize(7);
+      doc.text(row.label, ptX + 3, ptY + 3, { width: ptLabelW - 6 });
+      doc.font("Regular").fontSize(7.5).fillColor("#000");
+      doc.text(row.value, ptX + ptLabelW + 3, ptY + 3, { width: ptValW });
+      doc.moveTo(ptX, ptY + ptRowH).lineTo(ptX + ptTableW, ptY + ptRowH).lineWidth(0.3).stroke("#ccc");
+      ptY += ptRowH;
+    }
+    doc.moveTo(ptX, sumStartY).lineTo(ptX, ptY).lineWidth(0.5).stroke("#999");
+    doc.moveTo(ptX + ptTableW, sumStartY).lineTo(ptX + ptTableW, ptY).lineWidth(0.5).stroke("#999");
+    doc.moveTo(ptX, sumStartY).lineTo(ptX + ptTableW, sumStartY).lineWidth(0.5).stroke("#999");
+
+    doc.font("Regular").fontSize(9).fillColor("#000");
+    doc.text(`공급가액:`, 360, sumStartY, { width: 100, align: "right" });
+    doc.text(`${fmtNum(subtotal)}원`, 465, sumStartY, { width: 80, align: "right" });
+    let sY = sumStartY + 15;
 
     if (adjustment !== 0) {
       const adjLabel = adjustment < 0 ? "할인:" : "추가:";
-      doc.text(`${adjLabel}`, 360, y, { width: 100, align: "right" });
-      doc.text(`${fmtNum(adjustment)}원`, 465, y, { width: 80, align: "right" });
-      y += 15;
+      doc.text(`${adjLabel}`, 360, sY, { width: 100, align: "right" });
+      doc.text(`${fmtNum(adjustment)}원`, 465, sY, { width: 80, align: "right" });
+      sY += 15;
       if (quotation.adjustmentNote) {
-        doc.fontSize(8).fillColor("#666").text(`(${quotation.adjustmentNote})`, 360, y, { width: 185, align: "right" });
+        doc.fontSize(8).fillColor("#666").text(`(${quotation.adjustmentNote})`, 360, sY, { width: 185, align: "right" });
         doc.fillColor("#000").fontSize(9);
-        y += 15;
+        sY += 15;
       }
-      doc.text(`조정 후 공급가액:`, 360, y, { width: 100, align: "right" });
-      doc.text(`${fmtNum(adjustedSubtotal)}원`, 465, y, { width: 80, align: "right" });
-      y += 15;
+      doc.text(`조정 후 공급가액:`, 360, sY, { width: 100, align: "right" });
+      doc.text(`${fmtNum(adjustedSubtotal)}원`, 465, sY, { width: 80, align: "right" });
+      sY += 15;
     }
 
-    doc.text(`부가세(10%):`, 360, y, { width: 100, align: "right" });
-    doc.text(`${fmtNum(tax)}원`, 465, y, { width: 80, align: "right" });
-    y += 15;
+    doc.text(`부가세(10%):`, 360, sY, { width: 100, align: "right" });
+    doc.text(`${fmtNum(tax)}원`, 465, sY, { width: 80, align: "right" });
+    sY += 15;
     doc.font("Bold").fontSize(10);
-    doc.text(`합계:`, 360, y, { width: 100, align: "right" });
-    doc.text(`${fmtNum(total)}원`, 465, y, { width: 80, align: "right" });
+    doc.text(`합계:`, 360, sY, { width: 100, align: "right" });
+    doc.text(`${fmtNum(total)}원`, 465, sY, { width: 80, align: "right" });
+
+    y = Math.max(ptY, sY + 15) + 5;
 
     if (quotation.notes) {
-      y += 30;
-      doc.font("Bold").fontSize(10).text("비고", 50, y);
+      y += 15;
+      doc.font("Bold").fontSize(10).fillColor("#000").text("비고", 50, y);
       y += 15;
       doc.font("Regular").fontSize(9).text(quotation.notes, 50, y, { width: 495 });
       y = doc.y;
     }
 
     if (companyInfo?.bankInfo) {
-      y += 20;
+      y += 15;
       if (y > 730) { doc.addPage(); y = 50; }
       doc.font("Bold").fontSize(10).fillColor("#000").text("입금 계좌", 50, y);
       y += 15;
@@ -270,44 +307,44 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       y = doc.y;
     }
 
-    const payTerms = inquiry.paymentTerms || "-";
-    const contractText = inquiry.contractClauses || "-";
-    if (payTerms !== "-" || contractText !== "-") {
+    const clauseLeft = inquiry.contractClauses || "-";
+    const clauseRight = inquiry.warrantyTerms || "-";
+    if (clauseLeft !== "-" || clauseRight !== "-") {
       y += 20;
       if (y > 700) { doc.addPage(); y = 50; }
 
-      const ctLabelW = 60;
-      const ctHalf = PAGE_WIDTH / 2;
-      const ctLeftValW = ctHalf - ctLabelW - 10;
-      const ctRightLabelX = PAGE_LEFT + ctHalf;
-      const ctRightValX = ctRightLabelX + ctLabelW + 5;
-      const ctRightValW = ctHalf - ctLabelW - 10;
+      const clLabelW = 70;
+      const clHalf = PAGE_WIDTH / 2;
+      const clLeftValW = clHalf - clLabelW - 10;
+      const clRightLabelX = PAGE_LEFT + clHalf;
+      const clRightValX = clRightLabelX + clLabelW + 5;
+      const clRightValW = clHalf - clLabelW - 10;
 
       doc.font("Regular").fontSize(8);
-      const leftH = doc.heightOfString(payTerms, { width: ctLeftValW });
-      const rightH = doc.heightOfString(contractText, { width: ctRightValW });
-      const ctRowH = Math.max(leftH, rightH, 18) + 10;
+      const clLeftH = doc.heightOfString(clauseLeft, { width: clLeftValW });
+      const clRightH = doc.heightOfString(clauseRight, { width: clRightValW });
+      const clRowH = Math.max(clLeftH, clRightH, 18) + 10;
 
       doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).lineWidth(1).stroke("#333");
 
-      doc.rect(PAGE_LEFT, y + 1, ctLabelW, ctRowH - 1).fill("#E8E8E8");
-      doc.rect(ctRightLabelX, y + 1, ctLabelW, ctRowH - 1).fill("#E8E8E8");
+      doc.rect(PAGE_LEFT, y + 1, clLabelW, clRowH - 1).fill("#E8E8E8");
+      doc.rect(clRightLabelX, y + 1, clLabelW, clRowH - 1).fill("#E8E8E8");
 
-      doc.fillColor("#333").font("Bold").fontSize(8);
-      doc.text("결재조건", PAGE_LEFT + 4, y + 5, { width: ctLabelW - 8 });
-      doc.text("계약 내용", ctRightLabelX + 4, y + 5, { width: ctLabelW - 8 });
+      doc.fillColor("#333").font("Bold").fontSize(7.5);
+      doc.text("지급 및 납기", PAGE_LEFT + 3, y + 5, { width: clLabelW - 6 });
+      doc.text("보증 및\n책임범위", clRightLabelX + 3, y + 3, { width: clLabelW - 6 });
 
       doc.font("Regular").fontSize(8).fillColor("#000");
-      doc.text(payTerms, PAGE_LEFT + ctLabelW + 5, y + 5, { width: ctLeftValW });
-      doc.text(contractText, ctRightValX, y + 5, { width: ctRightValW });
+      doc.text(clauseLeft, PAGE_LEFT + clLabelW + 5, y + 5, { width: clLeftValW });
+      doc.text(clauseRight, clRightValX, y + 5, { width: clRightValW });
 
-      const ctBottom = y + ctRowH;
-      doc.moveTo(PAGE_LEFT, ctBottom).lineTo(PAGE_RIGHT, ctBottom).lineWidth(0.5).stroke("#999");
-      doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_LEFT, ctBottom).lineWidth(0.5).stroke("#999");
-      doc.moveTo(PAGE_RIGHT, y).lineTo(PAGE_RIGHT, ctBottom).lineWidth(0.5).stroke("#999");
-      doc.moveTo(ctRightLabelX, y).lineTo(ctRightLabelX, ctBottom).lineWidth(0.5).stroke("#999");
+      const clBottom = y + clRowH;
+      doc.moveTo(PAGE_LEFT, clBottom).lineTo(PAGE_RIGHT, clBottom).lineWidth(0.5).stroke("#999");
+      doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_LEFT, clBottom).lineWidth(0.5).stroke("#999");
+      doc.moveTo(PAGE_RIGHT, y).lineTo(PAGE_RIGHT, clBottom).lineWidth(0.5).stroke("#999");
+      doc.moveTo(clRightLabelX, y).lineTo(clRightLabelX, clBottom).lineWidth(0.5).stroke("#999");
 
-      y = ctBottom;
+      y = clBottom;
     }
 
     doc.end();

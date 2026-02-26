@@ -83,6 +83,7 @@ export const inquiries = pgTable("inquiries", {
   snapshotEmail: text("snapshot_email"),
   snapshotPhone: text("snapshot_phone"),
   contractClauses: text("contract_clauses"),
+  warrantyTerms: text("warranty_terms"),
   isFavorite: boolean("is_favorite").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
