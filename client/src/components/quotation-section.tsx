@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   FileText, Plus, Trash2, Search, Pencil, Check, X,
-  Upload, FileDown, Package, Loader2,
+  Upload, FileDown, Package, Loader2, Star,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -72,8 +72,24 @@ function ItemSearchPopover({ onSelect, disabled }: {
         i.spec?.toLowerCase().includes(q)
       );
     }
+    list = [...list].sort((a, b) => {
+      const af = a.isFavorite ? 1 : 0;
+      const bf = b.isFavorite ? 1 : 0;
+      if (af !== bf) return bf - af;
+      return (a.itemName || "").localeCompare(b.itemName || "");
+    });
     return list.slice(0, 80);
   }, [activeItems, search, cat1Filter, cat2Filter]);
+
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: async ({ id, isFavorite }: { id: string; isFavorite: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/items/${id}`, { isFavorite });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/items"] });
+    },
+  });
 
   const handleReset = () => {
     setSearch("");
@@ -164,32 +180,47 @@ function ItemSearchPopover({ onSelect, disabled }: {
           {filtered.map(item => {
             const isAdded = addedIds.has(item.id);
             return (
-              <button
+              <div
                 key={item.id}
-                type="button"
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-muted border-b last:border-0 ${isAdded ? "bg-green-50 dark:bg-green-950/20" : ""}`}
-                onClick={() => {
-                  onSelect(item);
-                  setAddedIds(prev => new Set(prev).add(item.id));
-                }}
-                data-testid={`option-item-${item.id}`}
+                className={`flex items-center px-3 py-2 text-xs border-b last:border-0 ${isAdded ? "bg-green-50 dark:bg-green-950/20" : ""}`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    {isAdded && <Check className="h-3 w-3 text-green-600 shrink-0" />}
-                    <Badge variant="outline" className="text-[10px] px-1">{item.category1}</Badge>
-                    {item.category2 && <Badge variant="secondary" className="text-[10px] px-1">{item.category2}</Badge>}
-                    <span className="font-medium">{item.itemName}</span>
+                <button
+                  type="button"
+                  className="shrink-0 mr-1.5 p-0.5 rounded hover:bg-muted"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFavoriteMutation.mutate({ id: item.id, isFavorite: !item.isFavorite });
+                  }}
+                  data-testid={`button-fav-${item.id}`}
+                >
+                  <Star className={`h-3.5 w-3.5 ${item.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40"}`} />
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 text-left hover:bg-muted rounded px-1 py-0.5"
+                  onClick={() => {
+                    onSelect(item);
+                    setAddedIds(prev => new Set(prev).add(item.id));
+                  }}
+                  data-testid={`option-item-${item.id}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      {isAdded && <Check className="h-3 w-3 text-green-600 shrink-0" />}
+                      <Badge variant="outline" className="text-[10px] px-1">{item.category1}</Badge>
+                      {item.category2 && <Badge variant="secondary" className="text-[10px] px-1">{item.category2}</Badge>}
+                      <span className="font-medium">{item.itemName}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-muted-foreground">
+                      <span>원가 {fmtNum(item.cost)}</span>
+                      <span>판매가 {fmtNum(item.salesPrice)}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-muted-foreground">
-                    <span>원가 {fmtNum(item.cost)}</span>
-                    <span>판매가 {fmtNum(item.salesPrice)}</span>
+                  <div className="text-muted-foreground mt-0.5">
+                    {item.itemCode} {item.spec && `· ${item.spec}`}
                   </div>
-                </div>
-                <div className="text-muted-foreground mt-0.5">
-                  {item.itemCode} {item.spec && `· ${item.spec}`}
-                </div>
-              </button>
+                </button>
+              </div>
             );
           })}
         </ScrollArea>

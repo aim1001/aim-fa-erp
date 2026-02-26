@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Switch } from "@/components/ui/switch";
 import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
@@ -1933,6 +1934,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
           <TabsTrigger value="product" data-testid="tab-product">제품정보</TabsTrigger>
           <TabsTrigger value="quotation" data-testid="tab-quotation">견적 및 내역</TabsTrigger>
           <TabsTrigger value="files" data-testid="tab-files">파일목록</TabsTrigger>
+          <TabsTrigger value="contract" data-testid="tab-contract">계약조건</TabsTrigger>
         </TabsList>
 
         <TabsContent value="customer" className="flex-1 min-h-0 mt-3 overflow-hidden">
@@ -1997,124 +1999,6 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
               </div>
 
               <CustomerInfoSection inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">계약조건</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4 text-sm">
-                    <div className="border rounded-lg overflow-hidden">
-                      <div className="grid grid-cols-[80px_1fr_1fr] bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground border-b">
-                        <span>구분</span>
-                        <span>비율</span>
-                        <span>기한</span>
-                      </div>
-
-                      <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center border-b">
-                        <span className="font-medium">계약금</span>
-                        <div className="flex items-center gap-1">
-                          <InlineNumber value={inquiry.contractRatio ?? 0} field="contractRatio" inquiryId={id!} />
-                          <span className="text-muted-foreground text-xs">%</span>
-                        </div>
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <InlineSelect
-                            value={inquiry.contractTimingType || ""}
-                            field="contractTimingType"
-                            inquiryId={id!}
-                            options={[
-                              { value: "_none", label: "미설정" },
-                              { value: "days", label: "일수지정" },
-                              { value: "next_month_end", label: "익월말" },
-                              { value: "month_end", label: "월말" },
-                            ]}
-                          />
-                          {inquiry.contractTimingType === "days" && (
-                            <div className="flex items-center gap-1">
-                              <InlineNumber value={inquiry.contractTimingDays ?? 0} field="contractTimingDays" inquiryId={id!} />
-                              <span className="text-muted-foreground text-xs">일</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center border-b">
-                        <span className="font-medium">중도금</span>
-                        <div className="flex items-center gap-1">
-                          <InlineNumber value={inquiry.midRatio ?? 0} field="midRatio" inquiryId={id!} />
-                          <span className="text-muted-foreground text-xs">%</span>
-                        </div>
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <InlineSelect
-                            value={inquiry.midAfterDelivery || ""}
-                            field="midAfterDelivery"
-                            inquiryId={id!}
-                            options={[
-                              { value: "_none", label: "미설정" },
-                              { value: "yes", label: "납품후" },
-                              { value: "no", label: "납품전" },
-                            ]}
-                          />
-                          <InlineSelect
-                            value={inquiry.midTimingType || ""}
-                            field="midTimingType"
-                            inquiryId={id!}
-                            options={[
-                              { value: "_none", label: "미설정" },
-                              { value: "days", label: "일수지정" },
-                              { value: "next_month_end", label: "익월말" },
-                              { value: "month_end", label: "월말" },
-                            ]}
-                          />
-                          {inquiry.midTimingType === "days" && (
-                            <div className="flex items-center gap-1">
-                              <InlineNumber value={inquiry.midTimingDays ?? 0} field="midTimingDays" inquiryId={id!} />
-                              <span className="text-muted-foreground text-xs">일</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center">
-                        <span className="font-medium">잔금</span>
-                        <div className="flex items-center gap-1">
-                          <InlineNumber value={inquiry.finalRatio ?? 0} field="finalRatio" inquiryId={id!} />
-                          <span className="text-muted-foreground text-xs">%</span>
-                        </div>
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <InlineSelect
-                            value={inquiry.finalAfterDelivery || ""}
-                            field="finalAfterDelivery"
-                            inquiryId={id!}
-                            options={[
-                              { value: "_none", label: "미설정" },
-                              { value: "yes", label: "납품후" },
-                              { value: "no", label: "납품전" },
-                            ]}
-                          />
-                          <InlineSelect
-                            value={inquiry.finalTimingType || ""}
-                            field="finalTimingType"
-                            inquiryId={id!}
-                            options={[
-                              { value: "_none", label: "미설정" },
-                              { value: "days", label: "일수지정" },
-                              { value: "next_month_end", label: "익월말" },
-                              { value: "month_end", label: "월말" },
-                            ]}
-                          />
-                          {inquiry.finalTimingType === "days" && (
-                            <div className="flex items-center gap-1">
-                              <InlineNumber value={inquiry.finalTimingDays ?? 0} field="finalTimingDays" inquiryId={id!} />
-                              <span className="text-muted-foreground text-xs">일</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
 
               <MemoSection inquiryId={id!} legacyMemo={inquiry.memo || ""} />
             </div>
@@ -2265,8 +2149,169 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
             </div>
           </ScrollArea>
         </TabsContent>
+
+        <TabsContent value="contract" className="flex-1 min-h-0 mt-3 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="space-y-4 pr-4">
+              <ContractConditionsTab key={`contract-${inquiry.contractRatio}-${inquiry.midRatio}-${inquiry.finalRatio}-${inquiry.contractTimingType}-${inquiry.midTimingType}-${inquiry.finalTimingType}`} inquiryId={id!} inquiry={inquiry} />
+            </div>
+          </ScrollArea>
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inquiry: Inquiry }) {
+  const { toast } = useToast();
+
+  const TIMING_OPTIONS = [
+    { value: "end_of_next_month", label: "익월말" },
+    { value: "two_weeks", label: "2주이내" },
+    { value: "end_of_month", label: "월말" },
+    { value: "specific_days", label: "일자지정" },
+  ];
+
+  function mapOldTiming(v: string | null | undefined): string {
+    if (!v || v === "_none") return "two_weeks";
+    if (v === "days") return "specific_days";
+    if (v === "next_month_end") return "end_of_next_month";
+    if (v === "month_end") return "end_of_month";
+    return v;
+  }
+
+  const [contractRatio, setContractRatio] = useState(inquiry.contractRatio ?? 50);
+  const [contractTimingType, setContractTimingType] = useState(mapOldTiming(inquiry.contractTimingType) || "two_weeks");
+  const [contractTimingDays, setContractTimingDays] = useState(inquiry.contractTimingDays ?? 0);
+
+  const [midRatio, setMidRatio] = useState(inquiry.midRatio ?? 0);
+  const [midTimingType, setMidTimingType] = useState(mapOldTiming(inquiry.midTimingType) || "two_weeks");
+  const [midTimingDays, setMidTimingDays] = useState(inquiry.midTimingDays ?? 0);
+  const [midAfterDelivery, setMidAfterDelivery] = useState(
+    inquiry.midAfterDelivery === "true" || inquiry.midAfterDelivery === "yes" || (inquiry.midAfterDelivery == null)
+  );
+
+  const [finalRatio, setFinalRatio] = useState(inquiry.finalRatio ?? 50);
+  const [finalTimingType, setFinalTimingType] = useState(mapOldTiming(inquiry.finalTimingType) || "two_weeks");
+  const [finalTimingDays, setFinalTimingDays] = useState(inquiry.finalTimingDays ?? 0);
+  const [finalAfterDelivery, setFinalAfterDelivery] = useState(
+    inquiry.finalAfterDelivery === "true" || inquiry.finalAfterDelivery === "yes" || (inquiry.finalAfterDelivery == null)
+  );
+
+  const ratioSum = contractRatio + midRatio + finalRatio;
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/inquiries/${inquiryId}`, {
+        contractRatio,
+        contractTimingType,
+        contractTimingDays,
+        midRatio,
+        midTimingType,
+        midTimingDays,
+        midAfterDelivery: midAfterDelivery ? "true" : "false",
+        finalRatio,
+        finalTimingType,
+        finalTimingDays,
+        finalAfterDelivery: finalAfterDelivery ? "true" : "false",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "계약조건 저장 완료" });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+    },
+    onError: (err: Error) => toast({ title: "저장 실패", description: err.message, variant: "destructive" }),
+  });
+
+  function fmtComma(n: number): string {
+    if (!n && n !== 0) return "";
+    return n.toLocaleString("ko-KR");
+  }
+
+  function timingLabel(t: string): string {
+    return TIMING_OPTIONS.find(o => o.value === t)?.label || "-";
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">계약조건</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {[
+              { label: "계약금", ratio: contractRatio, setRatio: setContractRatio, timing: contractTimingType, setTiming: setContractTimingType, days: contractTimingDays, setDays: setContractTimingDays, after: false, setAfter: () => {}, showAfter: false },
+              { label: "중도금", ratio: midRatio, setRatio: setMidRatio, timing: midTimingType, setTiming: setMidTimingType, days: midTimingDays, setDays: setMidTimingDays, after: midAfterDelivery, setAfter: setMidAfterDelivery, showAfter: true },
+              { label: "잔금", ratio: finalRatio, setRatio: setFinalRatio, timing: finalTimingType, setTiming: setFinalTimingType, days: finalTimingDays, setDays: setFinalTimingDays, after: finalAfterDelivery, setAfter: setFinalAfterDelivery, showAfter: true },
+            ].map(stage => (
+              <div key={stage.label} className="border rounded p-3 bg-muted/20">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium w-10">{stage.label}</span>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      className="h-7 w-16 text-xs"
+                      value={stage.ratio}
+                      onChange={e => stage.setRatio(Number(e.target.value))}
+                      data-testid={`input-contract-${stage.label}-ratio`}
+                    />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
+                  {stage.showAfter && (
+                    <div className="flex items-center gap-1">
+                      <Switch
+                        checked={stage.after}
+                        onCheckedChange={stage.setAfter}
+                        className="scale-75"
+                        data-testid={`switch-contract-${stage.label}-after`}
+                      />
+                      <span className="text-[10px] text-muted-foreground">납품후</span>
+                    </div>
+                  )}
+                  <Select value={stage.timing} onValueChange={stage.setTiming}>
+                    <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-contract-${stage.label}-timing`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMING_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {stage.timing === "specific_days" && (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        className="h-7 w-14 text-xs"
+                        value={stage.days}
+                        onChange={e => stage.setDays(Number(e.target.value))}
+                        data-testid={`input-contract-${stage.label}-days`}
+                      />
+                      <span className="text-[10px] text-muted-foreground">일</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {ratioSum !== 100 && (
+              <div className="text-[10px] text-destructive">비율 합계: {ratioSum}% (100%가 되어야 합니다)</div>
+            )}
+          </div>
+
+          <Button
+            size="sm"
+            className="w-full h-8 text-xs"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || ratioSum !== 100}
+            data-testid="button-save-contract-conditions"
+          >
+            <Check className="h-3 w-3 mr-1" />
+            {saveMutation.isPending ? "저장중..." : "계약조건 저장"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

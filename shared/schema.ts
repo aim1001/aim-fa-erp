@@ -288,6 +288,7 @@ export const itemMaster = pgTable("item_master", {
   itemType: text("item_type"),
   thumbUrl: text("thumb_url"),
   mainImageUrl: text("main_image_url"),
+  isFavorite: boolean("is_favorite").default(false),
 });
 
 export const itemInventory = pgTable("item_inventory", {

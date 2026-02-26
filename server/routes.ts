@@ -2764,7 +2764,7 @@ export async function registerRoutes(
 
   app.patch("/api/items/:id", requireAuth, async (req, res) => {
     try {
-      const allowedFields = ["itemName", "category1", "category2", "spec", "cost", "salesPrice", "active", "itemType"];
+      const allowedFields = ["itemName", "category1", "category2", "spec", "cost", "salesPrice", "active", "itemType", "isFavorite"];
       const fields: Record<string, any> = {};
       for (const key of allowedFields) {
         if (req.body[key] !== undefined) {
