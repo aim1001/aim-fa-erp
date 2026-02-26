@@ -306,44 +306,27 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       y = doc.y;
     }
 
-    const clauseLeft = inquiry.contractClauses || "-";
-    const clauseRight = inquiry.warrantyTerms || "-";
-    if (clauseLeft !== "-" || clauseRight !== "-") {
-      y += 20;
+    const termsBlocks = [
+      { label: "■ 지급 및 납기", content: inquiry.contractClauses },
+      { label: "■ 보증 및 책임범위", content: inquiry.warrantyTerms },
+    ].filter(b => b.content && b.content.trim());
+
+    if (termsBlocks.length > 0) {
+      y += 12;
       if (y > 700) { doc.addPage(); y = 50; }
 
-      const clLabelW = 70;
-      const clHalf = PAGE_WIDTH / 2;
-      const clLeftValW = clHalf - clLabelW - 10;
-      const clRightLabelX = PAGE_LEFT + clHalf;
-      const clRightValX = clRightLabelX + clLabelW + 5;
-      const clRightValW = clHalf - clLabelW - 10;
+      doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).lineWidth(0.5).stroke("#ccc");
+      y += 6;
 
-      doc.font("Regular").fontSize(8);
-      const clLeftH = doc.heightOfString(clauseLeft, { width: clLeftValW });
-      const clRightH = doc.heightOfString(clauseRight, { width: clRightValW });
-      const clRowH = Math.max(clLeftH, clRightH, 18) + 10;
-
-      doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).lineWidth(1).stroke("#333");
-
-      doc.rect(PAGE_LEFT, y + 1, clLabelW, clRowH - 1).fill("#E8E8E8");
-      doc.rect(clRightLabelX, y + 1, clLabelW, clRowH - 1).fill("#E8E8E8");
-
-      doc.fillColor("#333").font("Bold").fontSize(7.5);
-      doc.text("지급 및 납기", PAGE_LEFT + 3, y + 5, { width: clLabelW - 6 });
-      doc.text("보증 및\n책임범위", clRightLabelX + 3, y + 3, { width: clLabelW - 6 });
-
-      doc.font("Regular").fontSize(8).fillColor("#000");
-      doc.text(clauseLeft, PAGE_LEFT + clLabelW + 5, y + 5, { width: clLeftValW });
-      doc.text(clauseRight, clRightValX, y + 5, { width: clRightValW });
-
-      const clBottom = y + clRowH;
-      doc.moveTo(PAGE_LEFT, clBottom).lineTo(PAGE_RIGHT, clBottom).lineWidth(0.5).stroke("#999");
-      doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_LEFT, clBottom).lineWidth(0.5).stroke("#999");
-      doc.moveTo(PAGE_RIGHT, y).lineTo(PAGE_RIGHT, clBottom).lineWidth(0.5).stroke("#999");
-      doc.moveTo(clRightLabelX, y).lineTo(clRightLabelX, clBottom).lineWidth(0.5).stroke("#999");
-
-      y = clBottom;
+      for (const block of termsBlocks) {
+        if (y > 730) { doc.addPage(); y = 50; }
+        doc.font("Bold").fontSize(7).fillColor("#000");
+        doc.text(block.label, PAGE_LEFT, y, { width: PAGE_WIDTH });
+        y = doc.y + 2;
+        doc.font("Regular").fontSize(6.5).fillColor("#333");
+        doc.text(block.content!, PAGE_LEFT + 5, y, { width: PAGE_WIDTH - 10, lineGap: 1 });
+        y = doc.y + 5;
+      }
     }
 
     doc.end();
