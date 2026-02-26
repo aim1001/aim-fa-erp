@@ -432,8 +432,18 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   inquiryId: string;
   onRefresh: () => void;
 }) {
+  const DEFAULT_NOTES = `[제외사항]
+- 기술지원료
+- 모니터, 키보드, 마우스, 배선 설치 및 배선
+- 피더용 SMPS(24V 5A 이상), 조명용 SMPS(24V 2.5A 이상)
+
+[기술지원]
+- 현장 출장 1MD: 60만원 (8시간, 이동시간 제외, 숙식비 제외)
+  대전 이남 80만원
+- 원격 기술지원: 4시간 20만원`;
+
   const { toast } = useToast();
-  const [notes, setNotes] = useState(quotation.notes || "");
+  const [notes, setNotes] = useState(quotation.notes || DEFAULT_NOTES);
   const [newAdj, setNewAdj] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [editingAdjId, setEditingAdjId] = useState<string | null>(null);
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
@@ -788,12 +798,22 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
       </div>
 
       <div>
-        <label className="text-sm font-medium">비고</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-sm font-medium">비고</label>
+          <button
+            type="button"
+            className="text-xs text-blue-500 hover:underline"
+            onClick={() => setNotes(DEFAULT_NOTES)}
+            data-testid="button-load-default-notes"
+          >
+            기본 메모 불러오기
+          </button>
+        </div>
         <Textarea
           value={notes}
           onChange={e => setNotes(e.target.value)}
-          rows={3}
-          className="text-xs mt-1"
+          rows={9}
+          className="text-xs"
           placeholder="견적서 비고 사항..."
           data-testid="input-quotation-notes"
         />
