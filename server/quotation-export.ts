@@ -276,6 +276,13 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.moveTo(ptX + ptTableW, sumStartY).lineTo(ptX + ptTableW, ptY).lineWidth(0.5).stroke("#999");
     doc.moveTo(ptX, sumStartY).lineTo(ptX + ptTableW, sumStartY).lineWidth(0.5).stroke("#999");
 
+    if (quotation.deliveryDays) {
+      ptY += 5;
+      doc.font("Bold").fontSize(7.5).fillColor("#000");
+      doc.text(`납기: ${quotation.deliveryDays}일`, ptX + 2, ptY);
+      ptY += 12;
+    }
+
     doc.font("Regular").fontSize(9).fillColor("#000");
     doc.text(`공급가액:`, 360, sumStartY, { width: 100, align: "right" });
     doc.text(`${fmtNum(supplyAmount)}원`, 465, sumStartY, { width: 80, align: "right" });
@@ -373,8 +380,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
 
     const signTotalH = signHeaderH + signBoxH + 8;
-    const totalBottomH = notesBlockH + termsBlockH + signTotalH + footerBarH + 4;
-    let bY = pageBottom - footerBarH - signTotalH - termsBlockH - notesBlockH - 4;
+    let bY = pageBottom - footerBarH - termsBlockH - signTotalH - notesBlockH - 4;
 
     if (isTemplateNotes && notesBlockH > 0) {
       doc.moveTo(PAGE_LEFT, bY).lineTo(PAGE_RIGHT, bY).lineWidth(0.5).stroke("#ccc");
@@ -397,27 +403,6 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       bY += 10;
       doc.font("Regular").fontSize(6.5).fillColor("#333").text(notesText, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5 });
       bY += notesBlockH - 18 + 2;
-    }
-
-    if (termsBlockH > 0) {
-      doc.moveTo(PAGE_LEFT, bY).lineTo(PAGE_RIGHT, bY).lineWidth(0.5).stroke("#ccc");
-      bY += 6;
-      const rightColX = PAGE_LEFT + halfColW + colGap;
-      doc.font("Bold").fontSize(7);
-      const tLabelH = doc.heightOfString("■ 지급 및 납기", { width: halfColW });
-      if (deliveryClean) {
-        doc.font("Bold").fontSize(7).fillColor("#000");
-        doc.text("■ 지급 및 납기", PAGE_LEFT, bY, { width: halfColW });
-        doc.font("Regular").fontSize(6.5).fillColor("#333");
-        doc.text(deliveryClean, PAGE_LEFT, bY + tLabelH + 2, { width: halfColW, lineGap: 0.5 });
-      }
-      if (warrantyClean) {
-        doc.font("Bold").fontSize(7).fillColor("#000");
-        doc.text("■ 보증 및 책임 범위", rightColX, bY, { width: halfColW });
-        doc.font("Regular").fontSize(6.5).fillColor("#333");
-        doc.text(warrantyClean, rightColX, bY + tLabelH + 2, { width: halfColW, lineGap: 0.5 });
-      }
-      bY += termsBlockH - 8 + 2;
     }
 
     const signAreaW = PAGE_WIDTH - signInset * 2;
@@ -454,6 +439,28 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       }
       doc.font("Regular").fontSize(6.5).fillColor("#000");
       doc.text(fmtDate(quotation.quoteDate), signRightX + 4, signBodyY + 16, { width: signW - 8, align: "right" });
+    }
+    bY = signBodyY + signBoxH + 4;
+
+    if (termsBlockH > 0) {
+      doc.moveTo(PAGE_LEFT, bY).lineTo(PAGE_RIGHT, bY).lineWidth(0.5).stroke("#ccc");
+      bY += 6;
+      const rightColX = PAGE_LEFT + halfColW + colGap;
+      doc.font("Bold").fontSize(7);
+      const tLabelH = doc.heightOfString("■ 지급 및 납기", { width: halfColW });
+      if (deliveryClean) {
+        doc.font("Bold").fontSize(7).fillColor("#000");
+        doc.text("■ 지급 및 납기", PAGE_LEFT, bY, { width: halfColW });
+        doc.font("Regular").fontSize(6.5).fillColor("#333");
+        doc.text(deliveryClean, PAGE_LEFT, bY + tLabelH + 2, { width: halfColW, lineGap: 0.5 });
+      }
+      if (warrantyClean) {
+        doc.font("Bold").fontSize(7).fillColor("#000");
+        doc.text("■ 보증 및 책임 범위", rightColX, bY, { width: halfColW });
+        doc.font("Regular").fontSize(6.5).fillColor("#333");
+        doc.text(warrantyClean, rightColX, bY + tLabelH + 2, { width: halfColW, lineGap: 0.5 });
+      }
+      bY += termsBlockH - 8 + 2;
     }
 
     const footerY = pageBottom - footerBarH;
