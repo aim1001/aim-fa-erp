@@ -109,13 +109,13 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     const validText = quotation.validUntil ? `제출일로 부터 30일` : "-";
 
     doc.font("Regular").fontSize(8).fillColor("#333");
-    const deliveryText = quotation.deliveryDays ? `${quotation.deliveryDays}일` : "-";
+    const metaDeliveryText = quotation.deliveryDays ? `${quotation.deliveryDays}일` : "-";
     const metaRows = [
       { label: "견 적 No", value: quotation.quoteNumber },
       { label: "제출일자", value: fmtDate(quotation.quoteDate) },
       { label: "견적명", value: quoteName || "-" },
       { label: "견적 유효기간", value: validText },
-      { label: "납기", value: deliveryText },
+      { label: "납기", value: metaDeliveryText },
     ];
     let mY = metaTop;
     for (const row of metaRows) {
