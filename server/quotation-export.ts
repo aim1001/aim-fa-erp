@@ -74,27 +74,27 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     const PAGE_WIDTH = PAGE_RIGHT - PAGE_LEFT;
     const headerTop = 40;
 
-    doc.font("Bold").fontSize(26).fillColor("#000").text("견 적 서", PAGE_LEFT, headerTop);
+    doc.font("Bold").fontSize(22).fillColor("#000").text("견 적 서", PAGE_LEFT, headerTop);
 
     let rightBlockBottom = headerTop;
     if (companyInfo) {
-      const rightBlockX = 330;
-      const rightTextW = PAGE_RIGHT - rightBlockX - 75;
+      const rightBlockX = 300;
+      const rightTextW = PAGE_RIGHT - rightBlockX - 5;
       let rY = headerTop;
 
       if (companyInfo?.logoUrl) {
         const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
         if (fs.existsSync(logoPath)) {
           try {
-            doc.image(logoPath, PAGE_RIGHT - 65, headerTop, { width: 55, height: 28, fit: [55, 28] });
+            doc.image(logoPath, PAGE_RIGHT - 70, headerTop, { width: 60, height: 30, fit: [60, 30] });
           } catch (e) {}
         }
       }
 
       if (companyInfo.companyName) {
-        doc.font("Bold").fontSize(10).fillColor("#000");
-        doc.text(companyInfo.companyName, rightBlockX, rY, { width: rightTextW, align: "right" });
-        rY += 14;
+        doc.font("Bold").fontSize(11).fillColor("#000");
+        doc.text(companyInfo.companyName, rightBlockX, rY, { width: rightTextW - 75, align: "right" });
+        rY += 16;
       }
 
       doc.font("Regular").fontSize(7.5).fillColor("#444");
@@ -106,10 +106,9 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       rightBlockBottom = rY;
     }
 
-    const metaTop = headerTop + 38;
-    const metaLabelW = 80;
+    const metaTop = headerTop + 34;
+    const metaLabelW = 75;
     const metaValX = PAGE_LEFT + metaLabelW;
-    const quoteName = [inquiry.customerName || "", inquiry.productInfo || ""].filter(Boolean).join("_");
     const validText = quotation.validUntil ? `제출일로 부터 30일` : "-";
 
     doc.font("Regular").fontSize(8).fillColor("#333");
@@ -117,7 +116,6 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     const metaRows = [
       { label: "견 적 No", value: quotation.quoteNumber },
       { label: "제출일자", value: fmtDate(quotation.quoteDate) },
-      { label: "견적명", value: quoteName || "-" },
       { label: "견적 유효기간", value: validText },
       { label: "납기", value: metaDeliveryText },
     ];
@@ -133,7 +131,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     const custLabelBg = "#E8E8E8";
     const custRowH = 18;
-    const custMidX = PAGE_LEFT + PAGE_WIDTH / 2;
+    const custMidX = PAGE_LEFT + Math.round(PAGE_WIDTH * 0.55);
     const custLabelW = 50;
     const custRows = [
       {
