@@ -193,9 +193,9 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.moveDown(0.8);
 
     const tableTop = doc.y;
-    const colX = [50, 75, 310, 365, 420, 480];
-    const colW = [25, 235, 55, 55, 60, 65];
-    const headers = ["No", "품목명/사양", "수량", "단가", "금액", "비고"];
+    const colX = [50, 75, 165, 310, 355, 410, 470];
+    const colW = [25, 90, 145, 45, 55, 60, 75];
+    const headers = ["No", "품목", "규격", "수량", "단가", "금액", "비고"];
 
     doc.rect(50, tableTop, 495, 20).fill("#E8E8E8");
     doc.fillColor("#000").font("Bold").fontSize(8);
@@ -206,6 +206,30 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     let y = tableTop + 22;
     let globalIdx = 0;
 
+    const renderItemRow = (item: QuotationItem) => {
+      globalIdx++;
+      doc.font("Regular").fontSize(8);
+      const specText = item.spec || "";
+      const specH = specText ? doc.heightOfString(specText, { width: colW[2] - 4 }) : 0;
+      const minRowH = 16;
+      const rowH = Math.max(minRowH, specH + 6);
+
+      if (y + rowH > 750) { doc.addPage(); y = 50; }
+      if (globalIdx % 2 === 0) {
+        doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
+      }
+      doc.fillColor("#000").font("Regular").fontSize(8);
+      doc.text(String(globalIdx), colX[0], y, { width: colW[0] });
+      doc.text(item.itemName || "-", colX[1], y, { width: colW[1] });
+      if (specText) {
+        doc.text(specText, colX[2], y, { width: colW[2] - 4 });
+      }
+      doc.text(fmtNum(item.quantity), colX[3], y, { width: colW[3], align: "right" });
+      doc.text(fmtNum(item.unitPrice), colX[4], y, { width: colW[4], align: "right" });
+      doc.text(fmtNum(item.amount), colX[5], y, { width: colW[5], align: "right" });
+      y += rowH;
+    };
+
     for (const [cat, catItems] of grouped) {
       if (y > 730) { doc.addPage(); y = 50; }
       doc.rect(50, y - 2, 495, 16).fill("#F0F4F8");
@@ -213,22 +237,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       doc.text(cat, 55, y, { width: 300 });
       y += 18;
 
-      doc.font("Regular").fontSize(8).fillColor("#000");
       for (const item of catItems) {
-        if (y > 750) { doc.addPage(); y = 50; }
-        globalIdx++;
-        const rowH = 16;
-        if (globalIdx % 2 === 0) {
-          doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
-          doc.fillColor("#000");
-        }
-        doc.text(String(globalIdx), colX[0], y, { width: colW[0] });
-        const nameSpec = item.spec ? `${item.itemName} (${item.spec})` : item.itemName;
-        doc.text(nameSpec, colX[1], y, { width: colW[1] });
-        doc.text(fmtNum(item.quantity), colX[2], y, { width: colW[2], align: "right" });
-        doc.text(fmtNum(item.unitPrice), colX[3], y, { width: colW[3], align: "right" });
-        doc.text(fmtNum(item.amount), colX[4], y, { width: colW[4], align: "right" });
-        y += rowH;
+        renderItemRow(item);
       }
 
       const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
@@ -247,22 +257,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       doc.text("추가", 55, y, { width: 300 });
       y += 18;
 
-      doc.font("Regular").fontSize(8).fillColor("#000");
       for (const item of adjustmentItems) {
-        if (y > 750) { doc.addPage(); y = 50; }
-        globalIdx++;
-        const rowH = 16;
-        if (globalIdx % 2 === 0) {
-          doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
-          doc.fillColor("#000");
-        }
-        doc.text(String(globalIdx), colX[0], y, { width: colW[0] });
-        const nameSpec = item.spec ? `${item.itemName} (${item.spec})` : item.itemName;
-        doc.text(nameSpec, colX[1], y, { width: colW[1] });
-        doc.text(fmtNum(item.quantity), colX[2], y, { width: colW[2], align: "right" });
-        doc.text(fmtNum(item.unitPrice), colX[3], y, { width: colW[3], align: "right" });
-        doc.text(fmtNum(item.amount), colX[4], y, { width: colW[4], align: "right" });
-        y += rowH;
+        renderItemRow(item);
       }
 
       const adjSubtotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
