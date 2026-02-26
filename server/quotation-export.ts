@@ -336,10 +336,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.text(`${fmtNum(tax)}원`, 465, sY, { width: 80, align: "right" });
     sY += 17;
 
-    const totalX = 355; const totalW = 195; const totalH = 18;
-    doc.rect(totalX, sY - 3, totalW, totalH).lineWidth(1.5).stroke("#000");
     doc.font("Bold").fontSize(10).fillColor("#000");
-    doc.text(`합계:`, totalX + 5, sY, { width: 100, align: "right" });
+    doc.text(`합계:`, 360, sY, { width: 100, align: "right" });
     doc.text(`${fmtNum(total)}원`, 465, sY, { width: 80, align: "right" });
 
     y = Math.max(ptY, sY + 18) + 5;
