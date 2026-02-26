@@ -2170,6 +2170,7 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
     { value: "two_weeks", label: "2주이내" },
     { value: "end_of_month", label: "월말" },
     { value: "specific_days", label: "일자지정" },
+    { value: "within_days", label: "N일이내" },
   ];
 
   function mapOldTiming(v: string | null | undefined): string {
@@ -2289,6 +2290,19 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
                         data-testid={`input-contract-${stage.label}-days`}
                       />
                       <span className="text-[10px] text-muted-foreground">일</span>
+                    </div>
+                  )}
+                  {stage.timing === "within_days" && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground">{stage.showAfter && stage.after ? "납품후" : "계약후"}</span>
+                      <Input
+                        type="number"
+                        className="h-7 w-14 text-xs"
+                        value={stage.days}
+                        onChange={e => stage.setDays(Number(e.target.value))}
+                        data-testid={`input-contract-${stage.label}-within-days`}
+                      />
+                      <span className="text-[10px] text-muted-foreground">일 이내</span>
                     </div>
                   )}
                 </div>
