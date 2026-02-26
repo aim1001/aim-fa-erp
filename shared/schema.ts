@@ -85,6 +85,9 @@ export const inquiries = pgTable("inquiries", {
   contractClauses: text("contract_clauses"),
   warrantyTerms: text("warranty_terms"),
   isFavorite: boolean("is_favorite").default(false),
+  lastQuoteSales: integer("last_quote_sales"),
+  lastQuoteCost: integer("last_quote_cost"),
+  lastQuoteMargin: integer("last_quote_margin"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -434,6 +437,7 @@ export const companySettings = pgTable("company_settings", {
   logoUrl: text("logo_url"),
   signatureUrl: text("signature_url"),
   bankInfo: text("bank_info"),
+  autoCc: text("auto_cc"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

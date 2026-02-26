@@ -8,7 +8,7 @@
 - **Frontend**: React + Vite + Tailwind CSS + Shadcn UI + Recharts
 - **Backend**: Express.js + Drizzle ORM
 - **Database**: PostgreSQL (Neon-backed, Replit built-in)
-- **Integration**: OneDrive (Microsoft Graph API via Replit connector), Gmail (Google API via Replit connector)
+- **Integration**: OneDrive (Microsoft Graph API via Replit connector), Gmail (Google API via Replit connector), Google Calendar (via Replit connector)
 
 ## OneDrive Folder Structure
 ```
@@ -42,7 +42,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, adjustmentAmount, adjustmentNote, discountType(percent/amount 선택), discountValue(비율% 또는 금액), discountTruncUnit(none/1000/10000/100000/1000000 - 최종공급가액에 절사 적용), deliveryDays(납기일수 - purchase_items의 최대 leadTimeDays 자동계산, 수정가능), createdAt)
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder, isAdjustment) — isAdjustment=true인 항목은 추가/할인 항목으로 별도 관리
 - **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
-- **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, bankInfo) - 견적서 PDF 헤더에 반영, signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시)
+- **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, bankInfo, autoCc) - 견적서 PDF 헤더에 반영, signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시), autoCc는 이메일 발송 시 자동 CC
 - **staff** 테이블: 인력풀 (name, department(자유입력+자동완성), title(직함: 대표이사/매니저/팀원 등 자유입력), email, phone(휴대폰), createdAt) — 대표이사는 부서 "-"
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
@@ -64,7 +64,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 결제 계획 자동 생성 (계산서에서 익월말/월말/일자지정 + 분할 지원)
 - 프로젝트 관리 - OneDrive `2.공사` 폴더 스캔, 연도별 프로젝트 목록 (폴더명 파싱: 번호_고객사_내용), 매출/매입/수익 요약, 계산서 연결/해제
 - 사이드바: 영업(인콰이어리, 진행중/수주/실주, 프로젝트) / 경영지원(매출계산서, 매입계산서, 자금계획) / 관리(고객사, 공급업체)
-- 견적서 이메일 전송 - Gmail API로 PDF 첨부 이메일 전송 (OneDrive 자동 저장 후 발송)
+- 견적서 이메일 전송 - Gmail API로 PDF 첨부 이메일 전송 (OneDrive 자동 저장 후 발송, PDF 미리보기, CC 지원, 자동CC, 발송 시 상태 업데이트+캘린더 등록+판매가/원가/마진 저장)
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:
@@ -100,6 +100,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `client/src/components/app-sidebar.tsx` - Sidebar navigation (영업/경영지원/관리 섹션)
 - `client/src/components/quotation-section.tsx` - Quotation section component (견적서 생성/편집/내보내기)
 - `server/quotation-export.ts` - PDF + Excel generation for quotations (pdfkit, exceljs)
+- `server/google-calendar.ts` - Google Calendar integration (견적 발송 시 이벤트 생성)
 - `client/src/pages/settings.tsx` - Company settings page (회사 정보 + 로고 관리)
 - `client/src/pages/staff-list.tsx` - Staff pool page (인력풀 관리, 부서별 필터, 테이블+모달)
 - `server/uploads/` - Uploaded files (company logo, etc.)
@@ -161,7 +162,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - Korean language UI
 - Business/professional theme (blue primary color)
 - Probability uses 1-5 stage system, not percentage
-- Status: active(진행중), won(수주), lost(실주) only
+- Status: active(진행중), quoted(견적발송), won(수주), lost(실주)
 - Inline editing preferred (no separate edit page)
 - Material options: steel, 플라스틱, 고무류
 - Industry options: 자동차, 전기, 전자부품, 화장품, 기타

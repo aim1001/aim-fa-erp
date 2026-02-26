@@ -29,6 +29,7 @@ export default function SettingsPage() {
     fax: "",
     email: "",
     bankInfo: "",
+    autoCc: "",
   });
 
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function SettingsPage() {
         fax: settings.fax || "",
         email: settings.email || "",
         bankInfo: settings.bankInfo || "",
+        autoCc: settings.autoCc || "",
       });
     }
   }, [settings]);
@@ -312,6 +314,23 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">이메일 자동 CC</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Input
+              value={form.autoCc}
+              onChange={(e) => updateField("autoCc", e.target.value)}
+              placeholder="견적 발송 시 자동 CC할 이메일 (쉼표로 구분)"
+              data-testid="input-autoCc"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              견적 이메일 발송 시 자동으로 CC에 추가됩니다. 여러 이메일은 쉼표(,)로 구분하세요.
+            </p>
           </CardContent>
         </Card>
 

@@ -1166,7 +1166,7 @@ export async function registerRoutes(
 
   app.post("/api/quotations/:id/send-email", async (req, res) => {
     try {
-      const { to, subject, body } = req.body;
+      const { to, subject, body, cc } = req.body;
       if (!to) return res.status(400).json({ message: "수신자 이메일이 필요합니다" });
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(to)) return res.status(400).json({ message: "올바른 이메일 형식이 아닙니다" });
@@ -1213,6 +1213,15 @@ export async function registerRoutes(
         </div>
       `;
 
+      const ccList: string[] = [];
+      if (cc) ccList.push(...cc.split(',').map((e: string) => e.trim()).filter(Boolean));
+      if (companyInfo?.autoCc) {
+        const autoCcEmails = companyInfo.autoCc.split(',').map((e: string) => e.trim()).filter(Boolean);
+        for (const email of autoCcEmails) {
+          if (!ccList.includes(email)) ccList.push(email);
+        }
+      }
+
       const { sendEmailWithAttachment } = await import("./gmail");
       const emailResult = await sendEmailWithAttachment({
         to,
@@ -1220,7 +1229,35 @@ export async function registerRoutes(
         htmlBody: emailBody,
         attachment: { filename: pdfFilename, content: pdfBuf },
         from: companyInfo?.email || undefined,
+        cc: ccList.length > 0 ? ccList.join(', ') : undefined,
       });
+
+      if (!inquiry.snapshotEmail && to) {
+        await storage.updateInquiry(inquiry.id, { snapshotEmail: to });
+      }
+
+      await storage.updateQuotation(req.params.id, { status: "sent" });
+
+      await storage.updateInquiry(inquiry.id, { status: "quoted" });
+
+      const { items } = result;
+      const regularItems = items.filter(i => !i.isAdjustment);
+      const totalSales = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+      const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * (i.quantity || 1)), 0);
+      const totalMargin = totalSales - totalCost;
+      await storage.updateInquiry(inquiry.id, {
+        lastQuoteSales: totalSales,
+        lastQuoteCost: totalCost,
+        lastQuoteMargin: totalMargin,
+      });
+
+      try {
+        const { createQuoteSentEvent } = await import("./google-calendar");
+        const eventDate = result.quotation.quoteDate || new Date().toISOString().split('T')[0];
+        await createQuoteSentEvent(inquiry.inquiryNumber, inquiry.customerName, eventDate);
+      } catch (calErr: any) {
+        console.log(`Google Calendar 등록 실패 (이메일 발송은 완료): ${calErr.message}`);
+      }
 
       res.json({ message: `${to}로 견적서가 전송되었습니다`, messageId: emailResult.messageId });
     } catch (err: any) {
@@ -1239,7 +1276,8 @@ export async function registerRoutes(
       const buf = await generateQuotationPDF(req.params.id, inquiry);
       const safeNumber = result.quotation.quoteNumber.replace(/[/\\:*?"<>|]/g, "_");
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="quotation_${safeNumber}.pdf"`);
+      const disposition = req.query.inline === "1" ? "inline" : "attachment";
+      res.setHeader("Content-Disposition", `${disposition}; filename="quotation_${safeNumber}.pdf"`);
       res.send(buf);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

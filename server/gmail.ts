@@ -68,7 +68,8 @@ function buildMimeMessage(
   to: string,
   subject: string,
   htmlBody: string,
-  attachment?: { filename: string; content: Buffer; mimeType?: string }
+  attachment?: { filename: string; content: Buffer; mimeType?: string },
+  cc?: string
 ): string {
   const boundary = `boundary_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
@@ -80,6 +81,9 @@ function buildMimeMessage(
   let message = '';
   message += `From: ${safeFrom}\r\n`;
   message += `To: ${safeTo}\r\n`;
+  if (cc) {
+    message += `Cc: ${sanitizeHeader(cc)}\r\n`;
+  }
   message += `Subject: ${mimeSubject}\r\n`;
   message += `MIME-Version: 1.0\r\n`;
 
@@ -113,6 +117,7 @@ export async function sendEmailWithAttachment(options: {
   htmlBody: string;
   attachment?: { filename: string; content: Buffer; mimeType?: string };
   from?: string;
+  cc?: string;
 }): Promise<{ success: boolean; messageId?: string }> {
   const gmail = await getUncachableGmailClient();
 
@@ -122,7 +127,8 @@ export async function sendEmailWithAttachment(options: {
     options.to,
     options.subject,
     options.htmlBody,
-    options.attachment
+    options.attachment,
+    options.cc
   );
 
   const encodedMessage = Buffer.from(rawMessage)

@@ -40,7 +40,7 @@ args = "npm run dev"
 waitForPort = 5000
 
 [agent]
-integrations = ["onedrive:1.0.0", "javascript_database:1.0.0", "google-mail:1.0.0"]
+integrations = ["onedrive:1.0.0", "javascript_database:1.0.0", "google-mail:1.0.0", "google-calendar:1.0.0"]
 
 [userenv]
 

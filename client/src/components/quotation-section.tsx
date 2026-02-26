@@ -847,9 +847,11 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
   const [status, setStatus] = useState(quotation.status || "draft");
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailTo, setEmailTo] = useState(inquiry.snapshotEmail || "");
+  const [emailCc, setEmailCc] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState("");
 
   const updateMut = useMutation({
     mutationFn: (body: any) => apiRequest("PATCH", `/api/quotations/${quotation.id}`, body),
@@ -883,12 +885,21 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
     }
   };
 
-  const openEmailDialog = () => {
+  const openEmailDialog = async () => {
     setEmailTo(inquiry.snapshotEmail || "");
     setEmailSubject(`[견적서] ${quotation.quoteNumber}`);
     setEmailBody(
       `안녕하세요, ${inquiry.snapshotCompanyName || "고객"}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: ${quotation.quoteNumber}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`
     );
+    try {
+      const settingsRes = await fetch("/api/company-settings");
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        setEmailCc(settings.autoCc || "");
+      }
+    } catch {}
+    const previewUrl = `/api/quotations/${quotation.id}/download/pdf?inline=1&t=${Date.now()}`;
+    setPdfPreviewUrl(previewUrl);
     setEmailOpen(true);
   };
 
@@ -903,10 +914,14 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
         to: emailTo,
         subject: emailSubject,
         body: `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px; white-space: pre-line;">${emailBody}</div>`,
+        cc: emailCc || undefined,
       });
       const result = await res.json();
       toast({ title: "이메일 전송 완료", description: result.message });
       setEmailOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/quotations", quotation.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
     } catch (e: any) {
       toast({ title: "이메일 전송 실패", description: e.message, variant: "destructive" });
     } finally {
@@ -917,41 +932,70 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
   return (
     <>
     <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>견적서 이메일 전송</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <Label className="text-xs">수신자 이메일</Label>
-            <Input
-              value={emailTo}
-              onChange={e => setEmailTo(e.target.value)}
-              placeholder="customer@example.com"
-              className="text-sm"
-              data-testid="input-email-to"
-            />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
+            {!inquiry.snapshotEmail && (
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-2">
+                <p className="text-xs text-amber-700 dark:text-amber-400">고객 이메일이 등록되어 있지 않습니다. 입력하시면 고객정보에 자동 저장됩니다.</p>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs">수신자 이메일</Label>
+              <Input
+                value={emailTo}
+                onChange={e => setEmailTo(e.target.value)}
+                placeholder="customer@example.com"
+                className="text-sm"
+                autoFocus={!inquiry.snapshotEmail}
+                data-testid="input-email-to"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">CC</Label>
+              <Input
+                value={emailCc}
+                onChange={e => setEmailCc(e.target.value)}
+                placeholder="cc@example.com (쉼표로 구분)"
+                className="text-sm"
+                data-testid="input-email-cc"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">제목</Label>
+              <Input
+                value={emailSubject}
+                onChange={e => setEmailSubject(e.target.value)}
+                className="text-sm"
+                data-testid="input-email-subject"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">본문</Label>
+              <Textarea
+                value={emailBody}
+                onChange={e => setEmailBody(e.target.value)}
+                rows={8}
+                className="text-sm"
+                data-testid="input-email-body"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">PDF 견적서가 자동으로 첨부됩니다.</p>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">제목</Label>
-            <Input
-              value={emailSubject}
-              onChange={e => setEmailSubject(e.target.value)}
-              className="text-sm"
-              data-testid="input-email-subject"
-            />
+          <div className="border rounded-md overflow-hidden bg-muted/20">
+            <div className="text-xs font-medium px-2 py-1 bg-muted border-b">견적서 미리보기</div>
+            {pdfPreviewUrl && (
+              <iframe
+                src={pdfPreviewUrl}
+                className="w-full h-[500px]"
+                title="견적서 미리보기"
+                data-testid="iframe-pdf-preview"
+              />
+            )}
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">본문</Label>
-            <Textarea
-              value={emailBody}
-              onChange={e => setEmailBody(e.target.value)}
-              rows={8}
-              className="text-sm"
-              data-testid="input-email-body"
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">PDF 견적서가 자동으로 첨부됩니다.</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setEmailOpen(false)} data-testid="button-email-cancel">취소</Button>

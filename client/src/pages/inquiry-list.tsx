@@ -29,6 +29,7 @@ function parseDateString(dateStr: string): Date {
 const statusLabels: Record<string, string> = {
   none: "-",
   active: "진행중",
+  quoted: "견적발송",
   won: "수주",
   lost: "실주",
 };
@@ -36,6 +37,7 @@ const statusLabels: Record<string, string> = {
 const statusVariants: Record<string, "default" | "secondary" | "destructive"> = {
   none: "secondary",
   active: "default",
+  quoted: "default",
   won: "default",
   lost: "destructive",
 };
@@ -43,6 +45,7 @@ const statusVariants: Record<string, "default" | "secondary" | "destructive"> = 
 const statusRowClass: Record<string, string> = {
   none: "",
   active: "",
+  quoted: "bg-blue-50 dark:bg-blue-950/30",
   won: "bg-green-50 dark:bg-green-950/30",
   lost: "bg-red-50 dark:bg-red-950/30",
 };
@@ -479,6 +482,7 @@ export default function InquiryList() {
                 <SelectItem value="all">전체 상태</SelectItem>
                 <SelectItem value="none">-</SelectItem>
                 <SelectItem value="active">진행중</SelectItem>
+                <SelectItem value="quoted">견적발송</SelectItem>
                 <SelectItem value="won">수주</SelectItem>
                 <SelectItem value="lost">실주</SelectItem>
               </SelectContent>
@@ -536,6 +540,9 @@ export default function InquiryList() {
                     { key: "probability", label: "단계" },
                     { key: "status", label: "상태" },
                     { key: "expectedDate", label: "예상일자" },
+                    { key: "lastQuoteSales", label: "판매가" },
+                    { key: "lastQuoteCost", label: "원가" },
+                    { key: "lastQuoteMargin", label: "마진" },
                   ].map(({ key, label }) => (
                     <TableHead
                       key={key}
@@ -558,7 +565,7 @@ export default function InquiryList() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
                       {search ? "검색 결과가 없습니다" : "인콰이어리가 없습니다. OneDrive를 동기화하거나 새로 추가하세요."}
                     </TableCell>
                   </TableRow>
@@ -652,6 +659,7 @@ export default function InquiryList() {
                           <SelectContent>
                             <SelectItem value="none">-</SelectItem>
                             <SelectItem value="active">진행중</SelectItem>
+                            <SelectItem value="quoted">견적발송</SelectItem>
                             <SelectItem value="won">수주</SelectItem>
                             <SelectItem value="lost">실주</SelectItem>
                           </SelectContent>
@@ -700,6 +708,19 @@ export default function InquiryList() {
                             )}
                           </PopoverContent>
                         </Popover>
+                      </TableCell>
+                      <TableCell className="text-xs text-right" data-testid={`text-sales-${inq.id}`}>
+                        {inq.lastQuoteSales ? inq.lastQuoteSales.toLocaleString() : "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-right" data-testid={`text-cost-${inq.id}`}>
+                        {inq.lastQuoteCost ? inq.lastQuoteCost.toLocaleString() : "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-right" data-testid={`text-margin-${inq.id}`}>
+                        {inq.lastQuoteMargin != null ? (
+                          <span className={inq.lastQuoteMargin >= 0 ? "text-green-600" : "text-red-600"}>
+                            {inq.lastQuoteMargin.toLocaleString()}
+                          </span>
+                        ) : "-"}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-0.5">
