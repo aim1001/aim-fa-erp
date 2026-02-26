@@ -82,6 +82,19 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       const rightTextW = PAGE_RIGHT - rightBlockX;
       let rY = headerTop;
 
+      if (companyInfo?.logoUrl) {
+        const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
+        if (fs.existsSync(logoPath)) {
+          try {
+            const logoMaxH = 18;
+            const logoMaxW = 70;
+            const logoX = PAGE_RIGHT - logoMaxW;
+            doc.image(logoPath, logoX, rY, { width: logoMaxW, height: logoMaxH, fit: [logoMaxW, logoMaxH] });
+            rY += logoMaxH + 5;
+          } catch (e) {}
+        }
+      }
+
       if (companyInfo.companyName) {
         doc.font("Bold").fontSize(11).fillColor("#000");
         doc.text(companyInfo.companyName, rightBlockX, rY, { width: rightTextW, align: "right" });
@@ -94,19 +107,6 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       if (telFax) { doc.text(telFax, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
       if (companyInfo.representative) { doc.text(`대표이사 ${companyInfo.representative}`, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
       if (companyInfo.email) { doc.text(companyInfo.email, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
-
-      if (companyInfo?.logoUrl) {
-        const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
-        if (fs.existsSync(logoPath)) {
-          try {
-            const logoMaxH = 35;
-            const logoMaxW = 90;
-            const logoX = PAGE_RIGHT - logoMaxW;
-            doc.image(logoPath, logoX, rY, { width: logoMaxW, height: logoMaxH, fit: [logoMaxW, logoMaxH] });
-            rY += logoMaxH + 4;
-          } catch (e) {}
-        }
-      }
 
       rightBlockBottom = rY;
     }
