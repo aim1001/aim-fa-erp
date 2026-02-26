@@ -39,8 +39,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **item_document** 테이블: 제품 문서 (품목코드, 문서유형, URL, 이름)
 - **purchase_items** 테이블: 구매품 마스터 (대분류, 소분류, 품목코드, 품명, 브랜드, 원산지, 규격, 공급업체텍스트, vendorId FK→vendors, 단가, 통화, 리드타임, 재고품여부, 유형, 단위, 활성여부, 안전재고, MOQ, 비고)
 - **inquiry_memos** 테이블: 인콰이어리 메모 (inquiryId FK→inquiries, content, createdAt ISO string) - 날짜별 메모 누적 관리
-- **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, createdAt)
-- **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, unitPrice, amount, sortOrder)
+- **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, adjustmentAmount, adjustmentNote, createdAt)
+- **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder)
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
@@ -81,7 +81,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `server/routes.ts` - API routes
 - `client/src/pages/dashboard.tsx` - Dashboard page
 - `client/src/pages/inquiry-list.tsx` - Inquiry list page
-- `client/src/pages/inquiry-detail.tsx` - Inquiry detail page (includes CustomerInfoSection, ProductImagesSection)
+- `client/src/pages/inquiry-detail.tsx` - Inquiry detail modal (탭 기반 UI: 고객정보/제품정보/견적 및 내역/파일목록, 전체화면 모달, includes CustomerInfoSection, ProductImagesSection, MemoSection)
 - `client/src/pages/inquiry-form.tsx` - Add inquiry form (auto-generates inquiry number)
 - `client/src/pages/customer-list.tsx` - Customer list page (테이블 형태, 클릭 시 모달 편집, optimistic update)
 - `client/src/pages/customer-detail.tsx` - Customer detail page (레거시, 직접 접근 시 사용)

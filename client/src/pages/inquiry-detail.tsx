@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock } from "lucide-react";
@@ -1906,11 +1907,12 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex items-center gap-2 flex-wrap px-1 mb-3">
         <h2 className="text-xl font-semibold flex-1" data-testid="text-inquiry-title">
           {inquiry.inquiryNumber} - {inquiry.customerName}
         </h2>
+        <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
         <Button
           variant="destructive"
           size="sm"
@@ -1925,314 +1927,345 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
         </Button>
       </div>
 
-      <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
+      <Tabs defaultValue="customer" className="flex-1 flex flex-col min-h-0 [&>[data-state=active]]:flex-1 [&>[data-state=active]]:min-h-0">
+        <TabsList className="w-full justify-start shrink-0" data-testid="tabs-inquiry-detail">
+          <TabsTrigger value="customer" data-testid="tab-customer">고객정보</TabsTrigger>
+          <TabsTrigger value="product" data-testid="tab-product">제품정보</TabsTrigger>
+          <TabsTrigger value="quotation" data-testid="tab-quotation">견적 및 내역</TabsTrigger>
+          <TabsTrigger value="files" data-testid="tab-files">파일목록</TabsTrigger>
+        </TabsList>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">기본 정보</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 text-sm items-center">
-              <span className="text-muted-foreground">영업번호</span>
-              <InlineText value={inquiry.inquiryNumber} field="inquiryNumber" inquiryId={id!} />
+        <TabsContent value="customer" className="flex-1 min-h-0 mt-3 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="space-y-4 pr-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">기본 정보</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 text-sm items-center">
+                      <span className="text-muted-foreground">영업번호</span>
+                      <InlineText value={inquiry.inquiryNumber} field="inquiryNumber" inquiryId={id!} />
 
-              <span className="text-muted-foreground">고객명</span>
-              <InlineText value={inquiry.customerName} field="customerName" inquiryId={id!} />
+                      <span className="text-muted-foreground">고객명</span>
+                      <InlineText value={inquiry.customerName} field="customerName" inquiryId={id!} />
 
-              <span className="text-muted-foreground">제품정보</span>
-              <InlineText value={inquiry.productInfo || ""} field="productInfo" inquiryId={id!} placeholder="클릭하여 입력" />
+                      <span className="text-muted-foreground">제품정보</span>
+                      <InlineText value={inquiry.productInfo || ""} field="productInfo" inquiryId={id!} placeholder="클릭하여 입력" />
 
-              <span className="text-muted-foreground">연도</span>
-              <InlineNumber value={inquiry.year} field="year" inquiryId={id!} />
+                      <span className="text-muted-foreground">연도</span>
+                      <InlineNumber value={inquiry.year} field="year" inquiryId={id!} />
 
-              <span className="text-muted-foreground">출처</span>
-              <Badge variant="secondary">{inquiry.source === "onedrive" ? "OneDrive" : "수동입력"}</Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">영업 정보</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 text-sm items-center">
-              <span className="text-muted-foreground">단계</span>
-              <InlineStageSelect value={inquiry.probability || 0} inquiryId={id!} />
-
-              <span className="text-muted-foreground">상태</span>
-              <InlineSelect
-                value={inquiry.status || "none"}
-                field="status"
-                inquiryId={id!}
-                options={[
-                  { value: "none", label: "-" },
-                  { value: "active", label: "진행중" },
-                  { value: "won", label: "수주" },
-                  { value: "lost", label: "실주" },
-                ]}
-              />
-
-              <span className="text-muted-foreground">예상일자</span>
-              <InlineDateInput value={inquiry.expectedDate || ""} field="expectedDate" inquiryId={id!} />
-
-              <span className="text-muted-foreground">납품일자</span>
-              <InlineDateInput value={inquiry.deliveryDate || ""} field="deliveryDate" inquiryId={id!} />
-
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <MemoSection inquiryId={id!} legacyMemo={inquiry.memo || ""} />
-
-      <QuotationSection inquiryId={id!} inquiry={inquiry} />
-
-      <CustomerInfoSection inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">제품 상세정보</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
-            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
-              <span className="text-muted-foreground">크기 (가로)</span>
-              <div className="flex items-center gap-1">
-                <InlineText value={inquiry.productWidth || ""} field="productWidth" inquiryId={id!} placeholder="가로" />
-                <span className="text-muted-foreground text-xs">mm</span>
-              </div>
-
-              <span className="text-muted-foreground">크기 (세로)</span>
-              <div className="flex items-center gap-1">
-                <InlineText value={inquiry.productDepth || ""} field="productDepth" inquiryId={id!} placeholder="세로" />
-                <span className="text-muted-foreground text-xs">mm</span>
-              </div>
-
-              <span className="text-muted-foreground">크기 (높이)</span>
-              <div className="flex items-center gap-1">
-                <InlineText value={inquiry.productHeight || ""} field="productHeight" inquiryId={id!} placeholder="높이" />
-                <span className="text-muted-foreground text-xs">mm</span>
-              </div>
-
-              <span className="text-muted-foreground">무게</span>
-              <div className="flex items-center gap-1">
-                <InlineText value={inquiry.weight || ""} field="weight" inquiryId={id!} placeholder="무게" />
-                <span className="text-muted-foreground text-xs">g</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
-              <span className="text-muted-foreground">재질</span>
-              <InlineSelect
-                value={inquiry.material || ""}
-                field="material"
-                inquiryId={id!}
-                options={[
-                  { value: "_none", label: "미설정" },
-                  ...materialOptions.map(m => ({ value: m, label: m })),
-                ]}
-              />
-
-              <span className="text-muted-foreground">종류</span>
-              <InlineText value={inquiry.productType || ""} field="productType" inquiryId={id!} placeholder="클릭하여 입력" />
-
-              <span className="text-muted-foreground">분야</span>
-              <InlineSelect
-                value={inquiry.industry || ""}
-                field="industry"
-                inquiryId={id!}
-                options={[
-                  { value: "_none", label: "미설정" },
-                  ...industryOptions.map(i => ({ value: i, label: i })),
-                ]}
-              />
-
-              <span className="text-muted-foreground">공급속도</span>
-              <div className="flex items-center gap-1">
-                <InlineText value={inquiry.supplySpeed || ""} field="supplySpeed" inquiryId={id!} placeholder="속도" />
-                <span className="text-muted-foreground text-xs">ea/min</span>
-              </div>
-            </div>
-          </div>
-
-          <ProductImagesSection inquiryId={id!} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">계약조건</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4 text-sm">
-            <div className="border rounded-lg overflow-hidden">
-              <div className="grid grid-cols-[80px_1fr_1fr] bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground border-b">
-                <span>구분</span>
-                <span>비율</span>
-                <span>기한</span>
-              </div>
-
-              <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center border-b">
-                <span className="font-medium">계약금</span>
-                <div className="flex items-center gap-1">
-                  <InlineNumber value={inquiry.contractRatio ?? 0} field="contractRatio" inquiryId={id!} />
-                  <span className="text-muted-foreground text-xs">%</span>
-                </div>
-                <div className="flex items-center gap-1 flex-wrap">
-                  <InlineSelect
-                    value={inquiry.contractTimingType || ""}
-                    field="contractTimingType"
-                    inquiryId={id!}
-                    options={[
-                      { value: "_none", label: "미설정" },
-                      { value: "days", label: "일수지정" },
-                      { value: "next_month_end", label: "익월말" },
-                      { value: "month_end", label: "월말" },
-                    ]}
-                  />
-                  {inquiry.contractTimingType === "days" && (
-                    <div className="flex items-center gap-1">
-                      <InlineNumber value={inquiry.contractTimingDays ?? 0} field="contractTimingDays" inquiryId={id!} />
-                      <span className="text-muted-foreground text-xs">일</span>
+                      <span className="text-muted-foreground">출처</span>
+                      <Badge variant="secondary">{inquiry.source === "onedrive" ? "OneDrive" : "수동입력"}</Badge>
                     </div>
-                  )}
-                </div>
-              </div>
+                  </CardContent>
+                </Card>
 
-              <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center border-b">
-                <span className="font-medium">중도금</span>
-                <div className="flex items-center gap-1">
-                  <InlineNumber value={inquiry.midRatio ?? 0} field="midRatio" inquiryId={id!} />
-                  <span className="text-muted-foreground text-xs">%</span>
-                </div>
-                <div className="flex items-center gap-1 flex-wrap">
-                  <InlineSelect
-                    value={inquiry.midAfterDelivery || ""}
-                    field="midAfterDelivery"
-                    inquiryId={id!}
-                    options={[
-                      { value: "_none", label: "미설정" },
-                      { value: "yes", label: "납품후" },
-                      { value: "no", label: "납품전" },
-                    ]}
-                  />
-                  <InlineSelect
-                    value={inquiry.midTimingType || ""}
-                    field="midTimingType"
-                    inquiryId={id!}
-                    options={[
-                      { value: "_none", label: "미설정" },
-                      { value: "days", label: "일수지정" },
-                      { value: "next_month_end", label: "익월말" },
-                      { value: "month_end", label: "월말" },
-                    ]}
-                  />
-                  {inquiry.midTimingType === "days" && (
-                    <div className="flex items-center gap-1">
-                      <InlineNumber value={inquiry.midTimingDays ?? 0} field="midTimingDays" inquiryId={id!} />
-                      <span className="text-muted-foreground text-xs">일</span>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">영업 정보</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 text-sm items-center">
+                      <span className="text-muted-foreground">단계</span>
+                      <InlineStageSelect value={inquiry.probability || 0} inquiryId={id!} />
+
+                      <span className="text-muted-foreground">상태</span>
+                      <InlineSelect
+                        value={inquiry.status || "none"}
+                        field="status"
+                        inquiryId={id!}
+                        options={[
+                          { value: "none", label: "-" },
+                          { value: "active", label: "진행중" },
+                          { value: "won", label: "수주" },
+                          { value: "lost", label: "실주" },
+                        ]}
+                      />
+
+                      <span className="text-muted-foreground">예상일자</span>
+                      <InlineDateInput value={inquiry.expectedDate || ""} field="expectedDate" inquiryId={id!} />
+
+                      <span className="text-muted-foreground">납품일자</span>
+                      <InlineDateInput value={inquiry.deliveryDate || ""} field="deliveryDate" inquiryId={id!} />
+
                     </div>
-                  )}
-                </div>
+                  </CardContent>
+                </Card>
               </div>
 
-              <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center">
-                <span className="font-medium">잔금</span>
-                <div className="flex items-center gap-1">
-                  <InlineNumber value={inquiry.finalRatio ?? 0} field="finalRatio" inquiryId={id!} />
-                  <span className="text-muted-foreground text-xs">%</span>
-                </div>
-                <div className="flex items-center gap-1 flex-wrap">
-                  <InlineSelect
-                    value={inquiry.finalAfterDelivery || ""}
-                    field="finalAfterDelivery"
-                    inquiryId={id!}
-                    options={[
-                      { value: "_none", label: "미설정" },
-                      { value: "yes", label: "납품후" },
-                      { value: "no", label: "납품전" },
-                    ]}
-                  />
-                  <InlineSelect
-                    value={inquiry.finalTimingType || ""}
-                    field="finalTimingType"
-                    inquiryId={id!}
-                    options={[
-                      { value: "_none", label: "미설정" },
-                      { value: "days", label: "일수지정" },
-                      { value: "next_month_end", label: "익월말" },
-                      { value: "month_end", label: "월말" },
-                    ]}
-                  />
-                  {inquiry.finalTimingType === "days" && (
-                    <div className="flex items-center gap-1">
-                      <InlineNumber value={inquiry.finalTimingDays ?? 0} field="finalTimingDays" inquiryId={id!} />
-                      <span className="text-muted-foreground text-xs">일</span>
+              <CustomerInfoSection inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">계약조건</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4 text-sm">
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="grid grid-cols-[80px_1fr_1fr] bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground border-b">
+                        <span>구분</span>
+                        <span>비율</span>
+                        <span>기한</span>
+                      </div>
+
+                      <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center border-b">
+                        <span className="font-medium">계약금</span>
+                        <div className="flex items-center gap-1">
+                          <InlineNumber value={inquiry.contractRatio ?? 0} field="contractRatio" inquiryId={id!} />
+                          <span className="text-muted-foreground text-xs">%</span>
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <InlineSelect
+                            value={inquiry.contractTimingType || ""}
+                            field="contractTimingType"
+                            inquiryId={id!}
+                            options={[
+                              { value: "_none", label: "미설정" },
+                              { value: "days", label: "일수지정" },
+                              { value: "next_month_end", label: "익월말" },
+                              { value: "month_end", label: "월말" },
+                            ]}
+                          />
+                          {inquiry.contractTimingType === "days" && (
+                            <div className="flex items-center gap-1">
+                              <InlineNumber value={inquiry.contractTimingDays ?? 0} field="contractTimingDays" inquiryId={id!} />
+                              <span className="text-muted-foreground text-xs">일</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center border-b">
+                        <span className="font-medium">중도금</span>
+                        <div className="flex items-center gap-1">
+                          <InlineNumber value={inquiry.midRatio ?? 0} field="midRatio" inquiryId={id!} />
+                          <span className="text-muted-foreground text-xs">%</span>
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <InlineSelect
+                            value={inquiry.midAfterDelivery || ""}
+                            field="midAfterDelivery"
+                            inquiryId={id!}
+                            options={[
+                              { value: "_none", label: "미설정" },
+                              { value: "yes", label: "납품후" },
+                              { value: "no", label: "납품전" },
+                            ]}
+                          />
+                          <InlineSelect
+                            value={inquiry.midTimingType || ""}
+                            field="midTimingType"
+                            inquiryId={id!}
+                            options={[
+                              { value: "_none", label: "미설정" },
+                              { value: "days", label: "일수지정" },
+                              { value: "next_month_end", label: "익월말" },
+                              { value: "month_end", label: "월말" },
+                            ]}
+                          />
+                          {inquiry.midTimingType === "days" && (
+                            <div className="flex items-center gap-1">
+                              <InlineNumber value={inquiry.midTimingDays ?? 0} field="midTimingDays" inquiryId={id!} />
+                              <span className="text-muted-foreground text-xs">일</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-[80px_1fr_1fr] px-3 py-2 items-center">
+                        <span className="font-medium">잔금</span>
+                        <div className="flex items-center gap-1">
+                          <InlineNumber value={inquiry.finalRatio ?? 0} field="finalRatio" inquiryId={id!} />
+                          <span className="text-muted-foreground text-xs">%</span>
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <InlineSelect
+                            value={inquiry.finalAfterDelivery || ""}
+                            field="finalAfterDelivery"
+                            inquiryId={id!}
+                            options={[
+                              { value: "_none", label: "미설정" },
+                              { value: "yes", label: "납품후" },
+                              { value: "no", label: "납품전" },
+                            ]}
+                          />
+                          <InlineSelect
+                            value={inquiry.finalTimingType || ""}
+                            field="finalTimingType"
+                            inquiryId={id!}
+                            options={[
+                              { value: "_none", label: "미설정" },
+                              { value: "days", label: "일수지정" },
+                              { value: "next_month_end", label: "익월말" },
+                              { value: "month_end", label: "월말" },
+                            ]}
+                          />
+                          {inquiry.finalTimingType === "days" && (
+                            <div className="flex items-center gap-1">
+                              <InlineNumber value={inquiry.finalTimingDays ?? 0} field="finalTimingDays" inquiryId={id!} />
+                              <span className="text-muted-foreground text-xs">일</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-1">
-          <CardTitle className="text-base">파일 목록</CardTitle>
-          {inquiry.onedriveFolderId && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => syncFilesMutation.mutate()}
-              disabled={syncFilesMutation.isPending}
-              data-testid="button-sync-files"
-            >
-              <RefreshCw className={syncFilesMutation.isPending ? "animate-spin" : ""} />
-              <span>파일 새로고침</span>
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent>
-          {filesLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-10" />)}
-            </div>
-          ) : files && files.length > 0 ? (
-            <div className="space-y-1">
-              {files.map((file) => (
-                <div
-                  key={file.id}
-                  className="flex items-center gap-3 p-2 rounded-md hover-elevate"
-                  data-testid={`file-${file.id}`}
-                >
-                  {getFileIcon(file.fileType)}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{file.fileName}</p>
-                    <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
                   </div>
-                  {file.webUrl && (
+                </CardContent>
+              </Card>
+
+              <MemoSection inquiryId={id!} legacyMemo={inquiry.memo || ""} />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="product" className="flex-1 min-h-0 mt-3 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="space-y-4 pr-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">제품 상세정보</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                    <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
+                      <span className="text-muted-foreground">크기 (가로)</span>
+                      <div className="flex items-center gap-1">
+                        <InlineText value={inquiry.productWidth || ""} field="productWidth" inquiryId={id!} placeholder="가로" />
+                        <span className="text-muted-foreground text-xs">mm</span>
+                      </div>
+
+                      <span className="text-muted-foreground">크기 (세로)</span>
+                      <div className="flex items-center gap-1">
+                        <InlineText value={inquiry.productDepth || ""} field="productDepth" inquiryId={id!} placeholder="세로" />
+                        <span className="text-muted-foreground text-xs">mm</span>
+                      </div>
+
+                      <span className="text-muted-foreground">크기 (높이)</span>
+                      <div className="flex items-center gap-1">
+                        <InlineText value={inquiry.productHeight || ""} field="productHeight" inquiryId={id!} placeholder="높이" />
+                        <span className="text-muted-foreground text-xs">mm</span>
+                      </div>
+
+                      <span className="text-muted-foreground">무게</span>
+                      <div className="flex items-center gap-1">
+                        <InlineText value={inquiry.weight || ""} field="weight" inquiryId={id!} placeholder="무게" />
+                        <span className="text-muted-foreground text-xs">g</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[100px_1fr] gap-y-3 gap-x-2 items-center">
+                      <span className="text-muted-foreground">재질</span>
+                      <InlineSelect
+                        value={inquiry.material || ""}
+                        field="material"
+                        inquiryId={id!}
+                        options={[
+                          { value: "_none", label: "미설정" },
+                          ...materialOptions.map(m => ({ value: m, label: m })),
+                        ]}
+                      />
+
+                      <span className="text-muted-foreground">종류</span>
+                      <InlineText value={inquiry.productType || ""} field="productType" inquiryId={id!} placeholder="클릭하여 입력" />
+
+                      <span className="text-muted-foreground">분야</span>
+                      <InlineSelect
+                        value={inquiry.industry || ""}
+                        field="industry"
+                        inquiryId={id!}
+                        options={[
+                          { value: "_none", label: "미설정" },
+                          ...industryOptions.map(i => ({ value: i, label: i })),
+                        ]}
+                      />
+
+                      <span className="text-muted-foreground">공급속도</span>
+                      <div className="flex items-center gap-1">
+                        <InlineText value={inquiry.supplySpeed || ""} field="supplySpeed" inquiryId={id!} placeholder="속도" />
+                        <span className="text-muted-foreground text-xs">ea/min</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <ProductImagesSection inquiryId={id!} />
+                </CardContent>
+              </Card>
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="quotation" className="flex-1 min-h-0 mt-3 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="pr-4">
+              <QuotationSection inquiryId={id!} inquiry={inquiry} />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="files" className="flex-1 min-h-0 mt-3 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="pr-4">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-1">
+                  <CardTitle className="text-base">파일 목록</CardTitle>
+                  {inquiry.onedriveFolderId && (
                     <Button
-                      variant="ghost"
+                      variant="secondary"
                       size="sm"
-                      asChild
-                      data-testid={`button-open-file-${file.id}`}
+                      onClick={() => syncFilesMutation.mutate()}
+                      disabled={syncFilesMutation.isPending}
+                      data-testid="button-sync-files"
                     >
-                      <a href={file.webUrl} target="_blank" rel="noopener noreferrer">열기</a>
+                      <RefreshCw className={syncFilesMutation.isPending ? "animate-spin" : ""} />
+                      <span>파일 새로고침</span>
                     </Button>
                   )}
-                </div>
-              ))}
+                </CardHeader>
+                <CardContent>
+                  {filesLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3].map(i => <Skeleton key={i} className="h-10" />)}
+                    </div>
+                  ) : files && files.length > 0 ? (
+                    <div className="space-y-1">
+                      {files.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center gap-3 p-2 rounded-md hover-elevate"
+                          data-testid={`file-${file.id}`}
+                        >
+                          {getFileIcon(file.fileType)}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{file.fileName}</p>
+                            <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                          </div>
+                          {file.webUrl && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              asChild
+                              data-testid={`button-open-file-${file.id}`}
+                            >
+                              <a href={file.webUrl} target="_blank" rel="noopener noreferrer">열기</a>
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      {inquiry.onedriveFolderId ? "파일이 없습니다. 새로고침을 시도해보세요." : "OneDrive와 연결되지 않은 인콰이어리입니다."}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              {inquiry.onedriveFolderId ? "파일이 없습니다. 새로고침을 시도해보세요." : "OneDrive와 연결되지 않은 인콰이어리입니다."}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -2244,12 +2277,12 @@ export function InquiryDetailDialog({ inquiryId, open, onOpenChange }: {
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] p-0 gap-0">
-        <DialogHeader className="px-6 pt-6 pb-2">
+      <DialogContent className="w-[98vw] h-[95vh] max-w-[98vw] max-h-[95vh] p-0 gap-0 flex flex-col">
+        <DialogHeader className="px-6 pt-5 pb-2 shrink-0">
           <DialogTitle className="sr-only">인콰이어리 상세</DialogTitle>
           <DialogDescription className="sr-only">인콰이어리 상세 정보를 확인하고 수정할 수 있습니다</DialogDescription>
         </DialogHeader>
-        <ScrollArea className="max-h-[calc(90vh-4rem)] px-6 pb-6">
+        <div className="flex-1 min-h-0 px-6 pb-6">
           {inquiryId && (
             <InquiryDetailContent
               inquiryId={inquiryId}
@@ -2257,7 +2290,7 @@ export function InquiryDetailDialog({ inquiryId, open, onOpenChange }: {
               onDeleted={() => onOpenChange(false)}
             />
           )}
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );
