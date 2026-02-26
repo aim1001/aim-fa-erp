@@ -437,16 +437,28 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const [newAdj, setNewAdj] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [editingAdjId, setEditingAdjId] = useState<string | null>(null);
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
+  const [discountType, setDiscountType] = useState<"percent" | "amount">((quotation.discountType as "percent" | "amount") || "percent");
+  const [discountValue, setDiscountValue] = useState(quotation.discountValue || 0);
+  const [discountTruncate, setDiscountTruncate] = useState(quotation.discountTruncate !== false);
 
   const regularItems = useMemo(() => items.filter(i => !i.isAdjustment), [items]);
   const adjustmentItems = useMemo(() => items.filter(i => i.isAdjustment), [items]);
 
-  const subtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const regularSubtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
   const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
   const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
-  const adjustedSubtotal = subtotal + adjTotal;
-  const tax = Math.round(adjustedSubtotal * 0.1);
-  const total = adjustedSubtotal + tax;
+  const supplyAmount = regularSubtotal + adjTotal;
+
+  const calcDiscount = useMemo(() => {
+    if (discountValue <= 0) return 0;
+    let raw = discountType === "percent" ? Math.round(supplyAmount * (discountValue / 100)) : discountValue;
+    if (discountTruncate) raw = Math.floor(raw / 1000) * 1000;
+    return raw;
+  }, [discountType, discountValue, discountTruncate, supplyAmount]);
+
+  const afterDiscount = supplyAmount - calcDiscount;
+  const tax = Math.round(afterDiscount * 0.1);
+  const total = afterDiscount + tax;
 
   const addAdjMut = useMutation({
     mutationFn: (body: any) => apiRequest("POST", `/api/quotations/${quotation.id}/items`, body),
@@ -480,7 +492,13 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   });
 
   const handleSave = () => {
-    updateMut.mutate({ notes });
+    updateMut.mutate({
+      notes,
+      discountType,
+      discountValue,
+      discountTruncate,
+      adjustmentAmount: -calcDiscount,
+    });
   };
 
   const handleAddAdj = () => {
@@ -624,28 +642,58 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
 
       <div className="bg-muted/20 rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between text-sm">
-          <span>공급가액 (품목 합계)</span>
-          <span className="font-medium">{fmtNum(subtotal)}원</span>
+          <span>공급가액 (품목{adjTotal !== 0 ? "+추가" : ""} 합계)</span>
+          <span className="font-medium">{fmtNum(supplyAmount)}원</span>
         </div>
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>원가 합계</span>
           <span>{fmtNum(totalCost)}원</span>
         </div>
 
-        {adjTotal !== 0 && (
-          <div className="flex items-center justify-between text-sm border-t pt-2">
-            <span>{adjTotal < 0 ? "할인 합계" : "추가 항목 합계"}</span>
-            <span className={adjTotal < 0 ? "text-red-500" : "text-blue-500"}>
-              {adjTotal > 0 ? "+" : ""}{fmtNum(adjTotal)}원
+        <div className="border-t pt-3 space-y-2">
+          <label className="text-sm font-medium">할인</label>
+          <div className="flex items-center gap-2">
+            <Select value={discountType} onValueChange={(v: "percent" | "amount") => setDiscountType(v)}>
+              <SelectTrigger className="w-20 h-8 text-xs" data-testid="select-discount-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percent">%</SelectItem>
+                <SelectItem value="amount">금액</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              type="number"
+              value={discountValue || ""}
+              onChange={e => setDiscountValue(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
+              placeholder={discountType === "percent" ? "할인율" : "할인금액"}
+              className="h-8 text-xs w-28"
+              data-testid="input-discount-value"
+            />
+            <span className="text-xs text-muted-foreground">{discountType === "percent" ? "%" : "원"}</span>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer ml-2">
+              <input
+                type="checkbox"
+                checked={discountTruncate}
+                onChange={e => setDiscountTruncate(e.target.checked)}
+                className="rounded border-gray-300"
+                data-testid="checkbox-discount-truncate"
+              />
+              <span className="text-muted-foreground">천원 절사</span>
+            </label>
+          </div>
+        </div>
+
+        {calcDiscount > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              할인{discountType === "percent" ? ` (${discountValue}%)` : ""}{discountTruncate ? " 천원절사" : ""}
             </span>
+            <span className="text-red-500">-{fmtNum(calcDiscount)}원</span>
           </div>
         )}
 
         <div className="flex items-center justify-between text-sm border-t pt-2">
-          <span>{adjTotal !== 0 ? "조정 후 공급가액" : "공급가액"}</span>
-          <span className="font-medium">{fmtNum(adjustedSubtotal)}원</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
           <span>부가세 (10%)</span>
           <span>{fmtNum(tax)}원</span>
         </div>

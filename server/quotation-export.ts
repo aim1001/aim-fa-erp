@@ -40,13 +40,22 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
   const regularItems = items.filter(i => !i.isAdjustment);
   const adjustmentItems = items.filter(i => i.isAdjustment);
 
-  const subtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const regularSubtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
   const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
-  const legacyAdjustment = quotation.adjustmentAmount || 0;
-  const effectiveAdjustment = adjustmentItems.length > 0 ? adjTotal : legacyAdjustment;
-  const adjustedSubtotal = subtotal + effectiveAdjustment;
-  const tax = Math.round(adjustedSubtotal * 0.1);
-  const total = adjustedSubtotal + tax;
+  const supplyAmount = regularSubtotal + adjTotal;
+
+  const discountType = (quotation.discountType as string) || "percent";
+  const discountValue = quotation.discountValue || 0;
+  const discountTruncate = quotation.discountTruncate !== false;
+  let discountAmount = 0;
+  if (discountValue > 0) {
+    discountAmount = discountType === "percent" ? Math.round(supplyAmount * (discountValue / 100)) : discountValue;
+    if (discountTruncate) discountAmount = Math.floor(discountAmount / 1000) * 1000;
+  }
+
+  const afterDiscount = supplyAmount - discountAmount;
+  const tax = Math.round(afterDiscount * 0.1);
+  const total = afterDiscount + tax;
   const grouped = groupByCategory(regularItems);
 
   return new Promise((resolve, reject) => {
@@ -302,21 +311,15 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     doc.font("Regular").fontSize(9).fillColor("#000");
     doc.text(`공급가액:`, 360, sumStartY, { width: 100, align: "right" });
-    doc.text(`${fmtNum(subtotal)}원`, 465, sumStartY, { width: 80, align: "right" });
+    doc.text(`${fmtNum(supplyAmount)}원`, 465, sumStartY, { width: 80, align: "right" });
     let sY = sumStartY + 15;
 
-    if (effectiveAdjustment !== 0) {
-      const adjLabel = effectiveAdjustment < 0 ? "할인:" : "추가:";
-      doc.text(`${adjLabel}`, 360, sY, { width: 100, align: "right" });
-      doc.text(`${fmtNum(effectiveAdjustment)}원`, 465, sY, { width: 80, align: "right" });
-      sY += 15;
-      if (adjustmentItems.length === 0 && quotation.adjustmentNote) {
-        doc.fontSize(8).fillColor("#666").text(`(${quotation.adjustmentNote})`, 360, sY, { width: 185, align: "right" });
-        doc.fillColor("#000").fontSize(9);
-        sY += 15;
-      }
-      doc.text(`조정 후 공급가액:`, 360, sY, { width: 100, align: "right" });
-      doc.text(`${fmtNum(adjustedSubtotal)}원`, 465, sY, { width: 80, align: "right" });
+    if (discountAmount > 0) {
+      const discLabel = discountType === "percent"
+        ? `할인 (${discountValue}%${discountTruncate ? ", 천원절사" : ""}):`
+        : `할인${discountTruncate ? " (천원절사)" : ""}:`;
+      doc.text(discLabel, 330, sY, { width: 130, align: "right" });
+      doc.text(`-${fmtNum(discountAmount)}원`, 465, sY, { width: 80, align: "right" });
       sY += 15;
     }
 
@@ -429,13 +432,22 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
   const regularItems = items.filter(i => !i.isAdjustment);
   const adjustmentItems = items.filter(i => i.isAdjustment);
 
-  const subtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const regularSubtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
   const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
-  const legacyAdjustment = quotation.adjustmentAmount || 0;
-  const effectiveAdjustment = adjustmentItems.length > 0 ? adjTotal : legacyAdjustment;
-  const adjustedSubtotal = subtotal + effectiveAdjustment;
-  const tax = Math.round(adjustedSubtotal * 0.1);
-  const total = adjustedSubtotal + tax;
+  const supplyAmount = regularSubtotal + adjTotal;
+
+  const xlDiscountType = (quotation.discountType as string) || "percent";
+  const xlDiscountValue = quotation.discountValue || 0;
+  const xlDiscountTruncate = quotation.discountTruncate !== false;
+  let xlDiscountAmount = 0;
+  if (xlDiscountValue > 0) {
+    xlDiscountAmount = xlDiscountType === "percent" ? Math.round(supplyAmount * (xlDiscountValue / 100)) : xlDiscountValue;
+    if (xlDiscountTruncate) xlDiscountAmount = Math.floor(xlDiscountAmount / 1000) * 1000;
+  }
+
+  const afterDiscount = supplyAmount - xlDiscountAmount;
+  const tax = Math.round(afterDiscount * 0.1);
+  const total = afterDiscount + tax;
   const grouped = groupByCategory(regularItems);
 
   const wb = new ExcelJS.Workbook();
@@ -445,6 +457,11 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
     { header: "항목", key: "key", width: 20 },
     { header: "값", key: "value", width: 40 },
   ];
+
+  const discountDesc = xlDiscountValue > 0
+    ? (xlDiscountType === "percent" ? `${xlDiscountValue}%${xlDiscountTruncate ? " (천원절사)" : ""}` : `${xlDiscountValue}원${xlDiscountTruncate ? " (천원절사)" : ""}`)
+    : "-";
+
   infoSheet.addRows([
     { key: "견적번호", value: quotation.quoteNumber },
     { key: "견적일자", value: fmtDate(quotation.quoteDate) },
@@ -457,10 +474,9 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
     { key: "이메일", value: inquiry.snapshotEmail || "" },
     { key: "주소", value: inquiry.snapshotAddress || "" },
     { key: "", value: "" },
-    { key: "공급가액", value: subtotal },
-    { key: "가격조정", value: effectiveAdjustment },
-    { key: "조정사유", value: adjustmentItems.length === 0 ? (quotation.adjustmentNote || "") : "추가 항목 참조" },
-    { key: "조정후공급가액", value: adjustedSubtotal },
+    { key: "공급가액", value: supplyAmount },
+    { key: "할인", value: discountDesc },
+    { key: "할인금액", value: xlDiscountAmount },
     { key: "부가세", value: tax },
     { key: "합계", value: total },
     { key: "", value: "" },

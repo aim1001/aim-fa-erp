@@ -378,6 +378,9 @@ export const quotations = pgTable("quotations", {
   status: text("status").default("draft"),
   adjustmentAmount: integer("adjustment_amount").default(0),
   adjustmentNote: text("adjustment_note"),
+  discountType: text("discount_type").default("percent"),
+  discountValue: integer("discount_value").default(0),
+  discountTruncate: boolean("discount_truncate").default(true),
   createdAt: text("created_at").notNull(),
 });
 
