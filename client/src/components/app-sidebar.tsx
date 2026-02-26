@@ -2,7 +2,7 @@ import {
   LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut,
   Truck, Receipt, ReceiptText, Calendar, Clock, Wallet, FolderKanban, ClipboardList,
   CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart,
-  Package, ClipboardCheck, FolderCheck, FolderOpen, Settings
+  Package, ClipboardCheck, FolderCheck, FolderOpen, Settings, Users
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -317,6 +317,11 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild data-active={location === "/vendors"} data-testid="nav-vendors">
                   <Link href="/vendors"><Truck className="h-4 w-4" /><span>공급업체</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/staff"} data-testid="nav-staff">
+                  <Link href="/staff"><Users className="h-4 w-4" /><span>인력풀</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

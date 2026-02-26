@@ -21,6 +21,7 @@ import ManagementDashboard from "@/pages/management-dashboard";
 import ItemList from "@/pages/item-list";
 import PurchaseItemList from "@/pages/purchase-item-list";
 import SettingsPage from "@/pages/settings";
+import StaffList from "@/pages/staff-list";
 import Login from "@/pages/login";
 import { getQueryFn } from "@/lib/queryClient";
 
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/items" component={ItemList} />
       <Route path="/purchase-items" component={PurchaseItemList} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/staff" component={StaffList} />
       <Route component={NotFound} />
     </Switch>
   );

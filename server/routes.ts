@@ -3067,6 +3067,60 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/staff", requireAuth, async (_req, res) => {
+    try {
+      const list = await storage.getStaffList();
+      res.json(list);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/staff/:id", requireAuth, async (req, res) => {
+    try {
+      const s = await storage.getStaff(req.params.id);
+      if (!s) return res.status(404).json({ message: "직원을 찾을 수 없습니다" });
+      res.json(s);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/staff", requireAuth, async (req, res) => {
+    try {
+      const { name, department, role, email, phone } = req.body;
+      if (!name || !department) return res.status(400).json({ message: "이름과 부서는 필수입니다" });
+      const created = await storage.createStaff({ name, department, role: role || null, email: email || null, phone: phone || null });
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/staff/:id", requireAuth, async (req, res) => {
+    try {
+      const allowedFields = ["name", "department", "role", "email", "phone"];
+      const patch: Record<string, any> = {};
+      for (const key of allowedFields) {
+        if (key in req.body) patch[key] = req.body[key];
+      }
+      const updated = await storage.updateStaff(req.params.id, patch);
+      if (!updated) return res.status(404).json({ message: "직원을 찾을 수 없습니다" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/staff/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteStaff(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   const uploadsDir = path.join(process.cwd(), "server", "uploads");
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 

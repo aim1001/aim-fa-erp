@@ -43,6 +43,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder)
 - **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
 - **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, bankInfo) - 견적서 PDF 헤더에 반영
+- **staff** 테이블: 인력풀 (name, department(경영지원/영업/지원/제조/개발), role(담당), email, phone(휴대폰), createdAt)
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
@@ -99,6 +100,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `client/src/components/quotation-section.tsx` - Quotation section component (견적서 생성/편집/내보내기)
 - `server/quotation-export.ts` - PDF + Excel generation for quotations (pdfkit, exceljs)
 - `client/src/pages/settings.tsx` - Company settings page (회사 정보 + 로고 관리)
+- `client/src/pages/staff-list.tsx` - Staff pool page (인력풀 관리, 부서별 필터, 테이블+모달)
 - `server/uploads/` - Uploaded files (company logo, etc.)
 - `server/fonts/` - Korean fonts (Pretendard) for PDF generation
 

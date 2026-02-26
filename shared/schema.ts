@@ -432,3 +432,17 @@ export const companySettings = pgTable("company_settings", {
 export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({ id: true, createdAt: true });
 export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
 export type CompanySettings = typeof companySettings.$inferSelect;
+
+export const staff = pgTable("staff", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  department: text("department").notNull(),
+  role: text("role"),
+  email: text("email"),
+  phone: text("phone"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertStaffSchema = createInsertSchema(staff).omit({ id: true, createdAt: true });
+export type InsertStaff = z.infer<typeof insertStaffSchema>;
+export type Staff = typeof staff.$inferSelect;

@@ -19,10 +19,11 @@ import {
   type QuotationItem, type InsertQuotationItem,
   type ContractTemplate, type InsertContractTemplate,
   type CompanySettings, type InsertCompanySettings,
+  type Staff, type InsertStaff,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
-  inquiryMemos, quotations, quotationItems, contractTemplates, companySettings,
+  inquiryMemos, quotations, quotationItems, contractTemplates, companySettings, staff,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -187,6 +188,12 @@ export interface IStorage {
 
   getCompanySettings(): Promise<CompanySettings | undefined>;
   saveCompanySettings(data: InsertCompanySettings): Promise<CompanySettings>;
+
+  getStaffList(): Promise<Staff[]>;
+  getStaff(id: string): Promise<Staff | undefined>;
+  createStaff(data: InsertStaff): Promise<Staff>;
+  updateStaff(id: string, data: Partial<InsertStaff>): Promise<Staff | undefined>;
+  deleteStaff(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -991,6 +998,29 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(companySettings).values(data).returning();
     return created;
+  }
+
+  async getStaffList(): Promise<Staff[]> {
+    return db.select().from(staff).orderBy(staff.department, staff.name);
+  }
+
+  async getStaff(id: string): Promise<Staff | undefined> {
+    const [row] = await db.select().from(staff).where(eq(staff.id, id));
+    return row;
+  }
+
+  async createStaff(data: InsertStaff): Promise<Staff> {
+    const [created] = await db.insert(staff).values(data).returning();
+    return created;
+  }
+
+  async updateStaff(id: string, data: Partial<InsertStaff>): Promise<Staff | undefined> {
+    const [updated] = await db.update(staff).set(data).where(eq(staff.id, id)).returning();
+    return updated;
+  }
+
+  async deleteStaff(id: string): Promise<void> {
+    await db.delete(staff).where(eq(staff.id, id));
   }
 }
 
