@@ -238,15 +238,17 @@ function ItemsTab({ quotation, items, onRefresh }: {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ quantity: 0, unitPrice: 0 });
 
+  const regularItems = useMemo(() => items.filter(i => !i.isAdjustment), [items]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, QuotationItem[]>();
-    for (const item of items) {
+    for (const item of regularItems) {
       const cat = item.category2 || item.category1 || "기타";
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     }
     return map;
-  }, [items]);
+  }, [regularItems]);
 
   const addItemMut = useMutation({
     mutationFn: (body: any) => apiRequest("POST", `/api/quotations/${quotation.id}/items`, body),
@@ -280,8 +282,8 @@ function ItemsTab({ quotation, items, onRefresh }: {
     });
   };
 
-  const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const totalCost = items.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
+  const subtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
   const overallMargin = subtotal > 0 && totalCost > 0 ? Math.round(((subtotal - totalCost) / subtotal) * 100) : 0;
 
   let globalIdx = 0;
@@ -291,7 +293,7 @@ function ItemsTab({ quotation, items, onRefresh }: {
       <div className="flex items-center justify-between">
         <ItemSearchPopover onSelect={handleAddItem} disabled={addItemMut.isPending} />
         <div className="text-xs text-muted-foreground">
-          {items.length}개 품목 · 총 마진율: <MarginBadge rate={overallMargin} />
+          {regularItems.length}개 품목 · 총 마진율: <MarginBadge rate={overallMargin} />
         </div>
       </div>
 
@@ -431,20 +433,41 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   onRefresh: () => void;
 }) {
   const { toast } = useToast();
-  const [adjustmentAmount, setAdjustmentAmount] = useState(quotation.adjustmentAmount || 0);
-  const [adjustmentNote, setAdjustmentNote] = useState(quotation.adjustmentNote || "");
   const [notes, setNotes] = useState(quotation.notes || "");
-  const [adjustType, setAdjustType] = useState<"discount" | "add">(
-    (quotation.adjustmentAmount || 0) >= 0 ? "add" : "discount"
-  );
-  const [absAmount, setAbsAmount] = useState(Math.abs(quotation.adjustmentAmount || 0));
+  const [newAdj, setNewAdj] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
+  const [editingAdjId, setEditingAdjId] = useState<string | null>(null);
+  const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
 
-  const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const totalCost = items.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
-  const effectiveAdjustment = adjustType === "discount" ? -absAmount : absAmount;
-  const adjustedSubtotal = subtotal + effectiveAdjustment;
+  const regularItems = useMemo(() => items.filter(i => !i.isAdjustment), [items]);
+  const adjustmentItems = useMemo(() => items.filter(i => i.isAdjustment), [items]);
+
+  const subtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
+  const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const adjustedSubtotal = subtotal + adjTotal;
   const tax = Math.round(adjustedSubtotal * 0.1);
   const total = adjustedSubtotal + tax;
+
+  const addAdjMut = useMutation({
+    mutationFn: (body: any) => apiRequest("POST", `/api/quotations/${quotation.id}/items`, body),
+    onSuccess: () => {
+      onRefresh();
+      setNewAdj({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
+    },
+    onError: () => toast({ title: "추가 항목 추가 실패", variant: "destructive" }),
+  });
+
+  const updateAdjMut = useMutation({
+    mutationFn: ({ id, ...body }: any) => apiRequest("PATCH", `/api/quotation-items/${id}`, body),
+    onSuccess: () => { onRefresh(); setEditingAdjId(null); },
+    onError: () => toast({ title: "수정 실패", variant: "destructive" }),
+  });
+
+  const deleteAdjMut = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/quotation-items/${id}`),
+    onSuccess: onRefresh,
+    onError: () => toast({ title: "삭제 실패", variant: "destructive" }),
+  });
 
   const updateMut = useMutation({
     mutationFn: (body: any) => apiRequest("PATCH", `/api/quotations/${quotation.id}`, body),
@@ -457,51 +480,146 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   });
 
   const handleSave = () => {
-    updateMut.mutate({
-      adjustmentAmount: effectiveAdjustment,
-      adjustmentNote,
-      notes,
-    });
+    updateMut.mutate({ notes });
   };
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, QuotationItem[]>();
-    for (const item of items) {
-      const cat = item.category2 || item.category1 || "기타";
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(item);
+  const handleAddAdj = () => {
+    if (!newAdj.itemName.trim()) {
+      toast({ title: "품목명을 입력하세요", variant: "destructive" });
+      return;
     }
-    return map;
-  }, [items]);
+    addAdjMut.mutate({
+      itemName: newAdj.itemName,
+      spec: newAdj.spec,
+      quantity: newAdj.quantity,
+      costPrice: newAdj.costPrice,
+      unitPrice: newAdj.unitPrice,
+      category1: "추가",
+      category2: "",
+      sortOrder: items.length,
+      isAdjustment: true,
+    });
+  };
 
   return (
     <div className="space-y-4">
       <div className="border rounded-md overflow-hidden">
-        <table className="w-full text-xs">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-3 py-2 text-left">카테고리</th>
-              <th className="px-3 py-2 text-right">원가 합계</th>
-              <th className="px-3 py-2 text-right">판매 합계</th>
-              <th className="px-3 py-2 text-center">마진율</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from(grouped).map(([cat, catItems]) => {
-              const catSale = catItems.reduce((s, i) => s + (i.amount || 0), 0);
-              const catCost = catItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
-              const catMargin = catSale > 0 && catCost > 0 ? Math.round(((catSale - catCost) / catSale) * 100) : 0;
-              return (
-                <tr key={cat} className="border-t">
-                  <td className="px-3 py-2 font-medium">{cat}</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">{fmtNum(catCost)}원</td>
-                  <td className="px-3 py-2 text-right">{fmtNum(catSale)}원</td>
-                  <td className="px-3 py-2 text-center"><MarginBadge rate={catMargin} /></td>
+        <div className="bg-muted/50 px-3 py-2 text-xs font-semibold flex items-center justify-between">
+          <span>추가/할인 항목</span>
+          <span className="text-muted-foreground font-normal">{adjustmentItems.length}개 · 단가에 음수 입력 시 할인</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[600px]">
+            <thead className="bg-muted/30">
+              <tr>
+                <th className="px-2 py-1.5 text-left">품목명</th>
+                <th className="px-2 py-1.5 text-left w-24">사양</th>
+                <th className="px-2 py-1.5 text-right w-14">수량</th>
+                <th className="px-2 py-1.5 text-right w-20">원가</th>
+                <th className="px-2 py-1.5 text-right w-20">단가</th>
+                <th className="px-2 py-1.5 text-right w-24">금액</th>
+                <th className="px-2 py-1.5 text-center w-14">마진</th>
+                <th className="px-2 py-1.5 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {adjustmentItems.map(item => {
+                const margin = calcMarginRate(item.unitPrice, item.costPrice || 0);
+                const isEditing = editingAdjId === item.id;
+                return (
+                  <tr key={item.id} className="border-t hover:bg-muted/20" data-testid={`adj-item-row-${item.id}`}>
+                    {isEditing ? (
+                      <>
+                        <td className="px-1 py-1">
+                          <Input value={editAdjForm.itemName} onChange={e => setEditAdjForm(f => ({ ...f, itemName: e.target.value }))} className="text-xs h-7" data-testid={`input-edit-adj-name-${item.id}`} />
+                        </td>
+                        <td className="px-1 py-1 w-24">
+                          <Input value={editAdjForm.spec} onChange={e => setEditAdjForm(f => ({ ...f, spec: e.target.value }))} className="text-xs h-7" data-testid={`input-edit-adj-spec-${item.id}`} />
+                        </td>
+                        <td className="px-1 py-1 w-14">
+                          <Input type="number" value={editAdjForm.quantity} onChange={e => setEditAdjForm(f => ({ ...f, quantity: parseInt(e.target.value) || 0 }))} className="text-xs text-right h-7 w-12" data-testid={`input-edit-adj-qty-${item.id}`} />
+                        </td>
+                        <td className="px-1 py-1 w-20">
+                          <Input type="number" value={editAdjForm.costPrice} onChange={e => setEditAdjForm(f => ({ ...f, costPrice: parseInt(e.target.value) || 0 }))} className="text-xs text-right h-7" data-testid={`input-edit-adj-cost-${item.id}`} />
+                        </td>
+                        <td className="px-1 py-1 w-20">
+                          <Input type="number" value={editAdjForm.unitPrice} onChange={e => setEditAdjForm(f => ({ ...f, unitPrice: e.target.value === "" || e.target.value === "-" ? 0 : parseInt(e.target.value) }))} className="text-xs text-right h-7" data-testid={`input-edit-adj-price-${item.id}`} />
+                        </td>
+                        <td className="px-2 py-1.5 w-24 text-right">{fmtNum(editAdjForm.quantity * editAdjForm.unitPrice)}</td>
+                        <td className="px-2 py-1.5 w-14 text-center"><MarginBadge rate={calcMarginRate(editAdjForm.unitPrice, editAdjForm.costPrice)} /></td>
+                        <td className="px-1 py-1 w-10">
+                          <div className="flex gap-0.5">
+                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-confirm-edit-adj-${item.id}`}
+                              onClick={() => updateAdjMut.mutate({ id: item.id, itemName: editAdjForm.itemName, spec: editAdjForm.spec, quantity: editAdjForm.quantity, costPrice: editAdjForm.costPrice, unitPrice: editAdjForm.unitPrice })}>
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-cancel-edit-adj-${item.id}`}
+                              onClick={() => setEditingAdjId(null)}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-2 py-1.5 font-medium">{item.itemName}</td>
+                        <td className="px-2 py-1.5 w-24 text-muted-foreground">{item.spec || "-"}</td>
+                        <td className="px-2 py-1.5 w-14 text-right">{fmtNum(item.quantity)}</td>
+                        <td className="px-2 py-1.5 w-20 text-right text-muted-foreground">{fmtNum(item.costPrice)}</td>
+                        <td className="px-2 py-1.5 w-20 text-right">{fmtNum(item.unitPrice)}</td>
+                        <td className="px-2 py-1.5 w-24 text-right font-medium">{fmtNum(item.amount)}</td>
+                        <td className="px-2 py-1.5 w-14 text-center"><MarginBadge rate={margin} /></td>
+                        <td className="px-1 py-1 w-10">
+                          <div className="flex gap-0.5">
+                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-edit-adj-${item.id}`}
+                              onClick={() => { setEditingAdjId(item.id); setEditAdjForm({ itemName: item.itemName, spec: item.spec || "", quantity: item.quantity, costPrice: item.costPrice || 0, unitPrice: item.unitPrice }); }}>
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-destructive" data-testid={`button-delete-adj-${item.id}`}
+                              onClick={() => deleteAdjMut.mutate(item.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+              <tr className="border-t bg-muted/10">
+                <td className="px-1 py-1">
+                  <Input value={newAdj.itemName} onChange={e => setNewAdj(f => ({ ...f, itemName: e.target.value }))} placeholder="품목명" className="text-xs h-7" data-testid="input-new-adj-name" />
+                </td>
+                <td className="px-1 py-1 w-24">
+                  <Input value={newAdj.spec} onChange={e => setNewAdj(f => ({ ...f, spec: e.target.value }))} placeholder="사양" className="text-xs h-7" data-testid="input-new-adj-spec" />
+                </td>
+                <td className="px-1 py-1 w-14">
+                  <Input type="number" value={newAdj.quantity} onChange={e => setNewAdj(f => ({ ...f, quantity: parseInt(e.target.value) || 0 }))} className="text-xs text-right h-7 w-12" data-testid="input-new-adj-qty" />
+                </td>
+                <td className="px-1 py-1 w-20">
+                  <Input type="number" value={newAdj.costPrice || ""} onChange={e => setNewAdj(f => ({ ...f, costPrice: parseInt(e.target.value) || 0 }))} placeholder="원가" className="text-xs text-right h-7" data-testid="input-new-adj-cost" />
+                </td>
+                <td className="px-1 py-1 w-20">
+                  <Input type="number" value={newAdj.unitPrice || ""} onChange={e => setNewAdj(f => ({ ...f, unitPrice: e.target.value === "" || e.target.value === "-" ? 0 : parseInt(e.target.value) }))} placeholder="단가 (음수=할인)" className="text-xs text-right h-7" data-testid="input-new-adj-price" />
+                </td>
+                <td className="px-2 py-1.5 w-24 text-right text-muted-foreground">{fmtNum(newAdj.quantity * newAdj.unitPrice)}</td>
+                <td className="px-2 py-1.5 w-14"></td>
+                <td className="px-1 py-1 w-10">
+                  <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={handleAddAdj} disabled={addAdjMut.isPending} data-testid="button-add-adj">
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </td>
+              </tr>
+              {adjustmentItems.length > 0 && (
+                <tr className="border-t bg-muted/30">
+                  <td colSpan={5} className="px-2 py-1.5 text-right font-semibold">추가 항목 소계</td>
+                  <td className="px-2 py-1.5 w-24 text-right font-semibold">{fmtNum(adjTotal)}원</td>
+                  <td colSpan={2}></td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="bg-muted/20 rounded-lg p-4 space-y-3">
@@ -514,48 +632,17 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
           <span>{fmtNum(totalCost)}원</span>
         </div>
 
-        <div className="border-t pt-3 space-y-2">
-          <label className="text-sm font-medium">가격 조정</label>
-          <div className="flex items-center gap-2">
-            <Select value={adjustType} onValueChange={(v: "discount" | "add") => setAdjustType(v)}>
-              <SelectTrigger className="w-24 h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="discount">할인</SelectItem>
-                <SelectItem value="add">추가</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              type="number"
-              value={absAmount || ""}
-              onChange={e => setAbsAmount(parseInt(e.target.value) || 0)}
-              placeholder="금액"
-              className="h-8 text-xs w-32"
-              data-testid="input-adjustment-amount"
-            />
-            <span className="text-xs text-muted-foreground">원</span>
-          </div>
-          <Input
-            value={adjustmentNote}
-            onChange={e => setAdjustmentNote(e.target.value)}
-            placeholder="조정 사유 (예: 대량 구매 할인)"
-            className="h-8 text-xs"
-            data-testid="input-adjustment-note"
-          />
-        </div>
-
-        {effectiveAdjustment !== 0 && (
+        {adjTotal !== 0 && (
           <div className="flex items-center justify-between text-sm border-t pt-2">
-            <span>{adjustType === "discount" ? "할인" : "추가"} 금액</span>
-            <span className={adjustType === "discount" ? "text-red-500" : "text-blue-500"}>
-              {effectiveAdjustment > 0 ? "+" : ""}{fmtNum(effectiveAdjustment)}원
+            <span>{adjTotal < 0 ? "할인 합계" : "추가 항목 합계"}</span>
+            <span className={adjTotal < 0 ? "text-red-500" : "text-blue-500"}>
+              {adjTotal > 0 ? "+" : ""}{fmtNum(adjTotal)}원
             </span>
           </div>
         )}
 
         <div className="flex items-center justify-between text-sm border-t pt-2">
-          <span>{effectiveAdjustment !== 0 ? "조정 후 공급가액" : "공급가액"}</span>
+          <span>{adjTotal !== 0 ? "조정 후 공급가액" : "공급가액"}</span>
           <span className="font-medium">{fmtNum(adjustedSubtotal)}원</span>
         </div>
         <div className="flex items-center justify-between text-sm">

@@ -1090,7 +1090,7 @@ export async function registerRoutes(
 
   app.post("/api/quotations/:id/items", async (req, res) => {
     try {
-      const { itemCode, itemName, spec, quantity, unitPrice, costPrice, category1, category2, sortOrder } = req.body;
+      const { itemCode, itemName, spec, quantity, unitPrice, costPrice, category1, category2, sortOrder, isAdjustment } = req.body;
       const qty = quantity || 1;
       const price = unitPrice || 0;
       let finalCostPrice = costPrice ?? 0;
@@ -1116,6 +1116,7 @@ export async function registerRoutes(
         category1: finalCategory1,
         category2: finalCategory2,
         sortOrder: sortOrder || 0,
+        isAdjustment: isAdjustment || false,
       });
       res.status(201).json(item);
     } catch (err: any) {

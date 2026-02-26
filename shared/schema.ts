@@ -398,6 +398,7 @@ export const quotationItems = pgTable("quotation_items", {
   category1: text("category1"),
   category2: text("category2"),
   sortOrder: integer("sort_order").default(0),
+  isAdjustment: boolean("is_adjustment").default(false),
 });
 
 export const insertQuotationItemSchema = createInsertSchema(quotationItems).omit({ id: true });

@@ -37,12 +37,17 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
   const companyInfo = await storage.getCompanySettings();
 
-  const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const adjustment = quotation.adjustmentAmount || 0;
-  const adjustedSubtotal = subtotal + adjustment;
+  const regularItems = items.filter(i => !i.isAdjustment);
+  const adjustmentItems = items.filter(i => i.isAdjustment);
+
+  const subtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const legacyAdjustment = quotation.adjustmentAmount || 0;
+  const effectiveAdjustment = adjustmentItems.length > 0 ? adjTotal : legacyAdjustment;
+  const adjustedSubtotal = subtotal + effectiveAdjustment;
   const tax = Math.round(adjustedSubtotal * 0.1);
   const total = adjustedSubtotal + tax;
-  const grouped = groupByCategory(items);
+  const grouped = groupByCategory(regularItems);
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 50 });
@@ -222,6 +227,41 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       doc.font("Regular").fontSize(8);
     }
 
+    if (adjustmentItems.length > 0) {
+      if (y > 730) { doc.addPage(); y = 50; }
+      doc.rect(50, y - 2, 495, 16).fill("#F0F4F8");
+      doc.fillColor("#333").font("Bold").fontSize(8);
+      doc.text("추가", 55, y, { width: 300 });
+      y += 18;
+
+      doc.font("Regular").fontSize(8).fillColor("#000");
+      for (const item of adjustmentItems) {
+        if (y > 750) { doc.addPage(); y = 50; }
+        globalIdx++;
+        const rowH = 16;
+        if (globalIdx % 2 === 0) {
+          doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
+          doc.fillColor("#000");
+        }
+        doc.text(String(globalIdx), colX[0], y, { width: colW[0] });
+        doc.text(item.itemCode || "-", colX[1], y, { width: colW[1] });
+        const nameSpec = item.spec ? `${item.itemName} (${item.spec})` : item.itemName;
+        doc.text(nameSpec, colX[2], y, { width: colW[2] });
+        doc.text(fmtNum(item.quantity), colX[3], y, { width: colW[3], align: "right" });
+        doc.text(fmtNum(item.unitPrice), colX[4], y, { width: colW[4], align: "right" });
+        doc.text(fmtNum(item.amount), colX[5], y, { width: colW[5], align: "right" });
+        y += rowH;
+      }
+
+      const adjSubtotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+      if (y > 750) { doc.addPage(); y = 50; }
+      doc.font("Bold").fontSize(8);
+      doc.text(`소계`, 310, y, { width: 110, align: "right" });
+      doc.text(`${fmtNum(adjSubtotal)}원`, 420, y, { width: 125, align: "right" });
+      y += 18;
+      doc.font("Regular").fontSize(8);
+    }
+
     y += 5;
     doc.moveTo(50, y).lineTo(545, y).stroke("#ccc");
     y += 10;
@@ -265,12 +305,12 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.text(`${fmtNum(subtotal)}원`, 465, sumStartY, { width: 80, align: "right" });
     let sY = sumStartY + 15;
 
-    if (adjustment !== 0) {
-      const adjLabel = adjustment < 0 ? "할인:" : "추가:";
+    if (effectiveAdjustment !== 0) {
+      const adjLabel = effectiveAdjustment < 0 ? "할인:" : "추가:";
       doc.text(`${adjLabel}`, 360, sY, { width: 100, align: "right" });
-      doc.text(`${fmtNum(adjustment)}원`, 465, sY, { width: 80, align: "right" });
+      doc.text(`${fmtNum(effectiveAdjustment)}원`, 465, sY, { width: 80, align: "right" });
       sY += 15;
-      if (quotation.adjustmentNote) {
+      if (adjustmentItems.length === 0 && quotation.adjustmentNote) {
         doc.fontSize(8).fillColor("#666").text(`(${quotation.adjustmentNote})`, 360, sY, { width: 185, align: "right" });
         doc.fillColor("#000").fontSize(9);
         sY += 15;
@@ -386,12 +426,17 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
   if (!result) throw new Error("견적서를 찾을 수 없습니다");
   const { quotation, items } = result;
 
-  const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const adjustment = quotation.adjustmentAmount || 0;
-  const adjustedSubtotal = subtotal + adjustment;
+  const regularItems = items.filter(i => !i.isAdjustment);
+  const adjustmentItems = items.filter(i => i.isAdjustment);
+
+  const subtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const legacyAdjustment = quotation.adjustmentAmount || 0;
+  const effectiveAdjustment = adjustmentItems.length > 0 ? adjTotal : legacyAdjustment;
+  const adjustedSubtotal = subtotal + effectiveAdjustment;
   const tax = Math.round(adjustedSubtotal * 0.1);
   const total = adjustedSubtotal + tax;
-  const grouped = groupByCategory(items);
+  const grouped = groupByCategory(regularItems);
 
   const wb = new ExcelJS.Workbook();
 
@@ -413,8 +458,8 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
     { key: "주소", value: inquiry.snapshotAddress || "" },
     { key: "", value: "" },
     { key: "공급가액", value: subtotal },
-    { key: "가격조정", value: adjustment },
-    { key: "조정사유", value: quotation.adjustmentNote || "" },
+    { key: "가격조정", value: effectiveAdjustment },
+    { key: "조정사유", value: adjustmentItems.length === 0 ? (quotation.adjustmentNote || "") : "추가 항목 참조" },
     { key: "조정후공급가액", value: adjustedSubtotal },
     { key: "부가세", value: tax },
     { key: "합계", value: total },
@@ -474,6 +519,42 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
     });
     subtotalRow.font = { bold: true };
     subtotalRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF0F4F8" } };
+  }
+
+  if (adjustmentItems.length > 0) {
+    for (const item of adjustmentItems) {
+      rowIdx++;
+      const cost = item.costPrice || 0;
+      const marginRate = item.unitPrice > 0 && cost > 0
+        ? Math.round(((item.unitPrice - cost) / item.unitPrice) * 100)
+        : 0;
+      itemSheet.addRow({
+        no: rowIdx,
+        category1: "추가",
+        itemCode: item.itemCode || "",
+        itemName: item.itemName,
+        spec: item.spec || "",
+        quantity: item.quantity,
+        costPrice: cost,
+        unitPrice: item.unitPrice,
+        amount: item.amount,
+        margin: marginRate,
+      });
+    }
+    const adjSubRow = itemSheet.addRow({
+      no: "",
+      category1: "",
+      itemCode: "",
+      itemName: "[추가 항목 소계]",
+      spec: "",
+      quantity: "",
+      costPrice: adjustmentItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0),
+      unitPrice: "",
+      amount: adjTotal,
+      margin: "",
+    });
+    adjSubRow.font = { bold: true };
+    adjSubRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF0F4F8" } };
   }
 
   itemSheet.getRow(1).font = { bold: true };
