@@ -321,8 +321,15 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       }
     }
 
-    const deliveryClean = deliveryText.replace(/^■\s*지급\s*(및|&)\s*납기\s*\n*/i, "").trim();
-    const warrantyClean = warrantyText.replace(/^■\s*보증\s*(및|&)\s*책임\s*범위\s*\n*/i, "").trim();
+    const bulletize = (text: string) => text
+      .split("\n")
+      .map(l => l.trim())
+      .filter(l => l.length > 0)
+      .map(l => /^[-*·•]/.test(l) ? l : `- ${l}`)
+      .join("\n");
+
+    const deliveryClean = bulletize(deliveryText.replace(/^■\s*지급\s*(및|&)\s*납기\s*\n*/i, "").trim());
+    const warrantyClean = bulletize(warrantyText.replace(/^■\s*보증\s*(및|&)\s*책임\s*범위\s*\n*/i, "").trim());
 
     if (deliveryClean || warrantyClean) {
       y += 12;
@@ -342,14 +349,14 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       let leftBottomY = termsTopY;
       if (deliveryClean) {
         doc.font("Regular").fontSize(6.5);
-        const contentH = doc.heightOfString(deliveryClean, { width: colW, lineGap: 1.5 });
+        const contentH = doc.heightOfString(deliveryClean, { width: colW, lineGap: 0.5 });
         leftBottomY = termsTopY + labelH + 2 + contentH;
       }
 
       let rightBottomY = termsTopY;
       if (warrantyClean) {
         doc.font("Regular").fontSize(6.5);
-        const contentH = doc.heightOfString(warrantyClean, { width: colW, lineGap: 1.5 });
+        const contentH = doc.heightOfString(warrantyClean, { width: colW, lineGap: 0.5 });
         rightBottomY = termsTopY + labelH + 2 + contentH;
       }
 
@@ -357,14 +364,14 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
         doc.font("Bold").fontSize(7).fillColor("#000");
         doc.text("■ 지급 및 납기", PAGE_LEFT, termsTopY, { width: colW });
         doc.font("Regular").fontSize(6.5).fillColor("#333");
-        doc.text(deliveryClean, PAGE_LEFT, termsTopY + labelH + 2, { width: colW, lineGap: 1.5 });
+        doc.text(deliveryClean, PAGE_LEFT, termsTopY + labelH + 2, { width: colW, lineGap: 0.5 });
       }
 
       if (warrantyClean) {
         doc.font("Bold").fontSize(7).fillColor("#000");
         doc.text("■ 보증 및 책임 범위", rightColX, termsTopY, { width: colW });
         doc.font("Regular").fontSize(6.5).fillColor("#333");
-        doc.text(warrantyClean, rightColX, termsTopY + labelH + 2, { width: colW, lineGap: 1.5 });
+        doc.text(warrantyClean, rightColX, termsTopY + labelH + 2, { width: colW, lineGap: 0.5 });
       }
 
       y = Math.max(leftBottomY, rightBottomY);
