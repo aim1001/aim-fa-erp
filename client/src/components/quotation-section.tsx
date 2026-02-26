@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -439,6 +439,10 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [discountValue, setDiscountValue] = useState(quotation.discountValue || 0);
   const [discountTruncUnit, setDiscountTruncUnit] = useState<string>(quotation.discountTruncUnit || "none");
+  const [deliveryDays, setDeliveryDays] = useState<number | null>(quotation.deliveryDays ?? null);
+  const [deliveryAutoCalculated, setDeliveryAutoCalculated] = useState(!quotation.deliveryDays);
+
+  const { data: purchaseItemsData } = useQuery<any[]>({ queryKey: ["/api/purchase-items"] });
 
   const regularItems = useMemo(() => items.filter(i => !i.isAdjustment), [items]);
   const adjustmentItems = useMemo(() => items.filter(i => i.isAdjustment), [items]);
@@ -458,6 +462,24 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const actualDiscount = supplyAmount - afterDiscount;
   const tax = Math.round(afterDiscount * 0.1);
   const total = afterDiscount + tax;
+
+  const autoDeliveryDays = useMemo(() => {
+    if (!purchaseItemsData || regularItems.length === 0) return 0;
+    const itemCodes = regularItems.map(i => i.itemCode).filter(Boolean);
+    if (itemCodes.length === 0) return 0;
+    let maxDays = 0;
+    for (const code of itemCodes) {
+      const pi = purchaseItemsData.find((p: any) => p.itemCode === code);
+      if (pi?.leadTimeDays && pi.leadTimeDays > maxDays) maxDays = pi.leadTimeDays;
+    }
+    return maxDays;
+  }, [purchaseItemsData, regularItems]);
+
+  useEffect(() => {
+    if (deliveryAutoCalculated && autoDeliveryDays > 0) {
+      setDeliveryDays(autoDeliveryDays);
+    }
+  }, [autoDeliveryDays, deliveryAutoCalculated]);
 
   const addAdjMut = useMutation({
     mutationFn: (body: any) => apiRequest("POST", `/api/quotations/${quotation.id}/items`, body),
@@ -496,6 +518,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
       discountType: "amount",
       discountValue,
       discountTruncUnit,
+      deliveryDays: deliveryDays || null,
       adjustmentAmount: -actualDiscount,
     });
   };
@@ -714,16 +737,48 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
         </div>
       </div>
 
-      <div>
-        <label className="text-sm font-medium">비고</label>
-        <Textarea
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          rows={3}
-          className="text-xs mt-1"
-          placeholder="견적서 비고 사항..."
-          data-testid="input-quotation-notes"
-        />
+      <div className="flex gap-4">
+        <div className="flex-1">
+          <label className="text-sm font-medium">비고</label>
+          <Textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={3}
+            className="text-xs mt-1"
+            placeholder="견적서 비고 사항..."
+            data-testid="input-quotation-notes"
+          />
+        </div>
+        <div className="w-40">
+          <label className="text-sm font-medium">납기</label>
+          <div className="flex items-center gap-1 mt-1">
+            <Input
+              type="number"
+              value={deliveryDays ?? ""}
+              onChange={e => {
+                const v = e.target.value === "" ? null : parseInt(e.target.value) || 0;
+                setDeliveryDays(v);
+                setDeliveryAutoCalculated(false);
+              }}
+              className="h-8 text-xs w-20"
+              placeholder="일"
+              data-testid="input-delivery-days"
+            />
+            <span className="text-xs text-muted-foreground">일</span>
+          </div>
+          {deliveryAutoCalculated && autoDeliveryDays > 0 && (
+            <span className="text-xs text-muted-foreground">(자동)</span>
+          )}
+          {!deliveryAutoCalculated && autoDeliveryDays > 0 && (
+            <button
+              className="text-xs text-blue-500 hover:underline"
+              onClick={() => { setDeliveryDays(autoDeliveryDays); setDeliveryAutoCalculated(true); }}
+              data-testid="button-reset-delivery"
+            >
+              자동({autoDeliveryDays}일)으로 복원
+            </button>
+          )}
+        </div>
       </div>
 
       <Button onClick={handleSave} disabled={updateMut.isPending} data-testid="button-save-pricing">
