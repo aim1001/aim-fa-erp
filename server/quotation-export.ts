@@ -267,6 +267,47 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       doc.font("Bold").fontSize(10).fillColor("#000").text("입금 계좌", 50, y);
       y += 15;
       doc.font("Regular").fontSize(9).text(companyInfo.bankInfo, 50, y, { width: 495 });
+      y = doc.y;
+    }
+
+    const payTerms = inquiry.paymentTerms || "-";
+    const contractText = inquiry.contractClauses || "-";
+    if (payTerms !== "-" || contractText !== "-") {
+      y += 20;
+      if (y > 700) { doc.addPage(); y = 50; }
+
+      const ctLabelW = 60;
+      const ctHalf = PAGE_WIDTH / 2;
+      const ctLeftValW = ctHalf - ctLabelW - 10;
+      const ctRightLabelX = PAGE_LEFT + ctHalf;
+      const ctRightValX = ctRightLabelX + ctLabelW + 5;
+      const ctRightValW = ctHalf - ctLabelW - 10;
+
+      doc.font("Regular").fontSize(8);
+      const leftH = doc.heightOfString(payTerms, { width: ctLeftValW });
+      const rightH = doc.heightOfString(contractText, { width: ctRightValW });
+      const ctRowH = Math.max(leftH, rightH, 18) + 10;
+
+      doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).lineWidth(1).stroke("#333");
+
+      doc.rect(PAGE_LEFT, y + 1, ctLabelW, ctRowH - 1).fill("#E8E8E8");
+      doc.rect(ctRightLabelX, y + 1, ctLabelW, ctRowH - 1).fill("#E8E8E8");
+
+      doc.fillColor("#333").font("Bold").fontSize(8);
+      doc.text("결재조건", PAGE_LEFT + 4, y + 5, { width: ctLabelW - 8 });
+      doc.text("계약 내용", ctRightLabelX + 4, y + 5, { width: ctLabelW - 8 });
+
+      doc.font("Regular").fontSize(8).fillColor("#000");
+      doc.text(payTerms, PAGE_LEFT + ctLabelW + 5, y + 5, { width: ctLeftValW });
+      doc.text(contractText, ctRightValX, y + 5, { width: ctRightValW });
+
+      const ctBottom = y + ctRowH;
+      doc.moveTo(PAGE_LEFT, ctBottom).lineTo(PAGE_RIGHT, ctBottom).lineWidth(0.5).stroke("#999");
+      doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_LEFT, ctBottom).lineWidth(0.5).stroke("#999");
+      doc.moveTo(PAGE_RIGHT, y).lineTo(PAGE_RIGHT, ctBottom).lineWidth(0.5).stroke("#999");
+      doc.moveTo(ctRightLabelX, y).lineTo(ctRightLabelX, ctBottom).lineWidth(0.5).stroke("#999");
+
+      y = ctBottom;
     }
 
     doc.end();
