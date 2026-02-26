@@ -340,11 +340,48 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     y = Math.max(ptY, sY + 18) + 5;
 
     if (quotation.notes) {
-      y += 15;
-      doc.font("Bold").fontSize(10).fillColor("#000").text("비고", 50, y);
-      y += 15;
-      doc.font("Regular").fontSize(9).text(quotation.notes, 50, y, { width: 495 });
-      y = doc.y;
+      y += 12;
+      if (y > 700) { doc.addPage(); y = 50; }
+
+      const notesText = quotation.notes as string;
+      const excludeMatch = notesText.match(/\[제외사항\]\s*([\s\S]*?)(?=\[기술지원\]|$)/);
+      const supportMatch = notesText.match(/\[기술지원\]\s*([\s\S]*?)$/);
+
+      if (excludeMatch && supportMatch) {
+        const excludeContent = excludeMatch[1].trim();
+        const supportContent = supportMatch[1].trim();
+
+        doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).lineWidth(0.5).stroke("#ccc");
+        y += 6;
+
+        const nColGap = 15;
+        const nColW = (PAGE_WIDTH - nColGap) / 2;
+        const nRightColX = PAGE_LEFT + nColW + nColGap;
+        const nTopY = y;
+
+        doc.font("Bold").fontSize(7).fillColor("#000");
+        const nLabelH = doc.heightOfString("■ 제외사항", { width: nColW });
+
+        doc.text("■ 제외사항", PAGE_LEFT, nTopY, { width: nColW });
+        doc.font("Regular").fontSize(6.5).fillColor("#333");
+        doc.text(excludeContent, PAGE_LEFT, nTopY + nLabelH + 2, { width: nColW, lineGap: 0.5 });
+        const nLeftBottom = doc.y;
+
+        doc.font("Bold").fontSize(7).fillColor("#000");
+        doc.text("■ 기술지원", nRightColX, nTopY, { width: nColW });
+        doc.font("Regular").fontSize(6.5).fillColor("#333");
+        doc.text(supportContent, nRightColX, nTopY + nLabelH + 2, { width: nColW, lineGap: 0.5 });
+        const nRightBottom = doc.y;
+
+        y = Math.max(nLeftBottom, nRightBottom);
+      } else {
+        doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).lineWidth(0.5).stroke("#ccc");
+        y += 6;
+        doc.font("Bold").fontSize(7).fillColor("#000").text("■ 비고", PAGE_LEFT, y);
+        y += 10;
+        doc.font("Regular").fontSize(6.5).fillColor("#333").text(notesText, PAGE_LEFT, y, { width: PAGE_WIDTH, lineGap: 0.5 });
+        y = doc.y;
+      }
     }
 
     if (companyInfo?.bankInfo) {
