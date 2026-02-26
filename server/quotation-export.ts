@@ -44,17 +44,13 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
   const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
   const supplyAmount = regularSubtotal + adjTotal;
 
-  const discountType = (quotation.discountType as string) || "percent";
   const discountValue = quotation.discountValue || 0;
-  const discountTruncUnit = parseInt((quotation.discountTruncUnit as string) || "1000") || 0;
-  let discountAmount = 0;
-  if (discountValue > 0) {
-    discountAmount = discountType === "percent" ? Math.round(supplyAmount * (discountValue / 100)) : discountValue;
-    if (discountTruncUnit > 0) discountAmount = Math.floor(discountAmount / discountTruncUnit) * discountTruncUnit;
-  }
+  const discountTruncUnit = parseInt((quotation.discountTruncUnit as string) || "0") || 0;
+  let afterDiscount = supplyAmount - (discountValue > 0 ? discountValue : 0);
+  if (discountTruncUnit > 0 && discountValue > 0) afterDiscount = Math.floor(afterDiscount / discountTruncUnit) * discountTruncUnit;
+  const actualDiscount = supplyAmount - afterDiscount;
   const truncLabel = discountTruncUnit === 1000000 ? "백만원절사" : discountTruncUnit === 100000 ? "십만원절사" : discountTruncUnit === 10000 ? "만원절사" : discountTruncUnit === 1000 ? "천원절사" : "";
 
-  const afterDiscount = supplyAmount - discountAmount;
   const tax = Math.round(afterDiscount * 0.1);
   const total = afterDiscount + tax;
   const grouped = groupByCategory(regularItems);
@@ -315,13 +311,10 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.text(`${fmtNum(supplyAmount)}원`, 465, sumStartY, { width: 80, align: "right" });
     let sY = sumStartY + 15;
 
-    if (discountAmount > 0) {
-      const truncDesc = truncLabel ? `, ${truncLabel}` : "";
-      const discLabel = discountType === "percent"
-        ? `할인 (${discountValue}%${truncDesc}):`
-        : `할인${truncDesc ? ` (${truncLabel})` : ""}:`;
+    if (actualDiscount > 0) {
+      const discLabel = truncLabel ? `할인 (${truncLabel}):` : `할인:`;
       doc.text(discLabel, 330, sY, { width: 130, align: "right" });
-      doc.text(`-${fmtNum(discountAmount)}원`, 465, sY, { width: 80, align: "right" });
+      doc.text(`-${fmtNum(actualDiscount)}원`, 465, sY, { width: 80, align: "right" });
       sY += 15;
     }
 
@@ -438,17 +431,13 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
   const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
   const supplyAmount = regularSubtotal + adjTotal;
 
-  const xlDiscountType = (quotation.discountType as string) || "percent";
   const xlDiscountValue = quotation.discountValue || 0;
-  const xlDiscountTruncUnit = parseInt((quotation.discountTruncUnit as string) || "1000") || 0;
-  let xlDiscountAmount = 0;
-  if (xlDiscountValue > 0) {
-    xlDiscountAmount = xlDiscountType === "percent" ? Math.round(supplyAmount * (xlDiscountValue / 100)) : xlDiscountValue;
-    if (xlDiscountTruncUnit > 0) xlDiscountAmount = Math.floor(xlDiscountAmount / xlDiscountTruncUnit) * xlDiscountTruncUnit;
-  }
+  const xlDiscountTruncUnit = parseInt((quotation.discountTruncUnit as string) || "0") || 0;
+  let afterDiscount = supplyAmount - (xlDiscountValue > 0 ? xlDiscountValue : 0);
+  if (xlDiscountTruncUnit > 0 && xlDiscountValue > 0) afterDiscount = Math.floor(afterDiscount / xlDiscountTruncUnit) * xlDiscountTruncUnit;
+  const xlActualDiscount = supplyAmount - afterDiscount;
   const xlTruncLabel = xlDiscountTruncUnit === 1000000 ? "백만원절사" : xlDiscountTruncUnit === 100000 ? "십만원절사" : xlDiscountTruncUnit === 10000 ? "만원절사" : xlDiscountTruncUnit === 1000 ? "천원절사" : "";
 
-  const afterDiscount = supplyAmount - xlDiscountAmount;
   const tax = Math.round(afterDiscount * 0.1);
   const total = afterDiscount + tax;
   const grouped = groupByCategory(regularItems);
@@ -463,7 +452,7 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
 
   const truncSuffix = xlTruncLabel ? ` (${xlTruncLabel})` : "";
   const discountDesc = xlDiscountValue > 0
-    ? (xlDiscountType === "percent" ? `${xlDiscountValue}%${truncSuffix}` : `${xlDiscountValue}원${truncSuffix}`)
+    ? `${fmtNum(xlActualDiscount)}원${truncSuffix}`
     : "-";
 
   infoSheet.addRows([
