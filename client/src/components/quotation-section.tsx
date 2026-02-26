@@ -39,6 +39,7 @@ function ItemSearchPopover({ onSelect, disabled }: {
   const [search, setSearch] = useState("");
   const [cat1Filter, setCat1Filter] = useState("all");
   const [cat2Filter, setCat2Filter] = useState("all");
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
   const { data: allItems = [] } = useQuery<(ItemMaster & { inventory: any[]; documents: any[] })[]>({
     queryKey: ["/api/items"],
@@ -78,6 +79,7 @@ function ItemSearchPopover({ onSelect, disabled }: {
     setSearch("");
     setCat1Filter("all");
     setCat2Filter("all");
+    setAddedIds(new Set());
   };
 
   return (
@@ -159,30 +161,37 @@ function ItemSearchPopover({ onSelect, disabled }: {
           {filtered.length === 0 && (
             <div className="px-3 py-4 text-xs text-center text-muted-foreground">검색 결과 없음</div>
           )}
-          {filtered.map(item => (
-            <button
-              key={item.id}
-              type="button"
-              className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b last:border-0"
-              onClick={() => { onSelect(item); setOpen(false); handleReset(); }}
-              data-testid={`option-item-${item.id}`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Badge variant="outline" className="text-[10px] px-1">{item.category1}</Badge>
-                  {item.category2 && <Badge variant="secondary" className="text-[10px] px-1">{item.category2}</Badge>}
-                  <span className="font-medium">{item.itemName}</span>
+          {filtered.map(item => {
+            const isAdded = addedIds.has(item.id);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-muted border-b last:border-0 ${isAdded ? "bg-green-50 dark:bg-green-950/20" : ""}`}
+                onClick={() => {
+                  onSelect(item);
+                  setAddedIds(prev => new Set(prev).add(item.id));
+                }}
+                data-testid={`option-item-${item.id}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    {isAdded && <Check className="h-3 w-3 text-green-600 shrink-0" />}
+                    <Badge variant="outline" className="text-[10px] px-1">{item.category1}</Badge>
+                    {item.category2 && <Badge variant="secondary" className="text-[10px] px-1">{item.category2}</Badge>}
+                    <span className="font-medium">{item.itemName}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    <span>원가 {fmtNum(item.cost)}</span>
+                    <span>판매가 {fmtNum(item.salesPrice)}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-muted-foreground">
-                  <span>원가 {fmtNum(item.cost)}</span>
-                  <span>판매가 {fmtNum(item.salesPrice)}</span>
+                <div className="text-muted-foreground mt-0.5">
+                  {item.itemCode} {item.spec && `· ${item.spec}`}
                 </div>
-              </div>
-              <div className="text-muted-foreground mt-0.5">
-                {item.itemCode} {item.spec && `· ${item.spec}`}
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </ScrollArea>
       </PopoverContent>
     </Popover>
@@ -548,7 +557,13 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   );
 }
 
-function ExportTab({ quotation, items, inquiry, inquiryId }: {
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
   quotation: Quotation;
   items: QuotationItem[];
   inquiry: Inquiry;
@@ -556,17 +571,8 @@ function ExportTab({ quotation, items, inquiry, inquiryId }: {
 }) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
-  const [headerForm, setHeaderForm] = useState({
-    quoteDate: quotation.quoteDate,
-    validUntil: quotation.validUntil || "",
-    status: quotation.status || "draft",
-  });
-
-  const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const adjustment = quotation.adjustmentAmount || 0;
-  const adjustedSubtotal = subtotal + adjustment;
-  const tax = Math.round(adjustedSubtotal * 0.1);
-  const total = adjustedSubtotal + tax;
+  const [quoteDate, setQuoteDate] = useState(quotation.quoteDate);
+  const [status, setStatus] = useState(quotation.status || "draft");
 
   const updateMut = useMutation({
     mutationFn: (body: any) => apiRequest("PATCH", `/api/quotations/${quotation.id}`, body),
@@ -577,6 +583,14 @@ function ExportTab({ quotation, items, inquiry, inquiryId }: {
     },
     onError: () => toast({ title: "저장 실패", variant: "destructive" }),
   });
+
+  const handleSaveHeader = () => {
+    updateMut.mutate({
+      quoteDate,
+      validUntil: addDays(quoteDate, 30),
+      status,
+    });
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -592,87 +606,62 @@ function ExportTab({ quotation, items, inquiry, inquiryId }: {
     }
   };
 
-  const statusLabel: Record<string, string> = { draft: "작성중", sent: "발송", accepted: "수주" };
-
   return (
-    <div className="space-y-4">
-      <div className="bg-muted/20 rounded-lg p-4 space-y-2">
-        <h4 className="text-sm font-semibold mb-2">고객 정보</h4>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div><span className="text-muted-foreground">회사명: </span>{inquiry.snapshotCompanyName || inquiry.customerName || "-"}</div>
-          <div><span className="text-muted-foreground">담당자: </span>{inquiry.snapshotContactName || "-"}</div>
-          <div><span className="text-muted-foreground">연락처: </span>{inquiry.snapshotPhone || "-"}</div>
-          <div><span className="text-muted-foreground">이메일: </span>{inquiry.snapshotEmail || "-"}</div>
-          {inquiry.snapshotAddress && (
-            <div className="col-span-2"><span className="text-muted-foreground">주소: </span>{inquiry.snapshotAddress}</div>
-          )}
-        </div>
+    <div className="flex items-center gap-2 flex-wrap border rounded-md px-3 py-2 bg-muted/30">
+      <div className="flex items-center gap-1.5 text-xs">
+        <span className="text-muted-foreground">견적일</span>
+        <Input
+          type="date"
+          value={quoteDate}
+          onChange={e => setQuoteDate(e.target.value)}
+          className="h-7 text-xs w-32"
+          data-testid="input-quote-date"
+        />
       </div>
-
-      <div className="bg-muted/20 rounded-lg p-4 space-y-2">
-        <h4 className="text-sm font-semibold mb-2">견적 요약</h4>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div><span className="text-muted-foreground">견적번호: </span>{quotation.quoteNumber}</div>
-          <div><span className="text-muted-foreground">품목수: </span>{items.length}개</div>
-          <div><span className="text-muted-foreground">공급가액: </span>{fmtNum(adjustedSubtotal)}원</div>
-          <div className="font-bold"><span className="text-muted-foreground">최종합계: </span>{fmtNum(total)}원</div>
-        </div>
+      <div className="flex items-center gap-1.5 text-xs">
+        <span className="text-muted-foreground">유효</span>
+        <span className="text-xs">{addDays(quoteDate, 30)}</span>
       </div>
-
-      <div className="border rounded-md p-4 space-y-3">
-        <h4 className="text-sm font-semibold">견적서 정보 편집</h4>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="text-xs font-medium">견적일자</label>
-            <Input type="date" value={headerForm.quoteDate} onChange={e => setHeaderForm(f => ({ ...f, quoteDate: e.target.value }))} className="h-8 text-xs mt-1" />
-          </div>
-          <div>
-            <label className="text-xs font-medium">유효기한</label>
-            <Input type="date" value={headerForm.validUntil} onChange={e => setHeaderForm(f => ({ ...f, validUntil: e.target.value }))} className="h-8 text-xs mt-1" />
-          </div>
-          <div>
-            <label className="text-xs font-medium">상태</label>
-            <Select value={headerForm.status} onValueChange={v => setHeaderForm(f => ({ ...f, status: v }))}>
-              <SelectTrigger className="h-8 text-xs mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="draft">작성중</SelectItem>
-                <SelectItem value="sent">발송</SelectItem>
-                <SelectItem value="accepted">수주</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <Button size="sm" onClick={() => updateMut.mutate(headerForm)} disabled={updateMut.isPending}>
-          <Check className="h-3 w-3 mr-1" />정보 저장
+      <Select value={status} onValueChange={setStatus}>
+        <SelectTrigger className="h-7 text-xs w-20" data-testid="select-quote-status">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="draft">작성중</SelectItem>
+          <SelectItem value="sent">발송</SelectItem>
+          <SelectItem value="accepted">수주</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleSaveHeader} disabled={updateMut.isPending} data-testid="button-save-header">
+        <Check className="h-3 w-3 mr-1" />저장
+      </Button>
+      <div className="flex-1" />
+      {inquiry.onedriveFolderId && (
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExport} disabled={exporting || items.length === 0} data-testid="button-export-onedrive">
+          {exporting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Upload className="h-3 w-3 mr-1" />}
+          OneDrive
         </Button>
-      </div>
-
-      <div className="flex flex-wrap gap-2 pt-2">
-        {inquiry.onedriveFolderId && (
-          <Button onClick={handleExport} disabled={exporting || items.length === 0} data-testid="button-export-onedrive">
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
-            견적서 생성 → OneDrive 업로드
-          </Button>
-        )}
-        <Button
-          variant="outline"
-          onClick={() => window.open(`/api/quotations/${quotation.id}/download/pdf`, "_blank")}
-          disabled={items.length === 0}
-          data-testid="button-download-pdf"
-        >
-          <FileDown className="h-4 w-4 mr-1" />PDF 다운로드
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => window.open(`/api/quotations/${quotation.id}/download/xlsx`, "_blank")}
-          disabled={items.length === 0}
-          data-testid="button-download-xlsx"
-        >
-          <FileDown className="h-4 w-4 mr-1" />Excel 다운로드
-        </Button>
-      </div>
+      )}
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs"
+        onClick={() => window.open(`/api/quotations/${quotation.id}/download/pdf`, "_blank")}
+        disabled={items.length === 0}
+        data-testid="button-download-pdf"
+      >
+        <FileDown className="h-3 w-3 mr-1" />PDF
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs"
+        onClick={() => window.open(`/api/quotations/${quotation.id}/download/xlsx`, "_blank")}
+        disabled={items.length === 0}
+        data-testid="button-download-xlsx"
+      >
+        <FileDown className="h-3 w-3 mr-1" />Excel
+      </Button>
     </div>
   );
 }
@@ -704,21 +693,14 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
   }
 
   return (
-    <div className="space-y-6">
-      <ExportTab quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} />
+    <div className="space-y-4">
+      <QuotationHeaderBar quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} />
 
-      <div>
-        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Package className="h-4 w-4" />
-          품목 목록
-        </h3>
+      <div className="border-2 border-primary/20 rounded-lg p-3 bg-background">
         <ItemsTab quotation={quotation} items={items} onRefresh={onRefresh} />
       </div>
 
-      <div>
-        <h3 className="text-sm font-semibold mb-3">가격 · 합계</h3>
-        <PricingTab quotation={quotation} items={items} inquiryId={inquiryId} onRefresh={onRefresh} />
-      </div>
+      <PricingTab quotation={quotation} items={items} inquiryId={inquiryId} onRefresh={onRefresh} />
     </div>
   );
 }
