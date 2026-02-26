@@ -645,13 +645,16 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
       </div>
 
       <div className="bg-muted/20 rounded-lg p-4 space-y-3">
-        <div className="flex items-center justify-between text-sm">
-          <span>공급가액 (품목{adjTotal !== 0 ? "+추가" : ""} 합계)</span>
-          <span className="font-medium">{fmtNum(supplyAmount)}원</span>
-        </div>
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>원가 합계</span>
-          <span>{fmtNum(totalCost)}원</span>
+        <div className="text-sm space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">공급가액 (품목{adjTotal !== 0 ? "+추가" : ""} 합계)</span>
+            <span className="font-medium">{fmtNum(supplyAmount)}원</span>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground pl-2">
+            <span>원가 {fmtNum(totalCost)}</span>
+            <span>마진 {fmtNum(supplyAmount - totalCost)}</span>
+            <span>마진율 {supplyAmount > 0 ? (((supplyAmount - totalCost) / supplyAmount) * 100).toFixed(1) : "0.0"}%</span>
+          </div>
         </div>
 
         <div className="border-t pt-3 space-y-2">
@@ -683,6 +686,8 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
                 <SelectItem value="none">절사 없음</SelectItem>
                 <SelectItem value="1000">천원 절사</SelectItem>
                 <SelectItem value="10000">만원 절사</SelectItem>
+                <SelectItem value="100000">십만원 절사</SelectItem>
+                <SelectItem value="1000000">백만원 절사</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -692,7 +697,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
               할인{discountType === "percent" ? ` (${discountValue}%)` : ""}
-              {discountTruncUnit !== "none" ? ` ${discountTruncUnit === "1000" ? "천원" : "만원"}절사` : ""}
+              {discountTruncUnit !== "none" ? ` ${discountTruncUnit === "1000" ? "천원" : discountTruncUnit === "10000" ? "만원" : discountTruncUnit === "100000" ? "십만원" : "백만원"}절사` : ""}
               {actualDiscountRate && discountType === "percent" ? ` → 실제 ${actualDiscountRate}%` : ""}
             </span>
             <span className="text-red-500">-{fmtNum(calcDiscount)}원</span>
@@ -700,9 +705,15 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
         )}
 
         {calcDiscount > 0 && (
-          <div className="flex items-center justify-between text-sm bg-primary/10 rounded-md px-3 py-2 -mx-1">
-            <span className="font-semibold">최종 공급가액</span>
-            <span className="font-semibold">{fmtNum(afterDiscount)}원</span>
+          <div className="bg-primary/10 rounded-md px-3 py-2 -mx-1 space-y-1">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold">최종 공급가액</span>
+              <span className="font-semibold">{fmtNum(afterDiscount)}원</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground pl-2">
+              <span>마진 {fmtNum(afterDiscount - totalCost)}</span>
+              <span>마진율 {afterDiscount > 0 ? (((afterDiscount - totalCost) / afterDiscount) * 100).toFixed(1) : "0.0"}%</span>
+            </div>
           </div>
         )}
 

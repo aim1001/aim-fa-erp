@@ -52,7 +52,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     discountAmount = discountType === "percent" ? Math.round(supplyAmount * (discountValue / 100)) : discountValue;
     if (discountTruncUnit > 0) discountAmount = Math.floor(discountAmount / discountTruncUnit) * discountTruncUnit;
   }
-  const truncLabel = discountTruncUnit === 10000 ? "만원절사" : discountTruncUnit === 1000 ? "천원절사" : "";
+  const truncLabel = discountTruncUnit === 1000000 ? "백만원절사" : discountTruncUnit === 100000 ? "십만원절사" : discountTruncUnit === 10000 ? "만원절사" : discountTruncUnit === 1000 ? "천원절사" : "";
 
   const afterDiscount = supplyAmount - discountAmount;
   const tax = Math.round(afterDiscount * 0.1);
@@ -446,7 +446,7 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
     xlDiscountAmount = xlDiscountType === "percent" ? Math.round(supplyAmount * (xlDiscountValue / 100)) : xlDiscountValue;
     if (xlDiscountTruncUnit > 0) xlDiscountAmount = Math.floor(xlDiscountAmount / xlDiscountTruncUnit) * xlDiscountTruncUnit;
   }
-  const xlTruncLabel = xlDiscountTruncUnit === 10000 ? "만원절사" : xlDiscountTruncUnit === 1000 ? "천원절사" : "";
+  const xlTruncLabel = xlDiscountTruncUnit === 1000000 ? "백만원절사" : xlDiscountTruncUnit === 100000 ? "십만원절사" : xlDiscountTruncUnit === 10000 ? "만원절사" : xlDiscountTruncUnit === 1000 ? "천원절사" : "";
 
   const afterDiscount = supplyAmount - xlDiscountAmount;
   const tax = Math.round(afterDiscount * 0.1);
