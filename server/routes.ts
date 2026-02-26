@@ -3144,6 +3144,25 @@ export async function registerRoutes(
     },
   });
 
+  const signatureUpload = multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, uploadsDir),
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        cb(null, `signature_${Date.now()}${ext}`);
+      },
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (!allowed.includes(ext)) {
+        return cb(new Error("지원하지 않는 파일 형식입니다. PNG, JPG, SVG, WebP만 가능합니다."));
+      }
+      cb(null, true);
+    },
+  });
+
   const express = await import("express");
   app.use("/uploads", (_req: Request, res: Response, next: NextFunction) => {
     res.setHeader("Cache-Control", "public, max-age=86400");
@@ -3162,11 +3181,18 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, bankInfo } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, bankInfo } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
           const oldPath = path.join(uploadsDir, path.basename(existing.logoUrl));
+          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        }
+      }
+      if (signatureUrl === null) {
+        const existing = await storage.getCompanySettings();
+        if (existing?.signatureUrl) {
+          const oldPath = path.join(uploadsDir, path.basename(existing.signatureUrl));
           if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
         }
       }
@@ -3179,6 +3205,7 @@ export async function registerRoutes(
         fax: fax || null,
         email: email || null,
         logoUrl: logoUrl === undefined ? undefined : (logoUrl || null),
+        signatureUrl: signatureUrl === undefined ? undefined : (signatureUrl || null),
         bankInfo: bankInfo || null,
       });
       res.json(settings);
@@ -3198,6 +3225,22 @@ export async function registerRoutes(
       }
       const settings = await storage.saveCompanySettings({ logoUrl });
       res.json({ logoUrl: settings.logoUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/company-settings/signature", requireAuth, signatureUpload.single("signature"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "파일이 없습니다" });
+      const signatureUrl = `/uploads/${req.file.filename}`;
+      const existing = await storage.getCompanySettings();
+      if (existing?.signatureUrl) {
+        const oldPath = path.join(uploadsDir, path.basename(existing.signatureUrl));
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+      const settings = await storage.saveCompanySettings({ signatureUrl });
+      res.json({ signatureUrl: settings.signatureUrl });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

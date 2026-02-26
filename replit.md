@@ -42,7 +42,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, adjustmentAmount, adjustmentNote, discountType(percent/amount 선택), discountValue(비율% 또는 금액), discountTruncUnit(none/1000/10000/100000/1000000 - 최종공급가액에 절사 적용), deliveryDays(납기일수 - purchase_items의 최대 leadTimeDays 자동계산, 수정가능), createdAt)
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder, isAdjustment) — isAdjustment=true인 항목은 추가/할인 항목으로 별도 관리
 - **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
-- **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, bankInfo) - 견적서 PDF 헤더에 반영
+- **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, bankInfo) - 견적서 PDF 헤더에 반영, signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시)
 - **staff** 테이블: 인력풀 (name, department(자유입력+자동완성), title(직함: 대표이사/매니저/팀원 등 자유입력), email, phone(휴대폰), createdAt) — 대표이사는 부서 "-"
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지

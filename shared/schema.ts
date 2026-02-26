@@ -432,6 +432,7 @@ export const companySettings = pgTable("company_settings", {
   fax: text("fax"),
   email: text("email"),
   logoUrl: text("logo_url"),
+  signatureUrl: text("signature_url"),
   bankInfo: text("bank_info"),
   createdAt: timestamp("created_at").defaultNow(),
 });

@@ -464,25 +464,25 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       y = Math.max(leftBottomY, rightBottomY);
     }
 
-    const signBoxH = 80;
-    const signHeaderH = 20;
-    const footerBarH = 22;
-    const signTotalH = signBoxH + signHeaderH + footerBarH + 20;
+    const signBoxH = 55;
+    const signHeaderH = 16;
+    const footerBarH = 18;
+    const signTotalH = signBoxH + signHeaderH + footerBarH + 15;
 
     if (y + signTotalH > 780) { doc.addPage(); y = 50; }
-    y += 15;
+    y += 10;
 
-    const signGap = 10;
+    const signGap = 8;
     const signW = (PAGE_WIDTH - signGap) / 2;
     const signLeftX = PAGE_LEFT;
     const signRightX = PAGE_LEFT + signW + signGap;
 
     doc.rect(signLeftX, y, signW, signHeaderH).fill("#E8E8E8");
-    doc.font("Bold").fontSize(8).fillColor("#000");
-    doc.text("Buyer (Sign)", signLeftX, y + 5, { width: signW, align: "center" });
+    doc.font("Bold").fontSize(7).fillColor("#000");
+    doc.text("Buyer (Sign)", signLeftX, y + 4, { width: signW, align: "center" });
 
     doc.rect(signRightX, y, signW, signHeaderH).fill("#E8E8E8");
-    doc.text("Seller (Sign)", signRightX, y + 5, { width: signW, align: "center" });
+    doc.text("Seller (Sign)", signRightX, y + 4, { width: signW, align: "center" });
 
     const signBodyY = y + signHeaderH;
     doc.rect(signLeftX, signBodyY, signW, signBoxH).lineWidth(0.5).stroke("#999");
@@ -493,20 +493,33 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       const sellerRep = companyInfo.representative ? `대표이사 ${companyInfo.representative}` : "";
       const sellerLine = [sellerName, sellerRep].filter(Boolean).join(" ");
       if (sellerLine) {
-        doc.font("Regular").fontSize(8).fillColor("#000");
-        doc.text(sellerLine, signRightX + 10, signBodyY + 8, { width: signW - 20, align: "center" });
+        doc.font("Regular").fontSize(7).fillColor("#000");
+        doc.text(sellerLine, signRightX + 5, signBodyY + 5, { width: signW - 10, align: "center" });
+      }
+
+      if (companyInfo.signatureUrl) {
+        const sigPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.signatureUrl));
+        if (fs.existsSync(sigPath)) {
+          try {
+            const sigW = 50;
+            const sigH = 25;
+            const sigX = signRightX + (signW - sigW) / 2;
+            const sigY = signBodyY + 16;
+            doc.image(sigPath, sigX, sigY, { width: sigW, height: sigH, fit: [sigW, sigH] });
+          } catch (e) {}
+        }
       }
     }
 
-    doc.font("Regular").fontSize(8).fillColor("#000");
-    doc.text(fmtDate(quotation.quoteDate), signRightX + 10, signBodyY + signBoxH - 18, { width: signW - 20, align: "right" });
+    doc.font("Regular").fontSize(7).fillColor("#000");
+    doc.text(fmtDate(quotation.quoteDate), signRightX + 5, signBodyY + signBoxH - 12, { width: signW - 10, align: "right" });
 
-    const footerY = signBodyY + signBoxH + 10;
+    const footerY = signBodyY + signBoxH + 6;
     doc.rect(PAGE_LEFT, footerY, PAGE_WIDTH, footerBarH).fill("#555");
-    doc.font("Regular").fontSize(8).fillColor("#fff");
+    doc.font("Regular").fontSize(7).fillColor("#fff");
     const websiteUrl = companyInfo?.email ? `www.${companyInfo.email.split("@")[1]}` : "";
     if (websiteUrl) {
-      doc.text(websiteUrl, PAGE_LEFT, footerY + 6, { width: PAGE_WIDTH, align: "center" });
+      doc.text(websiteUrl, PAGE_LEFT, footerY + 5, { width: PAGE_WIDTH, align: "center" });
     }
 
     doc.end();

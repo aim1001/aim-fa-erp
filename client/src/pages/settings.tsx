@@ -14,6 +14,7 @@ import type { CompanySettings } from "@shared/schema";
 export default function SettingsPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const signatureInputRef = useRef<HTMLInputElement>(null);
 
   const { data: settings, isLoading } = useQuery<CompanySettings>({
     queryKey: ["/api/company-settings"],
@@ -91,10 +92,48 @@ export default function SettingsPage() {
     },
   });
 
+  const uploadSignatureMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("signature", file);
+      const res = await fetch("/api/company-settings/signature", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("업로드 실패");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      toast({ title: "업로드 완료", description: "서명이 업로드되었습니다." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "업로드 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const removeSignature = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", "/api/company-settings", { ...form, signatureUrl: null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
+      toast({ title: "삭제 완료", description: "서명이 삭제되었습니다." });
+    },
+  });
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) uploadMutation.mutate(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleSignatureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadSignatureMutation.mutate(file);
+    if (signatureInputRef.current) signatureInputRef.current.value = "";
   };
 
   const updateField = (field: string, value: string) => {
@@ -183,6 +222,67 @@ export default function SettingsPage() {
                 )}
                 <p className="text-xs text-muted-foreground">
                   PNG, JPG, SVG, WebP (최대 5MB)
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Upload className="h-4 w-4" />
+              대표이사 서명
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-6">
+              <div className="w-32 h-20 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 overflow-hidden">
+                {settings?.signatureUrl ? (
+                  <img
+                    src={settings.signatureUrl}
+                    alt="대표이사 서명"
+                    className="w-full h-full object-contain p-2"
+                    data-testid="img-signature"
+                  />
+                ) : (
+                  <span className="text-xs text-muted-foreground/40">서명 없음</span>
+                )}
+              </div>
+              <div className="space-y-2">
+                <input
+                  ref={signatureInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
+                  className="hidden"
+                  onChange={handleSignatureChange}
+                  data-testid="input-signature-file"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => signatureInputRef.current?.click()}
+                  disabled={uploadSignatureMutation.isPending}
+                  data-testid="button-upload-signature"
+                >
+                  <Upload className="h-4 w-4 mr-1" />
+                  {uploadSignatureMutation.isPending ? "업로드 중..." : "서명 업로드"}
+                </Button>
+                {settings?.signatureUrl && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    onClick={() => removeSignature.mutate()}
+                    disabled={removeSignature.isPending}
+                    data-testid="button-remove-signature"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    서명 삭제
+                  </Button>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  PNG, JPG (투명 배경 PNG 권장, 최대 5MB)
                 </p>
               </div>
             </div>
