@@ -46,12 +46,13 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
   const discountType = (quotation.discountType as string) || "percent";
   const discountValue = quotation.discountValue || 0;
-  const discountTruncate = quotation.discountTruncate !== false;
+  const discountTruncUnit = parseInt((quotation.discountTruncUnit as string) || "1000") || 0;
   let discountAmount = 0;
   if (discountValue > 0) {
     discountAmount = discountType === "percent" ? Math.round(supplyAmount * (discountValue / 100)) : discountValue;
-    if (discountTruncate) discountAmount = Math.floor(discountAmount / 1000) * 1000;
+    if (discountTruncUnit > 0) discountAmount = Math.floor(discountAmount / discountTruncUnit) * discountTruncUnit;
   }
+  const truncLabel = discountTruncUnit === 10000 ? "만원절사" : discountTruncUnit === 1000 ? "천원절사" : "";
 
   const afterDiscount = supplyAmount - discountAmount;
   const tax = Math.round(afterDiscount * 0.1);
@@ -315,9 +316,10 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     let sY = sumStartY + 15;
 
     if (discountAmount > 0) {
+      const truncDesc = truncLabel ? `, ${truncLabel}` : "";
       const discLabel = discountType === "percent"
-        ? `할인 (${discountValue}%${discountTruncate ? ", 천원절사" : ""}):`
-        : `할인${discountTruncate ? " (천원절사)" : ""}:`;
+        ? `할인 (${discountValue}%${truncDesc}):`
+        : `할인${truncDesc ? ` (${truncLabel})` : ""}:`;
       doc.text(discLabel, 330, sY, { width: 130, align: "right" });
       doc.text(`-${fmtNum(discountAmount)}원`, 465, sY, { width: 80, align: "right" });
       sY += 15;
@@ -438,12 +440,13 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
 
   const xlDiscountType = (quotation.discountType as string) || "percent";
   const xlDiscountValue = quotation.discountValue || 0;
-  const xlDiscountTruncate = quotation.discountTruncate !== false;
+  const xlDiscountTruncUnit = parseInt((quotation.discountTruncUnit as string) || "1000") || 0;
   let xlDiscountAmount = 0;
   if (xlDiscountValue > 0) {
     xlDiscountAmount = xlDiscountType === "percent" ? Math.round(supplyAmount * (xlDiscountValue / 100)) : xlDiscountValue;
-    if (xlDiscountTruncate) xlDiscountAmount = Math.floor(xlDiscountAmount / 1000) * 1000;
+    if (xlDiscountTruncUnit > 0) xlDiscountAmount = Math.floor(xlDiscountAmount / xlDiscountTruncUnit) * xlDiscountTruncUnit;
   }
+  const xlTruncLabel = xlDiscountTruncUnit === 10000 ? "만원절사" : xlDiscountTruncUnit === 1000 ? "천원절사" : "";
 
   const afterDiscount = supplyAmount - xlDiscountAmount;
   const tax = Math.round(afterDiscount * 0.1);
@@ -458,8 +461,9 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
     { header: "값", key: "value", width: 40 },
   ];
 
+  const truncSuffix = xlTruncLabel ? ` (${xlTruncLabel})` : "";
   const discountDesc = xlDiscountValue > 0
-    ? (xlDiscountType === "percent" ? `${xlDiscountValue}%${xlDiscountTruncate ? " (천원절사)" : ""}` : `${xlDiscountValue}원${xlDiscountTruncate ? " (천원절사)" : ""}`)
+    ? (xlDiscountType === "percent" ? `${xlDiscountValue}%${truncSuffix}` : `${xlDiscountValue}원${truncSuffix}`)
     : "-";
 
   infoSheet.addRows([

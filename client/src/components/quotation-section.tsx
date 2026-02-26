@@ -439,7 +439,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [discountType, setDiscountType] = useState<"percent" | "amount">((quotation.discountType as "percent" | "amount") || "percent");
   const [discountValue, setDiscountValue] = useState(quotation.discountValue || 0);
-  const [discountTruncate, setDiscountTruncate] = useState(quotation.discountTruncate !== false);
+  const [discountTruncUnit, setDiscountTruncUnit] = useState<string>(quotation.discountTruncUnit || "1000");
 
   const regularItems = useMemo(() => items.filter(i => !i.isAdjustment), [items]);
   const adjustmentItems = useMemo(() => items.filter(i => i.isAdjustment), [items]);
@@ -452,9 +452,13 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const calcDiscount = useMemo(() => {
     if (discountValue <= 0) return 0;
     let raw = discountType === "percent" ? Math.round(supplyAmount * (discountValue / 100)) : discountValue;
-    if (discountTruncate) raw = Math.floor(raw / 1000) * 1000;
+    const unit = parseInt(discountTruncUnit);
+    if (unit > 0) raw = Math.floor(raw / unit) * unit;
     return raw;
-  }, [discountType, discountValue, discountTruncate, supplyAmount]);
+  }, [discountType, discountValue, discountTruncUnit, supplyAmount]);
+
+  const actualDiscountRate = supplyAmount > 0 && calcDiscount > 0
+    ? (calcDiscount / supplyAmount * 100).toFixed(2) : null;
 
   const afterDiscount = supplyAmount - calcDiscount;
   const tax = Math.round(afterDiscount * 0.1);
@@ -496,7 +500,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
       notes,
       discountType,
       discountValue,
-      discountTruncate,
+      discountTruncUnit,
       adjustmentAmount: -calcDiscount,
     });
   };
@@ -671,23 +675,25 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
               data-testid="input-discount-value"
             />
             <span className="text-xs text-muted-foreground">{discountType === "percent" ? "%" : "원"}</span>
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer ml-2">
-              <input
-                type="checkbox"
-                checked={discountTruncate}
-                onChange={e => setDiscountTruncate(e.target.checked)}
-                className="rounded border-gray-300"
-                data-testid="checkbox-discount-truncate"
-              />
-              <span className="text-muted-foreground">천원 절사</span>
-            </label>
+            <Select value={discountTruncUnit} onValueChange={setDiscountTruncUnit}>
+              <SelectTrigger className="w-24 h-8 text-xs ml-1" data-testid="select-discount-trunc-unit">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">절사 없음</SelectItem>
+                <SelectItem value="1000">천원 절사</SelectItem>
+                <SelectItem value="10000">만원 절사</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
         {calcDiscount > 0 && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
-              할인{discountType === "percent" ? ` (${discountValue}%)` : ""}{discountTruncate ? " 천원절사" : ""}
+              할인{discountType === "percent" ? ` (${discountValue}%)` : ""}
+              {discountTruncUnit !== "none" ? ` ${discountTruncUnit === "1000" ? "천원" : "만원"}절사` : ""}
+              {actualDiscountRate && discountType === "percent" ? ` → 실제 ${actualDiscountRate}%` : ""}
             </span>
             <span className="text-red-500">-{fmtNum(calcDiscount)}원</span>
           </div>

@@ -381,6 +381,7 @@ export const quotations = pgTable("quotations", {
   discountType: text("discount_type").default("percent"),
   discountValue: integer("discount_value").default(0),
   discountTruncate: boolean("discount_truncate").default(true),
+  discountTruncUnit: text("discount_trunc_unit").default("1000"),
   createdAt: text("created_at").notNull(),
 });
 
