@@ -22,7 +22,7 @@ function fmtDate(d: string | null | undefined): string {
 function groupByCategory(items: QuotationItem[]): Map<string, QuotationItem[]> {
   const map = new Map<string, QuotationItem[]>();
   for (const item of items) {
-    const cat = item.category1 || "기타";
+    const cat = item.category2 || item.category1 || "기타";
     if (!map.has(cat)) map.set(cat, []);
     map.get(cat)!.push(item);
   }

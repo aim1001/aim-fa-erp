@@ -393,6 +393,7 @@ export const quotationItems = pgTable("quotation_items", {
   unitPrice: integer("unit_price").notNull().default(0),
   amount: integer("amount").notNull().default(0),
   category1: text("category1"),
+  category2: text("category2"),
   sortOrder: integer("sort_order").default(0),
 });
 

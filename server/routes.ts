@@ -1087,16 +1087,18 @@ export async function registerRoutes(
 
   app.post("/api/quotations/:id/items", async (req, res) => {
     try {
-      const { itemCode, itemName, spec, quantity, unitPrice, costPrice, category1, sortOrder } = req.body;
+      const { itemCode, itemName, spec, quantity, unitPrice, costPrice, category1, category2, sortOrder } = req.body;
       const qty = quantity || 1;
       const price = unitPrice || 0;
       let finalCostPrice = costPrice ?? 0;
       let finalCategory1 = category1 || null;
-      if (itemCode && (finalCostPrice === 0 || !finalCategory1)) {
+      let finalCategory2 = category2 || null;
+      if (itemCode && (finalCostPrice === 0 || !finalCategory1 || !finalCategory2)) {
         const masterItem = await storage.getItemByCode(itemCode);
         if (masterItem) {
           if (finalCostPrice === 0) finalCostPrice = masterItem.cost || 0;
           if (!finalCategory1) finalCategory1 = masterItem.category1 || null;
+          if (!finalCategory2) finalCategory2 = masterItem.category2 || null;
         }
       }
       const item = await storage.createQuotationItem({
@@ -1109,6 +1111,7 @@ export async function registerRoutes(
         unitPrice: price,
         amount: qty * price,
         category1: finalCategory1,
+        category2: finalCategory2,
         sortOrder: sortOrder || 0,
       });
       res.status(201).json(item);

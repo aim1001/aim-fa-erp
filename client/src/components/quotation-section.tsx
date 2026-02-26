@@ -40,21 +40,32 @@ function ItemSearchPopover({ onSelect, disabled }: {
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState("all");
+  const [cat1Filter, setCat1Filter] = useState("all");
+  const [cat2Filter, setCat2Filter] = useState("all");
 
   const { data: allItems = [] } = useQuery<(ItemMaster & { inventory: any[]; documents: any[] })[]>({
     queryKey: ["/api/items"],
   });
 
-  const categories = useMemo(() => {
+  const activeItems = useMemo(() => allItems.filter(i => i.active !== false), [allItems]);
+
+  const cat1List = useMemo(() => {
     const cats = new Set<string>();
-    allItems.forEach(i => { if (i.category1) cats.add(i.category1); });
+    activeItems.forEach(i => { if (i.category1) cats.add(i.category1); });
     return Array.from(cats).sort();
-  }, [allItems]);
+  }, [activeItems]);
+
+  const cat2List = useMemo(() => {
+    const cats = new Set<string>();
+    const base = cat1Filter === "all" ? activeItems : activeItems.filter(i => i.category1 === cat1Filter);
+    base.forEach(i => { if (i.category2) cats.add(i.category2); });
+    return Array.from(cats).sort();
+  }, [activeItems, cat1Filter]);
 
   const filtered = useMemo(() => {
-    let list = allItems.filter(i => i.active !== false);
-    if (catFilter !== "all") list = list.filter(i => i.category1 === catFilter);
+    let list = activeItems;
+    if (cat1Filter !== "all") list = list.filter(i => i.category1 === cat1Filter);
+    if (cat2Filter !== "all") list = list.filter(i => i.category2 === cat2Filter);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(i =>
@@ -63,17 +74,23 @@ function ItemSearchPopover({ onSelect, disabled }: {
         i.spec?.toLowerCase().includes(q)
       );
     }
-    return list.slice(0, 40);
-  }, [allItems, search, catFilter]);
+    return list.slice(0, 80);
+  }, [activeItems, search, cat1Filter, cat2Filter]);
+
+  const handleReset = () => {
+    setSearch("");
+    setCat1Filter("all");
+    setCat2Filter("all");
+  };
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setSearch(""); setCatFilter("all"); } }}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) handleReset(); }}>
       <PopoverTrigger asChild>
         <Button size="sm" variant="outline" disabled={disabled} data-testid="button-add-quotation-item">
           <Plus className="h-3 w-3 mr-1" />품목 추가
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[480px] p-0" align="start">
+      <PopoverContent className="w-[520px] p-0" align="start">
         <div className="p-2 border-b space-y-1.5">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -81,34 +98,67 @@ function ItemSearchPopover({ onSelect, disabled }: {
               placeholder="품목코드, 품목명, 사양 검색..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="h-8 text-xs pl-7"
+              className="text-xs pl-7"
               autoFocus
               data-testid="input-item-search"
             />
           </div>
-          <div className="flex gap-1 flex-wrap">
-            <Button
-              size="sm"
-              variant={catFilter === "all" ? "default" : "outline"}
-              className="h-6 text-[10px] px-2"
-              onClick={() => setCatFilter("all")}
-            >
-              전체
-            </Button>
-            {categories.map(c => (
+          <div>
+            <div className="text-[10px] text-muted-foreground mb-1">대분류</div>
+            <div className="flex gap-1 flex-wrap">
               <Button
-                key={c}
                 size="sm"
-                variant={catFilter === c ? "default" : "outline"}
-                className="h-6 text-[10px] px-2"
-                onClick={() => setCatFilter(c)}
+                variant={cat1Filter === "all" ? "default" : "outline"}
+                className="text-[10px] px-2 py-0.5"
+                onClick={() => { setCat1Filter("all"); setCat2Filter("all"); }}
+                data-testid="button-cat1-all"
               >
-                {c}
+                전체
               </Button>
-            ))}
+              {cat1List.map(c => (
+                <Button
+                  key={c}
+                  size="sm"
+                  variant={cat1Filter === c ? "default" : "outline"}
+                  className="text-[10px] px-2 py-0.5"
+                  onClick={() => { setCat1Filter(c); setCat2Filter("all"); }}
+                  data-testid={`button-cat1-${c}`}
+                >
+                  {c}
+                </Button>
+              ))}
+            </div>
           </div>
+          {cat2List.length > 0 && (
+            <div>
+              <div className="text-[10px] text-muted-foreground mb-1">소분류</div>
+              <div className="flex gap-1 flex-wrap">
+                <Button
+                  size="sm"
+                  variant={cat2Filter === "all" ? "default" : "outline"}
+                  className="text-[10px] px-2 py-0.5"
+                  onClick={() => setCat2Filter("all")}
+                  data-testid="button-cat2-all"
+                >
+                  전체
+                </Button>
+                {cat2List.map(c => (
+                  <Button
+                    key={c}
+                    size="sm"
+                    variant={cat2Filter === c ? "default" : "outline"}
+                    className="text-[10px] px-2 py-0.5"
+                    onClick={() => setCat2Filter(c)}
+                    data-testid={`button-cat2-${c}`}
+                  >
+                    {c}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-        <ScrollArea className="max-h-[300px]">
+        <ScrollArea className="max-h-[400px]">
           {filtered.length === 0 && (
             <div className="px-3 py-4 text-xs text-center text-muted-foreground">검색 결과 없음</div>
           )}
@@ -117,12 +167,13 @@ function ItemSearchPopover({ onSelect, disabled }: {
               key={item.id}
               type="button"
               className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b last:border-0"
-              onClick={() => { onSelect(item); setOpen(false); setSearch(""); }}
+              onClick={() => { onSelect(item); setOpen(false); handleReset(); }}
               data-testid={`option-item-${item.id}`}
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <Badge variant="outline" className="text-[10px] px-1">{item.category1}</Badge>
+                  {item.category2 && <Badge variant="secondary" className="text-[10px] px-1">{item.category2}</Badge>}
                   <span className="font-medium">{item.itemName}</span>
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground">
@@ -153,7 +204,7 @@ function ItemsTab({ quotation, items, onRefresh }: {
   const grouped = useMemo(() => {
     const map = new Map<string, QuotationItem[]>();
     for (const item of items) {
-      const cat = item.category1 || "기타";
+      const cat = item.category2 || item.category1 || "기타";
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     }
@@ -187,6 +238,7 @@ function ItemsTab({ quotation, items, onRefresh }: {
       costPrice: masterItem.cost || 0,
       unitPrice: masterItem.salesPrice || 0,
       category1: masterItem.category1 || "",
+      category2: masterItem.category2 || "",
       sortOrder: items.length,
     });
   };
@@ -378,7 +430,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   const grouped = useMemo(() => {
     const map = new Map<string, QuotationItem[]>();
     for (const item of items) {
-      const cat = item.category1 || "기타";
+      const cat = item.category2 || item.category1 || "기타";
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     }
