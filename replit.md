@@ -147,7 +147,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-25: 고객사 연결 흐름 개선 — ① 담당자 등록 시 중복 고객사 검사 추가 (forceCreate:true 제거, ContactMatchSelectionDialog 추가), ② CustomerLinkSection 연결 시 스냅샷 동기화 (고객사 주소+첫 담당자 연락처 → 스냅샷 필드), ③ 엑셀 스캔 실패/빈 결과 시 수동 입력 안내 배너 표시 (scanFailMessage state)
 - 2026-02-25: 인콰이어리 수동 생성 시 Customer 자동 생성/연결 (고객명으로 기존 고객 검색 → 없으면 새 Customer 레코드 자동 생성, OneDrive sync의 auto-link와 동일 로직)
 - 2026-02-25: 고객사 미리보기 모달에 편집 기능 추가 (상호명, 주소, 전화, 사업자번호, 대표자 인라인 편집 → PATCH /api/customers/:id)
-- 2026-02-25: 견적서 관리 기능 (quotations/quotation_items 테이블, CRUD API, QuotationSection UI, PDF+엑셀 생성/다운로드, OneDrive 업로드)
+- 2026-02-25: 견적서 관리 기능 (quotations/quotation_items 테이블, CRUD API, 탭 기반 모달 UI: 품목탭(카테고리 그룹+원가/마진 표시), 가격·합계탭(가격조정+최종합계), 생성탭(PDF/Excel 다운로드+OneDrive 업로드))
 - 2026-02-24: OneDrive token management overhaul - graphCallWithRetry with fresh-client retry on 401/token errors, error classification (7 types), diagnostic token logging (length/type only, no secrets), Client.init callback pattern to avoid JWT parsing of opaque tokens, extractAccessToken with 5-field-path fallback, frontend error-type-specific guidance
 
 ## User Preferences

@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import path from "path";
 import { storage } from "./storage";
 import { uploadFileToFolder } from "./onedrive";
+import type { QuotationItem } from "@shared/schema";
 
 const FONT_DIR = path.join(process.cwd(), "server", "fonts");
 const FONT_REGULAR = path.join(FONT_DIR, "Pretendard-Regular.otf");
@@ -18,14 +19,27 @@ function fmtDate(d: string | null | undefined): string {
   return d.length > 10 ? d.substring(0, 10) : d;
 }
 
+function groupByCategory(items: QuotationItem[]): Map<string, QuotationItem[]> {
+  const map = new Map<string, QuotationItem[]>();
+  for (const item of items) {
+    const cat = item.category1 || "기타";
+    if (!map.has(cat)) map.set(cat, []);
+    map.get(cat)!.push(item);
+  }
+  return map;
+}
+
 export async function generateQuotationPDF(quotationId: string, inquiry: any): Promise<Buffer> {
   const result = await storage.getQuotationWithItems(quotationId);
   if (!result) throw new Error("견적서를 찾을 수 없습니다");
   const { quotation, items } = result;
 
   const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const tax = Math.round(subtotal * 0.1);
-  const total = subtotal + tax;
+  const adjustment = quotation.adjustmentAmount || 0;
+  const adjustedSubtotal = subtotal + adjustment;
+  const tax = Math.round(adjustedSubtotal * 0.1);
+  const total = adjustedSubtotal + tax;
+  const grouped = groupByCategory(items);
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 50 });
@@ -57,8 +71,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.moveDown(0.8);
 
     const tableTop = doc.y;
-    const colX = [50, 75, 150, 290, 350, 410, 480];
-    const colW = [25, 75, 140, 60, 60, 70, 65];
+    const colX = [50, 75, 150, 310, 365, 420, 480];
+    const colW = [25, 75, 160, 55, 55, 60, 65];
     const headers = ["No", "품목코드", "품목명/사양", "수량", "단가", "금액", "비고"];
 
     doc.rect(50, tableTop, 495, 20).fill("#E8E8E8");
@@ -68,41 +82,72 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     });
 
     let y = tableTop + 22;
-    doc.font("Regular").fontSize(8);
+    let globalIdx = 0;
 
-    items.forEach((item, idx) => {
-      if (y > 750) {
-        doc.addPage();
-        y = 50;
+    for (const [cat, catItems] of grouped) {
+      if (y > 730) { doc.addPage(); y = 50; }
+      doc.rect(50, y - 2, 495, 16).fill("#F0F4F8");
+      doc.fillColor("#333").font("Bold").fontSize(8);
+      doc.text(cat, 55, y, { width: 300 });
+      y += 18;
+
+      doc.font("Regular").fontSize(8).fillColor("#000");
+      for (const item of catItems) {
+        if (y > 750) { doc.addPage(); y = 50; }
+        globalIdx++;
+        const rowH = 16;
+        if (globalIdx % 2 === 0) {
+          doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
+          doc.fillColor("#000");
+        }
+        doc.text(String(globalIdx), colX[0], y, { width: colW[0] });
+        doc.text(item.itemCode || "-", colX[1], y, { width: colW[1] });
+        const nameSpec = item.spec ? `${item.itemName} (${item.spec})` : item.itemName;
+        doc.text(nameSpec, colX[2], y, { width: colW[2] });
+        doc.text(fmtNum(item.quantity), colX[3], y, { width: colW[3], align: "right" });
+        doc.text(fmtNum(item.unitPrice), colX[4], y, { width: colW[4], align: "right" });
+        doc.text(fmtNum(item.amount), colX[5], y, { width: colW[5], align: "right" });
+        y += rowH;
       }
-      const rowH = 18;
-      if (idx % 2 === 1) {
-        doc.rect(50, y - 2, 495, rowH).fill("#F8F8F8");
-        doc.fillColor("#000");
-      }
-      doc.text(String(idx + 1), colX[0], y, { width: colW[0], align: "left" });
-      doc.text(item.itemCode || "-", colX[1], y, { width: colW[1], align: "left" });
-      const nameSpec = item.spec ? `${item.itemName} (${item.spec})` : item.itemName;
-      doc.text(nameSpec, colX[2], y, { width: colW[2], align: "left" });
-      doc.text(fmtNum(item.quantity), colX[3], y, { width: colW[3], align: "right" });
-      doc.text(fmtNum(item.unitPrice), colX[4], y, { width: colW[4], align: "right" });
-      doc.text(fmtNum(item.amount), colX[5], y, { width: colW[5], align: "right" });
-      y += rowH;
-    });
+
+      const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
+      if (y > 750) { doc.addPage(); y = 50; }
+      doc.font("Bold").fontSize(8);
+      doc.text(`소계`, 310, y, { width: 110, align: "right" });
+      doc.text(`${fmtNum(catSubtotal)}원`, 420, y, { width: 125, align: "right" });
+      y += 18;
+      doc.font("Regular").fontSize(8);
+    }
 
     y += 5;
     doc.moveTo(50, y).lineTo(545, y).stroke("#ccc");
-    y += 8;
+    y += 10;
 
     doc.font("Regular").fontSize(9);
-    doc.text(`공급가액:`, 380, y, { width: 80, align: "right" });
+    doc.text(`공급가액:`, 360, y, { width: 100, align: "right" });
     doc.text(`${fmtNum(subtotal)}원`, 465, y, { width: 80, align: "right" });
     y += 15;
-    doc.text(`부가세(10%):`, 380, y, { width: 80, align: "right" });
+
+    if (adjustment !== 0) {
+      const adjLabel = adjustment < 0 ? "할인:" : "추가:";
+      doc.text(`${adjLabel}`, 360, y, { width: 100, align: "right" });
+      doc.text(`${fmtNum(adjustment)}원`, 465, y, { width: 80, align: "right" });
+      y += 15;
+      if (quotation.adjustmentNote) {
+        doc.fontSize(8).fillColor("#666").text(`(${quotation.adjustmentNote})`, 360, y, { width: 185, align: "right" });
+        doc.fillColor("#000").fontSize(9);
+        y += 15;
+      }
+      doc.text(`조정 후 공급가액:`, 360, y, { width: 100, align: "right" });
+      doc.text(`${fmtNum(adjustedSubtotal)}원`, 465, y, { width: 80, align: "right" });
+      y += 15;
+    }
+
+    doc.text(`부가세(10%):`, 360, y, { width: 100, align: "right" });
     doc.text(`${fmtNum(tax)}원`, 465, y, { width: 80, align: "right" });
     y += 15;
     doc.font("Bold").fontSize(10);
-    doc.text(`합계:`, 380, y, { width: 80, align: "right" });
+    doc.text(`합계:`, 360, y, { width: 100, align: "right" });
     doc.text(`${fmtNum(total)}원`, 465, y, { width: 80, align: "right" });
 
     if (quotation.notes) {
@@ -122,8 +167,11 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
   const { quotation, items } = result;
 
   const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const tax = Math.round(subtotal * 0.1);
-  const total = subtotal + tax;
+  const adjustment = quotation.adjustmentAmount || 0;
+  const adjustedSubtotal = subtotal + adjustment;
+  const tax = Math.round(adjustedSubtotal * 0.1);
+  const total = adjustedSubtotal + tax;
+  const grouped = groupByCategory(items);
 
   const wb = new ExcelJS.Workbook();
 
@@ -145,6 +193,9 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
     { key: "주소", value: inquiry.snapshotAddress || "" },
     { key: "", value: "" },
     { key: "공급가액", value: subtotal },
+    { key: "가격조정", value: adjustment },
+    { key: "조정사유", value: quotation.adjustmentNote || "" },
+    { key: "조정후공급가액", value: adjustedSubtotal },
     { key: "부가세", value: tax },
     { key: "합계", value: total },
     { key: "", value: "" },
@@ -155,24 +206,56 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
   const itemSheet = wb.addWorksheet("품목목록");
   itemSheet.columns = [
     { header: "No", key: "no", width: 6 },
+    { header: "카테고리", key: "category1", width: 15 },
     { header: "품목코드", key: "itemCode", width: 15 },
     { header: "품목명", key: "itemName", width: 30 },
     { header: "사양", key: "spec", width: 25 },
     { header: "수량", key: "quantity", width: 10 },
-    { header: "단가", key: "unitPrice", width: 15 },
+    { header: "원가", key: "costPrice", width: 12 },
+    { header: "판매단가", key: "unitPrice", width: 15 },
     { header: "금액", key: "amount", width: 15 },
+    { header: "마진율(%)", key: "margin", width: 12 },
   ];
-  items.forEach((item, idx) => {
-    itemSheet.addRow({
-      no: idx + 1,
-      itemCode: item.itemCode || "",
-      itemName: item.itemName,
-      spec: item.spec || "",
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      amount: item.amount,
+
+  let rowIdx = 0;
+  for (const [cat, catItems] of grouped) {
+    for (const item of catItems) {
+      rowIdx++;
+      const cost = item.costPrice || 0;
+      const marginRate = item.unitPrice > 0 && cost > 0
+        ? Math.round(((item.unitPrice - cost) / item.unitPrice) * 100)
+        : 0;
+      itemSheet.addRow({
+        no: rowIdx,
+        category1: item.category1 || "",
+        itemCode: item.itemCode || "",
+        itemName: item.itemName,
+        spec: item.spec || "",
+        quantity: item.quantity,
+        costPrice: cost,
+        unitPrice: item.unitPrice,
+        amount: item.amount,
+        margin: marginRate,
+      });
+    }
+    const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
+    const catCostTotal = catItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
+    const subtotalRow = itemSheet.addRow({
+      no: "",
+      category1: "",
+      itemCode: "",
+      itemName: `[${cat} 소계]`,
+      spec: "",
+      quantity: "",
+      costPrice: catCostTotal,
+      unitPrice: "",
+      amount: catSubtotal,
+      margin: "",
     });
-  });
+    subtotalRow.font = { bold: true };
+    subtotalRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF0F4F8" } };
+  }
+
   itemSheet.getRow(1).font = { bold: true };
 
   const buf = await wb.xlsx.writeBuffer();

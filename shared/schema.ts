@@ -373,6 +373,8 @@ export const quotations = pgTable("quotations", {
   validUntil: text("valid_until"),
   notes: text("notes"),
   status: text("status").default("draft"),
+  adjustmentAmount: integer("adjustment_amount").default(0),
+  adjustmentNote: text("adjustment_note"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -387,8 +389,10 @@ export const quotationItems = pgTable("quotation_items", {
   itemName: text("item_name").notNull(),
   spec: text("spec"),
   quantity: integer("quantity").notNull().default(1),
+  costPrice: integer("cost_price").default(0),
   unitPrice: integer("unit_price").notNull().default(0),
   amount: integer("amount").notNull().default(0),
+  category1: text("category1"),
   sortOrder: integer("sort_order").default(0),
 });
 
