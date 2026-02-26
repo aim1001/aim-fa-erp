@@ -306,27 +306,44 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       y = doc.y;
     }
 
-    const termsBlocks = [
-      { label: "■ 지급 및 납기", content: inquiry.contractClauses },
-      { label: "■ 보증 및 책임범위", content: inquiry.warrantyTerms },
-    ].filter(b => b.content && b.content.trim());
+    const hasClause = inquiry.contractClauses && inquiry.contractClauses.trim();
+    const hasWarranty = inquiry.warrantyTerms && inquiry.warrantyTerms.trim();
 
-    if (termsBlocks.length > 0) {
+    if (hasClause || hasWarranty) {
       y += 12;
       if (y > 700) { doc.addPage(); y = 50; }
 
       doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).lineWidth(0.5).stroke("#ccc");
       y += 6;
 
-      for (const block of termsBlocks) {
-        if (y > 730) { doc.addPage(); y = 50; }
+      const colGap = 15;
+      const colW = (PAGE_WIDTH - colGap) / 2;
+      const rightColX = PAGE_LEFT + colW + colGap;
+      const termsTopY = y;
+
+      let leftBottomY = termsTopY;
+      if (hasClause) {
         doc.font("Bold").fontSize(7).fillColor("#000");
-        doc.text(block.label, PAGE_LEFT, y, { width: PAGE_WIDTH });
-        y = doc.y + 2;
+        doc.text("■ 지급 및 납기", PAGE_LEFT, termsTopY, { width: colW });
+        const lLabelH = doc.heightOfString("■ 지급 및 납기", { width: colW });
+        const lLabelEndY = termsTopY + lLabelH + 2;
         doc.font("Regular").fontSize(6.5).fillColor("#333");
-        doc.text(block.content!, PAGE_LEFT + 5, y, { width: PAGE_WIDTH - 10, lineGap: 1 });
-        y = doc.y + 5;
+        doc.text(inquiry.contractClauses!, PAGE_LEFT, lLabelEndY, { width: colW, lineGap: 1.5 });
+        leftBottomY = lLabelEndY + doc.heightOfString(inquiry.contractClauses!, { width: colW, lineGap: 1.5 });
       }
+
+      let rightBottomY = termsTopY;
+      if (hasWarranty) {
+        doc.font("Bold").fontSize(7).fillColor("#000");
+        doc.text("■ 보증 및 책임 범위", rightColX, termsTopY, { width: colW });
+        const rLabelH = doc.heightOfString("■ 보증 및 책임 범위", { width: colW });
+        const rLabelEndY = termsTopY + rLabelH + 2;
+        doc.font("Regular").fontSize(6.5).fillColor("#333");
+        doc.text(inquiry.warrantyTerms!, rightColX, rLabelEndY, { width: colW, lineGap: 1.5 });
+        rightBottomY = rLabelEndY + doc.heightOfString(inquiry.warrantyTerms!, { width: colW, lineGap: 1.5 });
+      }
+
+      y = Math.max(leftBottomY, rightBottomY);
     }
 
     doc.end();
