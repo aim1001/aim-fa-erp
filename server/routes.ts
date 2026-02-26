@@ -1164,6 +1164,71 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/quotations/:id/send-email", async (req, res) => {
+    try {
+      const { to, subject, body } = req.body;
+      if (!to) return res.status(400).json({ message: "수신자 이메일이 필요합니다" });
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(to)) return res.status(400).json({ message: "올바른 이메일 형식이 아닙니다" });
+      if (to.length > 254 || (subject && subject.length > 500)) return res.status(400).json({ message: "입력값이 너무 깁니다" });
+
+      const result = await storage.getQuotationWithItems(req.params.id);
+      if (!result) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      const inquiry = await storage.getInquiry(result.quotation.inquiryId);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+
+      const companyInfo = await storage.getCompanySettings();
+
+      const { generateQuotationPDF } = await import("./quotation-export");
+      const pdfBuf = await generateQuotationPDF(req.params.id, inquiry);
+
+      const safeNumber = result.quotation.quoteNumber.replace(/[/\\:*?"<>|]/g, "_");
+      const pdfFilename = `견적서_${safeNumber}.pdf`;
+
+      if (inquiry.onedriveFolderId) {
+        try {
+          const { uploadFileToFolder } = await import("./onedrive");
+          await uploadFileToFolder(inquiry.onedriveFolderId, pdfFilename, pdfBuf);
+        } catch (e: any) {
+          console.log(`OneDrive 저장 실패 (이메일은 계속 진행): ${e.message}`);
+        }
+      }
+
+      const companyName = companyInfo?.companyName || "에이아이엠";
+      const emailSubject = subject || `[견적서] ${result.quotation.quoteNumber} - ${companyName}`;
+      const emailBody = body || `
+        <div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">
+          <p>안녕하세요, ${inquiry.snapshotCompanyName || '고객'}님.</p>
+          <p>${companyName}입니다.</p>
+          <br/>
+          <p>요청하신 견적서를 첨부드립니다.</p>
+          <p><strong>견적번호:</strong> ${result.quotation.quoteNumber}</p>
+          <br/>
+          <p>검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.</p>
+          <br/>
+          <p>감사합니다.</p>
+          <p>${companyName}</p>
+          ${companyInfo?.phone ? `<p>Tel: ${companyInfo.phone}</p>` : ''}
+          ${companyInfo?.email ? `<p>Email: ${companyInfo.email}</p>` : ''}
+        </div>
+      `;
+
+      const { sendEmailWithAttachment } = await import("./gmail");
+      const emailResult = await sendEmailWithAttachment({
+        to,
+        subject: emailSubject,
+        htmlBody: emailBody,
+        attachment: { filename: pdfFilename, content: pdfBuf },
+        from: companyInfo?.email || undefined,
+      });
+
+      res.json({ message: `${to}로 견적서가 전송되었습니다`, messageId: emailResult.messageId });
+    } catch (err: any) {
+      console.error("이메일 전송 오류:", err);
+      res.status(500).json({ message: err.message || "이메일 전송 실패" });
+    }
+  });
+
   app.get("/api/quotations/:id/download/pdf", async (req, res) => {
     try {
       const result = await storage.getQuotationWithItems(req.params.id);

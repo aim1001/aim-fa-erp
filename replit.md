@@ -8,7 +8,7 @@
 - **Frontend**: React + Vite + Tailwind CSS + Shadcn UI + Recharts
 - **Backend**: Express.js + Drizzle ORM
 - **Database**: PostgreSQL (Neon-backed, Replit built-in)
-- **Integration**: OneDrive (Microsoft Graph API via Replit connector)
+- **Integration**: OneDrive (Microsoft Graph API via Replit connector), Gmail (Google API via Replit connector)
 
 ## OneDrive Folder Structure
 ```
@@ -64,6 +64,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 결제 계획 자동 생성 (계산서에서 익월말/월말/일자지정 + 분할 지원)
 - 프로젝트 관리 - OneDrive `2.공사` 폴더 스캔, 연도별 프로젝트 목록 (폴더명 파싱: 번호_고객사_내용), 매출/매입/수익 요약, 계산서 연결/해제
 - 사이드바: 영업(인콰이어리, 진행중/수주/실주, 프로젝트) / 경영지원(매출계산서, 매입계산서, 자금계획) / 관리(고객사, 공급업체)
+- 견적서 이메일 전송 - Gmail API로 PDF 첨부 이메일 전송 (OneDrive 자동 저장 후 발송)
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:

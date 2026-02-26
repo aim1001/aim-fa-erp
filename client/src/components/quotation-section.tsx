@@ -7,9 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   FileText, Plus, Trash2, Search, Pencil, Check, X,
-  Upload, FileDown, Package, Loader2, Star,
+  Upload, FileDown, Package, Loader2, Star, Mail, Send,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -843,6 +845,11 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
   const [exporting, setExporting] = useState(false);
   const [quoteDate, setQuoteDate] = useState(quotation.quoteDate);
   const [status, setStatus] = useState(quotation.status || "draft");
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState(inquiry.snapshotEmail || "");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [sending, setSending] = useState(false);
 
   const updateMut = useMutation({
     mutationFn: (body: any) => apiRequest("PATCH", `/api/quotations/${quotation.id}`, body),
@@ -876,7 +883,85 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
     }
   };
 
+  const openEmailDialog = () => {
+    setEmailTo(inquiry.snapshotEmail || "");
+    setEmailSubject(`[견적서] ${quotation.quoteNumber}`);
+    setEmailBody(
+      `안녕하세요, ${inquiry.snapshotCompanyName || "고객"}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: ${quotation.quoteNumber}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`
+    );
+    setEmailOpen(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailTo) {
+      toast({ title: "수신자 이메일을 입력해주세요", variant: "destructive" });
+      return;
+    }
+    setSending(true);
+    try {
+      const res = await apiRequest("POST", `/api/quotations/${quotation.id}/send-email`, {
+        to: emailTo,
+        subject: emailSubject,
+        body: `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px; white-space: pre-line;">${emailBody}</div>`,
+      });
+      const result = await res.json();
+      toast({ title: "이메일 전송 완료", description: result.message });
+      setEmailOpen(false);
+    } catch (e: any) {
+      toast({ title: "이메일 전송 실패", description: e.message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
+    <>
+    <Dialog open={emailOpen} onOpenChange={setEmailOpen}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>견적서 이메일 전송</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs">수신자 이메일</Label>
+            <Input
+              value={emailTo}
+              onChange={e => setEmailTo(e.target.value)}
+              placeholder="customer@example.com"
+              className="text-sm"
+              data-testid="input-email-to"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">제목</Label>
+            <Input
+              value={emailSubject}
+              onChange={e => setEmailSubject(e.target.value)}
+              className="text-sm"
+              data-testid="input-email-subject"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">본문</Label>
+            <Textarea
+              value={emailBody}
+              onChange={e => setEmailBody(e.target.value)}
+              rows={8}
+              className="text-sm"
+              data-testid="input-email-body"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">PDF 견적서가 자동으로 첨부됩니다.</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEmailOpen(false)} data-testid="button-email-cancel">취소</Button>
+          <Button onClick={handleSendEmail} disabled={sending} data-testid="button-email-send">
+            {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+            전송
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <div className="flex items-center gap-2 flex-wrap border rounded-md px-3 py-2 bg-muted/30">
       <div className="flex items-center gap-1.5 text-xs">
         <span className="text-muted-foreground">견적일</span>
@@ -932,7 +1017,18 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
       >
         <FileDown className="h-3 w-3 mr-1" />Excel
       </Button>
+      <Button
+        size="sm"
+        variant="default"
+        className="h-7 text-xs"
+        onClick={openEmailDialog}
+        disabled={items.length === 0}
+        data-testid="button-send-email"
+      >
+        <Mail className="h-3 w-3 mr-1" />이메일
+      </Button>
     </div>
+    </>
   );
 }
 
