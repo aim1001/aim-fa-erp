@@ -2,7 +2,7 @@ import {
   LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut,
   Truck, Receipt, ReceiptText, Calendar, Clock, Wallet, FolderKanban, ClipboardList,
   CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart,
-  Package, ClipboardCheck, FolderCheck, FolderOpen
+  Package, ClipboardCheck, FolderCheck, FolderOpen, Settings
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -419,10 +419,20 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* 로그아웃 */}
+        {/* 설정 & 로그아웃 */}
         <SidebarGroup>
           <SidebarGroupContent>
-            <div className="px-2">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={location === "/settings"}>
+                  <Link href="/settings" data-testid="link-settings">
+                    <Settings className="h-4 w-4" />
+                    <span>설정</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+            <div className="px-2 mt-1">
               <Button
                 variant="ghost"
                 className="w-full text-muted-foreground"

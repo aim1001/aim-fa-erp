@@ -414,3 +414,21 @@ export const contractTemplates = pgTable("contract_templates", {
 export const insertContractTemplateSchema = createInsertSchema(contractTemplates).omit({ id: true, createdAt: true });
 export type InsertContractTemplate = z.infer<typeof insertContractTemplateSchema>;
 export type ContractTemplate = typeof contractTemplates.$inferSelect;
+
+export const companySettings = pgTable("company_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: text("company_name"),
+  businessNumber: text("business_number"),
+  representative: text("representative"),
+  address: text("address"),
+  phone: text("phone"),
+  fax: text("fax"),
+  email: text("email"),
+  logoUrl: text("logo_url"),
+  bankInfo: text("bank_info"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({ id: true, createdAt: true });
+export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
+export type CompanySettings = typeof companySettings.$inferSelect;

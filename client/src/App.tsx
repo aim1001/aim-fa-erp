@@ -20,6 +20,7 @@ import ProjectList from "@/pages/project-list";
 import ManagementDashboard from "@/pages/management-dashboard";
 import ItemList from "@/pages/item-list";
 import PurchaseItemList from "@/pages/purchase-item-list";
+import SettingsPage from "@/pages/settings";
 import Login from "@/pages/login";
 import { getQueryFn } from "@/lib/queryClient";
 
@@ -40,6 +41,7 @@ function Router() {
       <Route path="/management" component={ManagementDashboard} />
       <Route path="/items" component={ItemList} />
       <Route path="/purchase-items" component={PurchaseItemList} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,6 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import { insertInquirySchema, insertCompanySchema, insertCustomerSchema, insertVendorSchema, insertSalesInvoiceSchema, insertPurchaseInvoiceSchema } from "@shared/schema";
 import {
@@ -3059,6 +3062,87 @@ export async function registerRoutes(
     try {
       await storage.deleteContractTemplate(req.params.id);
       res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const uploadsDir = path.join(process.cwd(), "server", "uploads");
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+  const logoUpload = multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, uploadsDir),
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        cb(null, `logo_${Date.now()}${ext}`);
+      },
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (!allowed.includes(ext)) {
+        return cb(new Error("지원하지 않는 파일 형식입니다. PNG, JPG, SVG, WebP만 가능합니다."));
+      }
+      cb(null, true);
+    },
+  });
+
+  const express = await import("express");
+  app.use("/uploads", (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    next();
+  });
+  app.use("/uploads", express.default.static(uploadsDir));
+
+  app.get("/api/company-settings", async (_req, res) => {
+    try {
+      const settings = await storage.getCompanySettings();
+      res.json(settings || {});
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/company-settings", requireAuth, async (req, res) => {
+    try {
+      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, bankInfo } = req.body;
+      if (logoUrl === null) {
+        const existing = await storage.getCompanySettings();
+        if (existing?.logoUrl) {
+          const oldPath = path.join(uploadsDir, path.basename(existing.logoUrl));
+          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        }
+      }
+      const settings = await storage.saveCompanySettings({
+        companyName: companyName || null,
+        businessNumber: businessNumber || null,
+        representative: representative || null,
+        address: address || null,
+        phone: phone || null,
+        fax: fax || null,
+        email: email || null,
+        logoUrl: logoUrl === undefined ? undefined : (logoUrl || null),
+        bankInfo: bankInfo || null,
+      });
+      res.json(settings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/company-settings/logo", requireAuth, logoUpload.single("logo"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "파일이 없습니다" });
+      const logoUrl = `/uploads/${req.file.filename}`;
+      const existing = await storage.getCompanySettings();
+      if (existing?.logoUrl) {
+        const oldPath = path.join(uploadsDir, path.basename(existing.logoUrl));
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+      const settings = await storage.saveCompanySettings({ logoUrl });
+      res.json({ logoUrl: settings.logoUrl });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

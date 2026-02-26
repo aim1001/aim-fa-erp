@@ -18,10 +18,11 @@ import {
   type Quotation, type InsertQuotation,
   type QuotationItem, type InsertQuotationItem,
   type ContractTemplate, type InsertContractTemplate,
+  type CompanySettings, type InsertCompanySettings,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
-  inquiryMemos, quotations, quotationItems, contractTemplates,
+  inquiryMemos, quotations, quotationItems, contractTemplates, companySettings,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -183,6 +184,9 @@ export interface IStorage {
   createContractTemplate(data: InsertContractTemplate): Promise<ContractTemplate>;
   updateContractTemplate(id: string, data: Partial<InsertContractTemplate>): Promise<ContractTemplate | undefined>;
   deleteContractTemplate(id: string): Promise<void>;
+
+  getCompanySettings(): Promise<CompanySettings | undefined>;
+  saveCompanySettings(data: InsertCompanySettings): Promise<CompanySettings>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -972,6 +976,21 @@ export class DatabaseStorage implements IStorage {
 
   async deleteContractTemplate(id: string): Promise<void> {
     await db.delete(contractTemplates).where(eq(contractTemplates.id, id));
+  }
+
+  async getCompanySettings(): Promise<CompanySettings | undefined> {
+    const rows = await db.select().from(companySettings).limit(1);
+    return rows[0];
+  }
+
+  async saveCompanySettings(data: InsertCompanySettings): Promise<CompanySettings> {
+    const existing = await this.getCompanySettings();
+    if (existing) {
+      const [updated] = await db.update(companySettings).set(data).where(eq(companySettings.id, existing.id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(companySettings).values(data).returning();
+    return created;
   }
 }
 

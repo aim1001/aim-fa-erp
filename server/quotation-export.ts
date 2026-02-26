@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
 import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import { uploadFileToFolder } from "./onedrive";
 import type { QuotationItem } from "@shared/schema";
@@ -34,6 +35,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
   if (!result) throw new Error("견적서를 찾을 수 없습니다");
   const { quotation, items } = result;
 
+  const companyInfo = await storage.getCompanySettings();
+
   const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
   const adjustment = quotation.adjustmentAmount || 0;
   const adjustedSubtotal = subtotal + adjustment;
@@ -51,7 +54,39 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.registerFont("Regular", FONT_REGULAR);
     doc.registerFont("Bold", FONT_BOLD);
 
-    doc.font("Bold").fontSize(22).text("견 적 서", { align: "center" });
+    const headerTop = 50;
+    let logoRendered = false;
+    if (companyInfo?.logoUrl) {
+      const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
+      if (fs.existsSync(logoPath)) {
+        try {
+          doc.image(logoPath, 50, headerTop, { width: 80, height: 80, fit: [80, 80] });
+          logoRendered = true;
+        } catch (e) {}
+      }
+    }
+
+    if (companyInfo && (companyInfo.companyName || companyInfo.businessNumber)) {
+      const infoX = 350;
+      let infoY = headerTop;
+      doc.font("Bold").fontSize(10).fillColor("#000");
+      if (companyInfo.companyName) {
+        doc.text(companyInfo.companyName, infoX, infoY, { width: 195, align: "right" });
+        infoY += 14;
+      }
+      doc.font("Regular").fontSize(8).fillColor("#555");
+      if (companyInfo.businessNumber) { doc.text(`사업자번호: ${companyInfo.businessNumber}`, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
+      if (companyInfo.representative) { doc.text(`대표자: ${companyInfo.representative}`, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
+      if (companyInfo.address) { doc.text(companyInfo.address, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
+      if (companyInfo.phone) { doc.text(`Tel: ${companyInfo.phone}`, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
+      if (companyInfo.fax) { doc.text(`Fax: ${companyInfo.fax}`, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
+      if (companyInfo.email) { doc.text(companyInfo.email, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
+    }
+
+    const titleY = logoRendered || companyInfo?.companyName ? headerTop + 90 : headerTop;
+    doc.y = titleY;
+
+    doc.font("Bold").fontSize(22).fillColor("#000").text("견 적 서", { align: "center" });
     doc.moveDown(0.5);
     doc.font("Regular").fontSize(9).fillColor("#666")
       .text(`견적번호: ${quotation.quoteNumber}    견적일자: ${fmtDate(quotation.quoteDate)}    유효기한: ${fmtDate(quotation.validUntil)}`, { align: "center" });
@@ -155,6 +190,15 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       doc.font("Bold").fontSize(10).text("비고", 50, y);
       y += 15;
       doc.font("Regular").fontSize(9).text(quotation.notes, 50, y, { width: 495 });
+      y = doc.y;
+    }
+
+    if (companyInfo?.bankInfo) {
+      y += 20;
+      if (y > 730) { doc.addPage(); y = 50; }
+      doc.font("Bold").fontSize(10).fillColor("#000").text("입금 계좌", 50, y);
+      y += 15;
+      doc.font("Regular").fontSize(9).text(companyInfo.bankInfo, 50, y, { width: 495 });
     }
 
     doc.end();
