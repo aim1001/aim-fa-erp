@@ -187,7 +187,6 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
 
     doc.y = cY + 10;
-    doc.font("Bold").fontSize(12).fillColor("#000").text(`합계 금액: ${fmtNum(total)}원 (부가세 포함)`);
     doc.moveDown(0.8);
 
     const tableTop = doc.y;
