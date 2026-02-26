@@ -54,55 +54,123 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.registerFont("Regular", FONT_REGULAR);
     doc.registerFont("Bold", FONT_BOLD);
 
-    const headerTop = 50;
-    let logoRendered = false;
-    if (companyInfo?.logoUrl) {
-      const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
-      if (fs.existsSync(logoPath)) {
-        try {
-          doc.image(logoPath, 50, headerTop, { width: 80, height: 80, fit: [80, 80] });
-          logoRendered = true;
-        } catch (e) {}
-      }
-    }
+    const PAGE_LEFT = 50;
+    const PAGE_RIGHT = 545;
+    const PAGE_WIDTH = PAGE_RIGHT - PAGE_LEFT;
+    const headerTop = 40;
 
-    if (companyInfo && (companyInfo.companyName || companyInfo.businessNumber)) {
-      const infoX = 350;
-      let infoY = headerTop;
-      doc.font("Bold").fontSize(10).fillColor("#000");
+    doc.font("Bold").fontSize(26).fillColor("#000").text("견 적 서", PAGE_LEFT, headerTop);
+
+    let rightBlockBottom = headerTop;
+    if (companyInfo) {
+      const rightBlockX = 330;
+      const rightTextW = PAGE_RIGHT - rightBlockX - 75;
+      let rY = headerTop;
+
+      if (companyInfo?.logoUrl) {
+        const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
+        if (fs.existsSync(logoPath)) {
+          try {
+            doc.image(logoPath, PAGE_RIGHT - 65, headerTop, { width: 55, height: 28, fit: [55, 28] });
+          } catch (e) {}
+        }
+      }
+
       if (companyInfo.companyName) {
-        doc.text(companyInfo.companyName, infoX, infoY, { width: 195, align: "right" });
-        infoY += 14;
+        doc.font("Bold").fontSize(10).fillColor("#000");
+        doc.text(companyInfo.companyName, rightBlockX, rY, { width: rightTextW, align: "right" });
+        rY += 14;
       }
-      doc.font("Regular").fontSize(8).fillColor("#555");
-      if (companyInfo.businessNumber) { doc.text(`사업자번호: ${companyInfo.businessNumber}`, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
-      if (companyInfo.representative) { doc.text(`대표자: ${companyInfo.representative}`, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
-      if (companyInfo.address) { doc.text(companyInfo.address, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
-      if (companyInfo.phone) { doc.text(`Tel: ${companyInfo.phone}`, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
-      if (companyInfo.fax) { doc.text(`Fax: ${companyInfo.fax}`, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
-      if (companyInfo.email) { doc.text(companyInfo.email, infoX, infoY, { width: 195, align: "right" }); infoY += 12; }
+
+      doc.font("Regular").fontSize(7.5).fillColor("#444");
+      if (companyInfo.address) { doc.text(companyInfo.address, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      const telFax = [companyInfo.phone ? `Tel ${companyInfo.phone}` : "", companyInfo.fax ? `Fax ${companyInfo.fax}` : ""].filter(Boolean).join("  ");
+      if (telFax) { doc.text(telFax, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      if (companyInfo.representative) { doc.text(`대표이사 ${companyInfo.representative}`, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      if (companyInfo.email) { doc.text(companyInfo.email, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      rightBlockBottom = rY;
     }
 
-    const titleY = logoRendered || companyInfo?.companyName ? headerTop + 90 : headerTop;
-    doc.y = titleY;
+    const metaTop = headerTop + 38;
+    const metaLabelW = 80;
+    const metaValX = PAGE_LEFT + metaLabelW;
+    const quoteName = [inquiry.customerName || "", inquiry.productInfo || ""].filter(Boolean).join("_");
+    const validText = quotation.validUntil ? `제출일로 부터 30일` : "-";
 
-    doc.font("Bold").fontSize(22).fillColor("#000").text("견 적 서", { align: "center" });
-    doc.moveDown(0.5);
-    doc.font("Regular").fontSize(9).fillColor("#666")
-      .text(`견적번호: ${quotation.quoteNumber}    견적일자: ${fmtDate(quotation.quoteDate)}    유효기한: ${fmtDate(quotation.validUntil)}`, { align: "center" });
-    doc.moveDown(1);
+    doc.font("Regular").fontSize(8).fillColor("#333");
+    const metaRows = [
+      { label: "견 적 No", value: quotation.quoteNumber },
+      { label: "제출일자", value: fmtDate(quotation.quoteDate) },
+      { label: "견적명", value: quoteName || "-" },
+      { label: "견적 유효기간", value: validText },
+    ];
+    let mY = metaTop;
+    for (const row of metaRows) {
+      doc.font("Bold").fontSize(8).fillColor("#333").text(row.label, PAGE_LEFT, mY, { width: metaLabelW });
+      doc.font("Regular").fontSize(8).fillColor("#000").text(row.value, metaValX, mY, { width: 200 });
+      mY += 14;
+    }
 
-    doc.font("Bold").fontSize(11).fillColor("#000").text("수신");
-    doc.moveDown(0.3);
-    doc.font("Regular").fontSize(10);
-    doc.text(`회사명: ${inquiry.snapshotCompanyName || inquiry.customerName || "-"}`);
-    if (inquiry.snapshotContactName) doc.text(`담당자: ${inquiry.snapshotContactName}`);
-    if (inquiry.snapshotPhone) doc.text(`연락처: ${inquiry.snapshotPhone}`);
-    if (inquiry.snapshotEmail) doc.text(`이메일: ${inquiry.snapshotEmail}`);
-    if (inquiry.snapshotAddress) doc.text(`주소: ${inquiry.snapshotAddress}`);
-    doc.moveDown(0.5);
+    const custTop = Math.max(mY, rightBlockBottom) + 8;
+    doc.moveTo(PAGE_LEFT, custTop).lineTo(PAGE_RIGHT, custTop).lineWidth(1).stroke("#333");
 
-    doc.font("Bold").fontSize(12).text(`합계 금액: ${fmtNum(total)}원 (부가세 포함)`);
+    const custLabelBg = "#E8E8E8";
+    const custRowH = 18;
+    const custMidX = PAGE_LEFT + PAGE_WIDTH / 2;
+    const custLabelW = 50;
+    const custRows = [
+      {
+        leftLabel: "",
+        leftVal: inquiry.snapshotCompanyName || inquiry.customerName || "-",
+        rightLabel: "Customer name :",
+        rightVal: inquiry.snapshotContactName || "-",
+        rightLabelW: 85,
+      },
+      {
+        leftLabel: "",
+        leftVal: inquiry.snapshotAddress || "-",
+        rightLabel: "E-mail :",
+        rightVal: inquiry.snapshotEmail || "-",
+        rightLabelW: 85,
+      },
+      {
+        leftLabel: "",
+        leftVal: "",
+        rightLabel: "Phone number :",
+        rightVal: inquiry.snapshotPhone || "-",
+        rightLabelW: 85,
+      },
+    ];
+
+    doc.rect(PAGE_LEFT, custTop + 1, custLabelW, custRows.length * custRowH).fill(custLabelBg);
+    doc.fillColor("#333").font("Bold").fontSize(8);
+    doc.text("고객사", PAGE_LEFT + 4, custTop + 4, { width: custLabelW - 8 });
+
+    let cY = custTop + 2;
+    doc.font("Regular").fontSize(8).fillColor("#000");
+    for (let i = 0; i < custRows.length; i++) {
+      const r = custRows[i];
+      if (r.leftVal) {
+        doc.text(r.leftVal, PAGE_LEFT + custLabelW + 5, cY + 3, { width: custMidX - PAGE_LEFT - custLabelW - 10 });
+      }
+      doc.font("Regular").fontSize(7.5).fillColor("#555");
+      doc.text(r.rightLabel, custMidX + 5, cY + 4, { width: r.rightLabelW });
+      doc.font("Regular").fontSize(8).fillColor("#000");
+      doc.text(r.rightVal, custMidX + 5 + r.rightLabelW, cY + 3, { width: PAGE_RIGHT - custMidX - r.rightLabelW - 10 });
+      cY += custRowH;
+    }
+
+    doc.moveTo(PAGE_LEFT, cY).lineTo(PAGE_RIGHT, cY).lineWidth(0.5).stroke("#999");
+    doc.moveTo(custMidX, custTop).lineTo(custMidX, cY).lineWidth(0.5).stroke("#999");
+    doc.moveTo(PAGE_LEFT, custTop).lineTo(PAGE_LEFT, cY).lineWidth(0.5).stroke("#999");
+    doc.moveTo(PAGE_RIGHT, custTop).lineTo(PAGE_RIGHT, cY).lineWidth(0.5).stroke("#999");
+    for (let i = 1; i < custRows.length; i++) {
+      const lineY = custTop + i * custRowH;
+      doc.moveTo(PAGE_LEFT + custLabelW, lineY).lineTo(PAGE_RIGHT, lineY).lineWidth(0.3).stroke("#ccc");
+    }
+
+    doc.y = cY + 10;
+    doc.font("Bold").fontSize(12).fillColor("#000").text(`합계 금액: ${fmtNum(total)}원 (부가세 포함)`);
     doc.moveDown(0.8);
 
     const tableTop = doc.y;
