@@ -312,20 +312,31 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     let sY = sumStartY + 15;
 
     if (actualDiscount > 0) {
-      const discLabel = truncLabel ? `할인 (${truncLabel}):` : `할인:`;
-      doc.text(discLabel, 330, sY, { width: 130, align: "right" });
-      doc.text(`-${fmtNum(actualDiscount)}원`, 465, sY, { width: 80, align: "right" });
+      const discPct = supplyAmount > 0 ? ((actualDiscount / supplyAmount) * 100).toFixed(1) : "0";
+      doc.text(`할인:`, 360, sY, { width: 100, align: "right" });
+      doc.text(`-${fmtNum(actualDiscount)}원 (${discPct}%)`, 465, sY, { width: 80, align: "right" });
       sY += 15;
+
+      const hlX = 355; const hlW = 195; const hlH = 16;
+      doc.rect(hlX, sY - 2, hlW, hlH).fill("#000");
+      doc.font("Bold").fontSize(9).fillColor("#fff");
+      doc.text(`최종 공급가액:`, hlX + 5, sY, { width: 100, align: "right" });
+      doc.text(`${fmtNum(afterDiscount)}원`, 465, sY, { width: 80, align: "right" });
+      doc.fillColor("#000").font("Regular").fontSize(9);
+      sY += 18;
     }
 
     doc.text(`부가세(10%):`, 360, sY, { width: 100, align: "right" });
     doc.text(`${fmtNum(tax)}원`, 465, sY, { width: 80, align: "right" });
-    sY += 15;
-    doc.font("Bold").fontSize(10);
-    doc.text(`합계:`, 360, sY, { width: 100, align: "right" });
+    sY += 17;
+
+    const totalX = 355; const totalW = 195; const totalH = 18;
+    doc.rect(totalX, sY - 3, totalW, totalH).lineWidth(1.5).stroke("#000");
+    doc.font("Bold").fontSize(10).fillColor("#000");
+    doc.text(`합계:`, totalX + 5, sY, { width: 100, align: "right" });
     doc.text(`${fmtNum(total)}원`, 465, sY, { width: 80, align: "right" });
 
-    y = Math.max(ptY, sY + 15) + 5;
+    y = Math.max(ptY, sY + 18) + 5;
 
     if (quotation.notes) {
       y += 15;
