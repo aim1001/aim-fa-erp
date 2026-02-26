@@ -482,7 +482,7 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
     { key: "", value: "" },
     { key: "공급가액", value: supplyAmount },
     { key: "할인", value: discountDesc },
-    { key: "할인금액", value: xlDiscountAmount },
+    { key: "할인금액", value: xlActualDiscount },
     { key: "부가세", value: tax },
     { key: "합계", value: total },
     { key: "", value: "" },
