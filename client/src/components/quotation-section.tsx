@@ -699,13 +699,20 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
           </div>
         )}
 
+        {calcDiscount > 0 && (
+          <div className="flex items-center justify-between text-sm bg-primary/10 rounded-md px-3 py-2 -mx-1">
+            <span className="font-semibold">최종 공급가액</span>
+            <span className="font-semibold">{fmtNum(afterDiscount)}원</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between text-sm border-t pt-2">
           <span>부가세 (10%)</span>
           <span>{fmtNum(tax)}원</span>
         </div>
-        <div className="flex items-center justify-between text-base border-t pt-2">
-          <span className="font-bold">최종 합계</span>
-          <span className="font-bold text-lg">{fmtNum(total)}원</span>
+        <div className="flex items-center justify-between border-t pt-3">
+          <span className="font-bold text-base">전체 금액</span>
+          <span className="font-bold text-xl">{fmtNum(total)}원</span>
         </div>
       </div>
 
