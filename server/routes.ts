@@ -545,7 +545,7 @@ export async function registerRoutes(
             const rawProb = info?.probability != null ? parseInt(String(info.probability)) : 0;
             const safeProbability = Number.isFinite(rawProb) && rawProb >= 0 && rawProb <= 5 ? rawProb : 0;
             const rawStatus = info?.status;
-            const safeStatus = ["active", "won", "lost"].includes(rawStatus) ? rawStatus : "active";
+            const safeStatus = ["active", "won", "lost", "quoted", "none"].includes(rawStatus) ? rawStatus : "none";
 
             const inquiry = await storage.createInquiry({
               inquiryNumber: parsed.inquiryNumber,
@@ -553,6 +553,7 @@ export async function registerRoutes(
               productInfo: parsed.productInfo || null,
               year,
               probability: safeProbability,
+              createdAt: new Date(year, 0, 1),
               expectedDate: info?.expectedDate || null,
               paymentTerms: info?.paymentTerms || null,
               memo: info?.memo || null,
