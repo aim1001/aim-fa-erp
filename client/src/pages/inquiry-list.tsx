@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, memo } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -49,6 +49,219 @@ const statusRowClass: Record<string, string> = {
   won: "bg-green-50 dark:bg-green-950/30",
   lost: "bg-red-50 dark:bg-red-950/30",
 };
+
+type InquiryRowProps = {
+  inq: InquiryWithTradeStatus;
+  onInlineUpdate: (id: string, data: Partial<Inquiry>) => void;
+  onFavorite: (id: string) => void;
+  onSelect: (id: string) => void;
+  onScan: (id: string) => void;
+  scanningId: string | null;
+};
+
+const InquiryRow = memo(function InquiryRow({ inq, onInlineUpdate, onFavorite, onSelect, onScan, scanningId }: InquiryRowProps) {
+  return (
+    <TableRow
+      className={`cursor-pointer hover-elevate ${statusRowClass[inq.status || "none"] || ""}`}
+      onClick={() => onSelect(inq.id)}
+      data-testid={`row-inquiry-${inq.id}`}
+    >
+      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={() => onFavorite(inq.id)}
+          className="hover:scale-110 transition-transform"
+          data-testid={`button-favorite-${inq.id}`}
+        >
+          <Star
+            className={`h-4 w-4 ${inq.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`}
+          />
+        </button>
+      </TableCell>
+      <TableCell className="font-mono text-sm">{inq.inquiryNumber}</TableCell>
+      <TableCell className="font-medium">
+        <div className="flex items-center gap-1.5">
+          {inq.customerName}
+          {inq.isExistingCustomer ? (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 no-default-active-elevate" data-testid={`badge-existing-${inq.id}`}>등록</Badge>
+          ) : (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 no-default-active-elevate" data-testid={`badge-new-${inq.id}`}>미등록</Badge>
+          )}
+          {inq.customerId && !inq.hasContacts && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex"
+                  onClick={(e) => { e.stopPropagation(); onSelect(inq.id); }}
+                  data-testid={`icon-no-contact-${inq.id}`}
+                >
+                  <UserX className="h-3.5 w-3.5 text-orange-500" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>담당자 미등록 — 클릭하여 등록</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
+      <TableCell>{inq.year}</TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs border-dashed font-normal w-32 justify-start"
+              data-testid={`button-created-date-${inq.id}`}
+            >
+              <CalendarIcon className="mr-1 h-3 w-3" />
+              {inq.createdAt ? (() => {
+                const d = new Date(inq.createdAt);
+                const isBackfilled = d.getMonth() === 0 && d.getDate() === 1;
+                return (
+                  <div className="flex items-center gap-1">
+                    <span>{d.toISOString().split('T')[0]}</span>
+                    {isBackfilled && <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-500 border-orange-300">예전</Badge>}
+                  </div>
+                );
+              })() : "날짜 선택"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={inq.createdAt ? new Date(inq.createdAt) : undefined}
+              onSelect={(date) => {
+                if (date) {
+                  onInlineUpdate(inq.id, { createdAt: date.toISOString() } as any);
+                }
+              }}
+              locale={ko}
+            />
+          </PopoverContent>
+        </Popover>
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <Select
+          value={String(inq.probability || 0)}
+          onValueChange={(v) => onInlineUpdate(inq.id, { probability: parseInt(v) })}
+        >
+          <SelectTrigger className="w-28 text-xs border-dashed" data-testid={`select-stage-${inq.id}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0">-</SelectItem>
+            <SelectItem value="1">1.문의</SelectItem>
+            <SelectItem value="2">2.미팅</SelectItem>
+            <SelectItem value="3">3.사양협의</SelectItem>
+            <SelectItem value="4">4.비딩</SelectItem>
+            <SelectItem value="5">5.발주전</SelectItem>
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <Select
+          value={inq.status || "none"}
+          onValueChange={(v) => onInlineUpdate(inq.id, { status: v })}
+        >
+          <SelectTrigger className="w-24 text-xs border-dashed" data-testid={`select-status-inline-${inq.id}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">-</SelectItem>
+            <SelectItem value="active">진행중</SelectItem>
+            <SelectItem value="quoted">견적발송</SelectItem>
+            <SelectItem value="won">수주</SelectItem>
+            <SelectItem value="lost">실주</SelectItem>
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs border-dashed font-normal w-32 justify-start"
+              data-testid={`button-date-${inq.id}`}
+            >
+              <CalendarIcon className="mr-1 h-3 w-3" />
+              {inq.expectedDate || "날짜 선택"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={inq.expectedDate ? parseDateString(inq.expectedDate) : undefined}
+              onSelect={(date) => {
+                if (date) {
+                  const y = date.getFullYear();
+                  const m = String(date.getMonth() + 1).padStart(2, '0');
+                  const d = String(date.getDate()).padStart(2, '0');
+                  onInlineUpdate(inq.id, { expectedDate: `${y}-${m}-${d}` });
+                }
+              }}
+              locale={ko}
+            />
+            {inq.expectedDate && (
+              <div className="p-2 border-t">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => onInlineUpdate(inq.id, { expectedDate: null })}
+                  data-testid={`button-clear-date-${inq.id}`}
+                >
+                  <X className="mr-1 h-3 w-3" />
+                  날짜 지우기
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+      </TableCell>
+      <TableCell className="text-xs text-right" data-testid={`text-sales-${inq.id}`}>
+        {inq.lastQuoteSales ? inq.lastQuoteSales.toLocaleString() : "-"}
+      </TableCell>
+      <TableCell className="text-xs text-right" data-testid={`text-cost-${inq.id}`}>
+        {inq.lastQuoteCost ? inq.lastQuoteCost.toLocaleString() : "-"}
+      </TableCell>
+      <TableCell className="text-xs text-right" data-testid={`text-margin-${inq.id}`}>
+        {inq.lastQuoteMargin != null ? (
+          <span className={inq.lastQuoteMargin >= 0 ? "text-green-600" : "text-red-600"}>
+            {inq.lastQuoteMargin.toLocaleString()}
+          </span>
+        ) : "-"}
+      </TableCell>
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-0.5">
+          {inq.onedriveFolderId && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7"
+              disabled={scanningId === inq.id}
+              onClick={() => onScan(inq.id)}
+              title="엑셀 스캔 (발생일자/고객정보 취득)"
+              data-testid={`button-scan-${inq.id}`}
+            >
+              {scanningId === inq.id ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          )}
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onSelect(inq.id)}>
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+});
 
 const stageLabels: Record<number, string> = {
   0: "-",
@@ -273,6 +486,14 @@ export default function InquiryList() {
     inlineUpdateMutation.mutate({ id, data });
   }, [inlineUpdateMutation]);
 
+  const handleSelectInquiry = useCallback((id: string) => {
+    setSelectedInquiryId(id);
+  }, []);
+
+  const handleScan = useCallback((id: string) => {
+    scanMutation.mutate(id);
+  }, [scanMutation]);
+
   const favoriteMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiRequest("PATCH", `/api/inquiries/${id}/favorite`);
@@ -304,6 +525,10 @@ export default function InquiryList() {
       queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
     },
   });
+
+  const handleFavorite = useCallback((id: string) => {
+    favoriteMutation.mutate(id);
+  }, [favoriteMutation]);
 
   const filtered = useMemo(() => {
     if (!inquiries) return [];
@@ -579,206 +804,15 @@ export default function InquiryList() {
                   </TableRow>
                 ) : (
                   filtered.map((inq) => (
-                    <TableRow
+                    <InquiryRow
                       key={inq.id}
-                      className={`cursor-pointer hover-elevate ${statusRowClass[inq.status || "none"] || ""}`}
-                      onClick={() => setSelectedInquiryId(inq.id)}
-                      data-testid={`row-inquiry-${inq.id}`}
-                    >
-                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => favoriteMutation.mutate(inq.id)}
-                          className="hover:scale-110 transition-transform"
-                          data-testid={`button-favorite-${inq.id}`}
-                        >
-                          <Star
-                            className={`h-4 w-4 ${inq.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`}
-                          />
-                        </button>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">{inq.inquiryNumber}</TableCell>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-1.5">
-                          {inq.customerName}
-                          {inq.isExistingCustomer ? (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 no-default-active-elevate" data-testid={`badge-existing-${inq.id}`}>등록</Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 no-default-active-elevate" data-testid={`badge-new-${inq.id}`}>미등록</Badge>
-                          )}
-                          {inq.customerId && !inq.hasContacts && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="inline-flex"
-                                  onClick={(e) => { e.stopPropagation(); setSelectedInquiryId(inq.id); }}
-                                  data-testid={`icon-no-contact-${inq.id}`}
-                                >
-                                  <UserX className="h-3.5 w-3.5 text-orange-500" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>담당자 미등록 — 클릭하여 등록</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
-                      <TableCell>{inq.year}</TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs border-dashed font-normal w-32 justify-start"
-                              data-testid={`button-created-date-${inq.id}`}
-                            >
-                              <CalendarIcon className="mr-1 h-3 w-3" />
-                              {inq.createdAt ? (() => {
-                                const d = new Date(inq.createdAt);
-                                const isBackfilled = d.getMonth() === 0 && d.getDate() === 1;
-                                return (
-                                  <div className="flex items-center gap-1">
-                                    <span>{d.toISOString().split('T')[0]}</span>
-                                    {isBackfilled && <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-500 border-orange-300">예전</Badge>}
-                                  </div>
-                                );
-                              })() : "날짜 선택"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={inq.createdAt ? new Date(inq.createdAt) : undefined}
-                              onSelect={(date) => {
-                                if (date) {
-                                  handleInlineUpdate(inq.id, { createdAt: date.toISOString() } as any);
-                                }
-                              }}
-                              locale={ko}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Select
-                          value={String(inq.probability || 0)}
-                          onValueChange={(v) => handleInlineUpdate(inq.id, { probability: parseInt(v) })}
-                        >
-                          <SelectTrigger className="w-28 text-xs border-dashed" data-testid={`select-stage-${inq.id}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="0">-</SelectItem>
-                            <SelectItem value="1">1.문의</SelectItem>
-                            <SelectItem value="2">2.미팅</SelectItem>
-                            <SelectItem value="3">3.사양협의</SelectItem>
-                            <SelectItem value="4">4.비딩</SelectItem>
-                            <SelectItem value="5">5.발주전</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Select
-                          value={inq.status || "none"}
-                          onValueChange={(v) => handleInlineUpdate(inq.id, { status: v })}
-                        >
-                          <SelectTrigger className="w-24 text-xs border-dashed" data-testid={`select-status-inline-${inq.id}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">-</SelectItem>
-                            <SelectItem value="active">진행중</SelectItem>
-                            <SelectItem value="quoted">견적발송</SelectItem>
-                            <SelectItem value="won">수주</SelectItem>
-                            <SelectItem value="lost">실주</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs border-dashed font-normal w-32 justify-start"
-                              data-testid={`button-date-${inq.id}`}
-                            >
-                              <CalendarIcon className="mr-1 h-3 w-3" />
-                              {inq.expectedDate || "날짜 선택"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={inq.expectedDate ? parseDateString(inq.expectedDate) : undefined}
-                              onSelect={(date) => {
-                                if (date) {
-                                  const y = date.getFullYear();
-                                  const m = String(date.getMonth() + 1).padStart(2, '0');
-                                  const d = String(date.getDate()).padStart(2, '0');
-                                  handleInlineUpdate(inq.id, { expectedDate: `${y}-${m}-${d}` });
-                                }
-                              }}
-                              locale={ko}
-                            />
-                            {inq.expectedDate && (
-                              <div className="p-2 border-t">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="w-full text-xs"
-                                  onClick={() => handleInlineUpdate(inq.id, { expectedDate: null })}
-                                  data-testid={`button-clear-date-${inq.id}`}
-                                >
-                                  <X className="mr-1 h-3 w-3" />
-                                  날짜 지우기
-                                </Button>
-                              </div>
-                            )}
-                          </PopoverContent>
-                        </Popover>
-                      </TableCell>
-                      <TableCell className="text-xs text-right" data-testid={`text-sales-${inq.id}`}>
-                        {inq.lastQuoteSales ? inq.lastQuoteSales.toLocaleString() : "-"}
-                      </TableCell>
-                      <TableCell className="text-xs text-right" data-testid={`text-cost-${inq.id}`}>
-                        {inq.lastQuoteCost ? inq.lastQuoteCost.toLocaleString() : "-"}
-                      </TableCell>
-                      <TableCell className="text-xs text-right" data-testid={`text-margin-${inq.id}`}>
-                        {inq.lastQuoteMargin != null ? (
-                          <span className={inq.lastQuoteMargin >= 0 ? "text-green-600" : "text-red-600"}>
-                            {inq.lastQuoteMargin.toLocaleString()}
-                          </span>
-                        ) : "-"}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-0.5">
-                          {inq.onedriveFolderId && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              disabled={scanningId === inq.id}
-                              onClick={() => scanMutation.mutate(inq.id)}
-                              title="엑셀 스캔 (발생일자/고객정보 취득)"
-                              data-testid={`button-scan-${inq.id}`}
-                            >
-                              {scanningId === inq.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <RefreshCw className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-                          )}
-                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSelectedInquiryId(inq.id)}>
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                      inq={inq}
+                      onInlineUpdate={handleInlineUpdate}
+                      onFavorite={handleFavorite}
+                      onSelect={handleSelectInquiry}
+                      onScan={handleScan}
+                      scanningId={scanningId}
+                    />
                   ))
                 )}
               </TableBody>
