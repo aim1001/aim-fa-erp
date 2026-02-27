@@ -174,8 +174,8 @@ export async function registerRoutes(
         const p = Number(data.probability);
         data.probability = Number.isFinite(p) && p >= 0 && p <= 5 ? Math.round(p) : 0;
       }
-      if (data.status && !["active", "won", "lost"].includes(data.status)) {
-        data.status = "active";
+      if (data.status && !["active", "won", "lost", "quoted", "none"].includes(data.status)) {
+        data.status = "none";
       }
 
       const nextNumber = await storage.getNextInquiryNumber(data.year);
@@ -273,7 +273,7 @@ export async function registerRoutes(
         }
         data.probability = Math.round(p);
       }
-      if (data.status && !["active", "won", "lost"].includes(data.status)) {
+      if (data.status && !["active", "won", "lost", "quoted", "none"].includes(data.status)) {
         return res.status(400).json({ message: "유효하지 않은 상태값입니다" });
       }
       if (data.status === "won") {
