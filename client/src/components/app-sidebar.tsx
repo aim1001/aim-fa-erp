@@ -41,7 +41,6 @@ export function AppSidebar() {
   const isCompanySection = ["/customers", "/vendors", "/staff"].includes(location);
 
   const [salesOpen, setSalesOpen] = useState(isSalesSection);
-  const [salesSubOpen, setSalesSubOpen] = useState(isInquiryPage);
   const [projectOpen, setProjectOpen] = useState(isProjectSection);
   const [projectSubOpen, setProjectSubOpen] = useState(isProjectPage);
   const [financeOpen, setFinanceOpen] = useState(isFinanceSection);
@@ -64,7 +63,6 @@ export function AppSidebar() {
 
   useEffect(() => {
     if (isSalesSection) setSalesOpen(true);
-    if (isInquiryPage) setSalesSubOpen(true);
     if (isProjectSection) setProjectOpen(true);
     if (isProjectPage) setProjectSubOpen(true);
     if (isFinanceSection) setFinanceOpen(true);
@@ -180,62 +178,17 @@ export function AppSidebar() {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild data-active={isSalesDashboard} data-testid="nav-sales-dashboard">
-                      <Link href="/sales-dashboard"><TrendingUp className="h-4 w-4" /><span>영업 대시보드</span></Link>
+                      <Link href="/sales-dashboard"><TrendingUp className="h-4 w-4" /><span>대시보드</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-
-                  <Collapsible open={salesSubOpen} onOpenChange={setSalesSubOpen} className="group/collapsible">
-                    <SidebarMenuItem>
-                      <SidebarMenuButton asChild data-active={isInquiryPage} data-testid="nav-inquiries">
-                        <Link href="/inquiries">
-                          <FileText className="h-4 w-4" />
-                          <span>영업건</span>
-                        </Link>
-                      </SidebarMenuButton>
-                      <CollapsibleTrigger asChild>
-                        <button
-                          className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-sidebar-accent"
-                          data-testid="nav-inquiries-toggle"
-                        >
-                          <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                        </button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <SidebarMenuSub>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isInquiryPage && !params.get("status") && !params.get("period")} data-testid="nav-inquiries-all">
-                              <Link href="/inquiries"><span>전체보기</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "active"} data-testid="nav-quick-active">
-                              <Link href="/inquiries?status=active"><Target className="h-3.5 w-3.5" /><span>진행중</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "won"} data-testid="nav-quick-won">
-                              <Link href="/inquiries?status=won"><Trophy className="h-3.5 w-3.5" /><span>수주</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "lost"} data-testid="nav-quick-lost">
-                              <Link href="/inquiries?status=lost"><XCircle className="h-3.5 w-3.5" /><span>실주</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("period") === "6m"} data-testid="nav-period-6m">
-                              <Link href="/inquiries?period=6m"><Clock className="h-3.5 w-3.5" /><span>최근 6개월</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("period") === "1y"} data-testid="nav-period-1y">
-                              <Link href="/inquiries?period=1y"><Calendar className="h-3.5 w-3.5" /><span>최근 1년</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        </SidebarMenuSub>
-                      </CollapsibleContent>
-                    </SidebarMenuItem>
-                  </Collapsible>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={isInquiryPage} data-testid="nav-inquiries">
+                      <Link href="/inquiries">
+                        <FileText className="h-4 w-4" />
+                        <span>인콰이어리</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </CollapsibleContent>

@@ -314,14 +314,17 @@ export default function InquiryList() {
   }, [sortColumn]);
 
   const urlParams = new URLSearchParams(searchString);
+  const hasAnyParam = urlParams.has("year") || urlParams.has("status") || urlParams.has("customer") || urlParams.has("period") || urlParams.has("expectedMonth") || urlParams.has("view");
+  const viewFilter = urlParams.get("view") || (!hasAnyParam ? "6m" : "");
   const yearFilter = urlParams.get("year") || "all";
   const statusFilter = urlParams.get("status") || "all";
   const customerFilter = urlParams.get("customer") || "all";
-  const periodFilter = urlParams.get("period") || "";
+  const periodFilter = viewFilter === "6m" ? "6m" : viewFilter === "1y" ? "1y" : (urlParams.get("period") || "");
   const expectedMonthFilter = urlParams.get("expectedMonth") || "";
 
   const handleYearChange = (value: string) => {
     const params = new URLSearchParams(searchString);
+    params.delete("view");
     if (value === "3m" || value === "6m") {
       params.delete("year");
       params.set("period", value);
@@ -334,30 +337,55 @@ export default function InquiryList() {
       }
     }
     const qs = params.toString();
-    navigate(qs ? `/inquiries?${qs}` : "/inquiries");
+    navigate(qs ? `/inquiries?${qs}` : "/inquiries?view=all");
   };
 
   const handleStatusChange = (value: string) => {
     const params = new URLSearchParams(searchString);
+    params.delete("view");
     if (value === "all") {
       params.delete("status");
     } else {
       params.set("status", value);
     }
     const qs = params.toString();
-    navigate(qs ? `/inquiries?${qs}` : "/inquiries");
+    navigate(qs ? `/inquiries?${qs}` : "/inquiries?view=all");
   };
 
   const handleCustomerFilterChange = (value: string) => {
     const params = new URLSearchParams(searchString);
+    params.delete("view");
     if (value === "all") {
       params.delete("customer");
     } else {
       params.set("customer", value);
     }
     const qs = params.toString();
-    navigate(qs ? `/inquiries?${qs}` : "/inquiries");
+    navigate(qs ? `/inquiries?${qs}` : "/inquiries?view=all");
   };
+
+  const handleQuickView = (view: string) => {
+    if (view === "all") {
+      navigate("/inquiries?view=all");
+    } else if (view === "6m") {
+      navigate("/inquiries?view=6m");
+    } else if (view === "1y") {
+      navigate("/inquiries?view=1y");
+    } else if (view === "bookmarked") {
+      navigate("/inquiries?customer=bookmarked");
+    } else {
+      navigate(`/inquiries?status=${view}`);
+    }
+  };
+
+  const activeQuickView = useMemo(() => {
+    if (customerFilter === "bookmarked") return "bookmarked";
+    if (viewFilter === "6m") return "6m";
+    if (viewFilter === "1y") return "1y";
+    if (viewFilter === "all") return "all";
+    if (statusFilter !== "all" && yearFilter === "all" && customerFilter === "all") return statusFilter;
+    return "";
+  }, [viewFilter, statusFilter, yearFilter, customerFilter]);
 
   const handleExpectedMonthToggle = (offset: string) => {
     const params = new URLSearchParams(searchString);
@@ -679,6 +707,30 @@ export default function InquiryList() {
             <span>추가</span>
           </Button>
         </div>
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap" data-testid="quick-view-buttons">
+        {[
+          { key: "6m", label: "최근 6개월" },
+          { key: "all", label: "전체" },
+          { key: "active", label: "진행중" },
+          { key: "quoted", label: "견적발송" },
+          { key: "won", label: "수주" },
+          { key: "lost", label: "실주" },
+          { key: "bookmarked", label: "북마크" },
+          { key: "1y", label: "최근 1년" },
+        ].map(({ key, label }) => (
+          <Button
+            key={key}
+            variant={activeQuickView === key ? "default" : "outline"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => handleQuickView(key)}
+            data-testid={`button-quick-${key}`}
+          >
+            {label}
+          </Button>
+        ))}
       </div>
 
       <Card>
