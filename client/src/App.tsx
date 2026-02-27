@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import NotFound from "@/pages/not-found";
+import MainDashboard from "@/pages/main-dashboard";
 import Dashboard from "@/pages/dashboard";
 import InquiryList from "@/pages/inquiry-list";
 import CompanyList from "@/pages/company-list";
@@ -28,7 +29,8 @@ import { getQueryFn } from "@/lib/queryClient";
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/" component={MainDashboard} />
+      <Route path="/sales-dashboard" component={Dashboard} />
       <Route path="/inquiries" component={InquiryList} />
       <Route path="/customers" component={CustomerList} />
       <Route path="/customers/:id" component={CustomerDetail} />

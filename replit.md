@@ -51,7 +51,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - OneDrive 폴더 자동 스캔 및 인콰이어리 동기화
 - 인콰이어리 CRUD (수동 추가 가능, 영업번호 자동생성)
 - 새 인콰이어리 추가 시 OneDrive 폴더 자동 생성
-- 대시보드 (확률별, 상태별, 연도별 차트)
+- 전체 대시보드 (`/`) - 영업/프로젝트/경영지원/구매판매 핵심 요약 + 해당 페이지 이동
+- 영업 대시보드 (`/sales-dashboard`) - 확률별, 상태별, 연도별 차트, 예정 인콰이어리
 - 검색 및 필터링 (고객명, 연도, 상태)
 - 파일 목록 및 OneDrive에서 열기
 - 고객사(Customers) 관리 - 사업자등록 기준 공식 고객 정보 (즐겨찾기, 거래/미거래/북마크 필터)
@@ -83,7 +84,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `server/excel-parser.ts` - Excel file parsing utility for customer info extraction
 - `server/storage.ts` - Database storage interface
 - `server/routes.ts` - API routes
-- `client/src/pages/dashboard.tsx` - Dashboard page
+- `client/src/pages/main-dashboard.tsx` - Main overview dashboard (전체 요약)
+- `client/src/pages/dashboard.tsx` - Sales dashboard page (영업 대시보드, /sales-dashboard)
 - `client/src/pages/inquiry-list.tsx` - Inquiry list page
 - `client/src/pages/inquiry-detail.tsx` - Inquiry detail modal (탭 기반 UI: 고객정보/제품정보/견적 및 내역/파일목록/계약조건, 전체화면 모달, includes CustomerInfoSection, ProductImagesSection, MemoSection, ContractConditionsTab)
 - `client/src/pages/inquiry-form.tsx` - Add inquiry form (auto-generates inquiry number)

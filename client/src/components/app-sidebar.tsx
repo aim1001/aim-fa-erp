@@ -2,7 +2,7 @@ import {
   LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut,
   Truck, Receipt, ReceiptText, Calendar, Clock, Wallet, FolderKanban, ClipboardList,
   CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart,
-  Package, ClipboardCheck, FolderCheck, FolderOpen, Settings, Users
+  Package, ClipboardCheck, FolderCheck, FolderOpen, Settings, Users, TrendingUp
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -33,7 +33,8 @@ export function AppSidebar() {
 
   const isInquiryPage = location === "/inquiries";
   const isProjectPage = location === "/projects";
-  const isSalesSection = location === "/" || isInquiryPage;
+  const isSalesDashboard = location === "/sales-dashboard";
+  const isSalesSection = isSalesDashboard || isInquiryPage;
   const isProjectSection = isProjectPage;
   const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan"].includes(location);
   const isTradeSection = ["/purchase-items", "/items"].includes(location);
@@ -142,6 +143,7 @@ export function AppSidebar() {
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/years"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/main-dashboard"] });
     },
     onError: (err: Error) => {
       toast({ title: "동기화 실패", description: err.message, variant: "destructive" });
@@ -151,6 +153,19 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarContent>
+        {/* 전체 대시보드 */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/"} data-testid="nav-main-dashboard">
+                  <Link href="/"><LayoutDashboard className="h-4 w-4" /><span>대시보드</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         {/* 영업 */}
         <SidebarGroup>
           <Collapsible open={salesOpen} onOpenChange={setSalesOpen} className="group/sales">
@@ -164,8 +179,8 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/"} data-testid="nav-dashboard">
-                      <Link href="/"><LayoutDashboard className="h-4 w-4" /><span>대시보드</span></Link>
+                    <SidebarMenuButton asChild data-active={isSalesDashboard} data-testid="nav-sales-dashboard">
+                      <Link href="/sales-dashboard"><TrendingUp className="h-4 w-4" /><span>영업 대시보드</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
 

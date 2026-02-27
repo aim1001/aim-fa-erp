@@ -365,6 +365,74 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/main-dashboard", async (req, res) => {
+    try {
+      const now = new Date();
+      const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const nextMonth = (() => { const d = new Date(now.getFullYear(), now.getMonth() + 1, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
+
+      const allInquiries = await storage.getInquiries();
+      const activeInquiries = allInquiries.filter(i => i.status === "active");
+      const biddingPreorder = allInquiries.filter(i => (i.probability === 4 || i.probability === 5) && i.status !== "won" && i.status !== "lost");
+      const thisMonthExpected = allInquiries.filter(i => i.expectedDate?.startsWith(thisMonth));
+      const nextMonthExpected = allInquiries.filter(i => i.expectedDate?.startsWith(nextMonth));
+      const recentWon = allInquiries.filter(i => i.status === "won").slice(0, 3);
+      const recentLost = allInquiries.filter(i => i.status === "lost").slice(0, 3);
+
+      const allProjects = await storage.getProjects();
+      const activeProjects = allProjects.filter(p => (p.status || "active") === "active");
+
+      const allPayments = await storage.getPayments();
+      const overduePayments = allPayments.filter(p => {
+        if (p.status === "completed" || p.actualDate) return false;
+        if (!p.plannedDate) return false;
+        return p.plannedDate < now.toISOString().split('T')[0] && p.type === "income";
+      });
+
+      const allSalesInvoices = await storage.getSalesInvoices();
+      const unissuedInvoices = allSalesInvoices.filter(i => !i.issueDate && i.plannedIssueDate);
+      const overdueInvoices = unissuedInvoices.filter(i => i.plannedIssueDate && i.plannedIssueDate < now.toISOString().split('T')[0]);
+
+      const allPurchaseInvoices = await storage.getPurchaseInvoices();
+
+      const allItems = await storage.getItems();
+      const allPurchaseItems = await storage.getPurchaseItems();
+
+      res.json({
+        sales: {
+          activeCount: activeInquiries.length,
+          biddingPreorderCount: biddingPreorder.length,
+          thisMonthCount: thisMonthExpected.length,
+          nextMonthCount: nextMonthExpected.length,
+          recentWon: recentWon.map(i => ({ id: i.id, inquiryNumber: i.inquiryNumber, customerName: i.customerName })),
+          recentLost: recentLost.map(i => ({ id: i.id, inquiryNumber: i.inquiryNumber, customerName: i.customerName })),
+        },
+        projects: {
+          activeCount: activeProjects.length,
+          totalCount: allProjects.length,
+          overduePaymentCount: overduePayments.length,
+          overduePaymentAmount: overduePayments.reduce((s, p) => s + (p.amount || 0), 0),
+        },
+        finance: {
+          overdueInvoiceCount: overdueInvoices.length,
+          overdueInvoiceAmount: overdueInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0),
+          unissuedCount: unissuedInvoices.length,
+          unissuedAmount: unissuedInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0),
+          uncollectedCount: overduePayments.length,
+          uncollectedAmount: overduePayments.reduce((s, p) => s + (p.amount || 0), 0),
+          salesInvoiceCount: allSalesInvoices.length,
+          purchaseInvoiceCount: allPurchaseInvoices.length,
+        },
+        trade: {
+          itemCount: allItems.length,
+          purchaseItemCount: allPurchaseItems.length,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/dashboard", async (req, res) => {
     try {
       const yearsParam = req.query.years as string | undefined;
