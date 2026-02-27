@@ -110,53 +110,69 @@ export async function registerRoutes(
     }
   });
 
+  let bulkRescanStatus: { running: boolean; total: number; processed: number; updated: number; failed: number } = {
+    running: false, total: 0, processed: 0, updated: 0, failed: 0
+  };
+
   app.post("/api/inquiries/bulk-rescan-dates", async (req, res) => {
     try {
+      if (bulkRescanStatus.running) {
+        return res.json({ message: "이미 진행 중입니다", ...bulkRescanStatus });
+      }
       const allInquiries = await storage.getInquiries();
       const withFolder = allInquiries.filter(inq => inq.onedriveFolderId);
-      let updated = 0;
-      let failed = 0;
-      for (const inq of withFolder) {
-        try {
-          let foundDate = false;
-          const customerInfoList = await parseExcelCustomerInfo(inq.onedriveFolderId!);
-          const firstQuoteDate = customerInfoList
-            .map(info => info.quoteDate)
-            .find(d => d && d.trim().length > 0);
-          if (firstQuoteDate) {
-            const normalized = firstQuoteDate.replace(/[.\-\/]/g, '-');
-            const parsed = new Date(normalized);
-            if (!isNaN(parsed.getTime())) {
-              await storage.updateInquiry(inq.id, { createdAt: parsed });
-              updated++;
-              foundDate = true;
-            }
-          }
+      bulkRescanStatus = { running: true, total: withFolder.length, processed: 0, updated: 0, failed: 0 };
+      res.json({ message: "백그라운드에서 날짜 갱신을 시작합니다", total: withFolder.length });
 
-          if (!foundDate && inq.createdAt) {
-            const d = new Date(inq.createdAt);
-            const isJan1 = d.getMonth() === 0 && d.getDate() === 1;
-            if (isJan1) {
-              try {
-                const meta = await getFolderMetadata(inq.onedriveFolderId!);
-                if (meta.createdDateTime) {
-                  const folderDate = new Date(meta.createdDateTime);
-                  if (!isNaN(folderDate.getTime())) {
-                    await storage.updateInquiry(inq.id, { createdAt: folderDate });
-                    updated++;
-                  }
+      (async () => {
+        for (const inq of withFolder) {
+          try {
+            let newDate: Date | null = null;
+
+            try {
+              const meta = await getFolderMetadata(inq.onedriveFolderId!);
+              if (meta.createdDateTime) {
+                const folderDate = new Date(meta.createdDateTime);
+                if (!isNaN(folderDate.getTime())) {
+                  newDate = folderDate;
                 }
-              } catch {}
+              }
+            } catch {}
+
+            if (!newDate) {
+              const customerInfoList = await parseExcelCustomerInfo(inq.onedriveFolderId!);
+              const firstQuoteDate = customerInfoList
+                .map(info => info.quoteDate)
+                .find(d => d && d.trim().length > 0);
+              if (firstQuoteDate) {
+                const normalized = firstQuoteDate.replace(/[.\-\/]/g, '-');
+                const parsed = new Date(normalized);
+                if (!isNaN(parsed.getTime())) {
+                  newDate = parsed;
+                }
+              }
             }
+
+            if (newDate) {
+              await storage.updateInquiry(inq.id, { createdAt: newDate });
+              bulkRescanStatus.updated++;
+            }
+          } catch {
+            bulkRescanStatus.failed++;
           }
-        } catch {
-          failed++;
+          bulkRescanStatus.processed++;
         }
-      }
-      res.json({ total: withFolder.length, updated, failed });
+        bulkRescanStatus.running = false;
+        console.log(`[bulk-rescan-dates] 완료: total=${bulkRescanStatus.total}, updated=${bulkRescanStatus.updated}, failed=${bulkRescanStatus.failed}`);
+      })();
     } catch (err: any) {
+      bulkRescanStatus.running = false;
       res.status(500).json({ message: err.message });
     }
+  });
+
+  app.get("/api/inquiries/bulk-rescan-dates/status", async (_req, res) => {
+    res.json(bulkRescanStatus);
   });
 
   app.get("/api/inquiries/:id", async (req, res) => {
