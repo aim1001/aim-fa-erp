@@ -5,6 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
+import { pool } from "./db";
 import { insertInquirySchema, insertCompanySchema, insertCustomerSchema, insertVendorSchema, insertSalesInvoiceSchema, insertPurchaseInvoiceSchema } from "@shared/schema";
 import {
   listRootSalesFolder,
@@ -3399,6 +3400,72 @@ export async function registerRoutes(
       console.error("[seed] 계약조건 템플릿 시드 실패:", err.message);
     }
   })();
+
+  app.post("/api/admin/migrate-data", requireAuth, async (req, res) => {
+    try {
+      const data = req.body;
+      if (!data || typeof data !== 'object') {
+        return res.status(400).json({ message: "Invalid data" });
+      }
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        const tableOrder = [
+          'quotation_items', 'quotations', 'inquiry_memos', 'inquiry_files', 'product_images',
+          'payments', 'sales_invoices', 'purchase_invoices',
+          'item_document', 'item_inventory', 'item_master', 'purchase_items',
+          'companies', 'inquiries', 'projects', 'vendors', 'customers',
+          'staff', 'company_settings', 'contract_templates'
+        ];
+        for (const t of tableOrder) {
+          if (t !== 'onedrive_tokens') {
+            await client.query(`DELETE FROM ${t}`);
+          }
+        }
+
+        const insertOrder = [
+          'customers', 'vendors', 'companies', 'projects', 'staff', 'company_settings', 'contract_templates',
+          'inquiries', 'inquiry_files', 'inquiry_memos', 'product_images',
+          'item_master', 'item_inventory', 'item_document', 'purchase_items',
+          'sales_invoices', 'purchase_invoices', 'payments',
+          'quotations', 'quotation_items'
+        ];
+
+        let totalInserted = 0;
+        for (const table of insertOrder) {
+          const rows = data[table];
+          if (!rows || !Array.isArray(rows) || rows.length === 0) continue;
+
+          for (const row of rows) {
+            const keys = Object.keys(row).filter(k => row[k] !== null && row[k] !== undefined);
+            if (keys.length === 0) continue;
+            const cols = keys.map(k => `"${k}"`);
+            const vals = keys.map((_, i) => `$${i + 1}`);
+            const values = keys.map(k => row[k]);
+
+            await client.query(
+              `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${vals.join(', ')}) ON CONFLICT DO NOTHING`,
+              values
+            );
+          }
+          totalInserted += rows.length;
+        }
+
+        await client.query('COMMIT');
+        res.json({ ok: true, message: `Migration complete. ${totalInserted} rows processed.` });
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      console.error("[migrate] Error:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   return httpServer;
 }
