@@ -165,6 +165,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-27: 견적서 PDF 자동 레이아웃 전환 — 품목 수가 적으면 1페이지(세부내역 직접 표시, 요약 없음), 많으면 2페이지+(1페이지 카테고리 요약 + 2페이지 세부내역). singlePageMode 판정: detailTableH <= availableH (pageBottom - tableTop - paymentAreaH - bottomAnchorH)
 - 2026-02-27: 고객사 연결 400 에러 수정 (getCompaniesByCustomer→getCompaniesByCustomerId 오타), 고객사 상태 3단계 표시 (미연결/정보보완필요/연결됨), 인콰이어리 목록 배지 기존/신규→등록/미등록으로 변경, 엑셀 스캔 시 기존 연결 고객사 정보 업데이트 지원
 - 2026-02-27: 사이드바 대메뉴 Collapsible 구조로 재구성 — 5개 대메뉴(영업/프로젝트/경영지원/구매판매/업체관리) 접기/펼치기, 현재 페이지 속한 섹션 자동 펼침, OneDrive도 접기 가능, 연결상태 아이콘 라벨 옆 표시
+- 2026-02-27: 프로젝트 계약조건 버그 수정 — `||` → `??` 변경으로 0% 비율 정상 처리, 기본값 계약금50%/중도금0%/잔금50%로 변경
 
 ## User Preferences
 - Korean language UI

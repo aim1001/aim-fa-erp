@@ -85,17 +85,17 @@ function CommaInput({ value, onChange, className, ...props }: { value: number; o
 
 function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetail; onSave: () => void }) {
   const { toast } = useToast();
-  const [totalAmount, setTotalAmount] = useState(project.totalAmount || 0);
-  const [depositRatio, setDepositRatio] = useState(project.depositRatio || 30);
+  const [totalAmount, setTotalAmount] = useState(project.totalAmount ?? 0);
+  const [depositRatio, setDepositRatio] = useState(project.depositRatio ?? 50);
   const [depositTimingType, setDepositTimingType] = useState(project.depositTimingType || "end_of_next_month");
-  const [depositTimingDays, setDepositTimingDays] = useState(project.depositTimingDays || 0);
-  const [midRatio, setMidRatio] = useState(project.midRatio || 40);
+  const [depositTimingDays, setDepositTimingDays] = useState(project.depositTimingDays ?? 0);
+  const [midRatio, setMidRatio] = useState(project.midRatio ?? 0);
   const [midTimingType, setMidTimingType] = useState(project.midTimingType || "end_of_next_month");
-  const [midTimingDays, setMidTimingDays] = useState(project.midTimingDays || 0);
+  const [midTimingDays, setMidTimingDays] = useState(project.midTimingDays ?? 0);
   const [midAfterDelivery, setMidAfterDelivery] = useState(project.midAfterDelivery === "true");
-  const [finalRatio, setFinalRatio] = useState(project.finalRatio || 30);
+  const [finalRatio, setFinalRatio] = useState(project.finalRatio ?? 50);
   const [finalTimingType, setFinalTimingType] = useState(project.finalTimingType || "end_of_next_month");
-  const [finalTimingDays, setFinalTimingDays] = useState(project.finalTimingDays || 0);
+  const [finalTimingDays, setFinalTimingDays] = useState(project.finalTimingDays ?? 0);
   const [finalAfterDelivery, setFinalAfterDelivery] = useState(project.finalAfterDelivery === "true");
   const [invoicePlan, setInvoicePlan] = useState(project.invoicePlan || "split");
   const [deliveryDate, setDeliveryDate] = useState(project.deliveryDate || "");
