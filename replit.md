@@ -158,6 +158,11 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-25: 견적서 관리 기능 (quotations/quotation_items 테이블, CRUD API, 탭 기반 모달 UI: 품목탭(카테고리 그룹+원가/마진 표시), 가격·합계탭(가격조정+최종합계), 생성탭(PDF/Excel 다운로드+OneDrive 업로드))
 - 2026-02-24: OneDrive token management overhaul - graphCallWithRetry with fresh-client retry on 401/token errors, error classification (7 types), diagnostic token logging (length/type only, no secrets), Client.init callback pattern to avoid JWT parsing of opaque tokens, extractAccessToken with 5-field-path fallback, frontend error-type-specific guidance
 
+- 2026-02-27: 판매제품 수동 추가 모달 (카테고리 Combobox - 기존 목록 선택 + 직접입력), 대분류/소분류 인라인 편집 (InlineCombobox)
+- 2026-02-27: 판매제품/구매품 "OneDrive에 저장" 버튼 추가 (POST /api/items/write-onedrive, POST /api/purchase-items/write-onedrive)
+- 2026-02-27: writePurchaseListToOneDrive() 함수 추가 (excel-parser.ts) — DB→purchaselist.xlsx 원드라이브 업로드
+- 2026-02-27: PATCH /api/items/:id에서 자동 역동기화(writeListPriceToOneDrive) 제거 — 수동 버튼으로 대체
+
 ## User Preferences
 - Korean language UI
 - Business/professional theme (blue primary color)

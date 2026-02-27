@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink } from "lucide-react";
+import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -472,6 +472,19 @@ export default function PurchaseItemList() {
     },
   });
 
+  const writeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/purchase-items/write-onedrive");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "저장 완료", description: data.message });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const autoLinkMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/purchase-items/auto-link-vendors");
@@ -588,6 +601,15 @@ export default function PurchaseItemList() {
           >
             <Link2 className={autoLinkMutation.isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             <span>{autoLinkMutation.isPending ? "연결 중..." : "공급업체 자동연결"}</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => writeMutation.mutate()}
+            disabled={writeMutation.isPending}
+            data-testid="button-write-purchase-onedrive"
+          >
+            <Upload className={writeMutation.isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            <span>{writeMutation.isPending ? "저장 중..." : "OneDrive에 저장"}</span>
           </Button>
           <Button
             onClick={() => syncMutation.mutate()}

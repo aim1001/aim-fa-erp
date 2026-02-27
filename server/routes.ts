@@ -20,7 +20,7 @@ import {
   getAuthUrl,
   exchangeCodeForTokens,
 } from "./onedrive";
-import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive } from "./excel-parser";
+import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive } from "./excel-parser";
 import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema } from "@shared/schema";
 
 declare module "express-session" {
@@ -2882,11 +2882,6 @@ export async function registerRoutes(
         return res.status(400).json({ message: "변경할 필드가 없습니다" });
       }
       const item = await storage.updateItemById(req.params.id, fields);
-
-      writeListPriceToOneDrive().catch(err => {
-        console.error("[listprice] OneDrive 역동기화 실패:", err.message);
-      });
-
       res.json(item);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -2898,6 +2893,16 @@ export async function registerRoutes(
       await storage.deleteItem(req.params.id);
       res.json({ ok: true });
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/items/write-onedrive", requireAuth, async (_req, res) => {
+    try {
+      await writeListPriceToOneDrive();
+      res.json({ message: "판매제품 목록이 OneDrive에 저장되었습니다" });
+    } catch (err: any) {
+      console.error("[listprice write]", err.message);
       res.status(500).json({ message: err.message });
     }
   });
@@ -3123,6 +3128,16 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       console.error("[purchase-items sync]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-items/write-onedrive", requireAuth, async (_req, res) => {
+    try {
+      await writePurchaseListToOneDrive();
+      res.json({ message: "구매품 목록이 OneDrive에 저장되었습니다" });
+    } catch (err: any) {
+      console.error("[purchaselist write]", err.message);
       res.status(500).json({ message: err.message });
     }
   });

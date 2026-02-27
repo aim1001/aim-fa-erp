@@ -512,6 +512,70 @@ export async function parsePurchaseListFromOneDrive(): Promise<PurchaseListItem[
   return results;
 }
 
+const PURCHASE_HEADER_ROW = [
+  "대분류", "소분류", "품명", "브랜드", "원산지",
+  "품목코드", "사양", "기본거래처", "단가", "통화",
+  "리드타임(일)", "재고품", "유형", "단위", "활성",
+  "안전재고", "MOQ", "비고",
+];
+
+const PURCHASE_SHEET_ORDER = ["VALVE", "PUMP", "SENSOR", "ETC"];
+
+export async function writePurchaseListToOneDrive(): Promise<void> {
+  const items = await storage.getPurchaseItems();
+  const wb = XLSX.utils.book_new();
+
+  const sheetData = new Map<string, any[][]>();
+  for (const name of PURCHASE_SHEET_ORDER) {
+    sheetData.set(name, [PURCHASE_HEADER_ROW]);
+  }
+
+  for (const item of items) {
+    const sheetName = item.category1 || "ETC";
+    if (!sheetData.has(sheetName)) {
+      sheetData.set(sheetName, [PURCHASE_HEADER_ROW]);
+    }
+
+    const row = [
+      item.category1 || "",
+      item.category2 || "",
+      item.itemName,
+      item.brand || "",
+      item.originCountry || "",
+      item.itemCode,
+      item.spec || "",
+      item.defaultVendor || "",
+      item.cost || 0,
+      item.currency || "won",
+      item.leadTimeDays ?? "",
+      item.isStockItem ? "true" : "false",
+      item.itemType || "",
+      item.unit || "ea",
+      item.active ? "true" : "false",
+      item.safetyStock ?? "",
+      item.moq ?? "",
+      item.remark || "",
+    ];
+
+    sheetData.get(sheetName)!.push(row);
+  }
+
+  for (const [name, rows] of sheetData) {
+    if (rows.length <= 1) continue;
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  }
+
+  if (wb.SheetNames.length === 0) {
+    const ws = XLSX.utils.aoa_to_sheet([PURCHASE_HEADER_ROW]);
+    XLSX.utils.book_append_sheet(wb, ws, "ETC");
+  }
+
+  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  await uploadFileByPath("2.공사/database/purchaselist.xlsx", buffer);
+  console.log("[purchaselist] OneDrive에 purchaselist.xlsx 업로드 완료");
+}
+
 export async function getAvailableInvoiceYears(): Promise<number[]> {
   try {
     const folders = await listFoldersByPath("4.경영지원/database");
