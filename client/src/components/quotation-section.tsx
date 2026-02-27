@@ -245,7 +245,7 @@ function ItemsTab({ quotation, items, onRefresh }: {
   const grouped = useMemo(() => {
     const map = new Map<string, QuotationItem[]>();
     for (const item of regularItems) {
-      const cat = item.category2 || item.category1 || "기타";
+      const cat = item.category1 || item.category2 || "기타";
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     }
