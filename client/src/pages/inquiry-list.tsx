@@ -654,7 +654,7 @@ export default function InquiryList() {
                               selected={inq.createdAt ? new Date(inq.createdAt) : undefined}
                               onSelect={(date) => {
                                 if (date) {
-                                  handleInlineUpdate(inq.id, { createdAt: date } as any);
+                                  handleInlineUpdate(inq.id, { createdAt: date.toISOString() } as any);
                                 }
                               }}
                               locale={ko}

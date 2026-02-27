@@ -264,8 +264,12 @@ export async function registerRoutes(
 
   app.patch("/api/inquiries/:id", async (req, res) => {
     try {
+      const body = { ...req.body };
+      if (body.createdAt && typeof body.createdAt === "string") {
+        body.createdAt = new Date(body.createdAt);
+      }
       const updateSchema = insertInquirySchema.partial();
-      const data = updateSchema.parse(req.body);
+      const data = updateSchema.parse(body);
       if (data.probability != null) {
         const p = Number(data.probability);
         if (!Number.isFinite(p) || p < 0 || p > 5) {
