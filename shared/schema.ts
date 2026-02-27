@@ -438,6 +438,7 @@ export const companySettings = pgTable("company_settings", {
   signatureUrl: text("signature_url"),
   bankInfo: text("bank_info"),
   autoCc: text("auto_cc"),
+  emailTemplate: text("email_template"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

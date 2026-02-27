@@ -468,6 +468,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.font("Regular").fontSize(7).fillColor("#fff");
     doc.text("www.aim-fa.com", PAGE_LEFT, footerY + 4, { width: PAGE_WIDTH, align: "center", lineBreak: false });
 
+    doc.y = footerY;
+
     const detColX = [50, 75, 165, 310, 355, 410, 470];
     const detColW = [25, 90, 145, 45, 55, 60, 75];
     const detHeaders = ["No", "품목", "규격", "수량", "단가", "금액", "비고"];

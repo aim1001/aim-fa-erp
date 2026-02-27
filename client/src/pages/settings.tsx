@@ -30,6 +30,7 @@ export default function SettingsPage() {
     email: "",
     bankInfo: "",
     autoCc: "",
+    emailTemplate: "",
   });
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export default function SettingsPage() {
         email: settings.email || "",
         bankInfo: settings.bankInfo || "",
         autoCc: settings.autoCc || "",
+        emailTemplate: settings.emailTemplate || "",
       });
     }
   }, [settings]);
@@ -330,6 +332,24 @@ export default function SettingsPage() {
             />
             <p className="text-xs text-muted-foreground mt-1">
               견적 이메일 발송 시 자동으로 CC에 추가됩니다. 여러 이메일은 쉼표(,)로 구분하세요.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">이메일 본문 템플릿</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={form.emailTemplate}
+              onChange={(e) => updateField("emailTemplate", e.target.value)}
+              placeholder={"안녕하세요, {고객명}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: {견적번호}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다."}
+              rows={8}
+              data-testid="input-emailTemplate"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              견적 이메일 발송 시 기본 본문으로 사용됩니다. 치환 변수: <code>{"{고객명}"}</code>, <code>{"{견적번호}"}</code>
             </p>
           </CardContent>
         </Card>

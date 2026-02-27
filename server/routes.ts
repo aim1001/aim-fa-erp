@@ -3284,7 +3284,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, bankInfo } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, bankInfo, autoCc, emailTemplate } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -3310,6 +3310,8 @@ export async function registerRoutes(
         logoUrl: logoUrl === undefined ? undefined : (logoUrl || null),
         signatureUrl: signatureUrl === undefined ? undefined : (signatureUrl || null),
         bankInfo: bankInfo || null,
+        autoCc: autoCc || null,
+        emailTemplate: emailTemplate || null,
       });
       res.json(settings);
     } catch (err: any) {

@@ -888,16 +888,26 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
   const openEmailDialog = async () => {
     setEmailTo(inquiry.snapshotEmail || "");
     setEmailSubject(`[견적서] ${quotation.quoteNumber}`);
-    setEmailBody(
-      `안녕하세요, ${inquiry.snapshotCompanyName || "고객"}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: ${quotation.quoteNumber}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`
-    );
+    const defaultBody = `안녕하세요, ${inquiry.snapshotCompanyName || "고객"}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: ${quotation.quoteNumber}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`;
     try {
       const settingsRes = await fetch("/api/company-settings");
       if (settingsRes.ok) {
         const settings = await settingsRes.json();
         setEmailCc(settings.autoCc || "");
+        if (settings.emailTemplate) {
+          const body = settings.emailTemplate
+            .replace(/\{고객명\}/g, inquiry.snapshotCompanyName || "고객")
+            .replace(/\{견적번호\}/g, quotation.quoteNumber);
+          setEmailBody(body);
+        } else {
+          setEmailBody(defaultBody);
+        }
+      } else {
+        setEmailBody(defaultBody);
       }
-    } catch {}
+    } catch {
+      setEmailBody(defaultBody);
+    }
     const previewUrl = `/api/quotations/${quotation.id}/download/pdf?inline=1&t=${Date.now()}`;
     setPdfPreviewUrl(previewUrl);
     setEmailOpen(true);
