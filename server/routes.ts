@@ -16,6 +16,7 @@ import {
   writeInfoJson,
   createInquiryFolder,
   listFoldersByPath,
+  getFolderMetadata,
   checkConnectionStatus,
   resetTokenCache,
   getAuthUrl,
@@ -117,6 +118,7 @@ export async function registerRoutes(
       let failed = 0;
       for (const inq of withFolder) {
         try {
+          let foundDate = false;
           const customerInfoList = await parseExcelCustomerInfo(inq.onedriveFolderId!);
           const firstQuoteDate = customerInfoList
             .map(info => info.quoteDate)
@@ -127,6 +129,24 @@ export async function registerRoutes(
             if (!isNaN(parsed.getTime())) {
               await storage.updateInquiry(inq.id, { createdAt: parsed });
               updated++;
+              foundDate = true;
+            }
+          }
+
+          if (!foundDate && inq.createdAt) {
+            const d = new Date(inq.createdAt);
+            const isJan1 = d.getMonth() === 0 && d.getDate() === 1;
+            if (isJan1) {
+              try {
+                const meta = await getFolderMetadata(inq.onedriveFolderId!);
+                if (meta.createdDateTime) {
+                  const folderDate = new Date(meta.createdDateTime);
+                  if (!isNaN(folderDate.getTime())) {
+                    await storage.updateInquiry(inq.id, { createdAt: folderDate });
+                    updated++;
+                  }
+                }
+              } catch {}
             }
           }
         } catch {
@@ -619,13 +639,21 @@ export async function registerRoutes(
             const rawStatus = info?.status;
             const safeStatus = ["active", "won", "lost", "quoted", "none"].includes(rawStatus) ? rawStatus : "none";
 
+            let folderDate = new Date(year, 0, 1);
+            if (folder.createdDateTime) {
+              const parsed_date = new Date(folder.createdDateTime);
+              if (!isNaN(parsed_date.getTime())) {
+                folderDate = parsed_date;
+              }
+            }
+
             const inquiry = await storage.createInquiry({
               inquiryNumber: parsed.inquiryNumber,
               customerName: parsed.customerName,
               productInfo: parsed.productInfo || null,
               year,
               probability: safeProbability,
-              createdAt: new Date(year, 0, 1),
+              createdAt: folderDate,
               expectedDate: info?.expectedDate || null,
               paymentTerms: info?.paymentTerms || null,
               memo: info?.memo || null,

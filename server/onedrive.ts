@@ -349,6 +349,7 @@ export interface OneDriveFolder {
   id: string;
   name: string;
   webUrl: string;
+  createdDateTime?: string;
 }
 
 export interface OneDriveFile {
@@ -361,7 +362,7 @@ export interface OneDriveFile {
 
 export async function listRootSalesFolder(): Promise<OneDriveFolder[]> {
   const result = await graphCallWithRetry(
-    (token) => graphFetchDirect('/me/drive/root:/1.영업:/children', token, { select: 'id,name,webUrl,folder' }),
+    (token) => graphFetchDirect('/me/drive/root:/1.영업:/children', token, { select: 'id,name,webUrl,folder,createdDateTime' }),
     'listRootSalesFolder'
   );
 
@@ -371,12 +372,13 @@ export async function listRootSalesFolder(): Promise<OneDriveFolder[]> {
       id: item.id,
       name: item.name,
       webUrl: item.webUrl,
+      createdDateTime: item.createdDateTime,
     }));
 }
 
 export async function listYearFolders(yearFolderName: string): Promise<OneDriveFolder[]> {
   const result = await graphCallWithRetry(
-    (token) => graphFetchDirect(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, { select: 'id,name,webUrl,folder' }),
+    (token) => graphFetchDirect(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, { select: 'id,name,webUrl,folder,createdDateTime' }),
     'listYearFolders'
   );
 
@@ -386,6 +388,7 @@ export async function listYearFolders(yearFolderName: string): Promise<OneDriveF
       id: item.id,
       name: item.name,
       webUrl: item.webUrl,
+      createdDateTime: item.createdDateTime,
     }));
 }
 
@@ -516,7 +519,7 @@ export async function listFilesByPath(path: string): Promise<OneDriveFile[]> {
 export async function listFoldersByPath(path: string): Promise<OneDriveFolder[]> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   const result = await graphCallWithRetry(
-    (token) => graphFetchDirect(`/me/drive/root:/${encodedPath}:/children`, token, { select: 'id,name,webUrl,folder' }),
+    (token) => graphFetchDirect(`/me/drive/root:/${encodedPath}:/children`, token, { select: 'id,name,webUrl,folder,createdDateTime' }),
     'listFoldersByPath'
   );
 
@@ -526,7 +529,16 @@ export async function listFoldersByPath(path: string): Promise<OneDriveFolder[]>
       id: item.id,
       name: item.name,
       webUrl: item.webUrl,
+      createdDateTime: item.createdDateTime,
     }));
+}
+
+export async function getFolderMetadata(folderId: string): Promise<{ createdDateTime?: string }> {
+  const result = await graphCallWithRetry(
+    (token) => graphFetchDirect(`/me/drive/items/${folderId}`, token, { select: 'id,createdDateTime' }),
+    'getFolderMetadata'
+  );
+  return { createdDateTime: result.createdDateTime };
 }
 
 export async function uploadFileByPath(path: string, content: Buffer): Promise<void> {
