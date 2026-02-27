@@ -10,7 +10,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -34,9 +33,19 @@ export function AppSidebar() {
 
   const isInquiryPage = location === "/inquiries";
   const isProjectPage = location === "/projects";
+  const isSalesSection = location === "/" || isInquiryPage;
+  const isProjectSection = isProjectPage;
+  const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan"].includes(location);
+  const isTradeSection = ["/purchase-items", "/items"].includes(location);
+  const isCompanySection = ["/customers", "/vendors", "/staff"].includes(location);
 
-  const [salesOpen, setSalesOpen] = useState(true);
-  const [projectOpen, setProjectOpen] = useState(isProjectPage);
+  const [salesOpen, setSalesOpen] = useState(isSalesSection);
+  const [salesSubOpen, setSalesSubOpen] = useState(isInquiryPage);
+  const [projectOpen, setProjectOpen] = useState(isProjectSection);
+  const [projectSubOpen, setProjectSubOpen] = useState(isProjectPage);
+  const [financeOpen, setFinanceOpen] = useState(isFinanceSection);
+  const [tradeOpen, setTradeOpen] = useState(isTradeSection);
+  const [companyOpen, setCompanyOpen] = useState(isCompanySection);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -53,9 +62,14 @@ export function AppSidebar() {
   }, []);
 
   useEffect(() => {
-    if (isInquiryPage) setSalesOpen(true);
-    if (isProjectPage) setProjectOpen(true);
-  }, [isInquiryPage, isProjectPage]);
+    if (isSalesSection) setSalesOpen(true);
+    if (isInquiryPage) setSalesSubOpen(true);
+    if (isProjectSection) setProjectOpen(true);
+    if (isProjectPage) setProjectSubOpen(true);
+    if (isFinanceSection) setFinanceOpen(true);
+    if (isTradeSection) setTradeOpen(true);
+    if (isCompanySection) setCompanyOpen(true);
+  }, [location]);
 
   const { data: onedriveStatus, isLoading: statusLoading } = useQuery<{
     connected: boolean;
@@ -139,289 +153,351 @@ export function AppSidebar() {
       <SidebarContent>
         {/* 영업 */}
         <SidebarGroup>
-          <SidebarGroupLabel>영업</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/"} data-testid="nav-dashboard">
-                  <Link href="/"><LayoutDashboard className="h-4 w-4" /><span>대시보드</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+          <Collapsible open={salesOpen} onOpenChange={setSalesOpen} className="group/sales">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-sales">
+                <span>영업</span>
+                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/sales:rotate-90" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/"} data-testid="nav-dashboard">
+                      <Link href="/"><LayoutDashboard className="h-4 w-4" /><span>대시보드</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
 
-              <Collapsible open={salesOpen} onOpenChange={setSalesOpen} className="group/collapsible">
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild data-active={isInquiryPage} data-testid="nav-inquiries">
-                    <Link href="/inquiries">
-                      <FileText className="h-4 w-4" />
-                      <span>영업건</span>
-                    </Link>
-                  </SidebarMenuButton>
-                  <CollapsibleTrigger asChild>
-                    <button
-                      className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-sidebar-accent"
-                      data-testid="nav-inquiries-toggle"
-                    >
-                      <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isInquiryPage && !params.get("status") && !params.get("period")} data-testid="nav-inquiries-all">
-                          <Link href="/inquiries"><span>전체보기</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "active"} data-testid="nav-quick-active">
-                          <Link href="/inquiries?status=active"><Target className="h-3.5 w-3.5" /><span>진행중</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "won"} data-testid="nav-quick-won">
-                          <Link href="/inquiries?status=won"><Trophy className="h-3.5 w-3.5" /><span>수주</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "lost"} data-testid="nav-quick-lost">
-                          <Link href="/inquiries?status=lost"><XCircle className="h-3.5 w-3.5" /><span>실주</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("period") === "6m"} data-testid="nav-period-6m">
-                          <Link href="/inquiries?period=6m"><Clock className="h-3.5 w-3.5" /><span>최근 6개월</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("period") === "1y"} data-testid="nav-period-1y">
-                          <Link href="/inquiries?period=1y"><Calendar className="h-3.5 w-3.5" /><span>최근 1년</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
-            </SidebarMenu>
-          </SidebarGroupContent>
+                  <Collapsible open={salesSubOpen} onOpenChange={setSalesSubOpen} className="group/collapsible">
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isInquiryPage} data-testid="nav-inquiries">
+                        <Link href="/inquiries">
+                          <FileText className="h-4 w-4" />
+                          <span>영업건</span>
+                        </Link>
+                      </SidebarMenuButton>
+                      <CollapsibleTrigger asChild>
+                        <button
+                          className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-sidebar-accent"
+                          data-testid="nav-inquiries-toggle"
+                        >
+                          <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isInquiryPage && !params.get("status") && !params.get("period")} data-testid="nav-inquiries-all">
+                              <Link href="/inquiries"><span>전체보기</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "active"} data-testid="nav-quick-active">
+                              <Link href="/inquiries?status=active"><Target className="h-3.5 w-3.5" /><span>진행중</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "won"} data-testid="nav-quick-won">
+                              <Link href="/inquiries?status=won"><Trophy className="h-3.5 w-3.5" /><span>수주</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("status") === "lost"} data-testid="nav-quick-lost">
+                              <Link href="/inquiries?status=lost"><XCircle className="h-3.5 w-3.5" /><span>실주</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("period") === "6m"} data-testid="nav-period-6m">
+                              <Link href="/inquiries?period=6m"><Clock className="h-3.5 w-3.5" /><span>최근 6개월</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isInquiryPage && params.get("period") === "1y"} data-testid="nav-period-1y">
+                              <Link href="/inquiries?period=1y"><Calendar className="h-3.5 w-3.5" /><span>최근 1년</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarGroup>
 
         {/* 프로젝트 */}
         <SidebarGroup>
-          <SidebarGroupLabel>프로젝트</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <Collapsible open={projectOpen} onOpenChange={setProjectOpen} className="group/collapsible">
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild data-active={isProjectPage} data-testid="nav-projects">
-                    <Link href="/projects">
-                      <FolderKanban className="h-4 w-4" />
-                      <span>프로젝트</span>
-                    </Link>
-                  </SidebarMenuButton>
-                  <CollapsibleTrigger asChild>
-                    <button
-                      className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-sidebar-accent"
-                      data-testid="nav-projects-toggle"
-                    >
-                      <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isProjectPage && !params.get("status")} data-testid="nav-projects-all">
-                          <Link href="/projects"><FolderOpen className="h-3.5 w-3.5" /><span>전체보기</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isProjectPage && params.get("status") === "active"} data-testid="nav-projects-active">
-                          <Link href="/projects?status=active"><Target className="h-3.5 w-3.5" /><span>진행중</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton asChild isActive={isProjectPage && params.get("status") === "completed"} data-testid="nav-projects-completed">
-                          <Link href="/projects?status=completed"><FolderCheck className="h-3.5 w-3.5" /><span>완료</span></Link>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {/* 구매/판매 (예정) */}
-        <SidebarGroup>
-          <SidebarGroupLabel>구매/판매</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/purchase-items"} data-testid="nav-purchasing">
-                  <Link href="/purchase-items"><ShoppingCart className="h-4 w-4" /><span>구매품관리</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/items"} data-testid="nav-products">
-                  <Link href="/items"><Package className="h-4 w-4" /><span>판매제품관리</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton disabled className="opacity-50" data-testid="nav-orders">
-                  <ClipboardCheck className="h-4 w-4" /><span>발주관리</span>
-                  <span className="ml-auto text-[10px] text-muted-foreground">예정</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
+          <Collapsible open={projectOpen} onOpenChange={setProjectOpen} className="group/project">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-project">
+                <span>프로젝트</span>
+                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/project:rotate-90" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <Collapsible open={projectSubOpen} onOpenChange={setProjectSubOpen} className="group/collapsible">
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild data-active={isProjectPage} data-testid="nav-projects">
+                        <Link href="/projects">
+                          <FolderKanban className="h-4 w-4" />
+                          <span>프로젝트</span>
+                        </Link>
+                      </SidebarMenuButton>
+                      <CollapsibleTrigger asChild>
+                        <button
+                          className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-sidebar-accent"
+                          data-testid="nav-projects-toggle"
+                        >
+                          <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isProjectPage && !params.get("status")} data-testid="nav-projects-all">
+                              <Link href="/projects"><FolderOpen className="h-3.5 w-3.5" /><span>전체보기</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isProjectPage && params.get("status") === "active"} data-testid="nav-projects-active">
+                              <Link href="/projects?status=active"><Target className="h-3.5 w-3.5" /><span>진행중</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                          <SidebarMenuSubItem>
+                            <SidebarMenuSubButton asChild isActive={isProjectPage && params.get("status") === "completed"} data-testid="nav-projects-completed">
+                              <Link href="/projects?status=completed"><FolderCheck className="h-3.5 w-3.5" /><span>완료</span></Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarGroup>
 
         {/* 경영지원 */}
         <SidebarGroup>
-          <SidebarGroupLabel>경영지원</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/management"} data-testid="nav-management">
-                  <Link href="/management"><ClipboardList className="h-4 w-4" /><span>대시보드</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/sales-invoices"} data-testid="nav-sales-invoices">
-                  <Link href="/sales-invoices"><Receipt className="h-4 w-4" /><span>매출계산서</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/purchase-invoices"} data-testid="nav-purchase-invoices">
-                  <Link href="/purchase-invoices"><ReceiptText className="h-4 w-4" /><span>매입계산서</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/payment-plan"} data-testid="nav-payment-plan">
-                  <Link href="/payment-plan"><Wallet className="h-4 w-4" /><span>자금계획</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
+          <Collapsible open={financeOpen} onOpenChange={setFinanceOpen} className="group/finance">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-finance">
+                <span>경영지원</span>
+                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/finance:rotate-90" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/management"} data-testid="nav-management">
+                      <Link href="/management"><ClipboardList className="h-4 w-4" /><span>대시보드</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/sales-invoices"} data-testid="nav-sales-invoices">
+                      <Link href="/sales-invoices"><Receipt className="h-4 w-4" /><span>매출계산서</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/purchase-invoices"} data-testid="nav-purchase-invoices">
+                      <Link href="/purchase-invoices"><ReceiptText className="h-4 w-4" /><span>매입계산서</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/payment-plan"} data-testid="nav-payment-plan">
+                      <Link href="/payment-plan"><Wallet className="h-4 w-4" /><span>자금계획</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </SidebarGroup>
+
+        {/* 구매/판매 */}
+        <SidebarGroup>
+          <Collapsible open={tradeOpen} onOpenChange={setTradeOpen} className="group/trade">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-trade">
+                <span>구매/판매</span>
+                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/trade:rotate-90" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/purchase-items"} data-testid="nav-purchasing">
+                      <Link href="/purchase-items"><ShoppingCart className="h-4 w-4" /><span>구매품관리</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/items"} data-testid="nav-products">
+                      <Link href="/items"><Package className="h-4 w-4" /><span>판매제품관리</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton disabled className="opacity-50" data-testid="nav-orders">
+                      <ClipboardCheck className="h-4 w-4" /><span>발주관리</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">예정</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarGroup>
 
         {/* 업체관리 */}
         <SidebarGroup>
-          <SidebarGroupLabel>업체관리</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/customers"} data-testid="nav-customers">
-                  <Link href="/customers"><Building2 className="h-4 w-4" /><span>고객사</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/vendors"} data-testid="nav-vendors">
-                  <Link href="/vendors"><Truck className="h-4 w-4" /><span>공급업체</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/staff"} data-testid="nav-staff">
-                  <Link href="/staff"><Users className="h-4 w-4" /><span>인력풀</span></Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
+          <Collapsible open={companyOpen} onOpenChange={setCompanyOpen} className="group/company">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-company">
+                <span>업체관리</span>
+                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/company:rotate-90" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/customers"} data-testid="nav-customers">
+                      <Link href="/customers"><Building2 className="h-4 w-4" /><span>고객사</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/vendors"} data-testid="nav-vendors">
+                      <Link href="/vendors"><Truck className="h-4 w-4" /><span>공급업체</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/staff"} data-testid="nav-staff">
+                      <Link href="/staff"><Users className="h-4 w-4" /><span>인력풀</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarGroup>
 
         {/* OneDrive */}
         <SidebarGroup>
-          <SidebarGroupLabel>OneDrive</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <div className="px-2 space-y-2">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-xs" data-testid="status-onedrive-connection">
-                {statusLoading ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                    <span className="text-muted-foreground">확인 중...</span>
-                  </>
-                ) : !onedriveStatus ? (
-                  <>
-                    <AlertCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-muted-foreground truncate">상태 확인 불가</span>
-                  </>
-                ) : onedriveStatus.connected ? (
-                  <>
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="text-green-600 dark:text-green-400 truncate cursor-default">
-                          {onedriveStatus.accountInfo || "연결됨"}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <p>{onedriveStatus.message}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="h-3.5 w-3.5 text-destructive shrink-0" />
-                    <span className="text-destructive truncate">연결 안 됨</span>
-                  </>
-                )}
-                {onedriveStatus?.connected && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => refreshMutation.mutate()}
-                        disabled={refreshMutation.isPending}
-                        className="ml-auto shrink-0"
-                        data-testid="button-refresh-onedrive"
-                      >
-                        <RefreshCw className={`text-muted-foreground ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p>연결 상태 새로고침</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
+          <Collapsible className="group/onedrive">
+            <CollapsibleTrigger asChild>
+              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-onedrive">
+                <div className="flex items-center gap-1.5">
+                  <span>OneDrive</span>
+                  {!statusLoading && onedriveStatus?.connected && (
+                    <CheckCircle2 className="h-3 w-3 text-green-500" />
+                  )}
+                  {!statusLoading && onedriveStatus && !onedriveStatus.connected && (
+                    <WifiOff className="h-3 w-3 text-destructive" />
+                  )}
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/onedrive:rotate-90" />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <div className="px-2 space-y-2">
+                  <div className="flex items-center gap-2 px-1 py-1.5 text-xs" data-testid="status-onedrive-connection">
+                    {statusLoading ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        <span className="text-muted-foreground">확인 중...</span>
+                      </>
+                    ) : !onedriveStatus ? (
+                      <>
+                        <AlertCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground truncate">상태 확인 불가</span>
+                      </>
+                    ) : onedriveStatus.connected ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-green-600 dark:text-green-400 truncate cursor-default">
+                              {onedriveStatus.accountInfo || "연결됨"}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            <p>{onedriveStatus.message}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </>
+                    ) : (
+                      <>
+                        <WifiOff className="h-3.5 w-3.5 text-destructive shrink-0" />
+                        <span className="text-destructive truncate">연결 안 됨</span>
+                      </>
+                    )}
+                    {onedriveStatus?.connected && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => refreshMutation.mutate()}
+                            disabled={refreshMutation.isPending}
+                            className="ml-auto shrink-0"
+                            data-testid="button-refresh-onedrive"
+                          >
+                            <RefreshCw className={`text-muted-foreground ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>연결 상태 새로고침</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
 
-              {onedriveStatus?.connected ? (
-                <>
-                  <Button
-                    variant="secondary"
-                    className="w-full"
-                    onClick={() => syncMutation.mutate()}
-                    disabled={syncMutation.isPending}
-                    data-testid="button-sync-onedrive"
-                  >
-                    <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
-                    <span>{syncMutation.isPending ? "동기화 중..." : "OneDrive 동기화"}</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full text-muted-foreground"
-                    onClick={() => disconnectMutation.mutate()}
-                    disabled={disconnectMutation.isPending}
-                    data-testid="button-disconnect-onedrive"
-                  >
-                    <Unlink className="h-4 w-4" />
-                    <span>연결 해제</span>
-                  </Button>
-                </>
-              ) : !statusLoading && (
-                <Button
-                  variant="default"
-                  className="w-full"
-                  onClick={() => connectMutation.mutate()}
-                  disabled={connectMutation.isPending}
-                  data-testid="button-connect-onedrive"
-                >
-                  <Link2 className="h-4 w-4" />
-                  <span>{connectMutation.isPending ? "연결 중..." : "OneDrive 연결"}</span>
-                </Button>
-              )}
-            </div>
-          </SidebarGroupContent>
+                  {onedriveStatus?.connected ? (
+                    <>
+                      <Button
+                        variant="secondary"
+                        className="w-full"
+                        onClick={() => syncMutation.mutate()}
+                        disabled={syncMutation.isPending}
+                        data-testid="button-sync-onedrive"
+                      >
+                        <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
+                        <span>{syncMutation.isPending ? "동기화 중..." : "OneDrive 동기화"}</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full text-muted-foreground"
+                        onClick={() => disconnectMutation.mutate()}
+                        disabled={disconnectMutation.isPending}
+                        data-testid="button-disconnect-onedrive"
+                      >
+                        <Unlink className="h-4 w-4" />
+                        <span>연결 해제</span>
+                      </Button>
+                    </>
+                  ) : !statusLoading && (
+                    <Button
+                      variant="default"
+                      className="w-full"
+                      onClick={() => connectMutation.mutate()}
+                      disabled={connectMutation.isPending}
+                      data-testid="button-connect-onedrive"
+                    >
+                      <Link2 className="h-4 w-4" />
+                      <span>{connectMutation.isPending ? "연결 중..." : "OneDrive 연결"}</span>
+                    </Button>
+                  )}
+                </div>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarGroup>
 
         {/* 설정 & 로그아웃 */}
