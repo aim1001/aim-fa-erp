@@ -1495,6 +1495,14 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
   const [matchCandidates, setMatchCandidates] = useState<{ candidates: CustomerCandidate[]; companyName: string; pendingInfo: ExcelCustomerInfo } | null>(null);
   const [showCustomerPreview, setShowCustomerPreview] = useState(false);
   const [scanFailMessage, setScanFailMessage] = useState<string | null>(null);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualForm, setManualForm] = useState({
+    companyName: "",
+    address: "",
+    contactName: "",
+    email: "",
+    phone: "",
+  });
 
   const hasSnapshot = !!inquiry.snapshotCompanyName;
 
@@ -1519,10 +1527,26 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
       }
       if (data.scanned.length === 0) {
         setScanFailMessage("엑셀 파일에서 유효한 고객 정보를 찾을 수 없습니다.");
+        setShowManualInput(true);
+        setManualForm({
+          companyName: inquiry.customerName || "",
+          address: "",
+          contactName: "",
+          email: "",
+          phone: "",
+        });
       }
     },
     onError: (err: Error) => {
       setScanFailMessage(err.message || "엑셀 스캔 중 오류가 발생했습니다.");
+      setShowManualInput(true);
+      setManualForm({
+        companyName: inquiry.customerName || "",
+        address: "",
+        contactName: "",
+        email: "",
+        phone: "",
+      });
     },
   });
 
@@ -1542,11 +1566,14 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
         setMatchCandidates({ candidates: data.candidates, companyName: data.companyName || info.companyName, pendingInfo: info });
         return;
       }
-      toast({ title: "고객 정보 저장 완료" });
+      const siblings = (data as any)?.linkedSiblings || 0;
+      toast({ title: siblings > 0 ? `고객 정보 저장 완료 (같은 고객명 ${siblings}건 추가 연결)` : "고객 정보 저장 완료" });
       resetScan();
+      setShowManualInput(false);
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
@@ -1576,6 +1603,8 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
     setMode("new");
     setSelectedExistingId(null);
     setMatchCandidates(null);
+    setShowManualInput(false);
+    setScanFailMessage(null);
   };
 
   const selected = scanResult && selectedIdx !== null ? scanResult.scanned[selectedIdx] : null;
@@ -1654,7 +1683,28 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
                 <Search className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-amber-700 dark:text-amber-300">고객사 미연결</p>
-                  <p className="text-xs text-muted-foreground">아래에서 기존 고객사를 검색하여 연결하거나, 담당자를 등록하세요</p>
+                  <p className="text-xs text-muted-foreground">아래에서 기존 고객사를 검색하거나 직접 입력하세요</p>
+                  {!showManualInput && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px] px-2 mt-1"
+                      onClick={() => {
+                        setShowManualInput(true);
+                        setManualForm({
+                          companyName: inquiry.customerName || "",
+                          address: "",
+                          contactName: "",
+                          email: "",
+                          phone: "",
+                        });
+                      }}
+                      data-testid="button-manual-register"
+                    >
+                      <Pencil className="h-3 w-3 mr-1" />
+                      직접 입력으로 등록
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -1686,21 +1736,124 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
                   <div className="flex-1 space-y-1.5">
                     <p className="text-sm font-medium text-amber-700 dark:text-amber-300">엑셀 스캔 결과 없음</p>
                     <p className="text-xs text-muted-foreground">{scanFailMessage}</p>
-                    <p className="text-xs text-muted-foreground">아래 방법으로 고객사를 등록할 수 있습니다:</p>
-                    <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
-                      <li>위의 <span className="font-medium text-foreground">담당자 등록</span> 버튼으로 직접 입력</li>
-                      <li>아래 검색란에서 기존 고객사를 찾아 연결</li>
-                    </ul>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-xs px-2 mt-1"
-                      onClick={() => setScanFailMessage(null)}
-                      data-testid="button-dismiss-scan-fail"
-                    >
-                      닫기
-                    </Button>
+                    {!showManualInput && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs mt-1"
+                        onClick={() => {
+                          setShowManualInput(true);
+                          setManualForm({
+                            companyName: inquiry.customerName || "",
+                            address: "",
+                            contactName: "",
+                            email: "",
+                            phone: "",
+                          });
+                        }}
+                        data-testid="button-show-manual-input"
+                      >
+                        <Pencil className="h-3 w-3 mr-1" />
+                        직접 입력
+                      </Button>
+                    )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {showManualInput && (
+              <div className="border rounded-lg p-3 bg-muted/20 mt-2 space-y-3" data-testid="manual-customer-form">
+                <p className="text-xs font-medium text-muted-foreground">고객 정보 직접 입력</p>
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                    <label className="text-xs text-muted-foreground">회사명 *</label>
+                    <Input
+                      value={manualForm.companyName}
+                      onChange={(e) => setManualForm(prev => ({ ...prev, companyName: e.target.value }))}
+                      placeholder="회사명"
+                      className="h-8 text-sm"
+                      data-testid="input-manual-company-name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                    <label className="text-xs text-muted-foreground">주소</label>
+                    <Input
+                      value={manualForm.address}
+                      onChange={(e) => setManualForm(prev => ({ ...prev, address: e.target.value }))}
+                      placeholder="주소"
+                      className="h-8 text-sm"
+                      data-testid="input-manual-address"
+                    />
+                  </div>
+                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                    <label className="text-xs text-muted-foreground">담당자</label>
+                    <Input
+                      value={manualForm.contactName}
+                      onChange={(e) => setManualForm(prev => ({ ...prev, contactName: e.target.value }))}
+                      placeholder="담당자명"
+                      className="h-8 text-sm"
+                      data-testid="input-manual-contact-name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                    <label className="text-xs text-muted-foreground">이메일</label>
+                    <Input
+                      value={manualForm.email}
+                      onChange={(e) => setManualForm(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="이메일"
+                      className="h-8 text-sm"
+                      data-testid="input-manual-email"
+                    />
+                  </div>
+                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
+                    <label className="text-xs text-muted-foreground">전화번호</label>
+                    <Input
+                      value={manualForm.phone}
+                      onChange={(e) => setManualForm(prev => ({ ...prev, phone: e.target.value }))}
+                      placeholder="전화번호"
+                      className="h-8 text-sm"
+                      data-testid="input-manual-phone"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (!manualForm.companyName.trim()) {
+                        toast({ title: "회사명은 필수입니다", variant: "destructive" });
+                        return;
+                      }
+                      saveMutation.mutate({
+                        companyName: manualForm.companyName.trim(),
+                        address: manualForm.address.trim() || "",
+                        contactName: manualForm.contactName.trim() || "",
+                        email: manualForm.email.trim() || "",
+                        phone: manualForm.phone.trim() || "",
+                        sheetName: "",
+                        quoteDate: "",
+                        quoteNumber: "",
+                        projectName: "",
+                      } as ExcelCustomerInfo);
+                    }}
+                    disabled={saveMutation.isPending || !manualForm.companyName.trim()}
+                    data-testid="button-save-manual-customer"
+                  >
+                    {saveMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
+                    <span>고객정보 저장</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowManualInput(false);
+                      setScanFailMessage(null);
+                    }}
+                    data-testid="button-cancel-manual-input"
+                  >
+                    취소
+                  </Button>
                 </div>
               </div>
             )}

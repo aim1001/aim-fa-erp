@@ -1701,7 +1701,7 @@ export async function registerRoutes(
         });
       }
 
-      await storage.updateInquiry(inquiry.id, {
+      const snapshotUpdate = {
         customerId: customer.id,
         companyId: company.id,
         snapshotCompanyName: company.companyName,
@@ -1709,7 +1709,27 @@ export async function registerRoutes(
         snapshotContactName: company.contactName || null,
         snapshotEmail: company.email || null,
         snapshotPhone: company.phone || null,
-      });
+      };
+
+      await storage.updateInquiry(inquiry.id, snapshotUpdate);
+
+      let linkedSiblings = 0;
+      if (inquiry.customerName) {
+        const siblingInquiries = await storage.getUnlinkedInquiriesByCustomerName(inquiry.customerName);
+        for (const inq of siblingInquiries) {
+          if (inq.id !== inquiry.id) {
+            await storage.updateInquiry(inq.id, {
+              customerId: customer.id,
+              snapshotCompanyName: company.companyName,
+              snapshotAddress: company.address || null,
+              snapshotContactName: company.contactName || null,
+              snapshotEmail: company.email || null,
+              snapshotPhone: company.phone || null,
+            });
+            linkedSiblings++;
+          }
+        }
+      }
 
       if (inquiry.onedriveFolderId) {
         try {
@@ -1727,7 +1747,7 @@ export async function registerRoutes(
         }
       }
 
-      res.json({ customer, company, inquiryId: inquiry.id });
+      res.json({ customer, company, inquiryId: inquiry.id, linkedSiblings });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
