@@ -419,6 +419,9 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
     bY = signBodyY + signBoxH + 4;
 
+    const origPageH = doc.page.height;
+    doc.page.height = 99999;
+
     if (isTemplateNotes && notesBlockH > 0) {
       doc.moveTo(PAGE_LEFT, bY).lineTo(PAGE_RIGHT, bY).lineWidth(0.5).stroke("#ccc");
       bY += 6;
@@ -426,25 +429,21 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       doc.font("Bold").fontSize(7).fillColor("#000");
       const nLabelH = doc.heightOfString("■ 제외사항", { width: halfColW });
       doc.text("■ 제외사항", PAGE_LEFT, bY, { width: halfColW, lineBreak: false });
-      doc.y = bY;
       doc.font("Regular").fontSize(6.5).fillColor("#333");
       doc.text(excludeContent, PAGE_LEFT, bY + nLabelH + 2, { width: halfColW, lineGap: 0.5, height: notesBlockH });
-      doc.y = bY;
       doc.font("Bold").fontSize(7).fillColor("#000");
       doc.text("■ 기술지원", nRightColX, bY, { width: halfColW, lineBreak: false });
-      doc.y = bY;
       doc.font("Regular").fontSize(6.5).fillColor("#333");
       doc.text(supportContent, nRightColX, bY + nLabelH + 2, { width: halfColW, lineGap: 0.5, height: notesBlockH });
-      doc.y = bY;
       bY += notesBlockH - 8 + 2;
     } else if (notesText && notesBlockH > 0) {
       doc.moveTo(PAGE_LEFT, bY).lineTo(PAGE_RIGHT, bY).lineWidth(0.5).stroke("#ccc");
       bY += 6;
-      doc.font("Bold").fontSize(7).fillColor("#000").text("■ 비고", PAGE_LEFT, bY, { lineBreak: false });
-      doc.y = bY;
+      doc.font("Bold").fontSize(7).fillColor("#000");
+      doc.text("■ 비고", PAGE_LEFT, bY, { lineBreak: false });
       bY += 10;
-      doc.font("Regular").fontSize(6.5).fillColor("#333").text(notesText, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5, height: notesBlockH });
-      doc.y = bY;
+      doc.font("Regular").fontSize(6.5).fillColor("#333");
+      doc.text(notesText, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5, height: notesBlockH });
       bY += notesBlockH - 18 + 2;
     }
 
@@ -457,28 +456,24 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       if (deliveryClean) {
         doc.font("Bold").fontSize(7).fillColor("#000");
         doc.text("■ 지급 및 납기", PAGE_LEFT, bY, { width: halfColW, lineBreak: false });
-        doc.y = bY;
         doc.font("Regular").fontSize(6.5).fillColor("#333");
         doc.text(deliveryClean, PAGE_LEFT, bY + tLabelH + 2, { width: halfColW, lineGap: 0.5, height: termsBlockH });
-        doc.y = bY;
       }
       if (warrantyClean) {
         doc.font("Bold").fontSize(7).fillColor("#000");
         doc.text("■ 보증 및 책임 범위", rightColX, bY, { width: halfColW, lineBreak: false });
-        doc.y = bY;
         doc.font("Regular").fontSize(6.5).fillColor("#333");
         doc.text(warrantyClean, rightColX, bY + tLabelH + 2, { width: halfColW, lineGap: 0.5, height: termsBlockH });
-        doc.y = bY;
       }
       bY += termsBlockH - 8 + 2;
     }
 
     const footerY = pageBottom - footerBarH;
-    doc.y = footerY;
     doc.moveTo(PAGE_LEFT, footerY).lineTo(PAGE_RIGHT, footerY).lineWidth(0.8).stroke("#333");
     doc.font("Bold").fontSize(7.5).fillColor("#000");
     doc.text("www.aim-fa.com", PAGE_LEFT, footerY + 3, { width: PAGE_WIDTH, align: "center", lineBreak: false });
 
+    doc.page.height = origPageH;
     doc.y = footerY;
 
     const detColX = [50, 75, 165, 310, 355, 410, 470];
