@@ -417,18 +417,18 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/onedrive/status", async (_req, res) => {
+  app.get("/api/onedrive/status", async (req, res) => {
     try {
-      const status = await checkConnectionStatus();
+      const status = await checkConnectionStatus(req.get('host'));
       res.json(status);
     } catch (err: any) {
       res.json({ connected: false, message: err.message });
     }
   });
 
-  app.get("/api/onedrive/auth", async (_req, res) => {
+  app.get("/api/onedrive/auth", async (req, res) => {
     try {
-      const authUrl = getAuthUrl();
+      const authUrl = getAuthUrl(req.get('host'));
       res.json({ authUrl });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -450,7 +450,7 @@ export async function registerRoutes(
         return res.redirect('/?onedrive_error=' + encodeURIComponent('인증 코드가 없습니다.'));
       }
 
-      await exchangeCodeForTokens(code);
+      await exchangeCodeForTokens(code, req.get('host'));
       return res.redirect('/?onedrive_connected=true');
     } catch (err: any) {
       console.error('[OneDrive OAuth] 콜백 처리 실패:', err.message);
@@ -468,10 +468,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/onedrive/refresh", async (_req, res) => {
+  app.post("/api/onedrive/refresh", async (req, res) => {
     try {
       resetTokenCache();
-      const status = await checkConnectionStatus();
+      const status = await checkConnectionStatus(req.get('host'));
       res.json(status);
     } catch (err: any) {
       res.json({ connected: false, message: err.message });

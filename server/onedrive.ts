@@ -18,7 +18,11 @@ function getOAuthConfig() {
   return { clientId, clientSecret };
 }
 
-function getRedirectUri(): string {
+function getRedirectUri(host?: string): string {
+  if (host) {
+    const proto = host.includes('localhost') ? 'http' : 'https';
+    return `${proto}://${host}/api/onedrive/callback`;
+  }
   const devDomain = process.env.REPLIT_DEV_DOMAIN;
   const deployDomain = process.env.REPLIT_DEPLOYMENT_URL;
   if (deployDomain) {
@@ -30,9 +34,9 @@ function getRedirectUri(): string {
   return 'http://localhost:5000/api/onedrive/callback';
 }
 
-export function getAuthUrl(): string {
+export function getAuthUrl(host?: string): string {
   const { clientId } = getOAuthConfig();
-  const redirectUri = getRedirectUri();
+  const redirectUri = getRedirectUri(host);
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
@@ -44,9 +48,9 @@ export function getAuthUrl(): string {
   return `${OAUTH_AUTH_URL}?${params.toString()}`;
 }
 
-export async function exchangeCodeForTokens(code: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; accountName?: string; accountEmail?: string }> {
+export async function exchangeCodeForTokens(code: string, host?: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; accountName?: string; accountEmail?: string }> {
   const { clientId, clientSecret } = getOAuthConfig();
-  const redirectUri = getRedirectUri();
+  const redirectUri = getRedirectUri(host);
 
   const body = new URLSearchParams({
     client_id: clientId,
@@ -302,7 +306,7 @@ async function graphCallWithRetry<T>(
   }
 }
 
-export async function checkConnectionStatus(): Promise<{
+export async function checkConnectionStatus(host?: string): Promise<{
   connected: boolean;
   message: string;
   expiresAt?: string;
@@ -317,7 +321,7 @@ export async function checkConnectionStatus(): Promise<{
         connected: false,
         message: 'OneDrive가 연결되지 않았습니다.',
         errorType: 'not_configured',
-        authUrl: getAuthUrl(),
+        authUrl: getAuthUrl(host),
       };
     }
 
@@ -336,7 +340,7 @@ export async function checkConnectionStatus(): Promise<{
       connected: false,
       message: err.message || 'OneDrive 연결 확인 실패',
       errorType: 'exception',
-      authUrl: getAuthUrl(),
+      authUrl: getAuthUrl(host),
     };
   }
 }
