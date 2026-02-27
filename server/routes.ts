@@ -884,9 +884,27 @@ export async function registerRoutes(
       if (!source) return res.status(404).json({ message: "Source customer not found" });
       if (!target) return res.status(404).json({ message: "Target customer not found" });
 
+      const targetContacts = await storage.getCompaniesByCustomerId(targetId);
+      const firstContact = targetContacts.length > 0 ? targetContacts[0] : null;
+      const snapshotUpdate = {
+        customerId: targetId,
+        snapshotCompanyName: target.companyName,
+        snapshotAddress: target.address || null,
+        snapshotContactName: firstContact?.contactName || null,
+        snapshotEmail: firstContact?.email || null,
+        snapshotPhone: firstContact?.phone || null,
+      };
+
       const sourceInquiries = await storage.getInquiriesByCustomerId(sourceId);
       for (const inq of sourceInquiries) {
-        await storage.updateInquiry(inq.id, { customerId: targetId });
+        await storage.updateInquiry(inq.id, snapshotUpdate);
+      }
+
+      const orphanInquiries = await storage.getUnlinkedInquiriesByCustomerName(source.companyName);
+      let linkedOrphans = 0;
+      for (const inq of orphanInquiries) {
+        await storage.updateInquiry(inq.id, snapshotUpdate);
+        linkedOrphans++;
       }
 
       const sourceCompanies = await storage.getCompaniesByCustomerId(sourceId);
@@ -900,6 +918,7 @@ export async function registerRoutes(
         message: `${source.companyName} → ${target.companyName} 병합 완료`,
         movedInquiries: sourceInquiries.length,
         movedCompanies: sourceCompanies.length,
+        linkedOrphans,
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1078,16 +1097,31 @@ export async function registerRoutes(
       if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
       const contacts = await storage.getCompaniesByCustomerId(customerId);
       const firstContact = contacts.length > 0 ? contacts[0] : null;
-      const updated = await storage.updateInquiry(inquiry.id, {
+      const snapshotUpdate = {
         customerId: customer.id,
-        customerName: customer.companyName,
         snapshotCompanyName: customer.companyName,
         snapshotAddress: customer.address || null,
         snapshotContactName: firstContact?.contactName || null,
         snapshotEmail: firstContact?.email || null,
         snapshotPhone: firstContact?.phone || null,
+      };
+      const updated = await storage.updateInquiry(inquiry.id, {
+        ...snapshotUpdate,
+        customerName: customer.companyName,
       });
-      res.json(updated);
+
+      let linkedSiblings = 0;
+      if (inquiry.customerName) {
+        const siblingInquiries = await storage.getUnlinkedInquiriesByCustomerName(inquiry.customerName);
+        for (const inq of siblingInquiries) {
+          if (inq.id !== inquiry.id) {
+            await storage.updateInquiry(inq.id, { ...snapshotUpdate, customerName: customer.companyName });
+            linkedSiblings++;
+          }
+        }
+      }
+
+      res.json({ ...updated, linkedSiblings });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }

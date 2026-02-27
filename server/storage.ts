@@ -92,6 +92,7 @@ export interface IStorage {
   getVendorLastTransactionDates(): Promise<Map<string, string>>;
   getInquiriesByCustomerId(customerId: string): Promise<Inquiry[]>;
   getInquiriesByCompanyId(companyId: string): Promise<Inquiry[]>;
+  getUnlinkedInquiriesByCustomerName(customerName: string): Promise<Inquiry[]>;
 
   getProductImages(inquiryId: string): Promise<ProductImage[]>;
   createProductImage(image: InsertProductImage): Promise<ProductImage>;
@@ -457,6 +458,14 @@ export class DatabaseStorage implements IStorage {
 
   async getInquiriesByCompanyId(companyId: string): Promise<Inquiry[]> {
     return db.select().from(inquiries).where(eq(inquiries.companyId, companyId)).orderBy(desc(inquiries.year));
+  }
+
+  async getUnlinkedInquiriesByCustomerName(customerName: string): Promise<Inquiry[]> {
+    const normalized = customerName.replace(/\s+/g, '').toLowerCase();
+    const all = await db.select().from(inquiries).where(
+      sql`${inquiries.customerId} IS NULL AND ${inquiries.customerName} IS NOT NULL`
+    );
+    return all.filter(inq => inq.customerName && inq.customerName.replace(/\s+/g, '').toLowerCase() === normalized);
   }
 
   async getProductImages(inquiryId: string): Promise<ProductImage[]> {

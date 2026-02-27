@@ -536,8 +536,9 @@ function CustomerLinkSection({ inquiryId, inquiry }: { inquiryId: string; inquir
       const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/link-customer`, { customerId });
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "고객사 연결 완료" });
+    onSuccess: (data: any) => {
+      const siblings = data?.linkedSiblings || 0;
+      toast({ title: siblings > 0 ? `고객사 연결 완료 (같은 고객명 ${siblings}건 추가 연결)` : "고객사 연결 완료" });
       setSearchQuery("");
       setShowDropdown(false);
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });

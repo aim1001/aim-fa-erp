@@ -218,7 +218,9 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: data.message || "병합 완료" });
+      const orphans = data?.linkedOrphans || 0;
+      const msg = data.message || "병합 완료";
+      toast({ title: orphans > 0 ? `${msg} (미연결 ${orphans}건 추가 연결)` : msg });
       queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
