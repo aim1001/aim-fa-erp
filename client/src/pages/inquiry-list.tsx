@@ -358,10 +358,18 @@ export default function InquiryList() {
       let valA: string | number | null = null;
       let valB: string | number | null = null;
       switch (sortColumn) {
-        case "salesNumber":
-          valA = a.salesNumber || a.inquiryNumber || "";
-          valB = b.salesNumber || b.inquiryNumber || "";
-          break;
+        case "salesNumber": {
+          const numA = a.salesNumber || a.inquiryNumber || "";
+          const numB = b.salesNumber || b.inquiryNumber || "";
+          const partsA = String(numA).match(/^(\d+)-(\d+)$/);
+          const partsB = String(numB).match(/^(\d+)-(\d+)$/);
+          if (partsA && partsB) {
+            const prefixDiff = Number(partsA[1]) - Number(partsB[1]);
+            if (prefixDiff !== 0) return prefixDiff * dir;
+            return (Number(partsA[2]) - Number(partsB[2])) * dir;
+          }
+          return String(numA).localeCompare(String(numB)) * dir;
+        }
         case "customerName":
           valA = a.customerName;
           valB = b.customerName;
