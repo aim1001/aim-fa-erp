@@ -162,6 +162,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-27: 판매제품/구매품 "OneDrive에 저장" 버튼 추가 (POST /api/items/write-onedrive, POST /api/purchase-items/write-onedrive)
 - 2026-02-27: writePurchaseListToOneDrive() 함수 추가 (excel-parser.ts) — DB→purchaselist.xlsx 원드라이브 업로드
 - 2026-02-27: PATCH /api/items/:id에서 자동 역동기화(writeListPriceToOneDrive) 제거 — 수동 버튼으로 대체
+- 2026-02-27: 견적서 PDF 자동 레이아웃 전환 — 품목 수가 적으면 1페이지(세부내역 직접 표시, 요약 없음), 많으면 2페이지+(1페이지 카테고리 요약 + 2페이지 세부내역). singlePageMode 판정: detailTableH <= availableH (pageBottom - tableTop - paymentAreaH - bottomAnchorH)
 
 ## User Preferences
 - Korean language UI
