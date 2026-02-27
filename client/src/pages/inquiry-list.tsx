@@ -626,17 +626,41 @@ export default function InquiryList() {
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
                       <TableCell>{inq.year}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {inq.createdAt ? (() => {
-                          const d = new Date(inq.createdAt);
-                          const isBackfilled = d.getMonth() === 0 && d.getDate() === 1;
-                          return (
-                            <div className="flex items-center gap-1">
-                              <span>{d.toISOString().split('T')[0]}</span>
-                              {isBackfilled && <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-500 border-orange-300">예전자료</Badge>}
-                            </div>
-                          );
-                        })() : "-"}
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs border-dashed font-normal w-32 justify-start"
+                              data-testid={`button-created-date-${inq.id}`}
+                            >
+                              <CalendarIcon className="mr-1 h-3 w-3" />
+                              {inq.createdAt ? (() => {
+                                const d = new Date(inq.createdAt);
+                                const isBackfilled = d.getMonth() === 0 && d.getDate() === 1;
+                                return (
+                                  <div className="flex items-center gap-1">
+                                    <span>{d.toISOString().split('T')[0]}</span>
+                                    {isBackfilled && <Badge variant="outline" className="text-[10px] px-1 py-0 text-orange-500 border-orange-300">예전</Badge>}
+                                  </div>
+                                );
+                              })() : "날짜 선택"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={inq.createdAt ? new Date(inq.createdAt) : undefined}
+                              onSelect={(date) => {
+                                if (date) {
+                                  handleInlineUpdate(inq.id, { createdAt: date } as any);
+                                }
+                              }}
+                              locale={ko}
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Select
