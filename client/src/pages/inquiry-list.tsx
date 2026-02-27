@@ -501,8 +501,8 @@ export default function InquiryList() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체 고객</SelectItem>
-                <SelectItem value="existing">기존고객</SelectItem>
-                <SelectItem value="new">신규</SelectItem>
+                <SelectItem value="existing">등록고객</SelectItem>
+                <SelectItem value="new">미등록</SelectItem>
                 <SelectItem value="bookmarked">북마크</SelectItem>
               </SelectContent>
             </Select>
@@ -601,9 +601,9 @@ export default function InquiryList() {
                         <div className="flex items-center gap-1.5">
                           {inq.customerName}
                           {inq.isExistingCustomer ? (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 no-default-active-elevate" data-testid={`badge-existing-${inq.id}`}>기존</Badge>
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 no-default-active-elevate" data-testid={`badge-existing-${inq.id}`}>등록</Badge>
                           ) : (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 no-default-active-elevate" data-testid={`badge-new-${inq.id}`}>신규</Badge>
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 no-default-active-elevate" data-testid={`badge-new-${inq.id}`}>미등록</Badge>
                           )}
                           {inq.customerId && !inq.hasContacts && (
                             <Tooltip>
@@ -767,7 +767,7 @@ export default function InquiryList() {
         총 {filtered.length}건
         {filtered.length > 0 && customerFilter === "all" && (
           <span className="ml-2">
-            (기존 {filtered.filter(i => i.isExistingCustomer).length} / 신규 {filtered.filter(i => !i.isExistingCustomer).length})
+            (등록 {filtered.filter(i => i.isExistingCustomer).length} / 미등록 {filtered.filter(i => !i.isExistingCustomer).length})
           </span>
         )}
       </div>

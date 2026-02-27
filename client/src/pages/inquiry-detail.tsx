@@ -1603,7 +1603,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
         </CardTitle>
         {hasOneDrive && (
           <Button
-            variant="secondary"
+            variant={inquiry.customerId && !(inquiry as any).customerComplete ? "default" : "secondary"}
             size="sm"
             onClick={() => scanMutation.mutate()}
             disabled={scanMutation.isPending}
@@ -1617,7 +1617,7 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
       <CardContent>
         {!scanResult && (
           <div className="space-y-2">
-            {inquiry.customerId ? (
+            {inquiry.customerId && (inquiry as any).customerComplete ? (
               <div className="flex items-center gap-2 p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800" data-testid="status-customer-linked">
                 <Check className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
                 <div className="flex-1 min-w-0">
@@ -1631,6 +1631,21 @@ function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
                       고객사 정보 보기 →
                     </span>
                   </div>
+                </div>
+              </div>
+            ) : inquiry.customerId ? (
+              <div className="flex items-center gap-2 p-2 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800" data-testid="status-customer-incomplete">
+                <Building2 className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300">고객사 정보 보완 필요</p>
+                  <p className="text-xs text-muted-foreground">엑셀 스캔 또는 담당자 등록으로 정보를 보완하세요</p>
+                  <span
+                    className="text-xs text-primary hover:underline cursor-pointer"
+                    onClick={() => setShowCustomerPreview(true)}
+                    data-testid="link-customer"
+                  >
+                    고객사 정보 보기 →
+                  </span>
                 </div>
               </div>
             ) : (

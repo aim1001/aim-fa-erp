@@ -143,7 +143,13 @@ export async function registerRoutes(
     try {
       const inquiry = await storage.getInquiry(req.params.id);
       if (!inquiry) return res.status(404).json({ message: "Not found" });
-      res.json(inquiry);
+      let customerComplete = false;
+      if (inquiry.customerId) {
+        const cust = await storage.getCustomer(inquiry.customerId);
+        const contacts = await storage.getCompaniesByCustomerId(inquiry.customerId);
+        customerComplete = !!(cust && (cust.businessNumber || contacts.length > 0));
+      }
+      res.json({ ...inquiry, customerComplete });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -969,7 +975,7 @@ export async function registerRoutes(
       const { customerId } = z.object({ customerId: z.string() }).parse(req.body);
       const customer = await storage.getCustomer(customerId);
       if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
-      const contacts = await storage.getCompaniesByCustomer(customerId);
+      const contacts = await storage.getCompaniesByCustomerId(customerId);
       const firstContact = contacts.length > 0 ? contacts[0] : null;
       const updated = await storage.updateInquiry(inquiry.id, {
         customerId: customer.id,
@@ -1487,6 +1493,17 @@ export async function registerRoutes(
         customer = await storage.getCustomer(selectedCustomerId);
         if (!customer) {
           return res.status(404).json({ message: "선택한 고객사를 찾을 수 없습니다" });
+        }
+        if (address && !customer.address) {
+          customer = await storage.updateCustomer(customer.id, { address }) || customer;
+        }
+      } else if (inquiry.customerId) {
+        customer = await storage.getCustomer(inquiry.customerId);
+        if (customer && address && !customer.address) {
+          customer = await storage.updateCustomer(customer.id, { address }) || customer;
+        }
+        if (!customer) {
+          customer = await storage.createCustomer({ companyName, address: address || null });
         }
       } else {
         customer = await storage.getCustomerByName(companyName);

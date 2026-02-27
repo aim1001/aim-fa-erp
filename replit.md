@@ -163,6 +163,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-27: writePurchaseListToOneDrive() 함수 추가 (excel-parser.ts) — DB→purchaselist.xlsx 원드라이브 업로드
 - 2026-02-27: PATCH /api/items/:id에서 자동 역동기화(writeListPriceToOneDrive) 제거 — 수동 버튼으로 대체
 - 2026-02-27: 견적서 PDF 자동 레이아웃 전환 — 품목 수가 적으면 1페이지(세부내역 직접 표시, 요약 없음), 많으면 2페이지+(1페이지 카테고리 요약 + 2페이지 세부내역). singlePageMode 판정: detailTableH <= availableH (pageBottom - tableTop - paymentAreaH - bottomAnchorH)
+- 2026-02-27: 고객사 연결 400 에러 수정 (getCompaniesByCustomer→getCompaniesByCustomerId 오타), 고객사 상태 3단계 표시 (미연결/정보보완필요/연결됨), 인콰이어리 목록 배지 기존/신규→등록/미등록으로 변경, 엑셀 스캔 시 기존 연결 고객사 정보 업데이트 지원
 
 ## User Preferences
 - Korean language UI
