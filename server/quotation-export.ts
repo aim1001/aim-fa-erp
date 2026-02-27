@@ -475,9 +475,9 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     const footerY = pageBottom - footerBarH;
     doc.y = footerY;
-    doc.rect(PAGE_LEFT, footerY, PAGE_WIDTH, footerBarH).fill("#555");
-    doc.font("Regular").fontSize(7).fillColor("#fff");
-    doc.text("www.aim-fa.com", PAGE_LEFT, footerY + 4, { width: PAGE_WIDTH, align: "center", lineBreak: false });
+    doc.moveTo(PAGE_LEFT, footerY).lineTo(PAGE_RIGHT, footerY).lineWidth(0.8).stroke("#333");
+    doc.font("Bold").fontSize(7.5).fillColor("#000");
+    doc.text("www.aim-fa.com", PAGE_LEFT, footerY + 3, { width: PAGE_WIDTH, align: "center", lineBreak: false });
 
     doc.y = footerY;
 
