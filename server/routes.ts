@@ -2454,7 +2454,53 @@ export async function registerRoutes(
       const purchaseInvoices = (await storage.getPurchaseInvoices()).filter(i => i.projectId === project.id);
       const payments = (await storage.getPayments()).filter(p => p.projectId === project.id);
 
-      res.json({ ...project, salesInvoices, purchaseInvoices, payments });
+      let customer = null;
+      if (project.customerId) {
+        customer = await storage.getCustomer(project.customerId);
+      }
+
+      res.json({ ...project, salesInvoices, purchaseInvoices, payments, customer: customer || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/projects/auto-match-customers", async (req, res) => {
+    try {
+      const allProjects = await storage.getProjects();
+      const allCustomers = await storage.getCustomers();
+      let matched = 0;
+      let alreadyLinked = 0;
+      const unmatched: string[] = [];
+
+      for (const project of allProjects) {
+        if (project.customerId) {
+          alreadyLinked++;
+          continue;
+        }
+        if (!project.customerName) {
+          unmatched.push(project.projectNumber || project.id);
+          continue;
+        }
+        const normalizedName = project.customerName.trim().toLowerCase().replace(/\s+/g, "");
+        const match = allCustomers.find(c =>
+          c.companyName.trim().toLowerCase().replace(/\s+/g, "") === normalizedName
+        );
+        if (match) {
+          await storage.updateProject(project.id, { customerId: match.id, customerName: match.companyName });
+          matched++;
+        } else {
+          unmatched.push(project.customerName);
+        }
+      }
+
+      res.json({
+        message: `자동 매칭 완료: ${matched}건 연결, ${alreadyLinked}건 기연결, ${unmatched.length}건 미매칭`,
+        matched,
+        alreadyLinked,
+        unmatchedCount: unmatched.length,
+        unmatched: [...new Set(unmatched)].slice(0, 20),
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

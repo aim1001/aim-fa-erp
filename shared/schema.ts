@@ -251,6 +251,7 @@ export const projects = pgTable("projects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   projectNumber: text("project_number"),
   customerName: text("customer_name"),
+  customerId: varchar("customer_id"),
   description: text("description"),
   year: integer("year"),
   folderName: text("folder_name"),

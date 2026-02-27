@@ -3,12 +3,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2 } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useSearch } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Project, SalesInvoice, PurchaseInvoice, Payment } from "@shared/schema";
+import type { Project, SalesInvoice, PurchaseInvoice, Payment, Customer } from "@shared/schema";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -30,10 +30,15 @@ type EnrichedProject = Project & {
   purchaseCount: number;
 };
 
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+
 type ProjectDetail = Project & {
   salesInvoices: SalesInvoice[];
   purchaseInvoices: PurchaseInvoice[];
   payments: Payment[];
+  customer: Customer | null;
 };
 
 function fmt(n: number) {
@@ -368,6 +373,39 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
   const [stagePicker, setStagePicker] = useState<string | null>(null);
   const [stageSearchTerm, setStageSearchTerm] = useState("");
 
+  const { data: allCustomers } = useQuery<Customer[]>({
+    queryKey: ["/api/customers"],
+  });
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+
+  const linkCustomerMutation = useMutation({
+    mutationFn: async ({ cid, customerName }: { cid: string | null; customerName?: string }) => {
+      const body: Record<string, any> = { customerId: cid };
+      if (customerName) body.customerName = customerName;
+      const res = await apiRequest("PATCH", `/api/projects/${projectId}`, body);
+      return res.json();
+    },
+    onSuccess: (_data, { cid }) => {
+      toast({ title: cid ? "거래처 연결 완료" : "거래처 연결 해제" });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
+      setShowCustomerPicker(false);
+      setCustomerSearch("");
+    },
+    onError: (err: Error) => toast({ title: "거래처 연결 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const filteredCustomers = useMemo(() => {
+    if (!allCustomers) return [];
+    if (!customerSearch) return allCustomers.slice(0, 10);
+    const q = customerSearch.toLowerCase();
+    return allCustomers.filter(c =>
+      c.companyName.toLowerCase().includes(q) ||
+      (c.businessNumber && c.businessNumber.includes(q))
+    ).slice(0, 10);
+  }, [allCustomers, customerSearch]);
+
   const stageUnlinkedSales = useMemo(() => {
     if (!allSales || !project) return [];
     return allSales.filter(i => !i.projectId && i.companyName?.toLowerCase().includes(stageSearchTerm.toLowerCase()));
@@ -421,6 +459,80 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
       {project.description && (
         <div className="text-sm text-muted-foreground">{project.description}</div>
       )}
+
+      <div className="border rounded-lg p-2.5 mt-1" data-testid="section-customer-link">
+        {project.customer ? (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Building2 className="h-3 w-3" />연결된 거래처
+              </span>
+              <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1.5 text-muted-foreground hover:text-destructive" onClick={() => linkCustomerMutation.mutate({ cid: null })} disabled={linkCustomerMutation.isPending} data-testid="button-unlink-customer">
+                <Unlink className="h-3 w-3 mr-0.5" />해제
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+              <div><span className="text-muted-foreground">거래처명:</span> <span className="font-medium">{project.customer.companyName}</span></div>
+              <div><span className="text-muted-foreground">사업자번호:</span> <span className="font-medium">{project.customer.businessNumber || "-"}</span></div>
+              <div><span className="text-muted-foreground">대표자:</span> <span className="font-medium">{project.customer.representative || "-"}</span></div>
+              <div><span className="text-muted-foreground">전화:</span> <span className="font-medium">{project.customer.phone || "-"}</span></div>
+              {project.customer.address && (
+                <div className="col-span-2"><span className="text-muted-foreground">주소:</span> <span className="font-medium">{project.customer.address}</span></div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div>
+            {showCustomerPicker ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="거래처명 또는 사업자번호 검색..."
+                    className="h-7 text-xs"
+                    value={customerSearch}
+                    onChange={e => setCustomerSearch(e.target.value)}
+                    autoFocus
+                    data-testid="input-customer-search"
+                  />
+                  <Button size="sm" variant="ghost" className="h-7 px-1.5" onClick={() => { setShowCustomerPicker(false); setCustomerSearch(""); }} data-testid="button-cancel-customer-search">
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="max-h-36 overflow-y-auto border rounded">
+                  {!allCustomers ? (
+                    <div className="text-xs text-muted-foreground text-center py-2">거래처 목록 로딩중...</div>
+                  ) : filteredCustomers.length > 0 ? filteredCustomers.map(c => (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between px-2 py-1 hover:bg-muted/50 cursor-pointer text-xs border-b last:border-b-0"
+                      onClick={() => linkCustomerMutation.mutate({ cid: c.id, customerName: c.companyName })}
+                      data-testid={`option-customer-${c.id}`}
+                    >
+                      <div>
+                        <span className="font-medium">{c.companyName}</span>
+                        {c.businessNumber && <span className="text-muted-foreground ml-2">{c.businessNumber}</span>}
+                      </div>
+                      <Link2 className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                  )) : (
+                    <div className="text-xs text-muted-foreground text-center py-2">검색 결과 없음</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-orange-600 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />거래처 미연결
+                </span>
+                <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => setShowCustomerPicker(true)} data-testid="button-link-customer">
+                  <Link2 className="h-3 w-3 mr-1" />거래처 연결
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {hasConditions ? (
         <div className="border rounded-lg p-3 mt-2 space-y-2">
@@ -1121,6 +1233,20 @@ export default function ProjectList() {
     },
   });
 
+  const autoMatchMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/projects/auto-match-customers");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "거래처 매칭 완료", description: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "매칭 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const statusLabel = (status: string | null) => {
     switch (status) {
       case "active": return { text: "진행중", className: "text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400" };
@@ -1171,6 +1297,16 @@ export default function ProjectList() {
               </SelectContent>
             </Select>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => autoMatchMutation.mutate()}
+            disabled={autoMatchMutation.isPending}
+            data-testid="button-auto-match"
+          >
+            <Users className={`h-4 w-4 mr-1 ${autoMatchMutation.isPending ? "animate-spin" : ""}`} />
+            거래처 매칭
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -1240,7 +1376,14 @@ export default function ProjectList() {
                       <span className="text-xs font-mono font-medium" data-testid={`text-project-number-${p.id}`}>{p.projectNumber || "-"}</span>
                     </td>
                     <td className="py-2 px-3">
-                      <span className="text-sm font-medium" data-testid={`text-project-customer-${p.id}`}>{p.customerName || "-"}</span>
+                      <div className="flex items-center gap-1">
+                        {p.customerId ? (
+                          <Check className="h-3 w-3 text-green-500 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="h-3 w-3 text-orange-400 shrink-0" />
+                        )}
+                        <span className="text-sm font-medium" data-testid={`text-project-customer-${p.id}`}>{p.customerName || "-"}</span>
+                      </div>
                     </td>
                     <td className="py-2 px-3 hidden md:table-cell">
                       <span className="text-xs text-muted-foreground truncate block max-w-[200px]" data-testid={`text-project-desc-${p.id}`}>{p.description || "-"}</span>
