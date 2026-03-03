@@ -637,6 +637,12 @@ export async function registerRoutes(
           try {
             const existing = await storage.getInquiryByFolderId(folder.id);
             if (existing) {
+              if (folder.createdDateTime) {
+                const parsedFolderDate = new Date(folder.createdDateTime);
+                if (!isNaN(parsedFolderDate.getTime())) {
+                  await storage.updateInquiry(existing.id, { createdAt: parsedFolderDate });
+                }
+              }
               skipped++;
               continue;
             }

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown, UserX } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown, UserX, CalendarClock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -300,6 +300,42 @@ export default function InquiryList() {
       }
     }
   }, [detailParam, searchString, navigate]);
+
+  const [bulkRescanRunning, setBulkRescanRunning] = useState(false);
+  const [bulkRescanProgress, setBulkRescanProgress] = useState("");
+
+  const handleBulkRescanDates = useCallback(async () => {
+    setBulkRescanRunning(true);
+    setBulkRescanProgress("시작 중...");
+    try {
+      const res = await apiRequest("POST", "/api/inquiries/bulk-rescan-dates");
+      const data = await res.json();
+      toast({ title: data.message || "일괄 갱신 시작", description: `총 ${data.total || 0}건 처리 예정` });
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch("/api/inquiries/bulk-rescan-dates/status");
+          const status = await statusRes.json();
+          setBulkRescanProgress(`${status.processed || 0}/${status.total || 0} 처리 중...`);
+          if (!status.running) {
+            clearInterval(pollInterval);
+            setBulkRescanRunning(false);
+            setBulkRescanProgress("");
+            toast({ title: "일괄 갱신 완료", description: `${status.updated || 0}건 갱신, ${status.failed || 0}건 실패` });
+            queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+          }
+        } catch {
+          clearInterval(pollInterval);
+          setBulkRescanRunning(false);
+          setBulkRescanProgress("");
+        }
+      }, 2000);
+    } catch (err: any) {
+      toast({ title: "일괄 갱신 실패", description: err.message, variant: "destructive" });
+      setBulkRescanRunning(false);
+      setBulkRescanProgress("");
+    }
+  }, [toast]);
 
   const [sortColumn, setSortColumn] = useState<string>("createdAt");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -784,7 +820,7 @@ export default function InquiryList() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex gap-1.5 mt-2">
+          <div className="flex gap-1.5 mt-2 items-center">
             {[
               { offset: "0", label: "이번달 예정" },
               { offset: "1", label: "다음달 예정" },
@@ -801,6 +837,28 @@ export default function InquiryList() {
                 {label}
               </Button>
             ))}
+            <div className="ml-auto">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    onClick={handleBulkRescanDates}
+                    disabled={bulkRescanRunning}
+                    data-testid="button-bulk-rescan-dates"
+                  >
+                    {bulkRescanRunning ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <CalendarClock className="h-3 w-3" />
+                    )}
+                    {bulkRescanRunning ? bulkRescanProgress : "발생일자 갱신"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>OneDrive 폴더 생성일자를 일괄로 다시 가져옵니다</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </CardContent>
       </Card>
