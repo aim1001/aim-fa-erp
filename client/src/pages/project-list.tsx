@@ -461,12 +461,20 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
         <DialogTitle className="flex items-center gap-2">
           <span className="font-mono text-muted-foreground">{project.projectNumber}</span>
           <span>{project.customerName}</span>
+          {project.onedriveWebUrl && (
+            <a href={project.onedriveWebUrl} target="_blank" rel="noopener noreferrer" className="ml-auto">
+              <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+            </a>
+          )}
+        </DialogTitle>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-xs text-muted-foreground">상태:</span>
           <Select
             value={project.status || "active"}
             onValueChange={(val) => updateStatusMutation.mutate(val)}
             disabled={updateStatusMutation.isPending}
           >
-            <SelectTrigger className="h-6 w-[90px] text-xs px-2 ml-1" data-testid="select-project-status">
+            <SelectTrigger className="h-7 w-[100px] text-xs" data-testid="select-project-status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -475,12 +483,7 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
               <SelectItem value="hold" data-testid="option-status-hold">보류</SelectItem>
             </SelectContent>
           </Select>
-          {project.onedriveWebUrl && (
-            <a href={project.onedriveWebUrl} target="_blank" rel="noopener noreferrer" className="ml-auto">
-              <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-            </a>
-          )}
-        </DialogTitle>
+        </div>
       </DialogHeader>
 
       {project.description && (
