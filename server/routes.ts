@@ -2479,29 +2479,128 @@ export async function registerRoutes(
 
       const rows = await parseSalesTaxInvoices(year);
       const existing = await storage.getSalesInvoicesByYear(year);
-      const existingKeys = new Set(
-        existing.map(e => `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`)
-      );
+      const allInvoices = await storage.getSalesInvoices();
+
+      const exactKeyMap = new Map<string, typeof existing[0]>();
+      for (const e of existing) {
+        if (e.issueDate) {
+          const key = `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`;
+          exactKeyMap.set(key, e);
+        }
+      }
+
+      const pendingInvoices = allInvoices.filter(e => !e.issueDate && e.projectId && (!e.year || e.year === year));
 
       const customers = await storage.getCustomers();
       const customerByBizNum = new Map<string, string>();
+      const customerById = new Map<string, typeof customers[0]>();
       for (const c of customers) {
         if (c.businessNumber) {
           customerByBizNum.set(c.businessNumber.replace(/-/g, ""), c.id);
         }
+        customerById.set(c.id, c);
       }
 
+      const matchedIds = new Set<string>();
+      const processedKeys = new Set<string>();
       let imported = 0;
+      let matched = 0;
+      let updated = 0;
       let skipped = 0;
+
       for (const row of rows) {
-        const key = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
-        if (existingKeys.has(key)) {
+        if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
+
+        const exactKey = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
+        if (processedKeys.has(exactKey)) { skipped++; continue; }
+        processedKeys.add(exactKey);
+
+        const exactMatch = exactKeyMap.get(exactKey);
+        if (exactMatch && !matchedIds.has(exactMatch.id)) {
+          matchedIds.add(exactMatch.id);
+          await storage.updateSalesInvoice(exactMatch.id, {
+            companyName: row.companyName || null,
+            representative: row.representative || null,
+            address: row.address || null,
+            email1: row.email1 || null,
+            email2: row.email2 || null,
+            writeDate: row.writeDate || null,
+            taxAmount: row.taxAmount,
+            totalAmount: row.totalAmount,
+          });
           skipped++;
           continue;
         }
 
-        const bizNumClean = row.businessNumber.replace(/-/g, "");
-        const customerId = customerByBizNum.get(bizNumClean) || null;
+        const rowBizClean = row.businessNumber ? row.businessNumber.replace(/-/g, "") : "";
+        const rowCompanyLower = (row.companyName || "").toLowerCase().trim();
+
+        const pendingCandidates = pendingInvoices.filter(p => {
+          if (matchedIds.has(p.id)) return false;
+
+          const pBizClean = p.businessNumber ? p.businessNumber.replace(/-/g, "") : "";
+          const pCompanyLower = (p.companyName || "").toLowerCase().trim();
+
+          let custBizClean = "";
+          if (p.customerId) {
+            const cust = customerById.get(p.customerId);
+            if (cust?.businessNumber) custBizClean = cust.businessNumber.replace(/-/g, "");
+          }
+
+          const bizMatch = rowBizClean && (pBizClean === rowBizClean || custBizClean === rowBizClean);
+          const nameMatch = rowCompanyLower && pCompanyLower && pCompanyLower === rowCompanyLower;
+          if (!bizMatch && !nameMatch) return false;
+
+          const amountDiff = Math.abs((p.supplyAmount || 0) - row.supplyAmount);
+          const threshold = Math.abs(row.supplyAmount) * 0.05;
+          return amountDiff <= threshold;
+        });
+
+        if (pendingCandidates.length === 1) {
+          const pending = pendingCandidates[0];
+          matchedIds.add(pending.id);
+          await storage.updateSalesInvoice(pending.id, {
+            issueDate: row.issueDate || null,
+            writeDate: row.writeDate || null,
+            businessNumber: row.businessNumber || null,
+            companyName: row.companyName || null,
+            representative: row.representative || null,
+            address: row.address || null,
+            email1: row.email1 || null,
+            email2: row.email2 || null,
+            supplyAmount: row.supplyAmount,
+            taxAmount: row.taxAmount,
+            totalAmount: row.totalAmount,
+          });
+          matched++;
+          continue;
+        }
+
+        if (pendingCandidates.length > 1) {
+          const best = pendingCandidates.reduce((a, b) => {
+            const diffA = Math.abs((a.supplyAmount || 0) - row.supplyAmount);
+            const diffB = Math.abs((b.supplyAmount || 0) - row.supplyAmount);
+            return diffB < diffA ? b : a;
+          });
+          matchedIds.add(best.id);
+          await storage.updateSalesInvoice(best.id, {
+            issueDate: row.issueDate || null,
+            writeDate: row.writeDate || null,
+            businessNumber: row.businessNumber || null,
+            companyName: row.companyName || null,
+            representative: row.representative || null,
+            address: row.address || null,
+            email1: row.email1 || null,
+            email2: row.email2 || null,
+            supplyAmount: row.supplyAmount,
+            taxAmount: row.taxAmount,
+            totalAmount: row.totalAmount,
+          });
+          matched++;
+          continue;
+        }
+
+        const customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
 
         await storage.createSalesInvoice({
           customerId,
@@ -2518,11 +2617,10 @@ export async function registerRoutes(
           taxAmount: row.taxAmount,
           totalAmount: row.totalAmount,
         });
-        existingKeys.add(key);
         imported++;
       }
 
-      res.json({ imported, skipped, total: rows.length });
+      res.json({ imported, matched, updated, skipped, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

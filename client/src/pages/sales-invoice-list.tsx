@@ -569,7 +569,11 @@ export default function SalesInvoiceList() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
-      toast({ title: "가져오기 완료", description: `${data.imported}건 추가, ${data.skipped}건 중복 건너뜀 (총 ${data.total}건)` });
+      const parts = [`${data.imported}건 추가`];
+      if (data.matched > 0) parts.push(`${data.matched}건 예정→발행 매칭`);
+      if (data.updated > 0) parts.push(`${data.updated}건 업데이트`);
+      parts.push(`${data.skipped}건 변경없음`);
+      toast({ title: "가져오기 완료", description: `${parts.join(", ")} (총 ${data.total}건)` });
     },
     onError: (err: Error) => {
       toast({ title: "가져오기 실패", description: err.message, variant: "destructive" });
