@@ -3317,6 +3317,7 @@ export async function registerRoutes(
 
       for (const pay of allPayments) {
         if (pay.type !== "income") continue;
+        if (!pay.projectId) continue;
         if (pay.status === "completed" || pay.actualDate) continue;
         const proj = projects.find(p => p.id === pay.projectId);
         const entry = {
