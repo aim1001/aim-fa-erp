@@ -11,6 +11,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { Company, Customer, Inquiry } from "@shared/schema";
+import { InquiryDetailDialog } from "@/pages/inquiry-detail";
 
 function useCompanyUpdate(companyId: string) {
   const { toast } = useToast();
@@ -230,6 +231,7 @@ export default function CompanyDetail() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const id = params?.id;
+  const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
 
   const { data: company, isLoading } = useQuery<Company>({
     queryKey: [`/api/companies/${id}`],
@@ -342,18 +344,21 @@ export default function CompanyDetail() {
           {relatedInquiries.length > 0 ? (
             <div className="space-y-1">
               {relatedInquiries.map((inquiry) => (
-                <Link key={inquiry.id} href={`/inquiries?detail=${inquiry.id}`}>
-                  <div className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer" data-testid={`inquiry-link-${inquiry.id}`}>
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">
-                        {inquiry.inquiryNumber} - {inquiry.customerName}
-                        {inquiry.productInfo ? ` (${inquiry.productInfo})` : ""}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{inquiry.year}년</p>
-                    </div>
+                <div
+                  key={inquiry.id}
+                  className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer"
+                  onClick={() => setSelectedInquiryId(inquiry.id)}
+                  data-testid={`inquiry-link-${inquiry.id}`}
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">
+                      {inquiry.inquiryNumber} - {inquiry.customerName}
+                      {inquiry.productInfo ? ` (${inquiry.productInfo})` : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{inquiry.year}년</p>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           ) : (
@@ -361,6 +366,12 @@ export default function CompanyDetail() {
           )}
         </CardContent>
       </Card>
+
+      <InquiryDetailDialog
+        inquiryId={selectedInquiryId}
+        open={!!selectedInquiryId}
+        onOpenChange={(open) => { if (!open) setSelectedInquiryId(null); }}
+      />
     </div>
   );
 }
