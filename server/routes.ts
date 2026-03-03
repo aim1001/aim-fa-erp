@@ -3988,5 +3988,119 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-orders", async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const orders = await storage.getPurchaseOrders(year);
+      res.json(orders);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-orders/:id", async (req, res) => {
+    try {
+      const order = await storage.getPurchaseOrder(req.params.id);
+      if (!order) return res.status(404).json({ message: "Not found" });
+      res.json(order);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/purchase-orders/:id", async (req, res) => {
+    try {
+      const result = await storage.updatePurchaseOrder(req.params.id, req.body);
+      if (!result) return res.status(404).json({ message: "Not found" });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/purchase-orders/:id", async (req, res) => {
+    try {
+      await storage.deletePurchaseOrder(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-orders/sync", async (req, res) => {
+    try {
+      const year = parseInt(req.query.year as string || req.body.year);
+      if (!year) return res.status(400).json({ message: "year required" });
+
+      const basePath = `2.공사/${year}/발주서`;
+      let created = 0, updated = 0, deleted = 0;
+      const allFolderNames = new Set<string>();
+
+      async function syncFolders(path: string, status: string) {
+        try {
+          const folders = await listFoldersByPath(path);
+          for (const folder of folders) {
+            if (folder.name === "수입" || folder.name === "입고완료") continue;
+            const folderKey = `${status}::${folder.name}`;
+            allFolderNames.add(folderKey);
+
+            const existing = await storage.getPurchaseOrderByFolderName(folderKey);
+            const parts = folder.name.split("_");
+            const orderNumber = parts[0] || folder.name;
+            const vendor = parts[1] || "";
+            const description = parts.slice(2).join("_") || "";
+
+            if (existing) {
+              await storage.updatePurchaseOrder(existing.id, {
+                onedriveFolderId: folder.id,
+                onedriveWebUrl: folder.webUrl,
+                orderNumber,
+                vendor,
+                description,
+                year,
+                status,
+              });
+              updated++;
+            } else {
+              await storage.createPurchaseOrder({
+                orderNumber,
+                vendor,
+                description,
+                year,
+                status,
+                folderName: folderKey,
+                onedriveFolderId: folder.id,
+                onedriveWebUrl: folder.webUrl,
+                receivingCompleted: status === "입고완료",
+              });
+              created++;
+            }
+          }
+        } catch (e: any) {
+          console.log(`[purchase-orders/sync] Folder not found: ${path} - ${e.message}`);
+        }
+      }
+
+      await syncFolders(basePath, "일반");
+      await syncFolders(`${basePath}/수입`, "수입");
+      await syncFolders(`${basePath}/입고완료`, "입고완료");
+
+      const existingOrders = await storage.getPurchaseOrders(year);
+      for (const order of existingOrders) {
+        if (order.folderName && !allFolderNames.has(order.folderName)) {
+          await storage.deletePurchaseOrder(order.id);
+          deleted++;
+        }
+      }
+
+      res.json({
+        message: `동기화 완료: ${created}건 생성, ${updated}건 갱신, ${deleted}건 삭제`,
+        created, updated, deleted, total: allFolderNames.size,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

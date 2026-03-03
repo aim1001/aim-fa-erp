@@ -350,6 +350,29 @@ export const insertPurchaseItemSchema = createInsertSchema(purchaseItems).omit({
 export type InsertPurchaseItem = z.infer<typeof insertPurchaseItemSchema>;
 export type PurchaseItem = typeof purchaseItems.$inferSelect;
 
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  orderNumber: text("order_number"),
+  vendor: text("vendor"),
+  description: text("description"),
+  amount: integer("amount"),
+  expectedDeliveryDate: text("expected_delivery_date"),
+  actualDeliveryDate: text("actual_delivery_date"),
+  status: text("status").default("일반"),
+  receivingCompleted: boolean("receiving_completed").default(false),
+  purchaseInvoiceId: varchar("purchase_invoice_id"),
+  paymentId: varchar("payment_id"),
+  year: integer("year"),
+  folderName: text("folder_name"),
+  onedriveFolderId: text("onedrive_folder_id"),
+  onedriveWebUrl: text("onedrive_web_url"),
+  memo: text("memo"),
+});
+
+export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true });
+export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+
 export const onedriveTokens = pgTable("onedrive_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   accessToken: text("access_token").notNull(),

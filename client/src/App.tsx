@@ -21,6 +21,7 @@ import ProjectList from "@/pages/project-list";
 import ManagementDashboard from "@/pages/management-dashboard";
 import ItemList from "@/pages/item-list";
 import PurchaseItemList from "@/pages/purchase-item-list";
+import PurchaseOrderList from "@/pages/purchase-order-list";
 import SettingsPage from "@/pages/settings";
 import StaffList from "@/pages/staff-list";
 import Login from "@/pages/login";
@@ -44,6 +45,7 @@ function Router() {
       <Route path="/management" component={ManagementDashboard} />
       <Route path="/items" component={ItemList} />
       <Route path="/purchase-items" component={PurchaseItemList} />
+      <Route path="/purchase-orders" component={PurchaseOrderList} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/staff" component={StaffList} />
       <Route component={NotFound} />

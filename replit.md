@@ -174,6 +174,11 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-02-27: 프로젝트-거래처 연결 기능 추가 — projects.customerId 필드, 일괄 자동매칭(POST /api/projects/auto-match-customers), 개별 수동연결(모달 내 검색/선택), 모달에서 거래처 기본 정보 표시, 목록에서 연결 상태 아이콘(✓/⚠) 표시
 - 2026-02-27: OneDrive 동기화 초기값 수정 — 상태 기본값 `none`(-), 발생일자 기본값 해당 연도 1월 1일
 
+- `client/src/pages/purchase-order-list.tsx` - Purchase order list page (발주관리, OneDrive 동기화, 상세 모달)
+
+## Recent Changes (continued)
+- 2026-03-03: 발주관리 기능 추가 — purchase_orders 테이블 (orderNumber, vendor, description, amount, expectedDeliveryDate, actualDeliveryDate, status(일반/수입/입고완료), receivingCompleted, purchaseInvoiceId→purchase_invoices, paymentId→payments, OneDrive 폴더 정보, year), OneDrive `2.공사/{year}/발주서/` 폴더 동기화 (하위 수입/, 입고완료/ 폴더별 상태 자동 분류), 폴더명 파싱 (번호_구매처_내용), 상세 모달 (금액/납품일/입고완료 처리/계산서 연결/송금 연결/메모), /purchase-orders 페이지, 사이드바 발주관리 활성화
+
 ## User Preferences
 - Korean language UI
 - Business/professional theme (blue primary color)

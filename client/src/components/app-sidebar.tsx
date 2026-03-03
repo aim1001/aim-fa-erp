@@ -311,9 +311,8 @@ export function AppSidebar() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton disabled className="opacity-50" data-testid="nav-orders">
-                      <ClipboardCheck className="h-4 w-4" /><span>발주관리</span>
-                      <span className="ml-auto text-[10px] text-muted-foreground">예정</span>
+                    <SidebarMenuButton asChild data-active={location === "/purchase-orders"} data-testid="nav-orders">
+                      <Link href="/purchase-orders"><ClipboardCheck className="h-4 w-4" /><span>발주관리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

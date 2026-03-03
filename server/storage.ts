@@ -22,10 +22,12 @@ import {
   type ContractTemplate, type InsertContractTemplate,
   type CompanySettings, type InsertCompanySettings,
   type Staff, type InsertStaff,
+  type PurchaseOrder, type InsertPurchaseOrder,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
+  purchaseOrders,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -212,6 +214,13 @@ export interface IStorage {
   createProjectTask(data: InsertProjectTask): Promise<ProjectTask>;
   updateProjectTask(id: string, data: Partial<InsertProjectTask>): Promise<ProjectTask | undefined>;
   deleteProjectTask(id: string): Promise<void>;
+
+  getPurchaseOrders(year?: number): Promise<PurchaseOrder[]>;
+  getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined>;
+  getPurchaseOrderByFolderName(folderName: string): Promise<PurchaseOrder | undefined>;
+  createPurchaseOrder(order: InsertPurchaseOrder): Promise<PurchaseOrder>;
+  updatePurchaseOrder(id: string, order: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
+  deletePurchaseOrder(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1140,6 +1149,37 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProjectTask(id: string): Promise<void> {
     await db.delete(projectTasks).where(eq(projectTasks.id, id));
+  }
+
+  async getPurchaseOrders(year?: number): Promise<PurchaseOrder[]> {
+    const conditions = [];
+    if (year) conditions.push(eq(purchaseOrders.year, year));
+    const rows = await db.select().from(purchaseOrders).where(conditions.length ? and(...conditions) : undefined);
+    return rows.sort((a, b) => naturalSort(a.orderNumber || "", b.orderNumber || ""));
+  }
+
+  async getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined> {
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
+    return row;
+  }
+
+  async getPurchaseOrderByFolderName(folderName: string): Promise<PurchaseOrder | undefined> {
+    const [row] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.folderName, folderName));
+    return row;
+  }
+
+  async createPurchaseOrder(order: InsertPurchaseOrder): Promise<PurchaseOrder> {
+    const [row] = await db.insert(purchaseOrders).values(order).returning();
+    return row;
+  }
+
+  async updatePurchaseOrder(id: string, order: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined> {
+    const [row] = await db.update(purchaseOrders).set(order).where(eq(purchaseOrders.id, id)).returning();
+    return row;
+  }
+
+  async deletePurchaseOrder(id: string): Promise<void> {
+    await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
   }
 }
 
