@@ -15,6 +15,7 @@ import {
   type ItemDocument, type InsertItemDocument,
   type PurchaseItem, type InsertPurchaseItem,
   type InquiryMemo, type InsertInquiryMemo,
+  type InquiryTask, type InsertInquiryTask,
   type Quotation, type InsertQuotation,
   type QuotationItem, type InsertQuotationItem,
   type ContractTemplate, type InsertContractTemplate,
@@ -23,7 +24,7 @@ import {
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
-  inquiryMemos, quotations, quotationItems, contractTemplates, companySettings, staff,
+  inquiryMemos, inquiryTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -195,6 +196,12 @@ export interface IStorage {
   createStaff(data: InsertStaff): Promise<Staff>;
   updateStaff(id: string, data: Partial<InsertStaff>): Promise<Staff | undefined>;
   deleteStaff(id: string): Promise<void>;
+
+  getTasksByInquiry(inquiryId: string): Promise<InquiryTask[]>;
+  getAllPendingTasks(): Promise<(InquiryTask & { inquiryNumber: string; customerName: string })[]>;
+  createTask(data: InsertInquiryTask): Promise<InquiryTask>;
+  updateTask(id: string, data: Partial<InsertInquiryTask>): Promise<InquiryTask | undefined>;
+  deleteTask(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1030,6 +1037,43 @@ export class DatabaseStorage implements IStorage {
 
   async deleteStaff(id: string): Promise<void> {
     await db.delete(staff).where(eq(staff.id, id));
+  }
+
+  async getTasksByInquiry(inquiryId: string): Promise<InquiryTask[]> {
+    return db.select().from(inquiryTasks).where(eq(inquiryTasks.inquiryId, inquiryId)).orderBy(desc(inquiryTasks.createdAt));
+  }
+
+  async getAllPendingTasks(): Promise<(InquiryTask & { inquiryNumber: string; customerName: string })[]> {
+    const rows = await db
+      .select({
+        id: inquiryTasks.id,
+        inquiryId: inquiryTasks.inquiryId,
+        content: inquiryTasks.content,
+        completed: inquiryTasks.completed,
+        dueDate: inquiryTasks.dueDate,
+        createdAt: inquiryTasks.createdAt,
+        inquiryNumber: inquiries.inquiryNumber,
+        customerName: inquiries.customerName,
+      })
+      .from(inquiryTasks)
+      .innerJoin(inquiries, eq(inquiryTasks.inquiryId, inquiries.id))
+      .where(eq(inquiryTasks.completed, false))
+      .orderBy(inquiryTasks.dueDate, desc(inquiryTasks.createdAt));
+    return rows as any;
+  }
+
+  async createTask(data: InsertInquiryTask): Promise<InquiryTask> {
+    const [task] = await db.insert(inquiryTasks).values(data).returning();
+    return task;
+  }
+
+  async updateTask(id: string, data: Partial<InsertInquiryTask>): Promise<InquiryTask | undefined> {
+    const [task] = await db.update(inquiryTasks).set(data).where(eq(inquiryTasks.id, id)).returning();
+    return task;
+  }
+
+  async deleteTask(id: string): Promise<void> {
+    await db.delete(inquiryTasks).where(eq(inquiryTasks.id, id));
   }
 }
 

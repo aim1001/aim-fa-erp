@@ -19,7 +19,7 @@ import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo, ContractTemplate } from "@shared/schema";
+import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo, InquiryTask, ContractTemplate } from "@shared/schema";
 import { QuotationSection } from "@/components/quotation-section";
 
 function useInlineUpdate(inquiryId: string) {
@@ -1238,6 +1238,154 @@ function CustomerPreviewDialog({ customerId, inquiryId, open, onOpenChange }: { 
 
 
 
+function TaskSection({ inquiryId }: { inquiryId: string }) {
+  const { toast } = useToast();
+  const [newContent, setNewContent] = useState("");
+  const [dueDate, setDueDate] = useState("");
+
+  const { data: tasks = [], isLoading } = useQuery<InquiryTask[]>({
+    queryKey: [`/api/inquiries/${inquiryId}/tasks`],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { content: string; dueDate?: string }) =>
+      apiRequest("POST", `/api/inquiries/${inquiryId}/tasks`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/tasks`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
+      setNewContent("");
+      setDueDate("");
+    },
+    onError: () => toast({ title: "할일 추가 실패", variant: "destructive" }),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, completed }: { id: string; completed: boolean }) =>
+      apiRequest("PATCH", `/api/tasks/${id}`, { completed }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/tasks`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/tasks/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/tasks`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
+    },
+  });
+
+  const pendingTasks = tasks.filter(t => !t.completed);
+  const completedTasks = tasks.filter(t => t.completed);
+
+  const isOverdue = (d: string | null) => {
+    if (!d) return false;
+    return d < new Date().toISOString().split("T")[0];
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-1.5">
+          <Check className="h-4 w-4" />
+          할일
+          {pendingTasks.length > 0 && (
+            <Badge variant="secondary" className="text-xs ml-1">{pendingTasks.length}</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="flex gap-1.5">
+          <Input
+            placeholder="할일 입력..."
+            value={newContent}
+            onChange={e => setNewContent(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && newContent.trim()) {
+                createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined });
+              }
+            }}
+            className="h-8 text-sm"
+            data-testid="input-task-content"
+          />
+          <Input
+            type="date"
+            value={dueDate}
+            onChange={e => setDueDate(e.target.value)}
+            className="h-8 text-xs w-[130px] shrink-0"
+            data-testid="input-task-due-date"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 px-2 shrink-0"
+            disabled={!newContent.trim() || createMutation.isPending}
+            onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined })}
+            data-testid="button-add-task"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="h-16" />
+        ) : (
+          <div className="space-y-0.5">
+            {pendingTasks.map(task => (
+              <div key={task.id} className="flex items-center gap-1.5 group py-0.5" data-testid={`task-item-${task.id}`}>
+                <button
+                  className="shrink-0 w-4 h-4 rounded border border-muted-foreground/40 hover:border-primary flex items-center justify-center"
+                  onClick={() => toggleMutation.mutate({ id: task.id, completed: true })}
+                  data-testid={`button-toggle-task-${task.id}`}
+                />
+                <span className="text-sm flex-1 min-w-0 truncate">{task.content}</span>
+                {task.dueDate && (
+                  <span className={`text-[10px] shrink-0 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                    {task.dueDate}
+                  </span>
+                )}
+                <button
+                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => deleteMutation.mutate(task.id)}
+                  data-testid={`button-delete-task-${task.id}`}
+                >
+                  <X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" />
+                </button>
+              </div>
+            ))}
+            {completedTasks.map(task => (
+              <div key={task.id} className="flex items-center gap-1.5 group py-0.5 opacity-50" data-testid={`task-item-${task.id}`}>
+                <button
+                  className="shrink-0 w-4 h-4 rounded border border-green-500 bg-green-500 flex items-center justify-center"
+                  onClick={() => toggleMutation.mutate({ id: task.id, completed: false })}
+                  data-testid={`button-toggle-task-${task.id}`}
+                >
+                  <Check className="h-3 w-3 text-white" />
+                </button>
+                <span className="text-sm flex-1 min-w-0 truncate line-through">{task.content}</span>
+                {task.dueDate && (
+                  <span className="text-[10px] shrink-0 text-muted-foreground">{task.dueDate}</span>
+                )}
+                <button
+                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => deleteMutation.mutate(task.id)}
+                  data-testid={`button-delete-task-${task.id}`}
+                >
+                  <X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" />
+                </button>
+              </div>
+            ))}
+            {tasks.length === 0 && (
+              <div className="text-xs text-muted-foreground py-2 text-center">등록된 할일이 없습니다</div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function MemoSection({ inquiryId, legacyMemo }: { inquiryId: string; legacyMemo: string }) {
   const { toast } = useToast();
   const [newContent, setNewContent] = useState("");
@@ -1551,6 +1699,8 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
               </div>
 
               <SimpleCustomerCard inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
+
+              <TaskSection inquiryId={id!} />
 
               <MemoSection inquiryId={id!} legacyMemo={inquiry.memo || ""} />
             </div>

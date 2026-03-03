@@ -1194,6 +1194,69 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/tasks/pending", async (req, res) => {
+    try {
+      const tasks = await storage.getAllPendingTasks();
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/inquiries/:id/tasks", async (req, res) => {
+    try {
+      const tasks = await storage.getTasksByInquiry(req.params.id);
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/inquiries/:id/tasks", async (req, res) => {
+    try {
+      const { content, dueDate } = req.body;
+      if (!content?.trim()) return res.status(400).json({ message: "내용을 입력하세요" });
+      const normalizedDueDate = typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(dueDate) ? dueDate.slice(0, 10) : null;
+      const task = await storage.createTask({
+        inquiryId: req.params.id,
+        content: content.trim(),
+        completed: false,
+        dueDate: normalizedDueDate,
+        createdAt: new Date().toISOString().slice(0, 10),
+      });
+      res.status(201).json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/tasks/:id", async (req, res) => {
+    try {
+      const allowed: Record<string, any> = {};
+      if (typeof req.body.completed === "boolean") allowed.completed = req.body.completed;
+      if (typeof req.body.content === "string" && req.body.content.trim()) allowed.content = req.body.content.trim();
+      if (req.body.dueDate !== undefined) {
+        allowed.dueDate = typeof req.body.dueDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(req.body.dueDate)
+          ? req.body.dueDate.slice(0, 10) : null;
+      }
+      if (Object.keys(allowed).length === 0) return res.status(400).json({ message: "수정할 내용이 없습니다" });
+      const task = await storage.updateTask(req.params.id, allowed);
+      if (!task) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
+      res.json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/tasks/:id", async (req, res) => {
+    try {
+      await storage.deleteTask(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Quotation routes
   app.get("/api/inquiries/:id/quotations", async (req, res) => {
     try {

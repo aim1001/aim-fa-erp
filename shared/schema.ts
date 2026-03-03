@@ -372,6 +372,19 @@ export const insertInquiryMemoSchema = createInsertSchema(inquiryMemos).omit({ i
 export type InsertInquiryMemo = z.infer<typeof insertInquiryMemoSchema>;
 export type InquiryMemo = typeof inquiryMemos.$inferSelect;
 
+export const inquiryTasks = pgTable("inquiry_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inquiryId: varchar("inquiry_id").notNull(),
+  content: text("content").notNull(),
+  completed: boolean("completed").default(false).notNull(),
+  dueDate: text("due_date"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertInquiryTaskSchema = createInsertSchema(inquiryTasks).omit({ id: true });
+export type InsertInquiryTask = z.infer<typeof insertInquiryTaskSchema>;
+export type InquiryTask = typeof inquiryTasks.$inferSelect;
+
 export const quotations = pgTable("quotations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inquiryId: varchar("inquiry_id").notNull(),
