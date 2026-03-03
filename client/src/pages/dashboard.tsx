@@ -149,7 +149,7 @@ export default function Dashboard() {
 
       <InquiryFormDialog open={showNewInquiry} onOpenChange={setShowNewInquiry} />
 
-      <TaskListCard />
+      <TaskListCard onInquiryClick={(id) => setSelectedInquiryId(id)} />
 
       <Card>
         <CardContent className="pt-4 pb-3">

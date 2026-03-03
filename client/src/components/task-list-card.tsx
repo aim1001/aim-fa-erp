@@ -1,7 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ListTodo } from "lucide-react";
 
@@ -16,7 +15,7 @@ type PendingTask = {
   customerName: string;
 };
 
-export function TaskListCard() {
+export function TaskListCard({ onInquiryClick }: { onInquiryClick?: (inquiryId: string) => void } = {}) {
   const { data: tasks = [], isLoading } = useQuery<PendingTask[]>({
     queryKey: ["/api/tasks/pending"],
   });
@@ -59,15 +58,20 @@ export function TaskListCard() {
                 onClick={() => toggleMutation.mutate({ id: task.id })}
                 data-testid={`button-complete-task-${task.id}`}
               />
-              <Link
-                href={`/inquiries/${task.inquiryId}`}
+              <button
                 className="text-xs font-mono text-cyan-600 hover:underline shrink-0"
+                onClick={() => onInquiryClick?.(task.inquiryId)}
                 data-testid={`link-inquiry-${task.id}`}
               >
                 {task.inquiryNumber}
-              </Link>
+              </button>
               <span className="text-xs text-muted-foreground shrink-0 max-w-[80px] truncate">{task.customerName}</span>
-              <span className="text-sm flex-1 min-w-0 truncate">{task.content}</span>
+              <span
+                className="text-sm flex-1 min-w-0 truncate cursor-pointer hover:text-cyan-600"
+                onClick={() => onInquiryClick?.(task.inquiryId)}
+              >
+                {task.content}
+              </span>
               {task.dueDate && (
                 <span className={`text-[10px] shrink-0 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
                   {task.dueDate}

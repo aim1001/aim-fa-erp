@@ -2,12 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLocation } from "wouter";
+import { useState } from "react";
 import {
   FileText, FolderKanban, Receipt, Package,
   TrendingUp, AlertTriangle, Clock, Target,
   ArrowRight, Trophy, XCircle, Banknote
 } from "lucide-react";
 import { TaskListCard } from "@/components/task-list-card";
+import { InquiryDetailDialog } from "@/pages/inquiry-detail";
 
 type MainDashboardData = {
   sales: {
@@ -47,6 +49,7 @@ function fmt(n: number) {
 
 export default function MainDashboard() {
   const [, navigate] = useLocation();
+  const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
   const { data, isLoading } = useQuery<MainDashboardData>({
     queryKey: ["/api/main-dashboard"],
   });
@@ -66,7 +69,7 @@ export default function MainDashboard() {
     <div className="p-6 space-y-6 overflow-auto h-full" data-testid="main-dashboard">
       <h1 className="text-2xl font-semibold">대시보드</h1>
 
-      <TaskListCard />
+      <TaskListCard onInquiryClick={(id) => setSelectedInquiryId(id)} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card
@@ -243,6 +246,12 @@ export default function MainDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <InquiryDetailDialog
+        inquiryId={selectedInquiryId || ""}
+        open={!!selectedInquiryId}
+        onOpenChange={(open) => { if (!open) setSelectedInquiryId(null); }}
+      />
     </div>
   );
 }
