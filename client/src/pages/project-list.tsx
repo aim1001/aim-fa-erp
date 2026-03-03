@@ -15,6 +15,9 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -356,6 +359,19 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
     onError: (err: Error) => toast({ title: "입금 처리 실패", description: err.message, variant: "destructive" }),
   });
 
+  const deleteProjectMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/projects/${projectId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: "프로젝트가 삭제되었습니다" });
+      onClose();
+    },
+    onError: (err: Error) => toast({ title: "삭제 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState(0);
   const [editDate, setEditDate] = useState("");
@@ -483,8 +499,28 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
               <SelectItem value="hold" data-testid="option-status-hold">보류</SelectItem>
             </SelectContent>
           </Select>
+          <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setShowDeleteConfirm(true)} data-testid="button-delete-project">
+            <Trash2 className="h-3 w-3 mr-1" />삭제
+          </Button>
         </div>
       </DialogHeader>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>프로젝트 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{project.projectNumber} {project.customerName}" 프로젝트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">취소</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => deleteProjectMutation.mutate()} disabled={deleteProjectMutation.isPending} data-testid="button-confirm-delete">
+              {deleteProjectMutation.isPending ? "삭제 중..." : "삭제"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {project.description && (
         <div className="text-sm text-muted-foreground">{project.description}</div>
