@@ -16,6 +16,7 @@ import {
   type PurchaseItem, type InsertPurchaseItem,
   type InquiryMemo, type InsertInquiryMemo,
   type InquiryTask, type InsertInquiryTask,
+  type ProjectTask, type InsertProjectTask,
   type Quotation, type InsertQuotation,
   type QuotationItem, type InsertQuotationItem,
   type ContractTemplate, type InsertContractTemplate,
@@ -24,7 +25,7 @@ import {
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
-  inquiryMemos, inquiryTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
+  inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -141,6 +142,7 @@ export interface IStorage {
   }>;
 
   getProjects(year?: number): Promise<Project[]>;
+  getProject(id: string): Promise<Project | undefined>;
   getProjectByFolderName(folderName: string): Promise<Project | undefined>;
   createProject(project: InsertProject): Promise<Project>;
   updateProject(id: string, project: Partial<InsertProject>): Promise<Project | undefined>;
@@ -203,6 +205,13 @@ export interface IStorage {
   createTask(data: InsertInquiryTask): Promise<InquiryTask>;
   updateTask(id: string, data: Partial<InsertInquiryTask>): Promise<InquiryTask | undefined>;
   deleteTask(id: string): Promise<void>;
+
+  getTasksByProject(projectId: string): Promise<ProjectTask[]>;
+  getProjectTask(id: string): Promise<ProjectTask | undefined>;
+  getAllPendingProjectTasks(): Promise<(ProjectTask & { projectNumber: string; customerName: string })[]>;
+  createProjectTask(data: InsertProjectTask): Promise<ProjectTask>;
+  updateProjectTask(id: string, data: Partial<InsertProjectTask>): Promise<ProjectTask | undefined>;
+  deleteProjectTask(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -722,6 +731,11 @@ export class DatabaseStorage implements IStorage {
     return rows.sort((a, b) => naturalSort(a.projectNumber || "", b.projectNumber || ""));
   }
 
+  async getProject(id: string): Promise<Project | undefined> {
+    const [row] = await db.select().from(projects).where(eq(projects.id, id));
+    return row;
+  }
+
   async getProjectByFolderName(folderName: string): Promise<Project | undefined> {
     const [row] = await db.select().from(projects).where(eq(projects.folderName, folderName));
     return row;
@@ -1082,6 +1096,50 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTask(id: string): Promise<void> {
     await db.delete(inquiryTasks).where(eq(inquiryTasks.id, id));
+  }
+
+  async getTasksByProject(projectId: string): Promise<ProjectTask[]> {
+    return db.select().from(projectTasks).where(eq(projectTasks.projectId, projectId)).orderBy(desc(projectTasks.createdAt));
+  }
+
+  async getProjectTask(id: string): Promise<ProjectTask | undefined> {
+    const [task] = await db.select().from(projectTasks).where(eq(projectTasks.id, id));
+    return task;
+  }
+
+  async getAllPendingProjectTasks(): Promise<(ProjectTask & { projectNumber: string; customerName: string })[]> {
+    const rows = await db
+      .select({
+        id: projectTasks.id,
+        projectId: projectTasks.projectId,
+        content: projectTasks.content,
+        completed: projectTasks.completed,
+        dueDate: projectTasks.dueDate,
+        dueTime: projectTasks.dueTime,
+        calendarEventId: projectTasks.calendarEventId,
+        createdAt: projectTasks.createdAt,
+        projectNumber: projects.projectNumber,
+        customerName: projects.customerName,
+      })
+      .from(projectTasks)
+      .innerJoin(projects, eq(projectTasks.projectId, projects.id))
+      .where(eq(projectTasks.completed, false))
+      .orderBy(projectTasks.dueDate, desc(projectTasks.createdAt));
+    return rows as any;
+  }
+
+  async createProjectTask(data: InsertProjectTask): Promise<ProjectTask> {
+    const [task] = await db.insert(projectTasks).values(data).returning();
+    return task;
+  }
+
+  async updateProjectTask(id: string, data: Partial<InsertProjectTask>): Promise<ProjectTask | undefined> {
+    const [task] = await db.update(projectTasks).set(data).where(eq(projectTasks.id, id)).returning();
+    return task;
+  }
+
+  async deleteProjectTask(id: string): Promise<void> {
+    await db.delete(projectTasks).where(eq(projectTasks.id, id));
   }
 }
 

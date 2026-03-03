@@ -1221,7 +1221,162 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
         )}
         </TabsContent>
       </Tabs>
+
+      <ProjectTaskSection projectId={projectId} />
     </DialogContent>
+  );
+}
+
+function ProjectTaskSection({ projectId }: { projectId: string }) {
+  const { toast } = useToast();
+  const [newContent, setNewContent] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
+
+  const { data: tasks = [], isLoading } = useQuery<any[]>({
+    queryKey: [`/api/projects/${projectId}/tasks`],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: { content: string; dueDate?: string; dueTime?: string }) =>
+      apiRequest("POST", `/api/projects/${projectId}/tasks`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/tasks`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/project-tasks/pending"] });
+      setNewContent("");
+      setDueDate("");
+      setDueTime("");
+    },
+    onError: () => toast({ title: "할일 추가 실패", variant: "destructive" }),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, completed }: { id: string; completed: boolean }) =>
+      apiRequest("PATCH", `/api/project-tasks/${id}`, { completed }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/tasks`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/project-tasks/pending"] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/project-tasks/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/tasks`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/project-tasks/pending"] });
+    },
+  });
+
+  const pendingTasks = tasks.filter((t: any) => !t.completed);
+  const completedTasks = tasks.filter((t: any) => t.completed);
+
+  const isOverdue = (d: string | null) => {
+    if (!d) return false;
+    return d < new Date().toISOString().split("T")[0];
+  };
+
+  return (
+    <div className="border rounded-lg p-2.5 mt-2" data-testid="section-project-tasks">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Check className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium">할일</span>
+        {pendingTasks.length > 0 && (
+          <span className="text-[10px] bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 px-1.5 rounded-full">{pendingTasks.length}</span>
+        )}
+      </div>
+      <div className="flex gap-1.5 mb-2">
+        <Input
+          placeholder="할일 입력..."
+          value={newContent}
+          onChange={e => setNewContent(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter" && newContent.trim()) {
+              createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined });
+            }
+          }}
+          className="h-7 text-xs"
+          data-testid="input-project-task-content"
+        />
+        <Input
+          type="date"
+          value={dueDate}
+          onChange={e => setDueDate(e.target.value)}
+          className="h-7 text-[10px] w-[120px] shrink-0"
+          data-testid="input-project-task-due-date"
+        />
+        <Input
+          type="time"
+          value={dueTime}
+          onChange={e => setDueTime(e.target.value)}
+          className="h-7 text-[10px] w-[90px] shrink-0"
+          data-testid="input-project-task-due-time"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 shrink-0"
+          disabled={!newContent.trim() || createMutation.isPending}
+          onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined })}
+          data-testid="button-add-project-task"
+        >
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <Skeleton className="h-12" />
+      ) : (
+        <div className="space-y-0.5">
+          {pendingTasks.map((task: any) => (
+            <div key={task.id} className="flex items-center gap-1.5 group py-0.5" data-testid={`project-task-${task.id}`}>
+              <button
+                className="shrink-0 w-3.5 h-3.5 rounded border border-muted-foreground/40 hover:border-cyan-500 flex items-center justify-center"
+                onClick={() => toggleMutation.mutate({ id: task.id, completed: true })}
+                data-testid={`button-toggle-project-task-${task.id}`}
+              />
+              <span className="text-xs flex-1 min-w-0 truncate">{task.content}</span>
+              {task.dueDate && (
+                <span className={`text-[10px] shrink-0 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                  {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
+                </span>
+              )}
+              <button
+                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => deleteMutation.mutate(task.id)}
+                data-testid={`button-delete-project-task-${task.id}`}
+              >
+                <X className="h-3 w-3 text-muted-foreground hover:text-red-500" />
+              </button>
+            </div>
+          ))}
+          {completedTasks.map((task: any) => (
+            <div key={task.id} className="flex items-center gap-1.5 group py-0.5 opacity-50" data-testid={`project-task-${task.id}`}>
+              <button
+                className="shrink-0 w-3.5 h-3.5 rounded border border-green-500 bg-green-500 flex items-center justify-center"
+                onClick={() => toggleMutation.mutate({ id: task.id, completed: false })}
+                data-testid={`button-toggle-project-task-${task.id}`}
+              >
+                <Check className="h-2.5 w-2.5 text-white" />
+              </button>
+              <span className="text-xs flex-1 min-w-0 truncate line-through">{task.content}</span>
+              {task.dueDate && (
+                <span className="text-[10px] shrink-0 text-muted-foreground">{task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}</span>
+              )}
+              <button
+                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => deleteMutation.mutate(task.id)}
+                data-testid={`button-delete-project-task-${task.id}`}
+              >
+                <X className="h-3 w-3 text-muted-foreground hover:text-red-500" />
+              </button>
+            </div>
+          ))}
+          {tasks.length === 0 && (
+            <div className="text-[10px] text-muted-foreground py-2 text-center">등록된 할일이 없습니다</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

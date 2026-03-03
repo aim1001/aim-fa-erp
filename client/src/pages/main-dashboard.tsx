@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { TaskListCard } from "@/components/task-list-card";
 import { InquiryDetailDialog } from "@/pages/inquiry-detail";
+import { ProjectDetailModal } from "@/pages/project-list";
+import { Dialog } from "@/components/ui/dialog";
 
 type MainDashboardData = {
   sales: {
@@ -50,6 +52,7 @@ function fmt(n: number) {
 export default function MainDashboard() {
   const [, navigate] = useLocation();
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const { data, isLoading } = useQuery<MainDashboardData>({
     queryKey: ["/api/main-dashboard"],
   });
@@ -69,7 +72,7 @@ export default function MainDashboard() {
     <div className="p-6 space-y-6 overflow-auto h-full" data-testid="main-dashboard">
       <h1 className="text-2xl font-semibold">대시보드</h1>
 
-      <TaskListCard onInquiryClick={(id) => setSelectedInquiryId(id)} />
+      <TaskListCard onInquiryClick={(id) => setSelectedInquiryId(id)} onProjectClick={(id) => setSelectedProjectId(id)} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card
@@ -252,6 +255,10 @@ export default function MainDashboard() {
         open={!!selectedInquiryId}
         onOpenChange={(open) => { if (!open) setSelectedInquiryId(null); }}
       />
+
+      <Dialog open={!!selectedProjectId} onOpenChange={open => { if (!open) setSelectedProjectId(null); }}>
+        {selectedProjectId && <ProjectDetailModal projectId={selectedProjectId} onClose={() => setSelectedProjectId(null)} />}
+      </Dialog>
     </div>
   );
 }

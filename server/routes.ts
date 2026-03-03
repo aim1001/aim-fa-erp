@@ -1326,6 +1326,139 @@ export async function registerRoutes(
     }
   });
 
+  // Project Task routes
+  app.get("/api/projects/:id/tasks", async (req, res) => {
+    try {
+      const tasks = await storage.getTasksByProject(req.params.id);
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/project-tasks/pending", async (req, res) => {
+    try {
+      const tasks = await storage.getAllPendingProjectTasks();
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/projects/:id/tasks", async (req, res) => {
+    try {
+      const { content, dueDate, dueTime } = req.body;
+      if (!content?.trim()) return res.status(400).json({ message: "내용을 입력하세요" });
+      const normalizedDueDate = typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(dueDate) ? dueDate.slice(0, 10) : null;
+      const normalizedDueTime = typeof dueTime === "string" && /^\d{2}:\d{2}/.test(dueTime) ? dueTime.slice(0, 5) : null;
+
+      let calendarEventId: string | null = null;
+      if (normalizedDueDate) {
+        try {
+          const project = await storage.getProject(req.params.id);
+          const title = `[할일] ${project?.projectNumber || ""}_${project?.customerName || ""}: ${content.trim()}`;
+          const { createTaskEvent } = await import("./google-calendar");
+          calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+        } catch (calErr: any) {
+          console.log(`Google Calendar 등록 실패 (프로젝트 할일 생성은 계속): ${calErr.message}`);
+        }
+      }
+
+      const task = await storage.createProjectTask({
+        projectId: req.params.id,
+        content: content.trim(),
+        completed: false,
+        dueDate: normalizedDueDate,
+        dueTime: normalizedDueTime,
+        calendarEventId,
+        createdAt: new Date().toISOString().slice(0, 10),
+      });
+      res.status(201).json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/project-tasks/:id", async (req, res) => {
+    try {
+      const allowed: Record<string, any> = {};
+      if (typeof req.body.completed === "boolean") allowed.completed = req.body.completed;
+      if (typeof req.body.content === "string" && req.body.content.trim()) allowed.content = req.body.content.trim();
+      if (req.body.dueDate !== undefined) {
+        allowed.dueDate = typeof req.body.dueDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(req.body.dueDate)
+          ? req.body.dueDate.slice(0, 10) : null;
+      }
+      if (req.body.dueTime !== undefined) {
+        allowed.dueTime = typeof req.body.dueTime === "string" && /^\d{2}:\d{2}/.test(req.body.dueTime)
+          ? req.body.dueTime.slice(0, 5) : null;
+      }
+      if (Object.keys(allowed).length === 0) return res.status(400).json({ message: "수정할 내용이 없습니다" });
+
+      const existing = await storage.getProjectTask(req.params.id);
+      if (!existing) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
+
+      if (allowed.completed === true) {
+        if (existing.calendarEventId) {
+          try {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          } catch (calErr: any) {
+            console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+          }
+          allowed.calendarEventId = null;
+        }
+      } else if (allowed.dueDate !== undefined || allowed.dueTime !== undefined) {
+        if (existing.calendarEventId) {
+          try {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          } catch (calErr: any) {
+            console.log(`Google Calendar 기존 이벤트 삭제 실패: ${calErr.message}`);
+          }
+          allowed.calendarEventId = null;
+        }
+        const newDueDate = allowed.dueDate !== undefined ? allowed.dueDate : existing.dueDate;
+        const newDueTime = allowed.dueTime !== undefined ? allowed.dueTime : existing.dueTime;
+        if (newDueDate) {
+          try {
+            const project = await storage.getProject(existing.projectId);
+            const content = allowed.content || existing.content;
+            const title = `[할일] ${project?.projectNumber || ""}_${project?.customerName || ""}: ${content}`;
+            const { createTaskEvent } = await import("./google-calendar");
+            const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
+            allowed.calendarEventId = newEventId;
+          } catch (calErr: any) {
+            console.log(`Google Calendar 재등록 실패: ${calErr.message}`);
+          }
+        }
+      }
+
+      const task = await storage.updateProjectTask(req.params.id, allowed);
+      if (!task) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
+      res.json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/project-tasks/:id", async (req, res) => {
+    try {
+      const existing = await storage.getProjectTask(req.params.id);
+      if (existing?.calendarEventId) {
+        try {
+          const { deleteCalendarEvent } = await import("./google-calendar");
+          await deleteCalendarEvent(existing.calendarEventId);
+        } catch (calErr: any) {
+          console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+        }
+      }
+      await storage.deleteProjectTask(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Quotation routes
   app.get("/api/inquiries/:id/quotations", async (req, res) => {
     try {

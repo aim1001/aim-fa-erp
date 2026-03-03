@@ -13,6 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { InquiryDetailDialog } from "@/pages/inquiry-detail";
 import { InquiryFormDialog } from "@/pages/inquiry-form";
 import { TaskListCard } from "@/components/task-list-card";
+import { ProjectDetailModal } from "@/pages/project-list";
+import { Dialog } from "@/components/ui/dialog";
 
 const stageLabels: Record<number, string> = {
   0: "-",
@@ -55,6 +57,7 @@ const EXCLUDED_BY_DEFAULT = [2020, 2021, 2022, 2023, 2024];
 export default function Dashboard() {
   const [, navigate] = useLocation();
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showNewInquiry, setShowNewInquiry] = useState(false);
   const [upcomingPage, setUpcomingPage] = useState(0);
   const [noDateOpen, setNoDateOpen] = useState(false);
@@ -149,7 +152,7 @@ export default function Dashboard() {
 
       <InquiryFormDialog open={showNewInquiry} onOpenChange={setShowNewInquiry} />
 
-      <TaskListCard onInquiryClick={(id) => setSelectedInquiryId(id)} />
+      <TaskListCard onInquiryClick={(id) => setSelectedInquiryId(id)} onProjectClick={(id) => setSelectedProjectId(id)} />
 
       <Card>
         <CardContent className="pt-4 pb-3">
@@ -450,6 +453,10 @@ export default function Dashboard() {
         open={!!selectedInquiryId}
         onOpenChange={(open) => { if (!open) setSelectedInquiryId(null); }}
       />
+
+      <Dialog open={!!selectedProjectId} onOpenChange={open => { if (!open) setSelectedProjectId(null); }}>
+        {selectedProjectId && <ProjectDetailModal projectId={selectedProjectId} onClose={() => setSelectedProjectId(null)} />}
+      </Dialog>
     </div>
   );
 }

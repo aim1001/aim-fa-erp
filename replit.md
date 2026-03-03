@@ -39,7 +39,9 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **item_document** 테이블: 제품 문서 (품목코드, 문서유형, URL, 이름)
 - **purchase_items** 테이블: 구매품 마스터 (대분류, 소분류, 품목코드, 품명, 브랜드, 원산지, 규격, 공급업체텍스트, vendorId FK→vendors, 단가, 통화, 리드타임, 재고품여부, 유형, 단위, 활성여부, 안전재고, MOQ, 비고)
 - **inquiry_memos** 테이블: 인콰이어리 메모 (inquiryId FK→inquiries, content, createdAt ISO string) - 날짜별 메모 누적 관리
-- **inquiry_tasks** 테이블: 인콰이어리 할일 (inquiryId FK→inquiries, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, createdAt YYYY-MM-DD) - 인콰이어리별 할일/체크리스트 관리, 대시보드에서 전체 미완료 할일 모아보기, dueDate 있으면 Google Calendar 자동 등록(완료/삭제 시 캘린더에서도 삭제)
+- **inquiry_tasks** 테이블: 인콰이어리 할일 (inquiryId FK→inquiries, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, createdAt YYYY-MM-DD) - 인콰이어리별 할일/체크리스트 관리, dueDate 있으면 Google Calendar 자동 등록(완료/삭제 시 캘린더에서도 삭제)
+- **project_tasks** 테이블: 프로젝트 할일 (projectId FK→projects, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, createdAt YYYY-MM-DD) - 프로젝트별 할일/체크리스트 관리, Google Calendar 연동 (inquiry_tasks와 동일 패턴)
+- 대시보드 TaskListCard: 인콰이어리 할일 + 프로젝트 할일을 통합 표시, 프로젝트 할일은 번호 앞에 "P:" 접두사로 구분
 - **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, adjustmentAmount, adjustmentNote, discountType(percent/amount 선택), discountValue(비율% 또는 금액), discountTruncUnit(none/1000/10000/100000/1000000 - 최종공급가액에 절사 적용), deliveryDays(납기일수 - purchase_items의 최대 leadTimeDays 자동계산, 수정가능), createdAt)
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder, isAdjustment) — isAdjustment=true인 항목은 추가/할인 항목으로 별도 관리
 - **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
