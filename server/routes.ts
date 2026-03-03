@@ -1252,6 +1252,31 @@ export async function registerRoutes(
     }
   });
 
+  async function syncQuotationTotalsToInquiry(quotationId: string) {
+    const result = await storage.getQuotationWithItems(quotationId);
+    if (!result) return null;
+    const regularItems = result.items.filter(i => !i.isAdjustment);
+    const totalSales = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+    const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * (i.quantity || 1)), 0);
+    const totalMargin = totalSales - totalCost;
+    await storage.updateInquiry(result.quotation.inquiryId, {
+      lastQuoteSales: totalSales,
+      lastQuoteCost: totalCost,
+      lastQuoteMargin: totalMargin,
+    });
+    return { totalSales, totalCost, totalMargin };
+  }
+
+  app.post("/api/quotations/:id/sync-to-inquiry", async (req, res) => {
+    try {
+      const totals = await syncQuotationTotalsToInquiry(req.params.id);
+      if (!totals) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      res.json({ message: "인콰이어리에 반영되었습니다", ...totals });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/quotations/:id/items", async (req, res) => {
     try {
       const { itemCode, itemName, spec, quantity, unitPrice, costPrice, category1, category2, sortOrder, isAdjustment } = req.body;
@@ -1404,16 +1429,7 @@ export async function registerRoutes(
 
       await storage.updateInquiry(inquiry.id, { status: "quoted" });
 
-      const { items } = result;
-      const regularItems = items.filter(i => !i.isAdjustment);
-      const totalSales = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
-      const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * (i.quantity || 1)), 0);
-      const totalMargin = totalSales - totalCost;
-      await storage.updateInquiry(inquiry.id, {
-        lastQuoteSales: totalSales,
-        lastQuoteCost: totalCost,
-        lastQuoteMargin: totalMargin,
-      });
+      await syncQuotationTotalsToInquiry(req.params.id);
 
       try {
         const { createQuoteSentEvent } = await import("./google-calendar");

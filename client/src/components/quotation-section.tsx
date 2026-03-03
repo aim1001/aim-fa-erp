@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import {
   FileText, Plus, Trash2, Search, Pencil, Check, X,
-  Upload, FileDown, Package, Loader2, Star, Mail, Send,
+  Upload, FileDown, Package, Loader2, Star, Mail, Send, ArrowUpToLine,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -852,6 +852,7 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
   const [emailBody, setEmailBody] = useState("");
   const [sending, setSending] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
   const updateMut = useMutation({
     mutationFn: (body: any) => apiRequest("PATCH", `/api/quotations/${quotation.id}`, body),
@@ -936,6 +937,21 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
       toast({ title: "이메일 전송 실패", description: e.message, variant: "destructive" });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleSyncToInquiry = async () => {
+    setSyncing(true);
+    try {
+      const res = await apiRequest("POST", `/api/quotations/${quotation.id}/sync-to-inquiry`);
+      const result = await res.json();
+      toast({ title: "인콰이어리 반영 완료", description: `판매가: ${result.totalSales?.toLocaleString()}원` });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    } catch (e: any) {
+      toast({ title: "반영 실패", description: e.message, variant: "destructive" });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -1070,6 +1086,17 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
         data-testid="button-download-xlsx"
       >
         <FileDown className="h-3 w-3 mr-1" />Excel
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs"
+        onClick={handleSyncToInquiry}
+        disabled={syncing || items.length === 0}
+        data-testid="button-sync-to-inquiry"
+      >
+        {syncing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ArrowUpToLine className="h-3 w-3 mr-1" />}
+        반영
       </Button>
       <Button
         size="sm"
