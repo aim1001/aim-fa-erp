@@ -248,7 +248,7 @@ export default function PurchaseOrderList() {
                       {order.description || "-"}
                     </td>
                     <td className="px-4 py-2 text-right font-medium" data-testid={`text-amount-${order.id}`}>
-                      {formatAmount(order.amount)}
+                      {formatAmount(order.totalAmount)}
                     </td>
                     <td className="px-4 py-2 text-center text-xs" data-testid={`text-expected-date-${order.id}`}>
                       {order.expectedDeliveryDate || "-"}
@@ -337,11 +337,12 @@ type OneDriveFile = {
   mimeType?: string;
 };
 
-function ExcelAmountParser({ orderId, onAmountParsed }: { orderId: string; onAmountParsed: (amount: number) => void }) {
+function ExcelAmountParser({ orderId, onAmountParsed }: { orderId: string; onAmountParsed: (data: { supplyAmount: number; taxAmount: number; totalAmount: number }) => void }) {
   const { toast } = useToast();
   const [showFiles, setShowFiles] = useState(false);
   const [selectedFileId, setSelectedFileId] = useState("");
   const [parsedResult, setParsedResult] = useState<{ supplyAmount: number; vat: number; totalAmount: number } | null>(null);
+  const [autoTriggered, setAutoTriggered] = useState(false);
 
   const { data: files, isLoading: filesLoading } = useQuery<OneDriveFile[]>({
     queryKey: ["/api/purchase-orders", orderId, "files"],
@@ -370,9 +371,17 @@ function ExcelAmountParser({ orderId, onAmountParsed }: { orderId: string; onAmo
     },
   });
 
+  useEffect(() => {
+    if (excelFiles.length === 1 && !autoTriggered && !parsedResult) {
+      setSelectedFileId(excelFiles[0].id);
+      parseMutation.mutate(excelFiles[0].id);
+      setAutoTriggered(true);
+    }
+  }, [excelFiles, autoTriggered, parsedResult]);
+
   if (!showFiles) {
     return (
-      <Button variant="outline" size="sm" className="h-7 text-xs w-full" onClick={() => setShowFiles(true)} data-testid="button-excel-read">
+      <Button variant="outline" size="sm" className="text-xs w-full" onClick={() => setShowFiles(true)} data-testid="button-excel-read">
         <Download className="h-3 w-3 mr-1" />엑셀에서 금액 읽기
       </Button>
     );
@@ -381,49 +390,62 @@ function ExcelAmountParser({ orderId, onAmountParsed }: { orderId: string; onAmo
   return (
     <div className="border rounded p-2 space-y-2 bg-muted/20" data-testid="panel-excel-parser">
       <div className="flex items-center justify-between">
-        <Label className="text-[10px] font-medium">엑셀 파일 선택</Label>
-        <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1" onClick={() => { setShowFiles(false); setParsedResult(null); setSelectedFileId(""); }} data-testid="button-close-excel-panel">
+        <Label className="text-[10px] font-medium">엑셀 금액 읽기</Label>
+        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setShowFiles(false); setParsedResult(null); setSelectedFileId(""); setAutoTriggered(false); }} data-testid="button-close-excel-panel">
           <X className="h-3 w-3" />
         </Button>
       </div>
-      {filesLoading ? (
-        <Skeleton className="h-7 w-full" />
+      {filesLoading || parseMutation.isPending ? (
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-7 flex-1" />
+          <span className="text-[10px] text-muted-foreground">읽는 중...</span>
+        </div>
       ) : excelFiles.length === 0 ? (
         <p className="text-[10px] text-muted-foreground">엑셀 파일이 없습니다</p>
       ) : (
         <>
-          <Select value={selectedFileId || "none"} onValueChange={v => { setSelectedFileId(v === "none" ? "" : v); setParsedResult(null); }}>
-            <SelectTrigger className="h-7 text-xs" data-testid="select-excel-file">
-              <SelectValue placeholder="파일 선택..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">파일 선택...</SelectItem>
-              {excelFiles.map(f => (
-                <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedFileId && (
-            <Button
-              variant="default"
-              size="sm"
-              className="h-7 text-xs w-full"
-              onClick={() => parseMutation.mutate(selectedFileId)}
-              disabled={parseMutation.isPending}
-              data-testid="button-parse-amount"
-            >
-              {parseMutation.isPending ? "읽는 중..." : "금액 가져오기"}
-            </Button>
+          {excelFiles.length > 1 && (
+            <>
+              <Select value={selectedFileId || "none"} onValueChange={v => { setSelectedFileId(v === "none" ? "" : v); setParsedResult(null); }}>
+                <SelectTrigger className="h-7 text-xs" data-testid="select-excel-file">
+                  <SelectValue placeholder="파일 선택..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">파일 선택...</SelectItem>
+                  {excelFiles.map(f => (
+                    <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedFileId && !parsedResult && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="text-xs w-full"
+                  onClick={() => parseMutation.mutate(selectedFileId)}
+                  disabled={parseMutation.isPending}
+                  data-testid="button-parse-amount"
+                >
+                  금액 가져오기
+                </Button>
+              )}
+            </>
+          )}
+          {excelFiles.length === 1 && !parsedResult && !parseMutation.isPending && (
+            <p className="text-[10px] text-muted-foreground">{excelFiles[0].name}</p>
           )}
           {parsedResult && (
             <div className="space-y-1 border-t pt-2" data-testid="panel-parsed-result">
+              {excelFiles.length === 1 && (
+                <p className="text-[10px] text-muted-foreground mb-1">{excelFiles[0].name}</p>
+              )}
               <div className="grid grid-cols-3 gap-1 text-[10px]">
                 <div>
                   <span className="text-muted-foreground">공급가액</span>
                   <p className="font-medium">{parsedResult.supplyAmount.toLocaleString()}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">VAT</span>
+                  <span className="text-muted-foreground">세액</span>
                   <p className="font-medium">{parsedResult.vat.toLocaleString()}</p>
                 </div>
                 <div>
@@ -431,14 +453,9 @@ function ExcelAmountParser({ orderId, onAmountParsed }: { orderId: string; onAmo
                   <p className="font-medium">{parsedResult.totalAmount.toLocaleString()}</p>
                 </div>
               </div>
-              <div className="flex gap-1">
-                <Button size="sm" className="h-6 text-[10px] flex-1" onClick={() => { onAmountParsed(parsedResult.supplyAmount); setParsedResult(null); setShowFiles(false); }} data-testid="button-apply-supply">
-                  공급가액 적용
-                </Button>
-                <Button size="sm" className="h-6 text-[10px] flex-1" onClick={() => { onAmountParsed(parsedResult.totalAmount); setParsedResult(null); setShowFiles(false); }} data-testid="button-apply-total">
-                  합계 적용
-                </Button>
-              </div>
+              <Button size="sm" className="text-[10px] w-full" onClick={() => { onAmountParsed({ supplyAmount: parsedResult.supplyAmount, taxAmount: parsedResult.vat, totalAmount: parsedResult.totalAmount }); setParsedResult(null); setShowFiles(false); setAutoTriggered(false); }} data-testid="button-apply-amount">
+                금액 적용
+              </Button>
             </div>
           )}
         </>
@@ -687,7 +704,9 @@ function OrderDetailModal({
   onUpdate: (id: string, data: Record<string, any>) => void;
 }) {
   const buildFormState = useCallback(() => ({
-    amount: String(order.amount || ""),
+    supplyAmount: String(order.supplyAmount || ""),
+    taxAmount: String(order.taxAmount || ""),
+    totalAmount: String(order.totalAmount || ""),
     expectedDeliveryDate: order.expectedDeliveryDate || "",
     actualDeliveryDate: order.actualDeliveryDate || "",
     receivingCompleted: order.receivingCompleted || false,
@@ -705,7 +724,9 @@ function OrderDetailModal({
 
   const isDirty = useMemo(() => {
     return (
-      form.amount !== String(order.amount || "") ||
+      form.supplyAmount !== String(order.supplyAmount || "") ||
+      form.taxAmount !== String(order.taxAmount || "") ||
+      form.totalAmount !== String(order.totalAmount || "") ||
       form.expectedDeliveryDate !== (order.expectedDeliveryDate || "") ||
       form.actualDeliveryDate !== (order.actualDeliveryDate || "") ||
       form.receivingCompleted !== (order.receivingCompleted || false) ||
@@ -717,7 +738,9 @@ function OrderDetailModal({
 
   const handleSave = () => {
     onUpdate(order.id, {
-      amount: form.amount ? parseInt(form.amount) : null,
+      supplyAmount: form.supplyAmount ? parseInt(form.supplyAmount) : null,
+      taxAmount: form.taxAmount ? parseInt(form.taxAmount) : null,
+      totalAmount: form.totalAmount ? parseInt(form.totalAmount) : null,
       expectedDeliveryDate: form.expectedDeliveryDate || null,
       actualDeliveryDate: form.actualDeliveryDate || null,
       receivingCompleted: form.receivingCompleted,
@@ -725,6 +748,12 @@ function OrderDetailModal({
       paymentId: form.paymentId || null,
       memo: form.memo || null,
     });
+  };
+
+  const handleSupplyAmountChange = (val: string) => {
+    const supply = parseInt(val) || 0;
+    const tax = Math.round(supply * 0.1);
+    setForm(f => ({ ...f, supplyAmount: val, taxAmount: String(tax), totalAmount: String(supply + tax) }));
   };
 
   const handleClose = useCallback(() => {
@@ -782,17 +811,32 @@ function OrderDetailModal({
             <div className="border-t pt-3">
               <Label className="text-xs font-medium mb-2 block">상세 정보</Label>
               <div className="space-y-3">
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">금액</Label>
-                  <div className="flex items-center gap-2">
-                    <Input type="number" className="h-7 text-xs flex-1" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} data-testid="input-amount" />
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">{form.amount ? `${parseInt(form.amount).toLocaleString()}원` : ""}</span>
+                <div className="space-y-1.5">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">공급가액</Label>
+                    <div className="flex items-center gap-2">
+                      <Input type="number" className="h-7 text-xs flex-1" value={form.supplyAmount} onChange={e => handleSupplyAmountChange(e.target.value)} data-testid="input-supply-amount" />
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">{form.supplyAmount ? `${parseInt(form.supplyAmount).toLocaleString()}원` : ""}</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">세액</Label>
+                      <Input type="number" className="h-7 text-xs" value={form.taxAmount} onChange={e => { const tax = parseInt(e.target.value) || 0; const supply = parseInt(form.supplyAmount) || 0; setForm(f => ({ ...f, taxAmount: e.target.value, totalAmount: String(supply + tax) })); }} data-testid="input-tax-amount" />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">합계</Label>
+                      <div className="flex items-center gap-1">
+                        <Input type="number" className="h-7 text-xs flex-1" value={form.totalAmount} onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))} data-testid="input-total-amount" />
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">{form.totalAmount ? `${parseInt(form.totalAmount).toLocaleString()}원` : ""}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 {order.onedriveFolderId && (
                   <ExcelAmountParser
                     orderId={order.id}
-                    onAmountParsed={(amount) => setForm(f => ({ ...f, amount: String(amount) }))}
+                    onAmountParsed={(data) => setForm(f => ({ ...f, supplyAmount: String(data.supplyAmount), taxAmount: String(data.taxAmount), totalAmount: String(data.totalAmount) }))}
                   />
                 )}
                 <div className="flex items-center">

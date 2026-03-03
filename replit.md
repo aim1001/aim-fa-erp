@@ -177,7 +177,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `client/src/pages/purchase-order-list.tsx` - Purchase order list page (발주관리, OneDrive 동기화, 상세 모달)
 
 ## Recent Changes (continued)
-- 2026-03-03: 발주관리 기능 추가 — purchase_orders 테이블 (orderNumber, vendor, description, amount, expectedDeliveryDate, actualDeliveryDate, status(일반/수입/입고완료), receivingCompleted, purchaseInvoiceId→purchase_invoices, paymentId→payments, OneDrive 폴더 정보, year), OneDrive `2.공사/{year}/발주서/` 폴더 동기화 (하위 수입/, 입고완료/ 폴더별 상태 자동 분류), 폴더명 파싱 (번호_구매처_내용), 상세 모달 (금액/납품일/입고완료 처리/계산서 연결/송금 연결/메모), /purchase-orders 페이지, 사이드바 발주관리 활성화
+- 2026-03-03: 발주관리 기능 추가 — purchase_orders 테이블 (orderNumber, vendor, description, supplyAmount/taxAmount/totalAmount(공급가액·세액·합계 3분할), expectedDeliveryDate, actualDeliveryDate, status(일반/수입/입고완료), receivingCompleted, purchaseInvoiceId→purchase_invoices, paymentId→payments, OneDrive 폴더 정보, year), OneDrive `2.공사/{year}/발주서/` 폴더 동기화 (하위 수입/, 입고완료/ 폴더별 상태 자동 분류), 폴더명 파싱 (번호_구매처_내용), 상세 모달 (공급가액 입력→세액10%·합계 자동계산, 납품일/입고완료/계산서연결/송금연결/메모), 엑셀 금액 파서 (파일 1개→자동선택, 여러 개→파일선택, 적용 버튼 1개로 3개 금액 동시 적용), /purchase-orders 페이지, 사이드바 발주관리 활성화
 
 ## User Preferences
 - Korean language UI
