@@ -1,9 +1,19 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, Pencil, X, Save, FileText, Wallet, Download } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -82,8 +92,11 @@ export default function PurchaseOrderList() {
       const res = await apiRequest("PATCH", `/api/purchase-orders/${id}`, data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      if (selectedOrder && selectedOrder.id === variables.id) {
+        setSelectedOrder({ ...selectedOrder, ...variables.data } as PurchaseOrder);
+      }
       toast({ title: "저장되었습니다" });
     },
     onError: (err: Error) => {
@@ -447,8 +460,7 @@ function OrderDetailModal({
   onClose: () => void;
   onUpdate: (id: string, data: Record<string, any>) => void;
 }) {
-  const [editMode, setEditMode] = useState(false);
-  const [form, setForm] = useState({
+  const buildFormState = useCallback(() => ({
     amount: String(order.amount || ""),
     expectedDeliveryDate: order.expectedDeliveryDate || "",
     actualDeliveryDate: order.actualDeliveryDate || "",
@@ -456,7 +468,26 @@ function OrderDetailModal({
     purchaseInvoiceId: order.purchaseInvoiceId || "",
     paymentId: order.paymentId || "",
     memo: order.memo || "",
-  });
+  }), [order]);
+
+  const [form, setForm] = useState(buildFormState);
+  const [showUnsavedAlert, setShowUnsavedAlert] = useState(false);
+
+  useEffect(() => {
+    setForm(buildFormState());
+  }, [buildFormState]);
+
+  const isDirty = useMemo(() => {
+    return (
+      form.amount !== String(order.amount || "") ||
+      form.expectedDeliveryDate !== (order.expectedDeliveryDate || "") ||
+      form.actualDeliveryDate !== (order.actualDeliveryDate || "") ||
+      form.receivingCompleted !== (order.receivingCompleted || false) ||
+      form.purchaseInvoiceId !== (order.purchaseInvoiceId || "") ||
+      form.paymentId !== (order.paymentId || "") ||
+      form.memo !== (order.memo || "")
+    );
+  }, [form, order]);
 
   const handleSave = () => {
     onUpdate(order.id, {
@@ -468,74 +499,62 @@ function OrderDetailModal({
       paymentId: form.paymentId || null,
       memo: form.memo || null,
     });
-    setEditMode(false);
   };
 
+  const handleClose = useCallback(() => {
+    if (isDirty) {
+      setShowUnsavedAlert(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
   const expensePayments = payments.filter(p => p.type === "expense");
-  const linkedInvoice = invoices.find(inv => inv.id === order.purchaseInvoiceId);
-  const linkedPayment = payments.find(p => p.id === order.paymentId);
 
   return (
-    <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-lg" data-testid="modal-order-detail">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2" data-testid="text-modal-title">
-            <ClipboardCheck className="h-5 w-5" />
-            발주 상세 - {order.orderNumber || "번호없음"}
-          </DialogTitle>
-          <DialogDescription className="sr-only">발주 상세 정보</DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open onOpenChange={handleClose}>
+        <DialogContent className="max-w-lg" data-testid="modal-order-detail">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" data-testid="text-modal-title">
+              <ClipboardCheck className="h-5 w-5" />
+              발주 상세 - {order.orderNumber || "번호없음"}
+            </DialogTitle>
+            <DialogDescription className="sr-only">발주 상세 정보</DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-muted-foreground">발주번호</Label>
-              <p className="text-sm font-medium" data-testid="text-detail-order-number">{order.orderNumber || "-"}</p>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">구매처</Label>
-              <p className="text-sm font-medium" data-testid="text-detail-vendor">{order.vendor || "-"}</p>
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs text-muted-foreground">내용</Label>
-              <p className="text-sm" data-testid="text-detail-description">{order.description || "-"}</p>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">상태</Label>
-              <div className="mt-1"><StatusBadge status={order.status || "일반"} /></div>
-            </div>
-            {order.onedriveWebUrl && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">OneDrive</Label>
-                <div className="mt-1">
-                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => window.open(order.onedriveWebUrl!, "_blank")} data-testid="button-detail-open-folder">
-                    <ExternalLink className="h-3 w-3 mr-1" />폴더 열기
-                  </Button>
-                </div>
+                <Label className="text-xs text-muted-foreground">발주번호</Label>
+                <p className="text-sm font-medium" data-testid="text-detail-order-number">{order.orderNumber || "-"}</p>
               </div>
-            )}
-          </div>
-
-          <div className="border-t pt-3">
-            <div className="flex items-center justify-between mb-2">
-              <Label className="text-xs font-medium">상세 정보</Label>
-              {!editMode ? (
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setEditMode(true)} data-testid="button-edit-detail">
-                  <Pencil className="h-3 w-3 mr-1" />수정
-                </Button>
-              ) : (
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setEditMode(false)} data-testid="button-cancel-detail">
-                    <X className="h-3 w-3 mr-1" />취소
-                  </Button>
-                  <Button size="sm" className="h-6 text-xs" onClick={handleSave} data-testid="button-save-detail">
-                    <Save className="h-3 w-3 mr-1" />저장
-                  </Button>
+              <div>
+                <Label className="text-xs text-muted-foreground">구매처</Label>
+                <p className="text-sm font-medium" data-testid="text-detail-vendor">{order.vendor || "-"}</p>
+              </div>
+              <div className="col-span-2">
+                <Label className="text-xs text-muted-foreground">내용</Label>
+                <p className="text-sm" data-testid="text-detail-description">{order.description || "-"}</p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">상태</Label>
+                <div className="mt-1"><StatusBadge status={order.status || "일반"} /></div>
+              </div>
+              {order.onedriveWebUrl && (
+                <div>
+                  <Label className="text-xs text-muted-foreground">OneDrive</Label>
+                  <div className="mt-1">
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => window.open(order.onedriveWebUrl!, "_blank")} data-testid="button-detail-open-folder">
+                      <ExternalLink className="h-3 w-3 mr-1" />폴더 열기
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
 
-            {editMode ? (
+            <div className="border-t pt-3">
+              <Label className="text-xs font-medium mb-2 block">상세 정보</Label>
               <div className="space-y-3">
                 <div>
                   <Label className="text-[10px] text-muted-foreground">금액</Label>
@@ -609,43 +628,31 @@ function OrderDetailModal({
                   <Input className="h-7 text-xs" value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} data-testid="input-memo" />
                 </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">금액</Label>
-                  <p className="font-medium" data-testid="text-detail-amount">{formatAmount(order.amount)}</p>
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">입고</Label>
-                  <p data-testid="text-detail-receiving">{order.receivingCompleted ? "✓ 완료" : "대기"}</p>
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">납품예정일</Label>
-                  <p data-testid="text-detail-expected-date">{order.expectedDeliveryDate || "-"}</p>
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">납품일</Label>
-                  <p data-testid="text-detail-actual-date">{order.actualDeliveryDate || "-"}</p>
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">계산서</Label>
-                  <p data-testid="text-detail-invoice">{linkedInvoice ? `${linkedInvoice.companyName} - ${linkedInvoice.item}` : "-"}</p>
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">송금</Label>
-                  <p data-testid="text-detail-payment">{linkedPayment ? `${linkedPayment.companyName} ${formatAmount(linkedPayment.amount)}` : "-"}</p>
-                </div>
-                {order.memo && (
-                  <div className="col-span-2">
-                    <Label className="text-[10px] text-muted-foreground">메모</Label>
-                    <p data-testid="text-detail-memo">{order.memo}</p>
-                  </div>
-                )}
-              </div>
-            )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t">
+              <Button size="sm" onClick={handleSave} disabled={!isDirty} data-testid="button-save-detail">
+                <Save className="h-4 w-4 mr-1" />저장
+              </Button>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={showUnsavedAlert} onOpenChange={setShowUnsavedAlert}>
+        <AlertDialogContent data-testid="alert-unsaved-changes">
+          <AlertDialogHeader>
+            <AlertDialogTitle>변경사항이 저장되지 않았습니다</AlertDialogTitle>
+            <AlertDialogDescription>
+              저장하지 않고 닫으면 변경한 내용이 사라집니다. 닫으시겠습니까?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-close">계속 편집</AlertDialogCancel>
+            <AlertDialogAction onClick={onClose} data-testid="button-confirm-close">닫기</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
