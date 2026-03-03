@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown, UserX, CalendarClock } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown, Check, Building2, CalendarClock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -81,28 +81,25 @@ const InquiryRow = memo(function InquiryRow({ inq, onInlineUpdate, onFavorite, o
       <TableCell className="font-medium">
         <div className="flex items-center gap-1.5">
           {inq.customerName}
-          {inq.isExistingCustomer ? (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0 no-default-active-elevate" data-testid={`badge-existing-${inq.id}`}>등록</Badge>
-          ) : (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 no-default-active-elevate" data-testid={`badge-new-${inq.id}`}>미등록</Badge>
-          )}
-          {inq.customerId && !inq.hasContacts && (
+          {inq.customerId && inq.hasContacts ? (
+            <Check className="h-3.5 w-3.5 text-green-500" data-testid={`icon-linked-${inq.id}`} />
+          ) : inq.customerId ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   className="inline-flex"
                   onClick={(e) => { e.stopPropagation(); onSelect(inq.id); }}
-                  data-testid={`icon-no-contact-${inq.id}`}
+                  data-testid={`icon-partial-${inq.id}`}
                 >
-                  <UserX className="h-3.5 w-3.5 text-orange-500" />
+                  <Building2 className="h-3.5 w-3.5 text-orange-500" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>담당자 미등록 — 클릭하여 등록</p>
+                <p>담당자 미등록</p>
               </TooltipContent>
             </Tooltip>
-          )}
+          ) : null}
         </div>
       </TableCell>
       <TableCell className="text-muted-foreground text-sm">{inq.productInfo || "-"}</TableCell>
@@ -814,8 +811,8 @@ export default function InquiryList() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체 고객</SelectItem>
-                <SelectItem value="existing">등록고객</SelectItem>
-                <SelectItem value="new">미등록</SelectItem>
+                <SelectItem value="existing">연결됨</SelectItem>
+                <SelectItem value="new">미연결</SelectItem>
                 <SelectItem value="bookmarked">북마크</SelectItem>
               </SelectContent>
             </Select>
@@ -935,7 +932,7 @@ export default function InquiryList() {
         총 {filtered.length}건
         {filtered.length > 0 && customerFilter === "all" && (
           <span className="ml-2">
-            (등록 {filtered.filter(i => i.isExistingCustomer).length} / 미등록 {filtered.filter(i => !i.isExistingCustomer).length})
+            (연결 {filtered.filter(i => i.customerId).length} / 미연결 {filtered.filter(i => !i.customerId).length})
           </span>
         )}
       </div>

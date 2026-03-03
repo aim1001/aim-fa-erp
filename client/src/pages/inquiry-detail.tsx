@@ -12,7 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, UserPlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -505,11 +506,26 @@ interface ScanResult {
   existingMatches: Record<string, Company[]>;
 }
 
-function CustomerLinkSection({ inquiryId, inquiry }: { inquiryId: string; inquiry: Inquiry }) {
+function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
+  inquiryId: string;
+  inquiry: Inquiry;
+  hasOneDrive: boolean;
+}) {
   const { toast } = useToast();
+  const [showCustomerPreview, setShowCustomerPreview] = useState(false);
+  const [showChangeSearch, setShowChangeSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  const [contactForm, setContactForm] = useState({ contactName: "", email: "", phone: "" });
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [editContactId, setEditContactId] = useState<string | null>(null);
+
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [matchCandidates, setMatchCandidates] = useState<{ candidates: CustomerCandidate[]; companyName: string; pendingInfo: ExcelCustomerInfo } | null>(null);
+
+  const isLinked = !!inquiry.customerId;
 
   const { data: searchResults = [] } = useQuery<Customer[]>({
     queryKey: ["/api/customers/search", searchQuery],
@@ -521,9 +537,14 @@ function CustomerLinkSection({ inquiryId, inquiry }: { inquiryId: string; inquir
     enabled: searchQuery.length >= 1,
   });
 
+  const { data: contacts = [] } = useQuery<Company[]>({
+    queryKey: ["/api/companies/by-customer", inquiry.customerId],
+    enabled: !!inquiry.customerId,
+  });
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
       }
     }
@@ -531,99 +552,377 @@ function CustomerLinkSection({ inquiryId, inquiry }: { inquiryId: string; inquir
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const linkMutation = useMutation({
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", inquiry.customerId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+  };
+
+  const linkCustomerMutation = useMutation({
     mutationFn: async (customerId: string) => {
       const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/link-customer`, { customerId });
       return res.json();
     },
     onSuccess: (data: any) => {
       const siblings = data?.linkedSiblings || 0;
-      toast({ title: siblings > 0 ? `고객사 연결 완료 (같은 고객명 ${siblings}건 추가 연결)` : "고객사 연결 완료" });
+      toast({ title: siblings > 0 ? `고객사 연결 완료 (${siblings}건 추가 연결)` : "고객사 연결 완료" });
       setSearchQuery("");
       setShowDropdown(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      setShowChangeSearch(false);
+      invalidateAll();
     },
     onError: (err: Error) => {
       toast({ title: "연결 실패", description: err.message, variant: "destructive" });
     },
   });
 
-  const [showChangeSearch, setShowChangeSearch] = useState(false);
-  const isLinked = !!inquiry.customerId;
+  const saveCustomerInfoMutation = useMutation({
+    mutationFn: async (info: { companyName: string; contactName: string; email: string; phone: string; address?: string; selectedCustomerId?: string; forceCreate?: boolean }) => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/save-customer-info`, {
+        companyName: info.companyName,
+        address: info.address || "",
+        contactName: info.contactName,
+        email: info.email,
+        phone: info.phone,
+        selectedCustomerId: info.selectedCustomerId || null,
+        forceCreate: info.forceCreate || false,
+      });
+      return res.json() as Promise<SaveCustomerResponse>;
+    },
+    onSuccess: (data, variables) => {
+      if (data.needsSelection && data.candidates && data.candidates.length > 0) {
+        setMatchCandidates({
+          candidates: data.candidates,
+          companyName: data.companyName || variables.companyName,
+          pendingInfo: { companyName: variables.companyName, address: variables.address || "", contactName: variables.contactName, email: variables.email, phone: variables.phone, sheetName: "", quoteDate: "", quoteNumber: "", projectName: "" },
+        });
+        return;
+      }
+      toast({ title: "고객 정보 저장 완료" });
+      setContactForm({ contactName: "", email: "", phone: "" });
+      invalidateAll();
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createContactMutation = useMutation({
+    mutationFn: async (data: { contactName: string; email: string; phone: string }) => {
+      const res = await apiRequest("POST", "/api/companies", {
+        companyName: data.contactName,
+        contactName: data.contactName,
+        email: data.email,
+        phone: data.phone,
+        customerId: inquiry.customerId,
+        isTemporary: false,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "담당자 등록 완료" });
+      setContactForm({ contactName: "", email: "", phone: "" });
+      invalidateAll();
+    },
+    onError: (err: Error) => {
+      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateContactMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/companies/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "수정 완료" });
+      setIsEditingContact(false);
+      setEditContactId(null);
+      setContactForm({ contactName: "", email: "", phone: "" });
+      invalidateAll();
+    },
+    onError: (err: Error) => {
+      toast({ title: "수정 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/scan-excel`);
+      return res.json() as Promise<ScanResult>;
+    },
+    onSuccess: (data) => {
+      if (data.scanned.length > 0) {
+        const info = data.scanned[0];
+        setContactForm({ contactName: info.contactName || "", email: info.email || "", phone: info.phone || "" });
+        setScanResult(data);
+        toast({ title: "엑셀 스캔 완료", description: `${data.scanned.length}건의 정보를 찾았습니다` });
+      } else {
+        toast({ title: "스캔 결과 없음", description: "엑셀 파일에서 고객 정보를 찾을 수 없습니다", variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "스캔 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSaveContact = () => {
+    if (!contactForm.contactName.trim()) {
+      toast({ title: "담당자명을 입력하세요", variant: "destructive" });
+      return;
+    }
+    if (isEditingContact && editContactId) {
+      updateContactMutation.mutate({ id: editContactId, data: contactForm });
+    } else if (isLinked) {
+      createContactMutation.mutate(contactForm);
+    } else {
+      saveCustomerInfoMutation.mutate({
+        companyName: inquiry.customerName || "",
+        contactName: contactForm.contactName,
+        email: contactForm.email,
+        phone: contactForm.phone,
+      });
+    }
+  };
+
+  const startEditContact = (contact: Company) => {
+    setIsEditingContact(true);
+    setEditContactId(contact.id);
+    setContactForm({
+      contactName: contact.contactName || "",
+      email: contact.email || "",
+      phone: contact.phone || "",
+    });
+  };
+
+  const cancelEditContact = () => {
+    setIsEditingContact(false);
+    setEditContactId(null);
+    setContactForm({ contactName: "", email: "", phone: "" });
+  };
+
+  const isSaving = saveCustomerInfoMutation.isPending || createContactMutation.isPending || updateContactMutation.isPending;
+  const primaryContact = contacts.length > 0 ? contacts[0] : null;
 
   return (
-    <div className={`border rounded-lg p-3 mt-2 ${isLinked ? "bg-muted/30" : "bg-amber-50 dark:bg-amber-950/20"}`}>
-      {isLinked && !showChangeSearch ? (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">다른 고객사로 변경하려면 버튼을 누르세요</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setShowChangeSearch(true)}
-            data-testid="button-change-customer"
-          >
-            고객 변경
-          </Button>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-1 pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Building2 className="h-4 w-4" />
+          고객 정보
+        </CardTitle>
+        <div className="flex items-center gap-1">
+          {hasOneDrive && !isLinked && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => scanMutation.mutate()}
+                  disabled={scanMutation.isPending}
+                  data-testid="button-scan-excel"
+                >
+                  {scanMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>엑셀에서 고객정보 가져오기</TooltipContent>
+            </Tooltip>
+          )}
         </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-              {isLinked ? "변경할 고객사를 검색하세요" : "고객사 미연결 - 기존 고객사를 검색하여 연결하세요"}
-            </p>
-            {isLinked && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 text-xs px-2"
-                onClick={() => { setShowChangeSearch(false); setSearchQuery(""); }}
-                data-testid="button-cancel-change-customer"
-              >
-                취소
-              </Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-[80px_1fr] gap-y-2.5 gap-x-3 text-sm items-center">
+          <span className="text-muted-foreground flex items-center gap-1"><Building2 className="h-3 w-3" />고객사</span>
+          <div className="flex items-center gap-2">
+            {isLinked ? (
+              <>
+                <span className="font-medium">{inquiry.customerName}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 text-[10px] px-1.5 text-primary"
+                  onClick={() => setShowCustomerPreview(true)}
+                  data-testid="link-customer-detail"
+                >
+                  상세보기
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 text-[10px] px-1.5 text-muted-foreground"
+                  onClick={() => setShowChangeSearch(!showChangeSearch)}
+                  data-testid="button-change-customer"
+                >
+                  변경
+                </Button>
+              </>
+            ) : (
+              <span className="text-amber-600 dark:text-amber-400 text-xs">미연결 — 아래에서 담당자 입력 시 자동 생성됩니다</span>
             )}
           </div>
-          <div className="relative" ref={ref}>
-            <Input
-              placeholder="고객사명으로 검색..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowDropdown(true);
-              }}
-              onFocus={() => setShowDropdown(true)}
-              className="h-8 text-sm"
-              data-testid="input-link-customer-search"
-            />
-            {showDropdown && searchResults.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-auto">
-                {searchResults.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2"
-                    onClick={() => {
-                      linkMutation.mutate(c.id);
-                      setShowChangeSearch(false);
-                    }}
-                    disabled={linkMutation.isPending}
-                    data-testid={`option-link-customer-${c.id}`}
-                  >
-                    <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
-                    <div>
-                      <span className="font-medium">{c.companyName}</span>
-                      {c.businessNumber && <span className="text-muted-foreground ml-2 text-xs">{c.businessNumber}</span>}
-                    </div>
-                  </button>
-                ))}
+
+          {(showChangeSearch || !isLinked) && (
+            <>
+              <span />
+              <div className="relative" ref={searchRef}>
+                <Input
+                  placeholder="고객사명으로 검색하여 연결..."
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setShowDropdown(true); }}
+                  onFocus={() => setShowDropdown(true)}
+                  className="h-7 text-xs"
+                  data-testid="input-link-customer-search"
+                />
+                {showDropdown && searchResults.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-36 overflow-auto">
+                    {searchResults.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2"
+                        onClick={() => linkCustomerMutation.mutate(c.id)}
+                        disabled={linkCustomerMutation.isPending}
+                        data-testid={`option-link-customer-${c.id}`}
+                      >
+                        <Building2 className="h-3 w-3 text-primary shrink-0" />
+                        <span className="font-medium">{c.companyName}</span>
+                        {c.businessNumber && <span className="text-muted-foreground text-xs ml-1">{c.businessNumber}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </>
+          )}
+
+          {isLinked && primaryContact && !isEditingContact ? (
+            <>
+              <span className="text-muted-foreground flex items-center gap-1"><User className="h-3 w-3" />담당자</span>
+              <div className="flex items-center gap-2">
+                <span>{primaryContact.contactName || "-"}</span>
+                {contacts.length > 1 && <span className="text-xs text-muted-foreground">외 {contacts.length - 1}명</span>}
+                <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1.5 text-muted-foreground" onClick={() => startEditContact(primaryContact)} data-testid="button-edit-contact">
+                  <Pencil className="h-2.5 w-2.5" />
+                </Button>
+              </div>
+              <span className="text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />이메일</span>
+              <span>{primaryContact.email || "-"}</span>
+              <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
+              <span>{primaryContact.phone || "-"}</span>
+            </>
+          ) : (
+            <>
+              <span className="text-muted-foreground flex items-center gap-1"><User className="h-3 w-3" />담당자</span>
+              <Input
+                placeholder="담당자명"
+                value={contactForm.contactName}
+                onChange={(e) => setContactForm(f => ({ ...f, contactName: e.target.value }))}
+                className="h-7 text-xs"
+                data-testid="input-contact-name"
+              />
+              <span className="text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />이메일</span>
+              <Input
+                type="email"
+                placeholder="example@company.com"
+                value={contactForm.email}
+                onChange={(e) => setContactForm(f => ({ ...f, email: e.target.value }))}
+                className="h-7 text-xs"
+                data-testid="input-contact-email"
+              />
+              <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
+              <Input
+                type="tel"
+                placeholder="010-1234-5678"
+                value={contactForm.phone}
+                onChange={(e) => setContactForm(f => ({ ...f, phone: e.target.value }))}
+                className="h-7 text-xs"
+                data-testid="input-contact-phone"
+              />
+              <span />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleSaveContact}
+                  disabled={isSaving || !contactForm.contactName.trim()}
+                  data-testid="button-save-contact"
+                >
+                  {isSaving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                  {isEditingContact ? "수정" : "저장"}
+                </Button>
+                {isEditingContact && (
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelEditContact} data-testid="button-cancel-edit-contact">
+                    취소
+                  </Button>
+                )}
+                {hasOneDrive && isLinked && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => scanMutation.mutate()}
+                        disabled={scanMutation.isPending}
+                        data-testid="button-scan-excel-inline"
+                      >
+                        {scanMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSpreadsheet className="h-3 w-3" />}
+                        <span className="ml-1">엑셀</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>엑셀에서 담당자 정보 가져오기</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {scanResult && scanResult.scanned.length > 1 && (
+          <div className="border rounded p-2 bg-muted/30">
+            <p className="text-xs text-muted-foreground mb-1">엑셀에서 {scanResult.scanned.length}건 발견 (첫 번째 적용됨)</p>
+            <div className="flex gap-1 flex-wrap">
+              {scanResult.scanned.map((info, idx) => (
+                <Button
+                  key={idx}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-6"
+                  onClick={() => setContactForm({ contactName: info.contactName || "", email: info.email || "", phone: info.phone || "" })}
+                  data-testid={`button-scan-result-${idx}`}
+                >
+                  {info.companyName} ({info.sheetName})
+                </Button>
+              ))}
+            </div>
           </div>
-        </>
+        )}
+      </CardContent>
+
+      {inquiry.customerId && (
+        <CustomerPreviewDialog
+          customerId={inquiry.customerId}
+          inquiryId={inquiryId}
+          open={showCustomerPreview}
+          onOpenChange={setShowCustomerPreview}
+        />
       )}
-    </div>
+
+      {matchCandidates && (
+        <CustomerMatchDialog
+          candidates={matchCandidates.candidates}
+          companyName={matchCandidates.companyName}
+          pendingInfo={matchCandidates.pendingInfo}
+          inquiryId={inquiryId}
+          onClose={() => {
+            setMatchCandidates(null);
+            invalidateAll();
+          }}
+        />
+      )}
+    </Card>
   );
 }
 
@@ -937,396 +1236,7 @@ function CustomerPreviewDialog({ customerId, inquiryId, open, onOpenChange }: { 
   );
 }
 
-function ContactMatchSelectionDialog({ candidates, customerName, pendingForm, isPending, onSelect, onForceCreate, onClose }: {
-  candidates: CustomerCandidate[];
-  customerName: string;
-  pendingForm: { contactName: string };
-  isPending: boolean;
-  onSelect: (customerId: string) => void;
-  onForceCreate: () => void;
-  onClose: () => void;
-}) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  return (
-    <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            유사 고객사 발견
-          </DialogTitle>
-          <DialogDescription>
-            "{customerName}"과(와) 유사한 기존 고객사가 {candidates.length}건 있습니다. 기존 고객사에 연결하거나 새로 생성할 수 있습니다.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <div className="space-y-1.5 max-h-48 overflow-auto">
-            {candidates.map((c) => (
-              <button
-                type="button"
-                key={c.id}
-                className={`w-full text-left border rounded-md p-2.5 text-sm transition-colors ${selectedId === c.id ? "border-primary bg-primary/5" : "bg-background hover:bg-accent"}`}
-                onClick={() => setSelectedId(c.id)}
-                data-testid={`button-contact-match-candidate-${c.id}`}
-              >
-                <div className="font-medium flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
-                  {c.companyName}
-                </div>
-                {(c.businessNumber || c.address) && (
-                  <div className="text-xs text-muted-foreground mt-0.5 ml-5">
-                    {[c.businessNumber, c.address].filter(Boolean).join(" | ")}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex gap-2 pt-2 border-t">
-            <Button
-              size="sm"
-              onClick={() => selectedId && onSelect(selectedId)}
-              disabled={!selectedId || isPending}
-              data-testid="button-contact-match-link"
-            >
-              {isPending ? <Loader2 className="animate-spin h-4 w-4 mr-1" /> : <Building2 className="h-4 w-4 mr-1" />}
-              기존 고객사에 연결
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onForceCreate}
-              disabled={isPending}
-              data-testid="button-contact-match-force-create"
-            >
-              새 고객사 생성
-            </Button>
-            <Button size="sm" variant="ghost" onClick={onClose} data-testid="button-contact-match-cancel">
-              취소
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ContactManagementSection({ customerId, inquiryId, customerName }: { customerId: string | null; inquiryId: string; customerName: string }) {
-  const { toast } = useToast();
-  const [showDialog, setShowDialog] = useState(false);
-  const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
-  const [editTargetId, setEditTargetId] = useState<string | null>(null);
-  const [form, setForm] = useState({ contactName: "", email: "", phone: "", position: "", department: "" });
-  const [contactMatchCandidates, setContactMatchCandidates] = useState<{ candidates: CustomerCandidate[]; pendingForm: typeof form } | null>(null);
-
-  const { data: contacts = [], isLoading, isError } = useQuery<Company[]>({
-    queryKey: ["/api/companies/by-customer", customerId],
-    enabled: !!customerId,
-  });
-
-  const invalidateAfterCreate = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-    queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
-  };
-
-  const createWithCustomerMutation = useMutation({
-    mutationFn: async (data: { contactName: string; email: string; phone: string; position: string; department: string; selectedCustomerId?: string; forceCreate?: boolean }) => {
-      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/save-customer-info`, {
-        companyName: customerName,
-        contactName: data.contactName,
-        email: data.email,
-        phone: data.phone,
-        selectedCustomerId: data.selectedCustomerId || null,
-        forceCreate: data.forceCreate || false,
-      });
-      return res.json() as Promise<SaveCustomerResponse>;
-    },
-    onSuccess: (data) => {
-      if (data.needsSelection && data.candidates && data.candidates.length > 0) {
-        setContactMatchCandidates({ candidates: data.candidates, pendingForm: { ...form } });
-        setShowDialog(false);
-        return;
-      }
-      toast({ title: "고객사 생성 및 담당자 등록 완료" });
-      setShowDialog(false);
-      setForm({ contactName: "", email: "", phone: "", position: "", department: "" });
-      invalidateAfterCreate();
-    },
-    onError: (err: Error) => {
-      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: { contactName: string; email: string; phone: string; position: string; department: string }) => {
-      const res = await apiRequest("POST", "/api/companies", {
-        companyName: data.contactName,
-        contactName: data.contactName,
-        email: data.email,
-        phone: data.phone,
-        position: data.position || null,
-        department: data.department || null,
-        customerId,
-        isTemporary: false,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "담당자 등록 완료" });
-      setShowDialog(false);
-      setForm({ contactName: "", email: "", phone: "", position: "", department: "" });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
-      const res = await apiRequest("PATCH", `/api/companies/${id}`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "수정 완료" });
-      setShowDialog(false);
-      setEditTargetId(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "수정 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/companies/${id}`);
-    },
-    onSuccess: () => {
-      toast({ title: "삭제 완료" });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies/by-customer", customerId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "삭제 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const openAddDialog = () => {
-    setDialogMode("add");
-    setEditTargetId(null);
-    setForm({ contactName: "", email: "", phone: "", position: "", department: "" });
-    setShowDialog(true);
-  };
-
-  const openEditDialog = (contact: Company) => {
-    setDialogMode("edit");
-    setEditTargetId(contact.id);
-    setForm({
-      contactName: contact.contactName || "",
-      email: contact.email || "",
-      phone: contact.phone || "",
-      position: contact.position || "",
-      department: contact.department || "",
-    });
-    setShowDialog(true);
-  };
-
-  const handleSubmit = () => {
-    if (!form.contactName.trim()) {
-      toast({ title: "담당자명을 입력하세요", variant: "destructive" });
-      return;
-    }
-    if (dialogMode === "edit" && editTargetId) {
-      updateMutation.mutate({ id: editTargetId, data: form });
-    } else if (!customerId) {
-      createWithCustomerMutation.mutate(form);
-    } else {
-      createMutation.mutate(form);
-    }
-  };
-
-  const isSaving = createMutation.isPending || updateMutation.isPending || createWithCustomerMutation.isPending;
-
-  if (isLoading) return <Skeleton className="h-16 w-full mt-2" />;
-  if (isError) return <p className="text-xs text-destructive mt-2">담당자 정보를 불러올 수 없습니다</p>;
-
-  return (
-    <>
-      <div className="mt-3 border rounded-lg p-3 bg-muted/20">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-medium flex items-center gap-1.5">
-            <User className="h-3.5 w-3.5" />
-            담당자 ({contacts.length}명)
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={openAddDialog}
-            data-testid="button-add-contact"
-          >
-            <UserPlus className="h-3 w-3 mr-1" />
-            추가
-          </Button>
-        </div>
-
-        {contacts.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-4 px-2 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
-            <div className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-orange-500" />
-              <p className="text-sm font-medium text-orange-700 dark:text-orange-300">담당자 정보가 없습니다</p>
-            </div>
-            <p className="text-xs text-muted-foreground text-center">고객사의 담당자 이름, 이메일, 전화번호를 등록하세요</p>
-            <Button
-              onClick={openAddDialog}
-              size="sm"
-              data-testid="button-register-contact-cta"
-            >
-              <UserPlus className="h-4 w-4 mr-1" />
-              지금 담당자 등록하기
-            </Button>
-          </div>
-        )}
-
-        {contacts.map(contact => (
-          <div key={contact.id} className="flex items-center gap-2 py-2 border-b border-border/30 last:border-b-0 text-sm" data-testid={`contact-row-${contact.id}`}>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium flex items-center gap-1">
-                  <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  {contact.contactName || "-"}
-                </span>
-                {(contact.position || contact.department) && (
-                  <span className="text-xs text-muted-foreground">
-                    {[contact.department, contact.position].filter(Boolean).join(" / ")}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                {contact.email && (
-                  <span className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                    <Mail className="h-3 w-3 shrink-0" />
-                    {contact.email}
-                  </span>
-                )}
-                {contact.phone && (
-                  <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                    <Phone className="h-3 w-3 shrink-0" />
-                    {contact.phone}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-0.5 shrink-0">
-              <Button size="icon" variant="ghost" onClick={() => openEditDialog(contact)} data-testid={`button-edit-contact-${contact.id}`}>
-                <Pencil className="h-3 w-3" />
-              </Button>
-              <Button size="icon" variant="ghost" className="text-destructive" onClick={() => deleteMutation.mutate(contact.id)} data-testid={`button-delete-contact-${contact.id}`}>
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{dialogMode === "add" ? "담당자 등록" : "담당자 수정"}</DialogTitle>
-            <DialogDescription>
-              {dialogMode === "add"
-                ? (customerId ? "고객사 담당자의 정보를 입력하세요." : `"${customerName}" 고객사를 자동 생성하고 담당자를 등록합니다.`)
-                : "담당자 정보를 수정합니다."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">담당자명 *</label>
-              <Input
-                placeholder="홍길동"
-                value={form.contactName}
-                onChange={e => setForm(f => ({ ...f, contactName: e.target.value }))}
-                autoFocus
-                data-testid="input-dialog-contact-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">이메일</label>
-              <Input
-                type="email"
-                placeholder="example@company.com"
-                value={form.email}
-                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                data-testid="input-dialog-contact-email"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">전화번호</label>
-              <Input
-                type="tel"
-                placeholder="010-1234-5678"
-                value={form.phone}
-                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                data-testid="input-dialog-contact-phone"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">부서</label>
-                <Input
-                  placeholder="영업부"
-                  value={form.department}
-                  onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
-                  data-testid="input-dialog-contact-department"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">직함</label>
-                <Input
-                  placeholder="과장"
-                  value={form.position}
-                  onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
-                  data-testid="input-dialog-contact-position"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowDialog(false)} data-testid="button-dialog-cancel">
-              취소
-            </Button>
-            <Button onClick={handleSubmit} disabled={isSaving} data-testid="button-dialog-submit">
-              {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-              {dialogMode === "add" ? "등록" : "저장"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {contactMatchCandidates && (
-        <ContactMatchSelectionDialog
-          candidates={contactMatchCandidates.candidates}
-          customerName={customerName}
-          pendingForm={contactMatchCandidates.pendingForm}
-          isPending={createWithCustomerMutation.isPending}
-          onSelect={(selectedCustomerId) => {
-            createWithCustomerMutation.mutate({ ...contactMatchCandidates.pendingForm, selectedCustomerId });
-          }}
-          onForceCreate={() => {
-            createWithCustomerMutation.mutate({ ...contactMatchCandidates.pendingForm, forceCreate: true });
-          }}
-          onClose={() => setContactMatchCandidates(null)}
-        />
-      )}
-    </>
-  );
-}
 
 function MemoSection({ inquiryId, legacyMemo }: { inquiryId: string; legacyMemo: string }) {
   const { toast } = useToast();
@@ -1482,534 +1392,7 @@ function MemoSection({ inquiryId, legacyMemo }: { inquiryId: string; legacyMemo:
   );
 }
 
-function CustomerInfoSection({ inquiryId, inquiry, hasOneDrive }: {
-  inquiryId: string;
-  inquiry: Inquiry;
-  hasOneDrive: boolean;
-}) {
-  const { toast } = useToast();
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [mode, setMode] = useState<"new" | "existing">("new");
-  const [selectedExistingId, setSelectedExistingId] = useState<string | null>(null);
-  const [matchCandidates, setMatchCandidates] = useState<{ candidates: CustomerCandidate[]; companyName: string; pendingInfo: ExcelCustomerInfo } | null>(null);
-  const [showCustomerPreview, setShowCustomerPreview] = useState(false);
-  const [scanFailMessage, setScanFailMessage] = useState<string | null>(null);
-  const [showManualInput, setShowManualInput] = useState(false);
-  const [manualForm, setManualForm] = useState({
-    companyName: "",
-    address: "",
-    contactName: "",
-    email: "",
-    phone: "",
-  });
 
-  const hasSnapshot = !!inquiry.snapshotCompanyName;
-
-  const scanMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/scan-excel`);
-      return res.json() as Promise<ScanResult>;
-    },
-    onSuccess: (data) => {
-      setScanFailMessage(null);
-      setScanResult(data);
-      if (data.scanned.length > 0) {
-        setSelectedIdx(0);
-        const firstMatches = data.existingMatches[data.scanned[0].companyName];
-        if (firstMatches && firstMatches.length > 0) {
-          setMode("existing");
-          setSelectedExistingId(firstMatches[0].id);
-        } else {
-          setMode("new");
-          setSelectedExistingId(null);
-        }
-      }
-      if (data.scanned.length === 0) {
-        setScanFailMessage("엑셀 파일에서 유효한 고객 정보를 찾을 수 없습니다.");
-        setShowManualInput(true);
-        setManualForm({
-          companyName: inquiry.customerName || "",
-          address: "",
-          contactName: "",
-          email: "",
-          phone: "",
-        });
-      }
-    },
-    onError: (err: Error) => {
-      setScanFailMessage(err.message || "엑셀 스캔 중 오류가 발생했습니다.");
-      setShowManualInput(true);
-      setManualForm({
-        companyName: inquiry.customerName || "",
-        address: "",
-        contactName: "",
-        email: "",
-        phone: "",
-      });
-    },
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async (info: ExcelCustomerInfo) => {
-      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/save-customer-info`, {
-        companyName: info.companyName,
-        address: info.address,
-        contactName: info.contactName,
-        email: info.email,
-        phone: info.phone,
-      });
-      return res.json() as Promise<SaveCustomerResponse>;
-    },
-    onSuccess: (data, info) => {
-      if (data.needsSelection && data.candidates && data.candidates.length > 0) {
-        setMatchCandidates({ candidates: data.candidates, companyName: data.companyName || info.companyName, pendingInfo: info });
-        return;
-      }
-      const siblings = (data as any)?.linkedSiblings || 0;
-      toast({ title: siblings > 0 ? `고객 정보 저장 완료 (같은 고객명 ${siblings}건 추가 연결)` : "고객 정보 저장 완료" });
-      resetScan();
-      setShowManualInput(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const linkMutation = useMutation({
-    mutationFn: async (companyId: string) => {
-      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/link-company`, { companyId });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "기존 회사 연결 완료" });
-      resetScan();
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const resetScan = () => {
-    setScanResult(null);
-    setSelectedIdx(null);
-    setMode("new");
-    setSelectedExistingId(null);
-    setMatchCandidates(null);
-    setShowManualInput(false);
-    setScanFailMessage(null);
-  };
-
-  const selected = scanResult && selectedIdx !== null ? scanResult.scanned[selectedIdx] : null;
-  const existingForSelected = selected ? (scanResult?.existingMatches[selected.companyName] || []) : [];
-  const isSaving = saveMutation.isPending || linkMutation.isPending;
-
-  const handleSelectScanned = (idx: number) => {
-    setSelectedIdx(idx);
-    const info = scanResult!.scanned[idx];
-    const matches = scanResult!.existingMatches[info.companyName] || [];
-    if (matches.length > 0) {
-      setMode("existing");
-      setSelectedExistingId(matches[0].id);
-    } else {
-      setMode("new");
-      setSelectedExistingId(null);
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-1">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Building2 className="h-4 w-4" />
-          고객사 정보
-        </CardTitle>
-        {hasOneDrive && (
-          <Button
-            variant={inquiry.customerId && !(inquiry as any).customerComplete ? "default" : "secondary"}
-            size="sm"
-            onClick={() => scanMutation.mutate()}
-            disabled={scanMutation.isPending}
-            data-testid="button-scan-excel"
-          >
-            {scanMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Search className="h-4 w-4" />}
-            <span>엑셀에서 가져오기</span>
-          </Button>
-        )}
-      </CardHeader>
-      <CardContent>
-        {!scanResult && (
-          <div className="space-y-2">
-            {inquiry.customerId && (inquiry as any).customerComplete ? (
-              <div className="flex items-center gap-2 p-2 rounded-md bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800" data-testid="status-customer-linked">
-                <Check className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-green-700 dark:text-green-300">고객사 연결됨</p>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className="text-xs text-primary hover:underline cursor-pointer"
-                      onClick={() => setShowCustomerPreview(true)}
-                      data-testid="link-customer"
-                    >
-                      고객사 정보 보기 →
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : inquiry.customerId ? (
-              <div className="flex items-center gap-2 p-2 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800" data-testid="status-customer-incomplete">
-                <Building2 className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300">고객사 정보 보완 필요</p>
-                  <p className="text-xs text-muted-foreground">엑셀 스캔 또는 담당자 등록으로 정보를 보완하세요</p>
-                  <span
-                    className="text-xs text-primary hover:underline cursor-pointer"
-                    onClick={() => setShowCustomerPreview(true)}
-                    data-testid="link-customer"
-                  >
-                    고객사 정보 보기 →
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800" data-testid="status-customer-unlinked">
-                <Search className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">고객사 미연결</p>
-                  <p className="text-xs text-muted-foreground">아래에서 기존 고객사를 검색하거나 직접 입력하세요</p>
-                  {!showManualInput && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px] px-2 mt-1"
-                      onClick={() => {
-                        setShowManualInput(true);
-                        setManualForm({
-                          companyName: inquiry.customerName || "",
-                          address: "",
-                          contactName: "",
-                          email: "",
-                          phone: "",
-                        });
-                      }}
-                      data-testid="button-manual-register"
-                    >
-                      <Pencil className="h-3 w-3 mr-1" />
-                      직접 입력으로 등록
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <ContactManagementSection customerId={inquiry.customerId || null} inquiryId={inquiryId} customerName={inquiry.customerName || ""} />
-
-            {hasSnapshot && (
-              <div className="border rounded-lg p-3 bg-muted/20 mt-2">
-                <p className="text-xs font-medium text-muted-foreground mb-2">스냅샷 정보 (엑셀에서 가져온 원본)</p>
-                <div className="grid grid-cols-[80px_1fr] gap-y-1.5 gap-x-2 text-sm">
-                  <span className="text-muted-foreground">회사명</span>
-                  <span className="font-medium" data-testid="text-company-name">{inquiry.snapshotCompanyName}</span>
-                  <span className="text-muted-foreground">주소</span>
-                  <span data-testid="text-company-address">{inquiry.snapshotAddress || "-"}</span>
-                  <span className="text-muted-foreground">담당자</span>
-                  <span data-testid="text-company-contact">{inquiry.snapshotContactName || "-"}</span>
-                  <span className="text-muted-foreground">이메일</span>
-                  <span data-testid="text-company-email">{inquiry.snapshotEmail || "-"}</span>
-                  <span className="text-muted-foreground">전화번호</span>
-                  <span data-testid="text-company-phone">{inquiry.snapshotPhone || "-"}</span>
-                </div>
-              </div>
-            )}
-
-            {scanFailMessage && (
-              <div className="border border-amber-300 dark:border-amber-700 rounded-lg p-3 bg-amber-50/50 dark:bg-amber-950/30 mt-2" data-testid="scan-fail-banner">
-                <div className="flex items-start gap-2">
-                  <Search className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="flex-1 space-y-1.5">
-                    <p className="text-sm font-medium text-amber-700 dark:text-amber-300">엑셀 스캔 결과 없음</p>
-                    <p className="text-xs text-muted-foreground">{scanFailMessage}</p>
-                    {!showManualInput && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs mt-1"
-                        onClick={() => {
-                          setShowManualInput(true);
-                          setManualForm({
-                            companyName: inquiry.customerName || "",
-                            address: "",
-                            contactName: "",
-                            email: "",
-                            phone: "",
-                          });
-                        }}
-                        data-testid="button-show-manual-input"
-                      >
-                        <Pencil className="h-3 w-3 mr-1" />
-                        직접 입력
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {showManualInput && (
-              <div className="border rounded-lg p-3 bg-muted/20 mt-2 space-y-3" data-testid="manual-customer-form">
-                <p className="text-xs font-medium text-muted-foreground">고객 정보 직접 입력</p>
-                <div className="grid gap-2">
-                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
-                    <label className="text-xs text-muted-foreground">회사명 *</label>
-                    <Input
-                      value={manualForm.companyName}
-                      onChange={(e) => setManualForm(prev => ({ ...prev, companyName: e.target.value }))}
-                      placeholder="회사명"
-                      className="h-8 text-sm"
-                      data-testid="input-manual-company-name"
-                    />
-                  </div>
-                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
-                    <label className="text-xs text-muted-foreground">주소</label>
-                    <Input
-                      value={manualForm.address}
-                      onChange={(e) => setManualForm(prev => ({ ...prev, address: e.target.value }))}
-                      placeholder="주소"
-                      className="h-8 text-sm"
-                      data-testid="input-manual-address"
-                    />
-                  </div>
-                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
-                    <label className="text-xs text-muted-foreground">담당자</label>
-                    <Input
-                      value={manualForm.contactName}
-                      onChange={(e) => setManualForm(prev => ({ ...prev, contactName: e.target.value }))}
-                      placeholder="담당자명"
-                      className="h-8 text-sm"
-                      data-testid="input-manual-contact-name"
-                    />
-                  </div>
-                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
-                    <label className="text-xs text-muted-foreground">이메일</label>
-                    <Input
-                      value={manualForm.email}
-                      onChange={(e) => setManualForm(prev => ({ ...prev, email: e.target.value }))}
-                      placeholder="이메일"
-                      className="h-8 text-sm"
-                      data-testid="input-manual-email"
-                    />
-                  </div>
-                  <div className="grid grid-cols-[80px_1fr] gap-2 items-center">
-                    <label className="text-xs text-muted-foreground">전화번호</label>
-                    <Input
-                      value={manualForm.phone}
-                      onChange={(e) => setManualForm(prev => ({ ...prev, phone: e.target.value }))}
-                      placeholder="전화번호"
-                      className="h-8 text-sm"
-                      data-testid="input-manual-phone"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      if (!manualForm.companyName.trim()) {
-                        toast({ title: "회사명은 필수입니다", variant: "destructive" });
-                        return;
-                      }
-                      saveMutation.mutate({
-                        companyName: manualForm.companyName.trim(),
-                        address: manualForm.address.trim() || "",
-                        contactName: manualForm.contactName.trim() || "",
-                        email: manualForm.email.trim() || "",
-                        phone: manualForm.phone.trim() || "",
-                        sheetName: "",
-                        quoteDate: "",
-                        quoteNumber: "",
-                        projectName: "",
-                      } as ExcelCustomerInfo);
-                    }}
-                    disabled={saveMutation.isPending || !manualForm.companyName.trim()}
-                    data-testid="button-save-manual-customer"
-                  >
-                    {saveMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
-                    <span>고객정보 저장</span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setShowManualInput(false);
-                      setScanFailMessage(null);
-                    }}
-                    data-testid="button-cancel-manual-input"
-                  >
-                    취소
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <CustomerLinkSection inquiryId={inquiryId} inquiry={inquiry} />
-          </div>
-        )}
-
-        {matchCandidates && (
-          <CustomerMatchDialog
-            candidates={matchCandidates.candidates}
-            companyName={matchCandidates.companyName}
-            pendingInfo={matchCandidates.pendingInfo}
-            inquiryId={inquiryId}
-            onClose={() => {
-              setMatchCandidates(null);
-              resetScan();
-            }}
-          />
-        )}
-
-        {scanResult && scanResult.scanned.length > 0 && (
-          <div className="space-y-3">
-            <div className="border rounded-lg p-3 bg-muted/30">
-              <p className="text-xs font-medium text-muted-foreground mb-2">엑셀에서 발견된 고객 정보 ({scanResult.scanned.length}건)</p>
-              {scanResult.scanned.length > 1 && (
-                <div className="flex gap-1 flex-wrap mb-3">
-                  {scanResult.scanned.map((info, idx) => (
-                    <Button
-                      key={idx}
-                      variant={selectedIdx === idx ? "default" : "outline"}
-                      size="sm"
-                      className="text-xs h-7"
-                      onClick={() => handleSelectScanned(idx)}
-                      data-testid={`button-select-customer-${idx}`}
-                    >
-                      {info.companyName} ({info.sheetName})
-                    </Button>
-                  ))}
-                </div>
-              )}
-
-              {selected && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-[80px_1fr] gap-y-1.5 gap-x-2 text-sm">
-                    <span className="text-muted-foreground">시트명</span>
-                    <span className="text-xs text-blue-600 dark:text-blue-400">{selected.sheetName}</span>
-                    <span className="text-muted-foreground">회사명</span>
-                    <span className="font-medium">{selected.companyName}</span>
-                    <span className="text-muted-foreground">주소</span>
-                    <span>{selected.address || "-"}</span>
-                    <span className="text-muted-foreground">담당자</span>
-                    <span>{selected.contactName || "-"}</span>
-                    <span className="text-muted-foreground">이메일</span>
-                    <span>{selected.email || "-"}</span>
-                    <span className="text-muted-foreground">전화번호</span>
-                    <span>{selected.phone || "-"}</span>
-                  </div>
-
-                  {existingForSelected.length > 0 && (
-                    <div className="border-t pt-3">
-                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-2">유사한 기존 회사 발견 ({existingForSelected.length}건)</p>
-                      <div className="flex gap-2 mb-2">
-                        <Button
-                          variant={mode === "existing" ? "default" : "outline"}
-                          size="sm"
-                          className="text-xs h-7"
-                          onClick={() => {
-                            setMode("existing");
-                            if (!selectedExistingId && existingForSelected.length > 0) setSelectedExistingId(existingForSelected[0].id);
-                          }}
-                          data-testid="button-mode-existing"
-                        >
-                          기존 회사 연결
-                        </Button>
-                        <Button
-                          variant={mode === "new" ? "default" : "outline"}
-                          size="sm"
-                          className="text-xs h-7"
-                          onClick={() => setMode("new")}
-                          data-testid="button-mode-new"
-                        >
-                          새로 등록
-                        </Button>
-                      </div>
-
-                      {mode === "existing" && (
-                        <div className="space-y-1.5">
-                          {existingForSelected.map((ec) => (
-                            <button
-                              type="button"
-                              key={ec.id}
-                              className={`w-full text-left border rounded-md p-2 text-sm transition-colors ${selectedExistingId === ec.id ? "border-primary bg-primary/5" : "bg-background hover:bg-accent"}`}
-                              onClick={() => setSelectedExistingId(ec.id)}
-                              data-testid={`button-existing-company-${ec.id}`}
-                            >
-                              <div className="font-medium">{ec.companyName}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {[ec.contactName, ec.email, ec.phone].filter(Boolean).join(" | ") || "정보 없음"}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-2 border-t">
-                    {mode === "existing" && selectedExistingId ? (
-                      <Button
-                        size="sm"
-                        onClick={() => linkMutation.mutate(selectedExistingId!)}
-                        disabled={isSaving || !selectedExistingId}
-                        data-testid="button-link-existing-company"
-                      >
-                        {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Building2 className="h-4 w-4" />}
-                        <span>기존 회사 연결</span>
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => saveMutation.mutate(selected)}
-                        disabled={isSaving}
-                        data-testid="button-save-customer-info"
-                      >
-                        {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
-                        <span>{existingForSelected.length > 0 ? "새 회사로 등록" : "이 정보로 저장"}</span>
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={resetScan}
-                      data-testid="button-cancel-scan"
-                    >
-                      취소
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </CardContent>
-
-      {inquiry.customerId && (
-        <CustomerPreviewDialog
-          customerId={inquiry.customerId}
-          inquiryId={inquiryId}
-          open={showCustomerPreview}
-          onOpenChange={setShowCustomerPreview}
-        />
-      )}
-    </Card>
-  );
-}
 
 function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   inquiryId: string;
@@ -2167,7 +1550,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
                 </Card>
               </div>
 
-              <CustomerInfoSection inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
+              <SimpleCustomerCard inquiryId={id!} inquiry={inquiry} hasOneDrive={!!inquiry.onedriveFolderId} />
 
               <MemoSection inquiryId={id!} legacyMemo={inquiry.memo || ""} />
             </div>
