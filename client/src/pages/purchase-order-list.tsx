@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import {
@@ -447,6 +447,232 @@ function ExcelAmountParser({ orderId, onAmountParsed }: { orderId: string; onAmo
   );
 }
 
+function InvoiceSearchPicker({
+  label,
+  items,
+  selectedId,
+  onSelect,
+  renderItem,
+  renderSelected,
+  getCompanyName,
+  getDate,
+  defaultSearch,
+  testIdPrefix,
+}: {
+  label: string;
+  items: PurchaseInvoice[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  renderItem: (item: PurchaseInvoice) => string;
+  renderSelected: (item: PurchaseInvoice) => React.ReactNode;
+  getCompanyName: (item: PurchaseInvoice) => string;
+  getDate: (item: PurchaseInvoice) => string;
+  defaultSearch?: string;
+  testIdPrefix: string;
+}) {
+  const [searchText, setSearchText] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  const selectedItem = useMemo(() => items.find(i => i.id === selectedId), [items, selectedId]);
+
+  const handleOpen = useCallback(() => {
+    if (!isOpen && defaultSearch) setSearchText(defaultSearch);
+    setIsOpen(!isOpen);
+  }, [isOpen, defaultSearch]);
+
+  const filtered = useMemo(() => {
+    if (!isOpen) return [];
+    let list = items;
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
+      list = list.filter(i => getCompanyName(i).toLowerCase().includes(q));
+    }
+    if (dateFrom) {
+      list = list.filter(i => { const d = getDate(i); return d && d >= dateFrom; });
+    }
+    if (dateTo) {
+      list = list.filter(i => { const d = getDate(i); return d && d <= dateTo; });
+    }
+    return list.slice(0, 50);
+  }, [items, searchText, dateFrom, dateTo, isOpen, getCompanyName, getDate]);
+
+  return (
+    <div>
+      <Label className="text-[10px] text-muted-foreground">{label}</Label>
+      {selectedItem ? (
+        <div className="flex items-center gap-1 mt-1 p-1.5 rounded border bg-muted/50" data-testid={`selected-${testIdPrefix}`}>
+          <div className="flex-1 min-w-0 truncate">{renderSelected(selectedItem)}</div>
+          <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => { onSelect(""); setIsOpen(false); }} data-testid={`button-clear-${testIdPrefix}`}>
+            <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" className="text-xs w-full justify-start text-muted-foreground" onClick={handleOpen} data-testid={`button-open-${testIdPrefix}-search`}>
+          <Search className="h-3 w-3 mr-1" />{isOpen ? "검색 닫기" : "계산서 검색하여 연결"}
+        </Button>
+      )}
+      {isOpen && !selectedItem && (
+        <div className="mt-1 border rounded p-2 space-y-2 bg-background" data-testid={`search-panel-${testIdPrefix}`}>
+          <div className="flex items-center gap-1">
+            <Input
+              className="h-7 text-xs flex-1"
+              placeholder="업체명 검색..."
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              data-testid={`input-search-${testIdPrefix}`}
+              autoFocus
+            />
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => { setIsOpen(false); setSearchText(""); setDateFrom(""); setDateTo(""); }} data-testid={`button-close-${testIdPrefix}-search`}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Label className="text-[10px] text-muted-foreground">발행일 시작</Label>
+              <Input type="date" className="h-7 text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid={`input-date-from-${testIdPrefix}`} />
+            </div>
+            <div className="flex-1">
+              <Label className="text-[10px] text-muted-foreground">발행일 종료</Label>
+              <Input type="date" className="h-7 text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid={`input-date-to-${testIdPrefix}`} />
+            </div>
+          </div>
+          <div className="max-h-40 overflow-y-auto border rounded">
+            {filtered.length === 0 ? (
+              <p className="text-xs text-muted-foreground p-2 text-center">
+                {searchText.trim() || dateFrom || dateTo ? "검색 결과가 없습니다" : "업체명 또는 기간을 입력하세요"}
+              </p>
+            ) : (
+              filtered.map(item => (
+                <div
+                  key={item.id}
+                  className="w-full text-left px-2 py-1.5 text-xs cursor-pointer border-b last:border-b-0 flex items-center justify-between gap-2 transition-colors hover:bg-accent"
+                  onClick={() => { onSelect(item.id); setIsOpen(false); setSearchText(""); setDateFrom(""); setDateTo(""); }}
+                  data-testid={`item-${testIdPrefix}-${item.id}`}
+                >
+                  <span className="truncate">{renderItem(item)}</span>
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">{getDate(item)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaymentSearchPicker({
+  label,
+  items,
+  selectedId,
+  onSelect,
+  renderSelected,
+  defaultSearch,
+  testIdPrefix,
+}: {
+  label: string;
+  items: Payment[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  renderSelected: (item: Payment) => React.ReactNode;
+  defaultSearch?: string;
+  testIdPrefix: string;
+}) {
+  const [searchText, setSearchText] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  const selectedItem = useMemo(() => items.find(i => i.id === selectedId), [items, selectedId]);
+
+  const handleOpen = useCallback(() => {
+    if (!isOpen && defaultSearch) setSearchText(defaultSearch);
+    setIsOpen(!isOpen);
+  }, [isOpen, defaultSearch]);
+
+  const filtered = useMemo(() => {
+    if (!isOpen) return [];
+    let list = items;
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
+      list = list.filter(i => (i.companyName || "").toLowerCase().includes(q) || (i.description || "").toLowerCase().includes(q));
+    }
+    if (dateFrom) {
+      list = list.filter(i => { const d = i.plannedDate || i.actualDate || ""; return d && d >= dateFrom; });
+    }
+    if (dateTo) {
+      list = list.filter(i => { const d = i.plannedDate || i.actualDate || ""; return d && d <= dateTo; });
+    }
+    return list.slice(0, 50);
+  }, [items, searchText, dateFrom, dateTo, isOpen]);
+
+  return (
+    <div>
+      <Label className="text-[10px] text-muted-foreground">{label}</Label>
+      {selectedItem ? (
+        <div className="flex items-center gap-1 mt-1 p-1.5 rounded border bg-muted/50" data-testid={`selected-${testIdPrefix}`}>
+          <div className="flex-1 min-w-0 truncate">{renderSelected(selectedItem)}</div>
+          <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => { onSelect(""); setIsOpen(false); }} data-testid={`button-clear-${testIdPrefix}`}>
+            <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+          </Button>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" className="text-xs w-full justify-start text-muted-foreground" onClick={handleOpen} data-testid={`button-open-${testIdPrefix}-search`}>
+          <Search className="h-3 w-3 mr-1" />{isOpen ? "검색 닫기" : "송금 검색하여 연결"}
+        </Button>
+      )}
+      {isOpen && !selectedItem && (
+        <div className="mt-1 border rounded p-2 space-y-2 bg-background" data-testid={`search-panel-${testIdPrefix}`}>
+          <div className="flex items-center gap-1">
+            <Input
+              className="h-7 text-xs flex-1"
+              placeholder="업체명/내용 검색..."
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              data-testid={`input-search-${testIdPrefix}`}
+              autoFocus
+            />
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => { setIsOpen(false); setSearchText(""); setDateFrom(""); setDateTo(""); }} data-testid={`button-close-${testIdPrefix}-search`}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Label className="text-[10px] text-muted-foreground">기간 시작</Label>
+              <Input type="date" className="h-7 text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid={`input-date-from-${testIdPrefix}`} />
+            </div>
+            <div className="flex-1">
+              <Label className="text-[10px] text-muted-foreground">기간 종료</Label>
+              <Input type="date" className="h-7 text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid={`input-date-to-${testIdPrefix}`} />
+            </div>
+          </div>
+          <div className="max-h-40 overflow-y-auto border rounded">
+            {filtered.length === 0 ? (
+              <p className="text-xs text-muted-foreground p-2 text-center">
+                {searchText.trim() || dateFrom || dateTo ? "검색 결과가 없습니다" : "업체명 또는 기간을 입력하세요"}
+              </p>
+            ) : (
+              filtered.map(item => (
+                <div
+                  key={item.id}
+                  className="w-full text-left px-2 py-1.5 text-xs cursor-pointer border-b last:border-b-0 flex items-center justify-between gap-2 transition-colors hover:bg-accent"
+                  onClick={() => { onSelect(item.id); setIsOpen(false); setSearchText(""); setDateFrom(""); setDateTo(""); }}
+                  data-testid={`item-${testIdPrefix}-${item.id}`}
+                >
+                  <span className="truncate">{item.companyName} - {item.description || ""} ({formatAmount(item.amount)})</span>
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">{item.plannedDate || item.actualDate || ""}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrderDetailModal({
   order,
   invoices,
@@ -591,38 +817,31 @@ function OrderDetailModal({
                     <Input type="date" className="h-7 text-xs" value={form.actualDeliveryDate} onChange={e => setForm(f => ({ ...f, actualDeliveryDate: e.target.value }))} data-testid="input-actual-date" />
                   </div>
                 </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">계산서 연결</Label>
-                  <Select value={form.purchaseInvoiceId || "none"} onValueChange={v => setForm(f => ({ ...f, purchaseInvoiceId: v === "none" ? "" : v }))}>
-                    <SelectTrigger className="h-7 text-xs" data-testid="select-invoice">
-                      <SelectValue placeholder="선택 안함" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">선택 안함</SelectItem>
-                      {invoices.map(inv => (
-                        <SelectItem key={inv.id} value={inv.id}>
-                          {inv.companyName} - {inv.item} ({formatAmount(inv.totalAmount)})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">송금 연결</Label>
-                  <Select value={form.paymentId || "none"} onValueChange={v => setForm(f => ({ ...f, paymentId: v === "none" ? "" : v }))}>
-                    <SelectTrigger className="h-7 text-xs" data-testid="select-payment">
-                      <SelectValue placeholder="선택 안함" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">선택 안함</SelectItem>
-                      {expensePayments.map(p => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.companyName} - {p.description} ({formatAmount(p.amount)}) {p.plannedDate || ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <InvoiceSearchPicker
+                  label="계산서 연결"
+                  items={invoices}
+                  selectedId={form.purchaseInvoiceId}
+                  onSelect={id => setForm(f => ({ ...f, purchaseInvoiceId: id }))}
+                  renderItem={inv => `${inv.companyName} - ${inv.item || "항목없음"} (${formatAmount(inv.totalAmount)})`}
+                  renderSelected={inv => (
+                    <span className="text-xs">{inv.companyName} - {inv.item || "항목없음"} ({formatAmount(inv.totalAmount)}) {inv.issueDate || ""}</span>
+                  )}
+                  getCompanyName={inv => inv.companyName || ""}
+                  getDate={inv => inv.issueDate || ""}
+                  defaultSearch={order.vendor || ""}
+                  testIdPrefix="invoice"
+                />
+                <PaymentSearchPicker
+                  label="송금 연결"
+                  items={expensePayments}
+                  selectedId={form.paymentId}
+                  onSelect={id => setForm(f => ({ ...f, paymentId: id }))}
+                  renderSelected={p => (
+                    <span className="text-xs">{p.companyName} - {p.description || ""} ({formatAmount(p.amount)}) {p.plannedDate || ""}</span>
+                  )}
+                  defaultSearch={order.vendor || ""}
+                  testIdPrefix="payment"
+                />
                 <div>
                   <Label className="text-[10px] text-muted-foreground">메모</Label>
                   <Input className="h-7 text-xs" value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} data-testid="input-memo" />
