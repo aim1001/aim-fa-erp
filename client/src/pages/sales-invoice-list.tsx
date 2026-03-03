@@ -303,7 +303,7 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
   );
 }
 
-function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose: () => void }) {
+export function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose: () => void }) {
   const { toast } = useToast();
   const { data: invoice } = useQuery<SalesInvoice>({
     queryKey: ["/api/sales-invoices", invoiceId],

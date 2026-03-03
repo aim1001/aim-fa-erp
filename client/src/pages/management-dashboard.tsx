@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { ProjectDetailModal } from "./project-list";
+import { InvoiceDetailModal } from "./sales-invoice-list";
 
 type UnissuedInvoice = {
   invoiceId: string;
@@ -23,6 +24,7 @@ type UnissuedInvoice = {
 type UncollectedPayment = {
   paymentId: string;
   projectId: string | null;
+  salesInvoiceId: string | null;
   projectNumber: string;
   customerName: string;
   description: string;
@@ -75,6 +77,7 @@ export default function ManagementDashboard() {
   const [showAllInvoices, setShowAllInvoices] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -244,14 +247,20 @@ export default function ManagementDashboard() {
             {displayPayments.map((pay) => (
               <div
                 key={pay.paymentId}
-                className={`p-2.5 text-xs flex items-center gap-3 ${pay.projectId ? "cursor-pointer hover:bg-muted/40" : ""} transition-colors ${pay.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
-                onClick={() => pay.projectId && setSelectedProjectId(pay.projectId)}
+                className={`p-2.5 text-xs flex items-center gap-3 ${(pay.projectId || pay.salesInvoiceId) ? "cursor-pointer hover:bg-muted/40" : ""} transition-colors ${pay.isOverdue ? "bg-red-50/60 dark:bg-red-900/10" : ""}`}
+                onClick={() => {
+                  if (pay.projectId) setSelectedProjectId(pay.projectId);
+                  else if (pay.salesInvoiceId) setSelectedInvoiceId(pay.salesInvoiceId);
+                }}
                 data-testid={`row-uncollected-payment-${pay.paymentId}`}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono text-muted-foreground">{pay.projectNumber}</span>
                     <span className="font-medium truncate">{pay.customerName}</span>
+                    {!pay.projectId && pay.salesInvoiceId && (
+                      <Badge variant="outline" className="text-[9px] h-4 px-1">계산서</Badge>
+                    )}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">{pay.description}</div>
                 </div>
@@ -288,6 +297,10 @@ export default function ManagementDashboard() {
 
       <Dialog open={!!selectedProjectId} onOpenChange={open => { if (!open) setSelectedProjectId(null); }}>
         {selectedProjectId && <ProjectDetailModal projectId={selectedProjectId} onClose={() => setSelectedProjectId(null)} />}
+      </Dialog>
+
+      <Dialog open={!!selectedInvoiceId} onOpenChange={open => { if (!open) setSelectedInvoiceId(null); }}>
+        {selectedInvoiceId && <InvoiceDetailModal invoiceId={selectedInvoiceId} onClose={() => setSelectedInvoiceId(null)} />}
       </Dialog>
     </div>
   );

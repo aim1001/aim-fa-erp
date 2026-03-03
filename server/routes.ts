@@ -3317,14 +3317,15 @@ export async function registerRoutes(
 
       for (const pay of allPayments) {
         if (pay.type !== "income") continue;
-        if (!pay.projectId) continue;
         if (pay.status === "completed" || pay.actualDate) continue;
-        const proj = projects.find(p => p.id === pay.projectId);
+        const proj = pay.projectId ? projects.find(p => p.id === pay.projectId) : null;
+        const inv = pay.salesInvoiceId ? salesInvoices.find(i => i.id === pay.salesInvoiceId) : null;
         const entry = {
           paymentId: pay.id,
           projectId: pay.projectId || null,
-          projectNumber: proj?.projectNumber || "",
-          customerName: pay.companyName || proj?.customerName || "",
+          salesInvoiceId: pay.salesInvoiceId || null,
+          projectNumber: proj?.projectNumber || (inv?.invoiceNumber ? `계산서-${inv.invoiceNumber}` : ""),
+          customerName: pay.companyName || proj?.customerName || inv?.companyName || "",
           description: pay.description || "",
           amount: pay.amount || 0,
           plannedDate: pay.plannedDate || null,
