@@ -12,6 +12,7 @@ import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InquiryDetailDialog } from "@/pages/inquiry-detail";
 import { InquiryFormDialog } from "@/pages/inquiry-form";
+import { TaskListCard } from "@/components/task-list-card";
 
 const stageLabels: Record<number, string> = {
   0: "-",
@@ -147,6 +148,8 @@ export default function Dashboard() {
       </div>
 
       <InquiryFormDialog open={showNewInquiry} onOpenChange={setShowNewInquiry} />
+
+      <TaskListCard />
 
       <Card>
         <CardContent className="pt-4 pb-3">
