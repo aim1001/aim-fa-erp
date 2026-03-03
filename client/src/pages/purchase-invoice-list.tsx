@@ -523,7 +523,9 @@ export default function PurchaseInvoiceList() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
-      const parts = [`${data.imported}건 추가`, `${data.skipped}건 중복 건너뜀`];
+      const parts = [`${data.imported}건 추가`];
+      if (data.updated > 0) parts.push(`${data.updated}건 업데이트`);
+      parts.push(`${data.skipped}건 변경없음`);
       if (data.vendorsCreated > 0) parts.push(`공급업체 ${data.vendorsCreated}개 신규 등록`);
       toast({ title: "가져오기 완료", description: `${parts.join(", ")} (총 ${data.total}건)` });
     },

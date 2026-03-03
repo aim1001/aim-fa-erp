@@ -2535,9 +2535,19 @@ export async function registerRoutes(
 
       const rows = await parsePurchaseTaxInvoices(year);
       const existing = await storage.getPurchaseInvoicesByYear(year);
-      const existingKeys = new Set(
-        existing.map(e => `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`)
-      );
+
+      const exactKeyMap = new Map<string, typeof existing[0]>();
+      const partialKeyMap = new Map<string, typeof existing[0][]>();
+      for (const e of existing) {
+        const exactKey = `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`;
+        exactKeyMap.set(exactKey, e);
+
+        const partialKey = `${e.issueDate}|${e.businessNumber}`;
+        if (!partialKeyMap.has(partialKey)) partialKeyMap.set(partialKey, []);
+        partialKeyMap.get(partialKey)!.push(e);
+      }
+
+      const matchedIds = new Set<string>();
 
       const vendors = await storage.getVendors();
       const vendorByBizNum = new Map<string, string>();
@@ -2548,12 +2558,84 @@ export async function registerRoutes(
       }
 
       let imported = 0;
+      let updated = 0;
       let skipped = 0;
       let vendorsCreated = 0;
+      const processedExactKeys = new Set<string>();
       for (const row of rows) {
-        const key = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
-        if (existingKeys.has(key)) {
-          skipped++;
+        if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
+        const exactKey = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
+
+        if (processedExactKeys.has(exactKey)) { skipped++; continue; }
+        processedExactKeys.add(exactKey);
+
+        const exactMatch = exactKeyMap.get(exactKey);
+
+        if (exactMatch && !matchedIds.has(exactMatch.id)) {
+          matchedIds.add(exactMatch.id);
+          const needsUpdate =
+            exactMatch.companyName !== (row.companyName || null) ||
+            exactMatch.representative !== (row.representative || null) ||
+            exactMatch.taxAmount !== row.taxAmount ||
+            exactMatch.totalAmount !== row.totalAmount ||
+            exactMatch.writeDate !== (row.writeDate || null);
+
+          if (needsUpdate) {
+            await storage.updatePurchaseInvoice(exactMatch.id, {
+              companyName: row.companyName || null,
+              representative: row.representative || null,
+              address: row.address || null,
+              email1: row.email1 || null,
+              writeDate: row.writeDate || null,
+              taxAmount: row.taxAmount,
+              totalAmount: row.totalAmount,
+            });
+            updated++;
+          } else {
+            skipped++;
+          }
+          continue;
+        }
+
+        const partialKey = `${row.issueDate}|${row.businessNumber}`;
+        const candidates = partialKeyMap.get(partialKey) || [];
+        const unmatched = candidates.filter(c => !matchedIds.has(c.id));
+
+        if (unmatched.length === 1) {
+          const match = unmatched[0];
+          matchedIds.add(match.id);
+          await storage.updatePurchaseInvoice(match.id, {
+            companyName: row.companyName || null,
+            representative: row.representative || null,
+            address: row.address || null,
+            email1: row.email1 || null,
+            writeDate: row.writeDate || null,
+            supplyAmount: row.supplyAmount,
+            taxAmount: row.taxAmount,
+            totalAmount: row.totalAmount,
+          });
+          updated++;
+          continue;
+        }
+
+        if (unmatched.length > 1) {
+          const closest = unmatched.reduce((best, c) => {
+            const diffBest = Math.abs((best.supplyAmount || 0) - row.supplyAmount);
+            const diffC = Math.abs((c.supplyAmount || 0) - row.supplyAmount);
+            return diffC < diffBest ? c : best;
+          });
+          matchedIds.add(closest.id);
+          await storage.updatePurchaseInvoice(closest.id, {
+            companyName: row.companyName || null,
+            representative: row.representative || null,
+            address: row.address || null,
+            email1: row.email1 || null,
+            writeDate: row.writeDate || null,
+            supplyAmount: row.supplyAmount,
+            taxAmount: row.taxAmount,
+            totalAmount: row.totalAmount,
+          });
+          updated++;
           continue;
         }
 
@@ -2587,11 +2669,10 @@ export async function registerRoutes(
           taxAmount: row.taxAmount,
           totalAmount: row.totalAmount,
         });
-        existingKeys.add(key);
         imported++;
       }
 
-      res.json({ imported, skipped, vendorsCreated, total: rows.length });
+      res.json({ imported, updated, skipped, vendorsCreated, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
