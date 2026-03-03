@@ -1242,19 +1242,21 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
   const { toast } = useToast();
   const [newContent, setNewContent] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTime, setDueTime] = useState("");
 
   const { data: tasks = [], isLoading } = useQuery<InquiryTask[]>({
     queryKey: [`/api/inquiries/${inquiryId}/tasks`],
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { content: string; dueDate?: string }) =>
+    mutationFn: (data: { content: string; dueDate?: string; dueTime?: string }) =>
       apiRequest("POST", `/api/inquiries/${inquiryId}/tasks`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/tasks`] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
       setNewContent("");
       setDueDate("");
+      setDueTime("");
     },
     onError: () => toast({ title: "할일 추가 실패", variant: "destructive" }),
   });
@@ -1303,7 +1305,7 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
             onChange={e => setNewContent(e.target.value)}
             onKeyDown={e => {
               if (e.key === "Enter" && newContent.trim()) {
-                createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined });
+                createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined });
               }
             }}
             className="h-8 text-sm"
@@ -1316,12 +1318,19 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
             className="h-8 text-xs w-[130px] shrink-0"
             data-testid="input-task-due-date"
           />
+          <Input
+            type="time"
+            value={dueTime}
+            onChange={e => setDueTime(e.target.value)}
+            className="h-8 text-xs w-[100px] shrink-0"
+            data-testid="input-task-due-time"
+          />
           <Button
             size="sm"
             variant="outline"
             className="h-8 px-2 shrink-0"
             disabled={!newContent.trim() || createMutation.isPending}
-            onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined })}
+            onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined })}
             data-testid="button-add-task"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -1342,7 +1351,7 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
                 <span className="text-sm flex-1 min-w-0 truncate">{task.content}</span>
                 {task.dueDate && (
                   <span className={`text-[10px] shrink-0 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
-                    {task.dueDate}
+                    {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
                   </span>
                 )}
                 <button
@@ -1365,7 +1374,7 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
                 </button>
                 <span className="text-sm flex-1 min-w-0 truncate line-through">{task.content}</span>
                 {task.dueDate && (
-                  <span className="text-[10px] shrink-0 text-muted-foreground">{task.dueDate}</span>
+                  <span className="text-[10px] shrink-0 text-muted-foreground">{task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}</span>
                 )}
                 <button
                   className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"

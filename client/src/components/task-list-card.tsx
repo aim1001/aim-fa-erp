@@ -10,6 +10,8 @@ type PendingTask = {
   content: string;
   completed: boolean;
   dueDate: string | null;
+  dueTime: string | null;
+  calendarEventId: string | null;
   createdAt: string;
   inquiryNumber: string;
   customerName: string;
@@ -74,7 +76,7 @@ export function TaskListCard({ onInquiryClick }: { onInquiryClick?: (inquiryId: 
               </span>
               {task.dueDate && (
                 <span className={`text-[10px] shrink-0 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
-                  {task.dueDate}
+                  {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
                 </span>
               )}
             </div>

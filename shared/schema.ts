@@ -378,6 +378,8 @@ export const inquiryTasks = pgTable("inquiry_tasks", {
   content: text("content").notNull(),
   completed: boolean("completed").default(false).notNull(),
   dueDate: text("due_date"),
+  dueTime: text("due_time"),
+  calendarEventId: text("calendar_event_id"),
   createdAt: text("created_at").notNull(),
 });
 

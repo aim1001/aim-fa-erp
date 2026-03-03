@@ -198,6 +198,7 @@ export interface IStorage {
   deleteStaff(id: string): Promise<void>;
 
   getTasksByInquiry(inquiryId: string): Promise<InquiryTask[]>;
+  getTask(id: string): Promise<InquiryTask | undefined>;
   getAllPendingTasks(): Promise<(InquiryTask & { inquiryNumber: string; customerName: string })[]>;
   createTask(data: InsertInquiryTask): Promise<InquiryTask>;
   updateTask(id: string, data: Partial<InsertInquiryTask>): Promise<InquiryTask | undefined>;
@@ -1043,6 +1044,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(inquiryTasks).where(eq(inquiryTasks.inquiryId, inquiryId)).orderBy(desc(inquiryTasks.createdAt));
   }
 
+  async getTask(id: string): Promise<InquiryTask | undefined> {
+    const [task] = await db.select().from(inquiryTasks).where(eq(inquiryTasks.id, id));
+    return task;
+  }
+
   async getAllPendingTasks(): Promise<(InquiryTask & { inquiryNumber: string; customerName: string })[]> {
     const rows = await db
       .select({
@@ -1051,6 +1057,8 @@ export class DatabaseStorage implements IStorage {
         content: inquiryTasks.content,
         completed: inquiryTasks.completed,
         dueDate: inquiryTasks.dueDate,
+        dueTime: inquiryTasks.dueTime,
+        calendarEventId: inquiryTasks.calendarEventId,
         createdAt: inquiryTasks.createdAt,
         inquiryNumber: inquiries.inquiryNumber,
         customerName: inquiries.customerName,
