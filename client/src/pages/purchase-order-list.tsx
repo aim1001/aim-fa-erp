@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, Pencil, X, Save, FileText, Wallet } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, Pencil, X, Save, FileText, Wallet, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
@@ -315,6 +316,124 @@ export default function PurchaseOrderList() {
   );
 }
 
+type OneDriveFile = {
+  id: string;
+  name: string;
+  webUrl: string;
+  size: number;
+  mimeType?: string;
+};
+
+function ExcelAmountParser({ orderId, onAmountParsed }: { orderId: string; onAmountParsed: (amount: number) => void }) {
+  const { toast } = useToast();
+  const [showFiles, setShowFiles] = useState(false);
+  const [selectedFileId, setSelectedFileId] = useState("");
+  const [parsedResult, setParsedResult] = useState<{ supplyAmount: number; vat: number; totalAmount: number } | null>(null);
+
+  const { data: files, isLoading: filesLoading } = useQuery<OneDriveFile[]>({
+    queryKey: ["/api/purchase-orders", orderId, "files"],
+    queryFn: async () => {
+      const res = await fetch(`/api/purchase-orders/${orderId}/files`);
+      return res.json();
+    },
+    enabled: showFiles,
+  });
+
+  const excelFiles = useMemo(() =>
+    (files || []).filter(f => f.name.match(/\.(xlsx?|xls)$/i)),
+    [files]
+  );
+
+  const parseMutation = useMutation({
+    mutationFn: async (fileId: string) => {
+      const res = await apiRequest("POST", `/api/purchase-orders/${orderId}/parse-amount`, { fileId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setParsedResult(data);
+    },
+    onError: (err: Error) => {
+      toast({ title: "금액 파싱 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (!showFiles) {
+    return (
+      <Button variant="outline" size="sm" className="h-7 text-xs w-full" onClick={() => setShowFiles(true)} data-testid="button-excel-read">
+        <Download className="h-3 w-3 mr-1" />엑셀에서 금액 읽기
+      </Button>
+    );
+  }
+
+  return (
+    <div className="border rounded p-2 space-y-2 bg-muted/20" data-testid="panel-excel-parser">
+      <div className="flex items-center justify-between">
+        <Label className="text-[10px] font-medium">엑셀 파일 선택</Label>
+        <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1" onClick={() => { setShowFiles(false); setParsedResult(null); setSelectedFileId(""); }} data-testid="button-close-excel-panel">
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+      {filesLoading ? (
+        <Skeleton className="h-7 w-full" />
+      ) : excelFiles.length === 0 ? (
+        <p className="text-[10px] text-muted-foreground">엑셀 파일이 없습니다</p>
+      ) : (
+        <>
+          <Select value={selectedFileId || "none"} onValueChange={v => { setSelectedFileId(v === "none" ? "" : v); setParsedResult(null); }}>
+            <SelectTrigger className="h-7 text-xs" data-testid="select-excel-file">
+              <SelectValue placeholder="파일 선택..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">파일 선택...</SelectItem>
+              {excelFiles.map(f => (
+                <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedFileId && (
+            <Button
+              variant="default"
+              size="sm"
+              className="h-7 text-xs w-full"
+              onClick={() => parseMutation.mutate(selectedFileId)}
+              disabled={parseMutation.isPending}
+              data-testid="button-parse-amount"
+            >
+              {parseMutation.isPending ? "읽는 중..." : "금액 가져오기"}
+            </Button>
+          )}
+          {parsedResult && (
+            <div className="space-y-1 border-t pt-2" data-testid="panel-parsed-result">
+              <div className="grid grid-cols-3 gap-1 text-[10px]">
+                <div>
+                  <span className="text-muted-foreground">공급가액</span>
+                  <p className="font-medium">{parsedResult.supplyAmount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">VAT</span>
+                  <p className="font-medium">{parsedResult.vat.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">합계</span>
+                  <p className="font-medium">{parsedResult.totalAmount.toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <Button size="sm" className="h-6 text-[10px] flex-1" onClick={() => { onAmountParsed(parsedResult.supplyAmount); setParsedResult(null); setShowFiles(false); }} data-testid="button-apply-supply">
+                  공급가액 적용
+                </Button>
+                <Button size="sm" className="h-6 text-[10px] flex-1" onClick={() => { onAmountParsed(parsedResult.totalAmount); setParsedResult(null); setShowFiles(false); }} data-testid="button-apply-total">
+                  합계 적용
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function OrderDetailModal({
   order,
   invoices,
@@ -364,6 +483,7 @@ function OrderDetailModal({
             <ClipboardCheck className="h-5 w-5" />
             발주 상세 - {order.orderNumber || "번호없음"}
           </DialogTitle>
+          <DialogDescription className="sr-only">발주 상세 정보</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -417,23 +537,30 @@ function OrderDetailModal({
 
             {editMode ? (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">금액</Label>
-                    <Input type="number" className="h-7 text-xs" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} data-testid="input-amount" />
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">금액</Label>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" className="h-7 text-xs flex-1" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} data-testid="input-amount" />
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">{form.amount ? `${parseInt(form.amount).toLocaleString()}원` : ""}</span>
                   </div>
-                  <div className="flex items-end">
-                    <label className="flex items-center gap-2 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.receivingCompleted}
-                        onChange={e => setForm(f => ({ ...f, receivingCompleted: e.target.checked }))}
-                        className="rounded"
-                        data-testid="input-receiving-completed"
-                      />
-                      입고완료 처리
-                    </label>
-                  </div>
+                </div>
+                {order.onedriveFolderId && (
+                  <ExcelAmountParser
+                    orderId={order.id}
+                    onAmountParsed={(amount) => setForm(f => ({ ...f, amount: String(amount) }))}
+                  />
+                )}
+                <div className="flex items-center">
+                  <label className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.receivingCompleted}
+                      onChange={e => setForm(f => ({ ...f, receivingCompleted: e.target.checked }))}
+                      className="rounded"
+                      data-testid="input-receiving-completed"
+                    />
+                    입고완료 처리
+                  </label>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>

@@ -4102,5 +4102,57 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-orders/:id/files", async (req, res) => {
+    try {
+      const order = await storage.getPurchaseOrder(req.params.id);
+      if (!order) return res.status(404).json({ message: "Not found" });
+      if (!order.onedriveFolderId) return res.json([]);
+      const files = await listFolderFiles(order.onedriveFolderId);
+      res.json(files);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-orders/:id/parse-amount", async (req, res) => {
+    try {
+      const { fileId } = req.body;
+      if (!fileId) return res.status(400).json({ message: "fileId required" });
+
+      const { downloadFile: dlFile } = await import("./onedrive");
+      const buffer = await dlFile(fileId);
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(buffer, { type: "buffer" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) return res.status(400).json({ message: "시트를 찾을 수 없습니다" });
+
+      const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+      let amount: number | null = null;
+
+      for (let row = range.s.r; row <= range.e.r; row++) {
+        const cellA = sheet[XLSX.utils.encode_cell({ r: row, c: 0 })];
+        if (cellA) {
+          const val = String(cellA.v || "").replace(/\s+/g, "");
+          if (val.includes("합계") || val.toLowerCase().includes("total")) {
+            const cellG = sheet[XLSX.utils.encode_cell({ r: row, c: 6 })];
+            if (cellG && cellG.v != null) {
+              amount = typeof cellG.v === "number" ? Math.round(cellG.v) : Math.round(Number(String(cellG.v).replace(/[^0-9.-]/g, ""))) || null;
+            }
+            break;
+          }
+        }
+      }
+
+      if (amount === null) {
+        return res.status(400).json({ message: "엑셀에서 '합 계(Total)' 항목을 찾을 수 없습니다" });
+      }
+
+      const vat = Math.round(amount * 0.1);
+      res.json({ supplyAmount: amount, vat, totalAmount: amount + vat });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
