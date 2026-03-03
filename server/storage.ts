@@ -939,7 +939,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getQuotationsByInquiry(inquiryId: string): Promise<Quotation[]> {
-    return db.select().from(quotations).where(eq(quotations.inquiryId, inquiryId)).orderBy(desc(quotations.createdAt));
+    return db.select().from(quotations).where(eq(quotations.inquiryId, inquiryId)).orderBy(quotations.createdAt);
   }
 
   async getQuotationWithItems(id: string): Promise<{ quotation: Quotation; items: QuotationItem[] } | undefined> {

@@ -1164,8 +1164,21 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
   const createMut = useMutation({
     mutationFn: async () => {
       const year = String(inquiry.year).slice(-2);
-      const num = String(quotationList.length + 1).padStart(2, "0");
-      const quoteNumber = `Q-${year}-${inquiry.inquiryNumber?.replace(/^.*?(\d+)$/, "$1") || "0"}-${num}`;
+      const inqNum = inquiry.inquiryNumber?.replace(/^.*?(\d+)$/, "$1") || "0";
+      const base = `Q-${year}-${inqNum}`;
+      let quoteNumber: string;
+      if (quotationList.length === 0) {
+        quoteNumber = base;
+      } else {
+        let maxRev = 0;
+        for (const q of quotationList) {
+          const m = q.quoteNumber.match(/-r(\d+)$/);
+          if (m) {
+            maxRev = Math.max(maxRev, parseInt(m[1], 10));
+          }
+        }
+        quoteNumber = `${base}-r${maxRev + 1}`;
+      }
       const today = new Date().toISOString().split("T")[0];
       const validDate = new Date();
       validDate.setDate(validDate.getDate() + 30);
