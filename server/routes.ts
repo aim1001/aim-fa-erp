@@ -2983,15 +2983,21 @@ export async function registerRoutes(
         const customerName = parts[1] || "";
         const description = parts.slice(2).join("_") || "";
 
+        const regDate = folder.createdDateTime ? folder.createdDateTime.split("T")[0] : null;
+
         if (existing) {
-          await storage.updateProject(existing.id, {
+          const updateData: any = {
             onedriveFolderId: folder.id,
             onedriveWebUrl: folder.webUrl,
             projectNumber,
             customerName,
             description,
             year,
-          });
+          };
+          if (!existing.registrationDate && regDate) {
+            updateData.registrationDate = regDate;
+          }
+          await storage.updateProject(existing.id, updateData);
           updated++;
         } else {
           await storage.createProject({
@@ -3003,6 +3009,7 @@ export async function registerRoutes(
             onedriveFolderId: folder.id,
             onedriveWebUrl: folder.webUrl,
             status: "active",
+            registrationDate: regDate,
           });
           created++;
         }

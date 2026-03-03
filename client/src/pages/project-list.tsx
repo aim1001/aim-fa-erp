@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Project, SalesInvoice, PurchaseInvoice, Payment, Customer } from "@shared/schema";
@@ -489,6 +489,21 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
       {project.description && (
         <div className="text-sm text-muted-foreground">{project.description}</div>
       )}
+
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div className="border rounded p-2">
+          <div className="text-[10px] text-muted-foreground mb-0.5">등록일자</div>
+          <div className="font-medium" data-testid="text-registration-date">{project.registrationDate || "-"}</div>
+        </div>
+        <div className="border rounded p-2">
+          <div className="text-[10px] text-muted-foreground mb-0.5">납품일자</div>
+          <div className="font-medium" data-testid="text-delivery-date">{project.deliveryDate || "-"}</div>
+        </div>
+        <div className="border rounded p-2">
+          <div className="text-[10px] text-muted-foreground mb-0.5">완료일자</div>
+          <div className="font-medium" data-testid="text-completion-date">{project.completionDate || "-"}</div>
+        </div>
+      </div>
 
       <div className="border rounded-lg p-2.5 mt-1" data-testid="section-customer-link">
         {project.customer ? (
@@ -1385,28 +1400,85 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
 
 export default function ProjectList() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
-  const urlStatus = urlParams.get("status");
+
+  const hasAnyParam = urlParams.has("year") || urlParams.has("status") || urlParams.has("view");
+  const viewFilter = urlParams.get("view") || (!hasAnyParam ? "current" : "");
+  const yearFilter = urlParams.get("year") || "all";
+  const statusFilter = urlParams.get("status") || "all";
+
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
+  const currentYear = now.getFullYear();
+
+  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const queryYear = viewFilter === "current" ? currentYear : (yearFilter !== "all" ? parseInt(yearFilter) : undefined);
 
   const { data: years, isLoading: yearsLoading } = useQuery<number[]>({
     queryKey: ["/api/projects/years"],
   });
 
   const { data: projects, isLoading } = useQuery<EnrichedProject[]>({
-    queryKey: ["/api/projects", year],
+    queryKey: ["/api/projects", queryYear ?? "all"],
     queryFn: async () => {
-      const res = await fetch(`/api/projects?year=${year}`);
+      const url = queryYear ? `/api/projects?year=${queryYear}` : "/api/projects";
+      const res = await fetch(url);
       return res.json();
     },
   });
 
+  const handleQuickView = (view: string) => {
+    if (view === "current") {
+      navigate("/projects?view=current");
+    } else if (view === "all") {
+      navigate("/projects?view=all");
+    } else if (view === "active") {
+      navigate("/projects?view=all&status=active");
+    } else if (view === "completed") {
+      navigate("/projects?view=all&status=completed");
+    }
+  };
+
+  const handleYearChange = (value: string) => {
+    const params = new URLSearchParams();
+    if (value === "all") {
+      params.set("view", "all");
+    } else {
+      params.set("year", value);
+    }
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    navigate(`/projects?${params.toString()}`);
+  };
+
+  const handleStatusChange = (value: string) => {
+    const params = new URLSearchParams(searchString);
+    params.delete("view");
+    if (!params.has("year")) params.set("view", "all");
+    if (value === "all") {
+      params.delete("status");
+    } else {
+      params.set("status", value);
+    }
+    navigate(`/projects?${params.toString()}`);
+  };
+
+  const activeQuickView = useMemo(() => {
+    if (viewFilter === "current") return "current";
+    if (viewFilter === "all" && statusFilter === "all") return "all";
+    if (statusFilter === "active" && (viewFilter === "all" || yearFilter === "all")) return "active";
+    if (statusFilter === "completed" && (viewFilter === "all" || yearFilter === "all")) return "completed";
+    return "";
+  }, [viewFilter, statusFilter, yearFilter]);
+
+  const activeYearSelectValue = viewFilter === "current" ? String(currentYear) : yearFilter;
+
+  const syncYear = queryYear || currentYear;
   const syncMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/projects/sync?year=${year}`);
+      const res = await apiRequest("POST", `/api/projects/sync?year=${syncYear}`);
       return res.json();
     },
     onSuccess: (data) => {
@@ -1443,9 +1515,26 @@ export default function ProjectList() {
 
   const filteredProjects = useMemo(() => {
     if (!projects) return [];
-    if (!urlStatus) return projects;
-    return projects.filter(p => (p.status || "active") === urlStatus);
-  }, [projects, urlStatus]);
+    let result = projects;
+    if (statusFilter !== "all") {
+      result = result.filter(p => (p.status || "active") === statusFilter);
+    }
+    if (search.trim()) {
+      const term = search.trim().toLowerCase();
+      result = result.filter(p =>
+        (p.projectNumber || "").toLowerCase().includes(term) ||
+        (p.customerName || "").toLowerCase().includes(term) ||
+        (p.description || "").toLowerCase().includes(term)
+      );
+    }
+    result = [...result];
+    result.sort((a, b) => {
+      const dateA = a.registrationDate || "";
+      const dateB = b.registrationDate || "";
+      return dateB.localeCompare(dateA);
+    });
+    return result;
+  }, [projects, statusFilter, search]);
 
   const totals = useMemo(() => {
     if (!filteredProjects.length) return { contract: 0, issued: 0, collected: 0, purchase: 0, profit: 0 };
@@ -1461,27 +1550,8 @@ export default function ProjectList() {
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="text-project-list-title">
-          프로젝트{urlStatus === "active" ? " - 진행중" : urlStatus === "completed" ? " - 완료" : ""}
-        </h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-project-list-title">프로젝트</h1>
         <div className="flex items-center gap-2">
-          {yearsLoading ? (
-            <Skeleton className="h-9 w-24" />
-          ) : (
-            <Select value={String(year)} onValueChange={v => setYear(parseInt(v))}>
-              <SelectTrigger className="w-24 h-9" data-testid="select-project-year">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(years || []).map(y => (
-                  <SelectItem key={y} value={String(y)}>{y}년</SelectItem>
-                ))}
-                {years && !years.includes(year) && (
-                  <SelectItem value={String(year)}>{year}년</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          )}
           <Button
             size="sm"
             variant="outline"
@@ -1500,9 +1570,68 @@ export default function ProjectList() {
             data-testid="button-sync-projects"
           >
             <RefreshCw className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-            동기화
+            {syncYear}년 동기화
           </Button>
         </div>
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap" data-testid="quick-view-buttons">
+        {[
+          { key: "current", label: `${currentYear}년` },
+          { key: "all", label: "전체보기" },
+          { key: "active", label: "진행중" },
+          { key: "completed", label: "완료" },
+        ].map(({ key, label }) => (
+          <Button
+            key={key}
+            variant={activeQuickView === key ? "default" : "outline"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => handleQuickView(key)}
+            data-testid={`button-quick-${key}`}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="프로젝트번호, 고객사, 내용 검색..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+            data-testid="input-search"
+          />
+        </div>
+        {yearsLoading ? (
+          <Skeleton className="h-9 w-32" />
+        ) : (
+          <Select value={activeYearSelectValue} onValueChange={handleYearChange}>
+            <SelectTrigger className="w-32" data-testid="select-project-year">
+              <SelectValue placeholder="연도" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체 연도</SelectItem>
+              {(years || []).map(y => (
+                <SelectItem key={y} value={String(y)}>{y}년</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={statusFilter} onValueChange={handleStatusChange}>
+          <SelectTrigger className="w-32" data-testid="select-project-status">
+            <SelectValue placeholder="상태" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 상태</SelectItem>
+            <SelectItem value="active">진행중</SelectItem>
+            <SelectItem value="completed">완료</SelectItem>
+            <SelectItem value="hold">보류</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {filteredProjects.length > 0 && (
@@ -1540,6 +1669,7 @@ export default function ProjectList() {
                 <th className="text-left py-2 px-3 font-medium text-xs w-20">번호</th>
                 <th className="text-left py-2 px-3 font-medium text-xs">고객사</th>
                 <th className="text-left py-2 px-3 font-medium text-xs hidden md:table-cell">내용</th>
+                <th className="text-center py-2 px-3 font-medium text-xs hidden md:table-cell w-24">등록일</th>
                 <th className="text-right py-2 px-3 font-medium text-xs hidden md:table-cell w-20">계약</th>
                 <th className="text-right py-2 px-3 font-medium text-xs hidden md:table-cell w-20">발행</th>
                 <th className="text-right py-2 px-3 font-medium text-xs hidden md:table-cell w-20">수금</th>
@@ -1572,6 +1702,9 @@ export default function ProjectList() {
                     </td>
                     <td className="py-2 px-3 hidden md:table-cell">
                       <span className="text-xs text-muted-foreground truncate block max-w-[200px]" data-testid={`text-project-desc-${p.id}`}>{p.description || "-"}</span>
+                    </td>
+                    <td className="py-2 px-3 text-center hidden md:table-cell">
+                      <span className="text-xs text-muted-foreground" data-testid={`text-project-regdate-${p.id}`}>{p.registrationDate || "-"}</span>
                     </td>
                     <td className="py-2 px-3 text-right hidden md:table-cell">
                       {(p.totalAmount || 0) > 0 ? (
@@ -1617,12 +1750,12 @@ export default function ProjectList() {
       ) : (
         <div className="text-center py-12 text-muted-foreground">
           <FolderOpen className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>프로젝트가 없습니다. "동기화" 버튼을 눌러 OneDrive에서 가져오세요.</p>
+          <p>{search ? "검색 결과가 없습니다" : "프로젝트가 없습니다. \"동기화\" 버튼을 눌러 OneDrive에서 가져오세요."}</p>
         </div>
       )}
 
       <div className="text-xs text-muted-foreground">
-        {projects && projects.length > 0 && `총 ${projects.length}건`}
+        {filteredProjects.length > 0 && `${filteredProjects.length}건${projects && filteredProjects.length !== projects.length ? ` (전체 ${projects.length}건)` : ""}`}
       </div>
 
       <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null); }}>

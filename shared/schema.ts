@@ -273,6 +273,8 @@ export const projects = pgTable("projects", {
   finalAfterDelivery: text("final_after_delivery"),
   invoicePlan: text("invoice_plan").default("split"),
   deliveryDate: text("delivery_date"),
+  registrationDate: text("registration_date"),
+  completionDate: text("completion_date"),
 });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
