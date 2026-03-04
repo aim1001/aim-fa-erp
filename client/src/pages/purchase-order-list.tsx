@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import {
@@ -1300,10 +1300,58 @@ function OrderDetailModal({
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [showDetailFreeItem, setShowDetailFreeItem] = useState(false);
   const [detailFreeItem, setDetailFreeItem] = useState({ itemName: "", spec: "", brand: "", unitPrice: "", quantity: "1" });
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [emailForm, setEmailForm] = useState({ to: "", subject: "", body: "", cc: "" });
 
   useEffect(() => {
     setForm(buildFormState());
   }, [buildFormState]);
+
+  const { data: vendors = [] } = useQuery<Vendor[]>({ queryKey: ["/api/vendors"] });
+
+  const vendorRecord = useMemo(() => {
+    return order.vendor ? vendors.find(v => v.companyName === order.vendor) : null;
+  }, [order.vendor, vendors]);
+
+  const handleOpenEmailDialog = () => {
+    setEmailForm({
+      to: vendorRecord?.contactEmail || "",
+      subject: `[발주서] ${order.orderNumber || ""} - 발주 안내`,
+      body: "",
+      cc: "",
+    });
+    setShowEmailDialog(true);
+  };
+
+  const sendEmailMutation = useMutation({
+    mutationFn: async (data: { to: string; subject: string; body: string; cc: string }) => {
+      const res = await apiRequest("POST", `/api/purchase-orders/${order.id}/send-email`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "발주서 이메일 발송 완료" });
+      setShowEmailDialog(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "이메일 발송 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleDownloadPDF = async () => {
+    try {
+      const res = await fetch(`/api/purchase-orders/${order.id}/download/pdf`);
+      if (!res.ok) throw new Error("PDF 생성 실패");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `발주서_${order.orderNumber || "발주서"}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({ title: "PDF 다운로드 실패", description: err.message, variant: "destructive" });
+    }
+  };
 
   const { data: orderItems = [], refetch: refetchItems } = useQuery<PurchaseOrderItem[]>({
     queryKey: ["/api/purchase-orders", order.id, "items"],
@@ -1476,7 +1524,13 @@ function OrderDetailModal({
                   </Select>
                 </div>
               </div>
-              <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2 flex-wrap">
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleDownloadPDF} data-testid="button-download-pdf">
+                  <Download className="h-3 w-3 mr-1" />발주서 PDF
+                </Button>
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={handleOpenEmailDialog} data-testid="button-send-email">
+                  <Mail className="h-3 w-3 mr-1" />이메일 발송
+                </Button>
                 {order.onedriveWebUrl && (
                   <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => window.open(order.onedriveWebUrl!, "_blank")} data-testid="button-detail-open-folder">
                     <ExternalLink className="h-3 w-3 mr-1" />폴더
@@ -1733,6 +1787,76 @@ function OrderDetailModal({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showEmailDialog} onOpenChange={setShowEmailDialog}>
+        <DialogContent className="max-w-lg" data-testid="dialog-send-email">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />발주서 이메일 발송
+            </DialogTitle>
+            <DialogDescription className="sr-only">발주서 이메일 발송</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">수신자 (To)</Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="이메일 주소"
+                value={emailForm.to}
+                onChange={e => setEmailForm(f => ({ ...f, to: e.target.value }))}
+                data-testid="input-email-to"
+              />
+              {vendorRecord?.contactName && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">담당자: {vendorRecord.contactName}{vendorRecord.contactPhone ? ` (${vendorRecord.contactPhone})` : ""}</p>
+              )}
+            </div>
+            <div>
+              <Label className="text-xs">제목 (Subject)</Label>
+              <Input
+                className="h-8 text-sm"
+                value={emailForm.subject}
+                onChange={e => setEmailForm(f => ({ ...f, subject: e.target.value }))}
+                data-testid="input-email-subject"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">본문 (비워두면 기본 템플릿 사용)</Label>
+              <textarea
+                className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+                placeholder="비워두면 기본 발주 안내 템플릿이 사용됩니다"
+                value={emailForm.body}
+                onChange={e => setEmailForm(f => ({ ...f, body: e.target.value }))}
+                data-testid="input-email-body"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">CC (콤마로 구분)</Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="cc@example.com"
+                value={emailForm.cc}
+                onChange={e => setEmailForm(f => ({ ...f, cc: e.target.value }))}
+                data-testid="input-email-cc"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <Button variant="outline" size="sm" onClick={() => setShowEmailDialog(false)} data-testid="button-cancel-email">취소</Button>
+              <Button
+                size="sm"
+                onClick={() => sendEmailMutation.mutate(emailForm)}
+                disabled={!emailForm.to || sendEmailMutation.isPending}
+                data-testid="button-confirm-send-email"
+              >
+                {sendEmailMutation.isPending ? (
+                  <><Loader2 className="h-4 w-4 mr-1 animate-spin" />발송 중...</>
+                ) : (
+                  <><Send className="h-4 w-4 mr-1" />발송</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

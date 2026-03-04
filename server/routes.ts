@@ -4244,6 +4244,90 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-orders/:id/download/pdf", async (req, res) => {
+    try {
+      const order = await storage.getPurchaseOrder(req.params.id);
+      if (!order) return res.status(404).json({ message: "발주를 찾을 수 없습니다" });
+      const { generatePurchaseOrderPDF } = await import("./purchase-order-export");
+      const pdfBuf = await generatePurchaseOrderPDF(req.params.id);
+      const safeNumber = (order.orderNumber || "발주서").replace(/[/\\:*?"<>|]/g, "_");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(`발주서_${safeNumber}.pdf`)}"`);
+      res.send(pdfBuf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-orders/:id/send-email", requireAuth, async (req, res) => {
+    try {
+      const { to, subject, body, cc } = req.body;
+      if (!to) return res.status(400).json({ message: "수신자 이메일이 필요합니다" });
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(to)) return res.status(400).json({ message: "올바른 이메일 형식이 아닙니다" });
+
+      const order = await storage.getPurchaseOrder(req.params.id);
+      if (!order) return res.status(404).json({ message: "발주를 찾을 수 없습니다" });
+
+      const companyInfo = await storage.getCompanySettings();
+      const { generatePurchaseOrderPDF } = await import("./purchase-order-export");
+      const pdfBuf = await generatePurchaseOrderPDF(req.params.id);
+
+      const safeNumber = (order.orderNumber || "발주서").replace(/[/\\:*?"<>|]/g, "_");
+      const pdfFilename = `발주서_${safeNumber}.pdf`;
+
+      if (order.onedriveFolderId) {
+        try {
+          const { uploadFileToFolder } = await import("./onedrive");
+          await uploadFileToFolder(order.onedriveFolderId, pdfFilename, pdfBuf);
+        } catch (e: any) {
+          console.log(`OneDrive 저장 실패 (이메일은 계속 진행): ${e.message}`);
+        }
+      }
+
+      const companyName = companyInfo?.companyName || "에이아이엠";
+      const emailSubject = subject || `[발주서] ${order.orderNumber || ""} - ${companyName}`;
+      const emailBody = body || `
+        <div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">
+          <p>안녕하세요.</p>
+          <p>${companyName}입니다.</p>
+          <br/>
+          <p>발주서를 첨부드리오니 확인 부탁드립니다.</p>
+          <p><strong>발주번호:</strong> ${order.orderNumber || "-"}</p>
+          ${order.expectedDeliveryDate ? `<p><strong>납품예정일:</strong> ${order.expectedDeliveryDate}</p>` : ""}
+          <br/>
+          <p>감사합니다.</p>
+          <p>${companyName}</p>
+          ${companyInfo?.phone ? `<p>Tel: ${companyInfo.phone}</p>` : ""}
+          ${companyInfo?.email ? `<p>Email: ${companyInfo.email}</p>` : ""}
+        </div>
+      `;
+
+      const ccList: string[] = [];
+      if (cc) ccList.push(...cc.split(",").map((e: string) => e.trim()).filter(Boolean));
+      if (companyInfo?.autoCc) {
+        const autoCcEmails = companyInfo.autoCc.split(",").map((e: string) => e.trim()).filter(Boolean);
+        for (const email of autoCcEmails) {
+          if (!ccList.includes(email)) ccList.push(email);
+        }
+      }
+
+      const { sendEmailWithAttachment } = await import("./gmail");
+      const emailResult = await sendEmailWithAttachment({
+        to,
+        subject: emailSubject,
+        htmlBody: emailBody,
+        attachment: { filename: pdfFilename, content: pdfBuf },
+        from: companyInfo?.email || undefined,
+        cc: ccList.length > 0 ? ccList.join(", ") : undefined,
+      });
+
+      res.json({ success: true, messageId: emailResult.messageId });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/purchase-orders/:id/items", async (req, res) => {
     try {
       const items = await storage.getPurchaseOrderItems(req.params.id);

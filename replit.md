@@ -70,6 +70,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 프로젝트 관리 - OneDrive `2.공사` 폴더 스캔, 연도별 프로젝트 목록 (폴더명 파싱: 번호_고객사_내용), 매출/매입/수익 요약, 계산서 연결/해제
 - 사이드바: 영업(인콰이어리, 진행중/수주/실주, 프로젝트) / 경영지원(매출계산서, 매입계산서, 자금계획) / 관리(고객사, 공급업체)
 - 견적서 이메일 전송 - Gmail API로 PDF 첨부 이메일 전송 (OneDrive 자동 저장 후 발송, PDF 미리보기, CC 지원, 자동CC, 발송 시 상태 업데이트+캘린더 등록+판매가/원가/마진 저장)
+- 발주서 PDF/이메일 - 발주 상세 모달에서 PDF 다운로드 + 구매처 이메일 발송 (Gmail API, 발주서 PDF 첨부, OneDrive 자동 저장, vendor contactEmail 자동 채움, CC/autoCc 지원)
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:
@@ -106,6 +107,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `client/src/components/app-sidebar.tsx` - Sidebar navigation (영업/경영지원/관리 섹션)
 - `client/src/components/quotation-section.tsx` - Quotation section component (견적서 생성/편집/내보내기)
 - `server/quotation-export.ts` - PDF + Excel generation for quotations (pdfkit, exceljs)
+- `server/purchase-order-export.ts` - PDF generation for purchase orders (pdfkit, Pretendard font, A4 layout: 헤더+구매처정보+품목테이블+합계+서명란+비고)
 - `server/google-calendar.ts` - Google Calendar integration (견적 발송 시 이벤트 생성)
 - `client/src/pages/settings.tsx` - Company settings page (회사 정보 + 로고 관리)
 - `client/src/pages/staff-list.tsx` - Staff pool page (인력풀 관리, 부서별 필터, 테이블+모달)
