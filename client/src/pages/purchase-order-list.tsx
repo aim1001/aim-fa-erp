@@ -361,7 +361,7 @@ export default function PurchaseOrderList() {
                     </td>
                     <td className="px-4 py-2 text-center">
                       {linkedPayment ? (
-                        linkedPayment.status === "completed" || linkedPayment.actualDate ? (
+                        linkedPayment.status === "completed" ? (
                           <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-done-${order.id}`}>
                             <Check className="h-3 w-3 mr-1" />완료
                           </Badge>

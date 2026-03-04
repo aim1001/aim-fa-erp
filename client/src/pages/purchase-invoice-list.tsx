@@ -77,21 +77,23 @@ function PaymentRow({ payment, onUpdate, onDelete, onComplete }: { payment: Paym
     actualAmount: String(payment.actualAmount || ""),
   });
 
-  const isCompleted = payment.status === "completed" || !!payment.actualDate;
+  const isCompleted = payment.status === "completed";
 
   const handleSave = () => {
     const patch: Record<string, any> = {
       plannedDate: editData.plannedDate || null,
       amount: editData.amount ? parseInt(editData.amount) : 0,
     };
-    if (editData.actualDate) {
-      patch.actualDate = editData.actualDate;
-      patch.actualAmount = editData.actualAmount ? parseInt(editData.actualAmount) : 0;
-      patch.status = "completed";
-    } else {
-      patch.actualDate = null;
-      patch.actualAmount = null;
-      patch.status = "pending";
+    if (isCompleted) {
+      if (editData.actualDate) {
+        patch.actualDate = editData.actualDate;
+        patch.actualAmount = editData.actualAmount ? parseInt(editData.actualAmount) : 0;
+        patch.status = "completed";
+      } else {
+        patch.actualDate = null;
+        patch.actualAmount = null;
+        patch.status = "planned";
+      }
     }
     onUpdate(payment.id, patch);
     setEditing(false);
@@ -110,6 +112,7 @@ function PaymentRow({ payment, onUpdate, onDelete, onComplete }: { payment: Paym
             <Input type="number" className="h-7 text-xs" value={editData.amount} onChange={e => setEditData(p => ({ ...p, amount: e.target.value }))} data-testid={`input-amount-${payment.id}`} />
           </div>
         </div>
+        {isCompleted && (
         <div className="grid grid-cols-2 gap-2">
           <div>
             <Label className="text-[10px] text-muted-foreground">실제지급일</Label>
@@ -120,6 +123,7 @@ function PaymentRow({ payment, onUpdate, onDelete, onComplete }: { payment: Paym
             <Input type="number" className="h-7 text-xs" value={editData.actualAmount} onChange={e => setEditData(p => ({ ...p, actualAmount: e.target.value }))} data-testid={`input-actual-amount-${payment.id}`} />
           </div>
         </div>
+        )}
         <div className="flex items-center gap-1 justify-end">
           <Button variant="ghost" size="sm" onClick={() => setEditing(false)} data-testid={`button-cancel-edit-${payment.id}`}>
             <X className="h-3 w-3 mr-1" />취소

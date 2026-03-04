@@ -462,9 +462,9 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
   const salesTotalAmount = project.salesInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const purchaseTotal = project.purchaseInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const incomePayments = project.payments.filter(p => p.type === "income");
-  const paidIncome = incomePayments.filter(p => p.status === "completed" || p.actualDate).reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
+  const paidIncome = incomePayments.filter(p => p.status === "completed").reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
   const paidIncomeSupply = Math.round(paidIncome / 1.1);
-  const plannedIncome = incomePayments.filter(p => p.status !== "completed" && !p.actualDate).reduce((s, p) => s + (p.amount || 0), 0);
+  const plannedIncome = incomePayments.filter(p => p.status !== "completed").reduce((s, p) => s + (p.amount || 0), 0);
   const hasConditions = !!project.totalAmount && project.totalAmount > 0;
   const contractAmount = project.totalAmount || 0;
   const issuedPct = contractAmount > 0 ? Math.min(Math.round((salesSupplyTotal / contractAmount) * 100), 100) : 0;
@@ -708,8 +708,8 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
               </div>
             </div>
             {showRegenConfirm && (() => {
-              const plannedCount = incomePayments.filter(p => p.status !== "completed" && !p.actualDate).length;
-              const completedCount = incomePayments.filter(p => p.status === "completed" || p.actualDate).length;
+              const plannedCount = incomePayments.filter(p => p.status !== "completed").length;
+              const completedCount = incomePayments.filter(p => p.status === "completed").length;
               return (
                 <div className="border rounded p-2 bg-orange-50/50 dark:bg-orange-900/10 space-y-1.5">
                   <div className="text-[10px] font-medium text-orange-700 dark:text-orange-400 flex items-center gap-1">
@@ -736,13 +736,13 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
                 {incomePayments.map((pay, idx) => {
                   const isEditing = editingPaymentId === pay.id;
                   const isConfirming = confirmingPaymentId === pay.id;
-                  const isDone = pay.status === "completed" || !!pay.actualDate;
+                  const isDone = pay.status === "completed";
                   const amt = isDone && pay.actualAmount ? pay.actualAmount : (pay.amount || 0);
                   const supply = Math.round(amt / 1.1);
                   const vat = amt - supply;
                   const pct = project.totalAmount ? Math.round((supply / project.totalAmount) * 100) : 0;
                   const remainder = isConfirming ? amt - confirmAmount : 0;
-                  const nextPending = incomePayments.find((p, i) => i > idx && p.status !== "completed" && !p.actualDate);
+                  const nextPending = incomePayments.find((p, i) => i > idx && p.status !== "completed");
 
                   return (
                     <div key={pay.id} className="border-b last:border-b-0">
@@ -1256,8 +1256,8 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-red-600">{(pay.amount || 0).toLocaleString()}</span>
-                    <span className={`text-[10px] px-1 py-0.5 rounded ${pay.status === "completed" || pay.actualDate ? "text-green-700 bg-green-50" : "text-orange-700 bg-orange-50"}`}>
-                      {pay.status === "completed" || pay.actualDate ? "완료" : "예정"}
+                    <span className={`text-[10px] px-1 py-0.5 rounded ${pay.status === "completed" ? "text-green-700 bg-green-50" : "text-orange-700 bg-orange-50"}`}>
+                      {pay.status === "completed" ? "완료" : "예정"}
                     </span>
                   </div>
                 </div>

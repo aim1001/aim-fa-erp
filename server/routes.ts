@@ -424,7 +424,7 @@ export async function registerRoutes(
 
       const allPayments = await storage.getPayments();
       const overduePayments = allPayments.filter(p => {
-        if (p.status === "completed" || p.actualDate) return false;
+        if (p.status === "completed") return false;
         if (!p.plannedDate) return false;
         return p.plannedDate < now.toISOString().split('T')[0] && p.type === "income";
       });
@@ -2296,12 +2296,12 @@ export async function registerRoutes(
       const result = list.map(inv => {
         const pmts = paymentsByInvoice.get(inv.id) || [];
         const totalAmount = inv.totalAmount || 0;
-        const paidAmount = pmts.filter(p => p.status === "completed" || p.actualDate).reduce((s: number, p: any) => s + (p.actualAmount || p.amount || 0), 0);
-        const plannedAmount = pmts.filter(p => !p.actualDate && p.status !== "completed").reduce((s: number, p: any) => s + (p.amount || 0), 0);
+        const paidAmount = pmts.filter(p => p.status === "completed").reduce((s: number, p: any) => s + (p.actualAmount || p.amount || 0), 0);
+        const plannedAmount = pmts.filter(p => p.status !== "completed").reduce((s: number, p: any) => s + (p.amount || 0), 0);
         const remainingAmount = Math.max(totalAmount - paidAmount, 0);
         const paymentCount = pmts.length;
-        const completedCount = pmts.filter(p => p.status === "completed" || p.actualDate).length;
-        const pendingPayments = pmts.filter(p => !p.actualDate && p.status !== "completed").sort((a: any, b: any) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
+        const completedCount = pmts.filter(p => p.status === "completed").length;
+        const pendingPayments = pmts.filter(p => p.status !== "completed").sort((a: any, b: any) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
         const nextPaymentDate = pendingPayments.length > 0 ? pendingPayments[0].plannedDate : null;
 
         let paymentStatus = "none";
@@ -2413,12 +2413,12 @@ export async function registerRoutes(
       const result = list.map(inv => {
         const pmts = paymentsByInvoice.get(inv.id) || [];
         const totalAmount = inv.totalAmount || 0;
-        const paidAmount = pmts.filter(p => p.status === "completed" || p.actualDate).reduce((s: number, p: any) => s + (p.actualAmount || p.amount || 0), 0);
-        const plannedAmount = pmts.filter(p => !p.actualDate && p.status !== "completed").reduce((s: number, p: any) => s + (p.amount || 0), 0);
+        const paidAmount = pmts.filter(p => p.status === "completed").reduce((s: number, p: any) => s + (p.actualAmount || p.amount || 0), 0);
+        const plannedAmount = pmts.filter(p => p.status !== "completed").reduce((s: number, p: any) => s + (p.amount || 0), 0);
         const remainingAmount = Math.max(totalAmount - paidAmount, 0);
         const paymentCount = pmts.length;
-        const completedCount = pmts.filter(p => p.status === "completed" || p.actualDate).length;
-        const pendingPayments = pmts.filter(p => !p.actualDate && p.status !== "completed").sort((a: any, b: any) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
+        const completedCount = pmts.filter(p => p.status === "completed").length;
+        const pendingPayments = pmts.filter(p => p.status !== "completed").sort((a: any, b: any) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
         const nextPaymentDate = pendingPayments.length > 0 ? pendingPayments[0].plannedDate : null;
 
         let paymentStatus = "none";
@@ -2827,10 +2827,10 @@ export async function registerRoutes(
       const paidBySalesInvoice = new Map<string, number>();
       const paidByPurchaseInvoice = new Map<string, number>();
       allPayments.forEach(ap => {
-        if ((ap.status === "completed" || ap.actualDate) && ap.salesInvoiceId) {
+        if (ap.status === "completed" && ap.salesInvoiceId) {
           paidBySalesInvoice.set(ap.salesInvoiceId, (paidBySalesInvoice.get(ap.salesInvoiceId) || 0) + (ap.actualAmount || ap.amount || 0));
         }
-        if ((ap.status === "completed" || ap.actualDate) && ap.purchaseInvoiceId) {
+        if (ap.status === "completed" && ap.purchaseInvoiceId) {
           paidByPurchaseInvoice.set(ap.purchaseInvoiceId, (paidByPurchaseInvoice.get(ap.purchaseInvoiceId) || 0) + (ap.actualAmount || ap.amount || 0));
         }
       });
@@ -3083,11 +3083,11 @@ export async function registerRoutes(
         const purchaseTotal = purchases.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
         const profit = salesTotal - purchaseTotal;
 
-        const paidIncome = projectPayments.filter(pay => pay.type === "income" && (pay.status === "completed" || pay.actualDate))
+        const paidIncome = projectPayments.filter(pay => pay.type === "income" && pay.status === "completed")
           .reduce((sum, pay) => sum + (pay.actualAmount || pay.amount || 0), 0);
-        const paidExpense = projectPayments.filter(pay => pay.type === "expense" && (pay.status === "completed" || pay.actualDate))
+        const paidExpense = projectPayments.filter(pay => pay.type === "expense" && pay.status === "completed")
           .reduce((sum, pay) => sum + (pay.actualAmount || pay.amount || 0), 0);
-        const pendingPayments = projectPayments.filter(pay => pay.status !== "completed" && !pay.actualDate).length;
+        const pendingPayments = projectPayments.filter(pay => pay.status !== "completed").length;
 
         return {
           ...p,
@@ -3291,7 +3291,7 @@ export async function registerRoutes(
 
       const existingPayments = await storage.getPayments();
       const projectPayments = existingPayments.filter(p => p.projectId === project.id && p.type === "income");
-      const plannedCount = projectPayments.filter(p => p.status === "planned" || (!p.actualDate && p.status !== "completed")).length;
+      const plannedCount = projectPayments.filter(p => p.status !== "completed").length;
 
       if (plannedCount > 0 && !req.body.confirmed) {
         return res.status(409).json({ message: `예정 항목 ${plannedCount}건이 삭제됩니다. 계속하시겠습니까?`, needConfirm: true, plannedCount });
@@ -3299,7 +3299,7 @@ export async function registerRoutes(
 
       const deleted = await storage.deletePlannedPaymentsByProject(project.id);
 
-      const completedPayments = projectPayments.filter(p => p.status === "completed" || p.actualDate);
+      const completedPayments = projectPayments.filter(p => p.status === "completed");
       const completedStages = new Set(completedPayments.map(p => p.splitIndex).filter(Boolean));
 
       const allSalesInvoices = await storage.getSalesInvoices();
@@ -3335,7 +3335,7 @@ export async function registerRoutes(
         if (salesInvoiceId) {
           const existingInvoicePayments = existingPayments.filter(p => p.salesInvoiceId === salesInvoiceId && !p.projectId);
           for (const dup of existingInvoicePayments) {
-            if (dup.status !== "completed" && !dup.actualDate) {
+            if (dup.status !== "completed") {
               await storage.deletePayment(dup.id);
             }
           }
@@ -3531,7 +3531,7 @@ export async function registerRoutes(
 
       for (const pay of allPayments) {
         if (pay.type !== "income") continue;
-        if (pay.status === "completed" || pay.actualDate) continue;
+        if (pay.status === "completed") continue;
         const proj = pay.projectId ? projects.find(p => p.id === pay.projectId) : null;
         const inv = pay.salesInvoiceId ? salesInvoices.find(i => i.id === pay.salesInvoiceId) : null;
         const entry = {

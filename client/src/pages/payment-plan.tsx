@@ -48,7 +48,7 @@ function formatAmount(amount: number | null | undefined) {
 }
 
 function getStatusInfo(payment: Payment) {
-  if (payment.status === "completed" || payment.actualDate) {
+  if (payment.status === "completed") {
     return { label: "완료", icon: Check, className: "text-green-600 bg-green-50" };
   }
   if (payment.plannedDate && payment.plannedDate < new Date().toISOString().split("T")[0]) {
@@ -104,11 +104,7 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
     if (!payment) return;
     const numFields = ["amount", "actualAmount"];
     const newVal = numFields.includes(field) ? (editValue ? parseInt(editValue) : null) : (editValue || null);
-    if (field === "actualDate" && newVal) {
-      updateMutation.mutate({ actualDate: newVal, plannedDate: null });
-    } else {
-      updateMutation.mutate({ [field]: newVal });
-    }
+    updateMutation.mutate({ [field]: newVal });
     setEditing(null);
   };
 
@@ -200,8 +196,12 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
         {renderField("설명", "description", payment.description || "")}
         {renderField("예정금액", "amount", String(payment.amount || ""), "number")}
         {renderField("예정일", "plannedDate", payment.plannedDate || "", "date")}
-        {renderField("실제금액", "actualAmount", String(payment.actualAmount || ""), "number")}
-        {renderField("실제일", "actualDate", payment.actualDate || "", "date")}
+        {payment.status === "completed" && (
+          <>
+            {renderField("실제금액", "actualAmount", String(payment.actualAmount || ""), "number")}
+            {renderField("실제일", "actualDate", payment.actualDate || "", "date")}
+          </>
+        )}
         <span className="text-muted-foreground text-xs font-medium">결제방법</span>
         <span className="text-sm">
           {payment.paymentMethod === "end_of_next_month" ? "익월말" :
@@ -215,7 +215,7 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
           </>
         )}
       </div>
-      {payment.status !== "completed" && !payment.actualDate && (
+      {payment.status !== "completed" && (
         <Button size="sm" className="mt-2" onClick={markCompleted} data-testid="button-mark-completed">
           <Check className="h-4 w-4 mr-1" />결제 완료 처리
         </Button>
@@ -605,7 +605,7 @@ export default function PaymentPlan() {
               <tbody>
                 {sorted.map(p => {
                   const statusInfo = getStatusInfo(p);
-                  const isCompleted = p.status === "completed" || !!p.actualDate;
+                  const isCompleted = p.status === "completed";
                   return (
                     <tr
                       key={p.id}
