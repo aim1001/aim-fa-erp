@@ -185,6 +185,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-03-04: 발주 리스트 정렬 기능 추가 (발주번호/구매처/납품예정일 컬럼 클릭 정렬, 기본 발주번호 내림차순), vendorId FK 추가하여 구매처와 정확한 연결 (VendorSearchPopover에서 vendor 선택 시 vendorId도 저장, PDF/이메일에서 vendorId 기반 vendor 조회, 텍스트 직접입력 시 vendorId=null로 하위호환)
 - 2026-03-04: 발주 4대 개선 — ① 구매품 즐겨찾기(isFavorite) 추가 (purchase_items.is_favorite, PurchaseItemSearchPopover 즐겨찾기 우선정렬+Star토글, purchase-item-list.tsx Star토글), ② 구매처 vendors 검색/연결 (VendorSearchPopover 컴포넌트, CreateOrderDialog에서 구매처 검색/직접입력), ③ 발주번호 자동생성 (getNextOrderNumber YY-N 포맷, POST 시 자동할당, 미리보기), ④ 가격조정→최종금액 방식 변경 (isAdjustment 항목 UI 제거, 최종금액(공급가액) 직접입력, 품목소계 대비 조정금액 표시, 세액/합계 자동계산)
 - 2026-03-04: 발주 계산서/송금 연결 개선 — 매입계산서 자동생성 제거 (발주 생성 시 계산서 미생성, 상세에서 수동 연결만), 목록 계산서 열 "미연결"/"연결됨" 배지 표시, 송금 열 예정일/완료 상태 표시 (완료 시 녹색 배지, 미완료 시 "MM/DD 예정" 텍스트)
+- 2026-03-04: 발주서 계약상세 필드 추가 — purchase_orders에 staffId(인력풀FK), contactPerson(담당자명), paymentTerms(지급조건, 기본: 입고후 익월말), deliveryLocation(입고장소, 기본: 회사주소), warrantyTerms(보증조건, 기본: 하자보증 1년) 추가. 생성/상세 모달에서 편집 가능. PDF에 합계 후 계약상세 섹션 표시, 사인 섹션 좌우 반전 (좌=발주처+서명, 우=구매처)
 
 ## Hooks
 - `useDialogContainer` (`client/src/hooks/use-dialog-container.ts`): Dialog 내부에서 Popover/Select 등 Portal 기반 컴포넌트가 정상 작동하도록 Dialog DOM 요소를 container로 제공하는 hook. Radix Dialog의 inert 속성으로 Portal'd 콘텐츠가 클릭 불가능해지는 문제 해결.

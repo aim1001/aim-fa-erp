@@ -17,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem, Vendor } from "@shared/schema";
+import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem, Vendor, Staff, CompanySettings } from "@shared/schema";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -697,6 +697,9 @@ function CreateOrderDialog({
     },
   });
 
+  const { data: staffList } = useQuery<Staff[]>({ queryKey: ["/api/staff"] });
+  const { data: companySettings } = useQuery<CompanySettings>({ queryKey: ["/api/company-settings"] });
+
   const [form, setForm] = useState({
     orderNumber: "",
     vendor: "",
@@ -705,7 +708,18 @@ function CreateOrderDialog({
     status: "일반",
     expectedDeliveryDate: "",
     paymentDate: "",
+    staffId: "" as string,
+    contactPerson: "",
+    paymentTerms: "입고후 익월말",
+    deliveryLocation: "",
+    warrantyTerms: "하자보증 1년",
   });
+
+  useEffect(() => {
+    if (companySettings?.address && !form.deliveryLocation) {
+      setForm(f => ({ ...f, deliveryLocation: companySettings.address || "" }));
+    }
+  }, [companySettings]);
 
   const [items, setItems] = useState<OrderItemRow[]>([]);
   const [showFreeItem, setShowFreeItem] = useState(false);
@@ -789,6 +803,7 @@ function CreateOrderDialog({
       isAdjustment: false,
     }));
 
+    const selectedStaff = form.staffId ? staffList?.find(s => s.id === form.staffId) : null;
     onCreate({
       orderNumber: form.orderNumber || null,
       vendor: form.vendor,
@@ -802,6 +817,11 @@ function CreateOrderDialog({
       paymentDate: form.paymentDate || null,
       year,
       items: itemsData,
+      staffId: form.staffId || null,
+      contactPerson: form.contactPerson || (selectedStaff ? selectedStaff.name : null),
+      paymentTerms: form.paymentTerms || null,
+      deliveryLocation: form.deliveryLocation || null,
+      warrantyTerms: form.warrantyTerms || null,
     });
   };
 
@@ -986,6 +1006,38 @@ function CreateOrderDialog({
               {form.paymentDate && (
                 <p className="text-[10px] text-muted-foreground mt-0.5">→ 자금계획(출금)에 자동 등록</p>
               )}
+            </div>
+          </div>
+
+          <div className="border-t pt-3 space-y-3">
+            <Label className="text-xs font-medium">계약 상세</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">담당자</Label>
+                <div className="flex gap-1">
+                  <Select value={form.staffId} onValueChange={v => { const s = staffList?.find(st => st.id === v); setForm(f => ({ ...f, staffId: v, contactPerson: s ? s.name : f.contactPerson })); }}>
+                    <SelectTrigger className="h-8 text-sm flex-1" data-testid="select-create-staff">
+                      <SelectValue placeholder="인력풀에서 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(staffList || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.title || s.department})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input className="h-7 text-xs mt-1" placeholder="또는 직접 입력" value={form.contactPerson} onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value, staffId: "" }))} data-testid="input-create-contact-person" />
+              </div>
+              <div>
+                <Label className="text-xs">지급조건</Label>
+                <Input className="h-8 text-sm" value={form.paymentTerms} onChange={e => setForm(f => ({ ...f, paymentTerms: e.target.value }))} data-testid="input-create-payment-terms" />
+              </div>
+              <div>
+                <Label className="text-xs">입고장소</Label>
+                <Input className="h-8 text-sm" value={form.deliveryLocation} onChange={e => setForm(f => ({ ...f, deliveryLocation: e.target.value }))} data-testid="input-create-delivery-location" />
+              </div>
+              <div>
+                <Label className="text-xs">보증조건</Label>
+                <Input className="h-8 text-sm" value={form.warrantyTerms} onChange={e => setForm(f => ({ ...f, warrantyTerms: e.target.value }))} data-testid="input-create-warranty-terms" />
+              </div>
             </div>
           </div>
         </div>
@@ -1370,6 +1422,8 @@ function OrderDetailModal({
   onDelete: (id: string) => void;
 }) {
   const { toast } = useToast();
+  const { data: staffList } = useQuery<Staff[]>({ queryKey: ["/api/staff"] });
+
   const buildFormState = useCallback(() => ({
     supplyAmount: String(order.supplyAmount || ""),
     taxAmount: String(order.taxAmount || ""),
@@ -1380,6 +1434,11 @@ function OrderDetailModal({
     purchaseInvoiceId: order.purchaseInvoiceId || "",
     paymentId: order.paymentId || "",
     memo: order.memo || "",
+    staffId: order.staffId || "",
+    contactPerson: order.contactPerson || "",
+    paymentTerms: order.paymentTerms || "",
+    deliveryLocation: order.deliveryLocation || "",
+    warrantyTerms: order.warrantyTerms || "",
   }), [order]);
 
   const [form, setForm] = useState(buildFormState);
@@ -1535,7 +1594,12 @@ function OrderDetailModal({
       form.receivingCompleted !== (order.receivingCompleted || false) ||
       form.purchaseInvoiceId !== (order.purchaseInvoiceId || "") ||
       form.paymentId !== (order.paymentId || "") ||
-      form.memo !== (order.memo || "")
+      form.memo !== (order.memo || "") ||
+      form.staffId !== (order.staffId || "") ||
+      form.contactPerson !== (order.contactPerson || "") ||
+      form.paymentTerms !== (order.paymentTerms || "") ||
+      form.deliveryLocation !== (order.deliveryLocation || "") ||
+      form.warrantyTerms !== (order.warrantyTerms || "")
     );
   }, [form, order]);
 
@@ -1550,6 +1614,11 @@ function OrderDetailModal({
       purchaseInvoiceId: form.purchaseInvoiceId || null,
       paymentId: form.paymentId || null,
       memo: form.memo || null,
+      staffId: form.staffId || null,
+      contactPerson: form.contactPerson || null,
+      paymentTerms: form.paymentTerms || null,
+      deliveryLocation: form.deliveryLocation || null,
+      warrantyTerms: form.warrantyTerms || null,
     });
   };
 
@@ -1886,6 +1955,36 @@ function OrderDetailModal({
                 <div>
                   <Label className="text-[10px] text-muted-foreground">메모</Label>
                   <Input className="h-7 text-xs" value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} data-testid="input-memo" />
+                </div>
+
+                <div className="border-t pt-2 mt-2 space-y-2">
+                  <Label className="text-xs font-medium">계약 상세</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">담당자</Label>
+                      <Select value={form.staffId} onValueChange={v => { const s = staffList?.find(st => st.id === v); setForm(f => ({ ...f, staffId: v, contactPerson: s ? s.name : f.contactPerson })); }}>
+                        <SelectTrigger className="h-7 text-xs" data-testid="select-detail-staff">
+                          <SelectValue placeholder="인력풀에서 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(staffList || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.title || s.department})</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Input className="h-6 text-[10px] mt-1" placeholder="또는 직접 입력" value={form.contactPerson} onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value, staffId: "" }))} data-testid="input-detail-contact-person" />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">지급조건</Label>
+                      <Input className="h-7 text-xs" value={form.paymentTerms} onChange={e => setForm(f => ({ ...f, paymentTerms: e.target.value }))} data-testid="input-detail-payment-terms" />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">입고장소</Label>
+                      <Input className="h-7 text-xs" value={form.deliveryLocation} onChange={e => setForm(f => ({ ...f, deliveryLocation: e.target.value }))} data-testid="input-detail-delivery-location" />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">보증조건</Label>
+                      <Input className="h-7 text-xs" value={form.warrantyTerms} onChange={e => setForm(f => ({ ...f, warrantyTerms: e.target.value }))} data-testid="input-detail-warranty-terms" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

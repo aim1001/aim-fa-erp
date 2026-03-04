@@ -227,7 +227,28 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
     doc.font("Bold").fontSize(10).fillColor("#000");
     doc.text("합계:", 360, y, { width: 100, align: "right" });
     doc.text(`${fmtNum(totalAmount)}원`, 465, y, { width: 80, align: "right" });
-    y += 25;
+    y += 20;
+
+    const contractDetails = [
+      { label: "지급조건", value: order.paymentTerms },
+      { label: "입고장소", value: order.deliveryLocation },
+      { label: "담당자", value: order.contactPerson },
+      { label: "보증조건", value: order.warrantyTerms },
+    ].filter(d => d.value);
+
+    if (contractDetails.length > 0) {
+      doc.moveTo(PAGE_LEFT, y).lineTo(PAGE_RIGHT, y).lineWidth(0.5).stroke("#ccc");
+      y += 6;
+      doc.font("Bold").fontSize(7).fillColor("#000").text("■ 계약 상세", PAGE_LEFT, y);
+      y += 12;
+      const cdLabelW = 55;
+      for (const cd of contractDetails) {
+        doc.font("Bold").fontSize(7.5).fillColor("#555").text(cd.label, PAGE_LEFT + 5, y, { width: cdLabelW });
+        doc.font("Regular").fontSize(7.5).fillColor("#000").text(cd.value!, PAGE_LEFT + 5 + cdLabelW, y, { width: PAGE_WIDTH - cdLabelW - 10 });
+        y += 13;
+      }
+      y += 5;
+    }
 
     const signHeaderH = 14;
     const signBoxH = 35;
@@ -242,9 +263,9 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
 
     doc.rect(signLeftX, signY, signW, signHeaderH).fill("#E8E8E8");
     doc.font("Bold").fontSize(7).fillColor("#000");
-    doc.text("구매처 (확인)", signLeftX, signY + 3, { width: signW, align: "center", lineBreak: false });
+    doc.text("발주처 (확인)", signLeftX, signY + 3, { width: signW, align: "center", lineBreak: false });
     doc.rect(signRightX, signY, signW, signHeaderH).fill("#E8E8E8");
-    doc.text("발주처 (확인)", signRightX, signY + 3, { width: signW, align: "center", lineBreak: false });
+    doc.text("구매처 (확인)", signRightX, signY + 3, { width: signW, align: "center", lineBreak: false });
 
     const signBodyY = signY + signHeaderH;
     doc.rect(signLeftX, signBodyY, signW, signBoxH).lineWidth(0.5).stroke("#999");
@@ -256,7 +277,7 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
       const sellerLine = [sellerName, sellerRep].filter(Boolean).join(" ");
       if (sellerLine) {
         doc.font("Regular").fontSize(6.5).fillColor("#000");
-        doc.text(sellerLine, signRightX + 4, signBodyY + 3, { width: signW - 8, align: "center", lineBreak: false });
+        doc.text(sellerLine, signLeftX + 4, signBodyY + 3, { width: signW - 8, align: "center", lineBreak: false });
       }
       if (companyInfo.signatureData || companyInfo.signatureUrl) {
         try {
@@ -270,12 +291,18 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
             if (fs.existsSync(sigPath)) sigSource = sigPath;
           }
           if (sigSource) {
-            doc.image(sigSource, signRightX + 10, signBodyY + 13, { width: 40, height: 18, fit: [40, 18] });
+            doc.image(sigSource, signLeftX + 10, signBodyY + 13, { width: 40, height: 18, fit: [40, 18] });
           }
         } catch (e) {}
       }
       doc.font("Regular").fontSize(6.5).fillColor("#000");
-      doc.text(fmtDate(todayStr()), signRightX + 4, signBodyY + 16, { width: signW - 8, align: "right", lineBreak: false });
+      doc.text(fmtDate(todayStr()), signLeftX + 4, signBodyY + 16, { width: signW - 8, align: "right", lineBreak: false });
+    }
+
+    const vendorNameForSign = order.vendor || "";
+    if (vendorNameForSign) {
+      doc.font("Regular").fontSize(6.5).fillColor("#000");
+      doc.text(vendorNameForSign, signRightX + 4, signBodyY + 3, { width: signW - 8, align: "center", lineBreak: false });
     }
 
     let bY = signBodyY + signBoxH + 8;

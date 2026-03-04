@@ -373,6 +373,11 @@ export const purchaseOrders = pgTable("purchase_orders", {
   onedriveFolderId: text("onedrive_folder_id"),
   onedriveWebUrl: text("onedrive_web_url"),
   memo: text("memo"),
+  staffId: varchar("staff_id"),
+  contactPerson: text("contact_person"),
+  paymentTerms: text("payment_terms"),
+  deliveryLocation: text("delivery_location"),
+  warrantyTerms: text("warranty_terms"),
 });
 
 export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true });
