@@ -61,6 +61,8 @@ export default function PurchaseOrderList() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [sortField, setSortField] = useState<"orderNumber" | "vendor" | "expectedDeliveryDate" | null>("orderNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const toggleSort = (field: "orderNumber" | "vendor" | "expectedDeliveryDate") => {
     if (sortField === field) {
@@ -71,10 +73,12 @@ export default function PurchaseOrderList() {
     }
   };
 
+  const useAllYears = !!(dateFrom || dateTo);
   const { data: orders, isLoading } = useQuery<PurchaseOrder[]>({
-    queryKey: ["/api/purchase-orders", selectedYear],
+    queryKey: ["/api/purchase-orders", useAllYears ? "all" : selectedYear],
     queryFn: async () => {
-      const res = await fetch(`/api/purchase-orders?year=${selectedYear}`);
+      const url = useAllYears ? `/api/purchase-orders` : `/api/purchase-orders?year=${selectedYear}`;
+      const res = await fetch(url);
       return res.json();
     },
   });
@@ -151,6 +155,10 @@ export default function PurchaseOrderList() {
   const filtered = useMemo(() => {
     if (!orders) return [];
     let list = [...orders];
+    if (dateFrom || dateTo) {
+      if (dateFrom) list = list.filter(o => o.expectedDeliveryDate && o.expectedDeliveryDate >= dateFrom);
+      if (dateTo) list = list.filter(o => o.expectedDeliveryDate && o.expectedDeliveryDate <= dateTo);
+    }
     if (statusFilter !== "all") {
       list = list.filter(o => o.status === statusFilter);
     }
@@ -183,7 +191,7 @@ export default function PurchaseOrderList() {
       });
     }
     return list;
-  }, [orders, statusFilter, search, sortField, sortDir]);
+  }, [orders, statusFilter, search, sortField, sortDir, dateFrom, dateTo]);
 
   const statusCounts = useMemo(() => {
     if (!orders) return { all: 0, "일반": 0, "수입": 0, "입고완료": 0 };
@@ -207,15 +215,26 @@ export default function PurchaseOrderList() {
             {years.map(y => (
               <Button
                 key={y}
-                variant={selectedYear === y ? "default" : "ghost"}
+                variant={!useAllYears && selectedYear === y ? "default" : "ghost"}
                 size="sm"
                 className="h-7 text-xs px-2"
-                onClick={() => setSelectedYear(y)}
+                onClick={() => { setSelectedYear(y); setDateFrom(""); setDateTo(""); }}
                 data-testid={`button-year-${y}`}
               >
                 {y}
               </Button>
             ))}
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground ml-2">
+            <span>기간</span>
+            <Input type="date" className="h-7 w-[120px] text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from-orders" />
+            <span>~</span>
+            <Input type="date" className="h-7 w-[120px] text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to-orders" />
+            {(dateFrom || dateTo) && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setDateFrom(""); setDateTo(""); }} data-testid="button-clear-date-orders">
+                <X className="h-3 w-3" />
+              </Button>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

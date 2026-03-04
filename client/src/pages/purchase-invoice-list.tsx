@@ -581,6 +581,8 @@ export default function PurchaseInvoiceList() {
   const [periodType, setPeriodType] = useState<string>("all");
   const [periodValue, setPeriodValue] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [newInvoice, setNewInvoice] = useState({ vendorId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
 
   const { data: invoices, isLoading } = useQuery<PurchaseInvoiceWithPayment[]>({
@@ -615,7 +617,10 @@ export default function PurchaseInvoiceList() {
     if (!invoices) return [];
     let list = invoices;
 
-    if (filterYear !== "all") {
+    if (dateFrom || dateTo) {
+      if (dateFrom) list = list.filter(inv => inv.issueDate && inv.issueDate >= dateFrom);
+      if (dateTo) list = list.filter(inv => inv.issueDate && inv.issueDate <= dateTo);
+    } else if (filterYear !== "all") {
       const y = filterYear;
       list = list.filter(inv => inv.issueDate?.startsWith(y));
 
@@ -649,7 +654,7 @@ export default function PurchaseInvoiceList() {
     }
 
     return list;
-  }, [invoices, search, vendorMap, filterYear, periodType, periodValue, paymentFilter]);
+  }, [invoices, search, vendorMap, filterYear, periodType, periodValue, paymentFilter, dateFrom, dateTo]);
 
   const totals = useMemo(() => {
     let supply = 0, tax = 0, total = 0;
@@ -739,7 +744,7 @@ export default function PurchaseInvoiceList() {
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
-          <Select value={filterYear} onValueChange={v => { setFilterYear(v); setPeriodValue("all"); }}>
+          <Select value={filterYear} onValueChange={v => { setFilterYear(v); setPeriodValue("all"); setDateFrom(""); setDateTo(""); }}>
             <SelectTrigger className="w-24" data-testid="select-filter-year-purchase">
               <SelectValue />
             </SelectTrigger>
@@ -786,6 +791,17 @@ export default function PurchaseInvoiceList() {
                 ))}
               </SelectContent>
             </Select>
+          )}
+        </div>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span>기간</span>
+          <Input type="date" className="h-8 w-[130px] text-xs" value={dateFrom} onChange={e => { setDateFrom(e.target.value); if (e.target.value) { setFilterYear("all"); setPeriodType("all"); setPeriodValue("all"); } }} data-testid="input-date-from-purchase" />
+          <span>~</span>
+          <Input type="date" className="h-8 w-[130px] text-xs" value={dateTo} onChange={e => { setDateTo(e.target.value); if (e.target.value) { setFilterYear("all"); setPeriodType("all"); setPeriodValue("all"); } }} data-testid="input-date-to-purchase" />
+          {(dateFrom || dateTo) && (
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setDateFrom(""); setDateTo(""); }} data-testid="button-clear-date-purchase">
+              <X className="h-3 w-3" />
+            </Button>
           )}
         </div>
         <div className="relative flex-1 min-w-[200px] max-w-sm">
