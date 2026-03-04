@@ -16,6 +16,7 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Quotation, QuotationItem, Inquiry, ItemMaster } from "@shared/schema";
+import { useDialogContainer } from "@/hooks/use-dialog-container";
 
 function fmtNum(n: number | null | undefined) {
   if (n == null) return "0";
@@ -42,6 +43,7 @@ function ItemSearchPopover({ onSelect, disabled }: {
   const [cat1Filter, setCat1Filter] = useState("all");
   const [cat2Filter, setCat2Filter] = useState("all");
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const { ref: containerRef, container: portalContainer } = useDialogContainer();
 
   const { data: allItems = [] } = useQuery<(ItemMaster & { inventory: any[]; documents: any[] })[]>({
     queryKey: ["/api/items"],
@@ -101,13 +103,14 @@ function ItemSearchPopover({ onSelect, disabled }: {
   };
 
   return (
+    <div ref={containerRef} className="inline-block">
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) handleReset(); }}>
       <PopoverTrigger asChild>
         <Button size="sm" variant="outline" disabled={disabled} data-testid="button-add-quotation-item">
           <Plus className="h-3 w-3 mr-1" />품목 추가
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[520px] p-0" align="start">
+      <PopoverContent className="w-[520px] p-0" align="start" container={portalContainer}>
         <div className="p-2 border-b space-y-1.5">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -228,6 +231,7 @@ function ItemSearchPopover({ onSelect, disabled }: {
         </ScrollArea>
       </PopoverContent>
     </Popover>
+    </div>
   );
 }
 

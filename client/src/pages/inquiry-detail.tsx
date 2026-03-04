@@ -18,6 +18,7 @@ import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDialogContainer } from "@/hooks/use-dialog-container";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo, InquiryTask, ContractTemplate } from "@shared/schema";
 import { QuotationSection } from "@/components/quotation-section";
@@ -243,6 +244,7 @@ function InlineDateInput({ value, field, inquiryId }: {
 }) {
   const [open, setOpen] = useState(false);
   const mutation = useInlineUpdate(inquiryId);
+  const { ref: containerRef, container: portalContainer } = useDialogContainer();
 
   const parseDateString = (dateStr: string): Date | undefined => {
     if (!dateStr) return undefined;
@@ -258,6 +260,7 @@ function InlineDateInput({ value, field, inquiryId }: {
   };
 
   return (
+    <div ref={containerRef} className="inline-block">
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
@@ -270,7 +273,7 @@ function InlineDateInput({ value, field, inquiryId }: {
           {value || <span className="text-muted-foreground">날짜 선택</span>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent className="w-auto p-0" align="start" container={portalContainer}>
         <Calendar
           mode="single"
           selected={parseDateString(value)}
@@ -302,6 +305,7 @@ function InlineDateInput({ value, field, inquiryId }: {
         )}
       </PopoverContent>
     </Popover>
+    </div>
   );
 }
 
@@ -1979,6 +1983,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
 
 function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inquiry: Inquiry }) {
   const { toast } = useToast();
+  const { ref: contractRef, container: contractPortalContainer } = useDialogContainer();
 
   const TIMING_OPTIONS = [
     { value: "end_of_next_month", label: "익월말" },
@@ -2097,7 +2102,7 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
   });
 
   return (
-    <div className="space-y-4">
+    <div ref={contractRef} className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">결제 조건</CardTitle>
@@ -2188,7 +2193,7 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
                   <Download className="h-3 w-3 mr-1" />템플릿 불러오기
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[300px] p-0" align="end">
+              <PopoverContent className="w-[300px] p-0" align="end" container={contractPortalContainer}>
                 <div className="p-2 border-b">
                   <span className="text-xs font-medium">템플릿 선택</span>
                 </div>
