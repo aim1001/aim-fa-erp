@@ -128,13 +128,9 @@ export default function PurchaseOrderList() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       setShowCreateForm(false);
-      const msgs: string[] = [];
-      if (data.purchaseInvoice) msgs.push("매입계산서 생성");
-      if (data.payment) msgs.push("자금계획 생성");
-      toast({ title: "발주가 등록되었습니다", description: msgs.length ? msgs.join(", ") : undefined });
+      toast({ title: "발주가 등록되었습니다", description: data.payment ? "자금계획 생성됨" : undefined });
     },
     onError: (err: Error) => {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
@@ -321,14 +317,22 @@ export default function PurchaseOrderList() {
                           <FileText className="h-3 w-3 mr-1" />연결됨
                         </Badge>
                       ) : (
-                        <span className="text-xs text-muted-foreground" data-testid={`text-invoice-none-${order.id}`}>-</span>
+                        <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-invoice-none-${order.id}`}>
+                          미연결
+                        </Badge>
                       )}
                     </td>
                     <td className="px-4 py-2 text-center">
                       {linkedPayment ? (
-                        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0" data-testid={`badge-payment-linked-${order.id}`}>
-                          <Wallet className="h-3 w-3 mr-1" />연결됨
-                        </Badge>
+                        linkedPayment.status === "completed" || linkedPayment.actualDate ? (
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-done-${order.id}`}>
+                            <Check className="h-3 w-3 mr-1" />완료
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground" data-testid={`text-payment-planned-${order.id}`}>
+                            {linkedPayment.plannedDate ? linkedPayment.plannedDate.slice(5).replace("-", "/") + " 예정" : "예정"}
+                          </span>
+                        )
                       ) : (
                         <span className="text-xs text-muted-foreground" data-testid={`text-payment-none-${order.id}`}>-</span>
                       )}
@@ -888,9 +892,6 @@ function CreateOrderDialog({
             <div>
               <Label className="text-xs">예정입고일</Label>
               <Input type="date" className="h-8 text-sm" value={form.expectedDeliveryDate} onChange={e => setForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))} data-testid="input-create-delivery-date" />
-              {form.expectedDeliveryDate && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">→ 매입계산서 접수일로 자동 등록</p>
-              )}
             </div>
             <div>
               <Label className="text-xs">결재(송금)예정일</Label>

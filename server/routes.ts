@@ -4223,28 +4223,11 @@ export async function registerRoutes(
         }
       }
 
-      let purchaseInvoice = null;
       let payment = null;
-
-      if (order.vendor && order.totalAmount) {
-        const itemDesc = items?.filter((i: any) => !i.isAdjustment).map((i: any) => i.itemName).join(", ") || order.description || "";
-        purchaseInvoice = await storage.createPurchaseInvoice({
-          companyName: order.vendor,
-          item: itemDesc,
-          supplyAmount: order.supplyAmount,
-          taxAmount: order.taxAmount,
-          totalAmount: order.totalAmount,
-          issueDate: order.expectedDeliveryDate || null,
-          year: order.year,
-          status: "pending",
-        });
-        await storage.updatePurchaseOrder(order.id, { purchaseInvoiceId: purchaseInvoice.id });
-      }
 
       if (paymentDate && order.totalAmount) {
         payment = await storage.createPayment({
           type: "expense",
-          purchaseInvoiceId: purchaseInvoice?.id || null,
           companyName: order.vendor || "",
           description: order.description || "",
           amount: order.totalAmount,
@@ -4255,7 +4238,7 @@ export async function registerRoutes(
       }
 
       const updated = await storage.getPurchaseOrder(order.id);
-      res.status(201).json({ order: updated, purchaseInvoice, payment });
+      res.status(201).json({ order: updated, payment });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
