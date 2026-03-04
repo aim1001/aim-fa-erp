@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import {
@@ -101,6 +101,20 @@ export default function PurchaseOrderList() {
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/purchase-orders/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      setSelectedOrder(null);
+      toast({ title: "발주가 삭제되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "삭제 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -323,6 +337,7 @@ export default function PurchaseOrderList() {
           payments={payments || []}
           onClose={() => setSelectedOrder(null)}
           onUpdate={(id, data) => updateMutation.mutate({ id, data })}
+          onDelete={(id) => deleteMutation.mutate(id)}
         />
       )}
     </div>
@@ -696,12 +711,14 @@ function OrderDetailModal({
   payments,
   onClose,
   onUpdate,
+  onDelete,
 }: {
   order: PurchaseOrder;
   invoices: PurchaseInvoice[];
   payments: Payment[];
   onClose: () => void;
   onUpdate: (id: string, data: Record<string, any>) => void;
+  onDelete: (id: string) => void;
 }) {
   const buildFormState = useCallback(() => ({
     supplyAmount: String(order.supplyAmount || ""),
@@ -717,6 +734,7 @@ function OrderDetailModal({
 
   const [form, setForm] = useState(buildFormState);
   const [showUnsavedAlert, setShowUnsavedAlert] = useState(false);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
 
   useEffect(() => {
     setForm(buildFormState());
@@ -794,18 +812,29 @@ function OrderDetailModal({
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">상태</Label>
-                <div className="mt-1"><StatusBadge status={order.status || "일반"} /></div>
-              </div>
-              {order.onedriveWebUrl && (
-                <div>
-                  <Label className="text-xs text-muted-foreground">OneDrive</Label>
-                  <div className="mt-1">
-                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => window.open(order.onedriveWebUrl!, "_blank")} data-testid="button-detail-open-folder">
-                      <ExternalLink className="h-3 w-3 mr-1" />폴더 열기
-                    </Button>
-                  </div>
+                <div className="mt-1">
+                  <Select value={order.status || "일반"} onValueChange={(val) => onUpdate(order.id, { status: val })}>
+                    <SelectTrigger className="h-7 w-[100px] text-xs" data-testid="select-order-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="일반">일반</SelectItem>
+                      <SelectItem value="수입">수입</SelectItem>
+                      <SelectItem value="입고완료">입고완료</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
+              </div>
+              <div className="flex items-end gap-2">
+                {order.onedriveWebUrl && (
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => window.open(order.onedriveWebUrl!, "_blank")} data-testid="button-detail-open-folder">
+                    <ExternalLink className="h-3 w-3 mr-1" />폴더
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 ml-auto" onClick={() => setShowDeleteAlert(true)} data-testid="button-delete-order">
+                  <Trash2 className="h-3 w-3 mr-1" />삭제
+                </Button>
+              </div>
             </div>
 
             <div className="border-t pt-3">
@@ -913,6 +942,23 @@ function OrderDetailModal({
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-close">계속 편집</AlertDialogCancel>
             <AlertDialogAction onClick={onClose} data-testid="button-confirm-close">닫기</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>발주 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{order.orderNumber} {order.vendor}" 발주를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">취소</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => onDelete(order.id)} data-testid="button-confirm-delete">
+              삭제
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
