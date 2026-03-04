@@ -37,7 +37,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **item_master** 테이블: 판매제품 마스터 (카테고리, 품목코드(unique), 품목명, 사양, 원가, 판매가, 활성여부, 제품유형, isFavorite 즐겨찾기)
 - **item_inventory** 테이블: 재고 관리 (품목코드, 재고유형(AVAILABLE/TEST/DEMO), 수량, 업데이트일)
 - **item_document** 테이블: 제품 문서 (품목코드, 문서유형, URL, 이름)
-- **purchase_items** 테이블: 구매품 마스터 (대분류, 소분류, 품목코드, 품명, 브랜드, 원산지, 규격, 공급업체텍스트, vendorId FK→vendors, 단가, 통화, 리드타임, 재고품여부, 유형, 단위, 활성여부, 안전재고, MOQ, 비고)
+- **purchase_items** 테이블: 구매품 마스터 (대분류, 소분류, 품목코드, 품명, 브랜드, 원산지, 규격, 공급업체텍스트, vendorId FK→vendors, 단가, 통화, 리드타임, 재고품여부, 유형, 단위, 활성여부, 안전재고, MOQ, 비고, isFavorite 즐겨찾기)
 - **purchase_order_items** 테이블: 발주 품목 (purchaseOrderId FK→purchase_orders, itemCode, itemName, spec, brand, quantity, unitPrice, amount, category1, sortOrder, isAdjustment) — 발주서 품목 단위 관리, isAdjustment=true는 가격 조정 항목(할인/추가비용)
 - **inquiry_memos** 테이블: 인콰이어리 메모 (inquiryId FK→inquiries, content, createdAt ISO string) - 날짜별 메모 누적 관리
 - **inquiry_tasks** 테이블: 인콰이어리 할일 (inquiryId FK→inquiries, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, createdAt YYYY-MM-DD) - 인콰이어리별 할일/체크리스트 관리, dueDate 있으면 Google Calendar 자동 등록(완료/삭제 시 캘린더에서도 삭제)
@@ -179,6 +179,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 
 ## Recent Changes (continued)
 - 2026-03-03: 발주관리 기능 추가 — purchase_orders 테이블 (orderNumber, vendor, description, supplyAmount/taxAmount/totalAmount(공급가액·세액·합계 3분할), expectedDeliveryDate, actualDeliveryDate, status(일반/수입/입고완료), receivingCompleted, purchaseInvoiceId→purchase_invoices, paymentId→payments, OneDrive 폴더 정보, year), OneDrive `2.공사/{year}/발주서/` 폴더 동기화 (하위 수입/, 입고완료/ 폴더별 상태 자동 분류), 폴더명 파싱 (번호_구매처_내용), 상세 모달 (공급가액 입력→세액10%·합계 자동계산, 납품일/입고완료/계산서연결/송금연결/메모), 엑셀 금액 파서 (파일 1개→자동선택, 여러 개→파일선택, 적용 버튼 1개로 3개 금액 동시 적용), /purchase-orders 페이지, 사이드바 발주관리 활성화
+- 2026-03-04: 발주 4대 개선 — ① 구매품 즐겨찾기(isFavorite) 추가 (purchase_items.is_favorite, PurchaseItemSearchPopover 즐겨찾기 우선정렬+Star토글, purchase-item-list.tsx Star토글), ② 구매처 vendors 검색/연결 (VendorSearchPopover 컴포넌트, CreateOrderDialog에서 구매처 검색/직접입력), ③ 발주번호 자동생성 (getNextOrderNumber YY-N 포맷, POST 시 자동할당, 미리보기), ④ 가격조정→최종금액 방식 변경 (isAdjustment 항목 UI 제거, 최종금액(공급가액) 직접입력, 품목소계 대비 조정금액 표시, 세액/합계 자동계산)
 
 ## User Preferences
 - Korean language UI

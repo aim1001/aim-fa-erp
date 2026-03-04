@@ -136,6 +136,7 @@ export interface IStorage {
   deletePlannedPaymentsByProject(projectId: string): Promise<number>;
 
   getNextInquiryNumber(year: number): Promise<string>;
+  getNextOrderNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
   getDashboardStats(years?: number[]): Promise<{
     total: number;
@@ -530,6 +531,25 @@ export class DatabaseStorage implements IStorage {
     let maxSeq = 0;
     for (const row of yearInquiries) {
       const match = row.inquiryNumber.match(/^\d+-(\d+)$/);
+      if (match) {
+        const seq = parseInt(match[1]);
+        if (seq > maxSeq) maxSeq = seq;
+      }
+    }
+
+    return `${prefix}-${maxSeq + 1}`;
+  }
+
+  async getNextOrderNumber(year: number): Promise<string> {
+    const prefix = String(year).slice(-2);
+    const yearOrders = await db.select({ orderNumber: purchaseOrders.orderNumber })
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.year, year));
+
+    let maxSeq = 0;
+    for (const row of yearOrders) {
+      if (!row.orderNumber) continue;
+      const match = row.orderNumber.match(/^\d+-(\d+)$/);
       if (match) {
         const seq = parseInt(match[1]);
         if (seq > maxSeq) maxSeq = seq;

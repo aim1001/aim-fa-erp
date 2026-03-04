@@ -346,6 +346,7 @@ export const purchaseItems = pgTable("purchase_items", {
   safetyStock: integer("safety_stock"),
   moq: integer("moq"),
   remark: text("remark"),
+  isFavorite: boolean("is_favorite").default(false),
 });
 
 export const insertPurchaseItemSchema = createInsertSchema(purchaseItems).omit({ id: true });

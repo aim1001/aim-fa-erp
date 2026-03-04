@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload } from "lucide-react";
+import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload, Star } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -458,6 +458,15 @@ export default function PurchaseItemList() {
 
   const vendors = vendorList || [];
 
+  const toggleFavMutation = useMutation({
+    mutationFn: async ({ id, isFavorite }: { id: string; isFavorite: boolean }) => {
+      await apiRequest("PATCH", `/api/purchase-items/${id}`, { isFavorite });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-items"] });
+    },
+  });
+
   const syncMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/purchase-items/sync-onedrive");
@@ -682,6 +691,7 @@ export default function PurchaseItemList() {
                 <TableHead className="text-right w-[100px] text-xs h-9 px-3">단가</TableHead>
                 <TableHead className="hidden lg:table-cell text-center w-[60px] text-xs h-9 px-3">L/T</TableHead>
                 <TableHead className="hidden xl:table-cell w-[80px] text-xs h-9 px-3">유형</TableHead>
+                <TableHead className="text-center w-[28px] text-xs h-9 px-1"><Star className="h-3 w-3 mx-auto text-muted-foreground" /></TableHead>
                 <TableHead className="text-center w-[35px] text-xs h-9 px-1"></TableHead>
                 <TableHead className="w-[28px] h-9 px-1"></TableHead>
               </TableRow>
@@ -722,6 +732,15 @@ export default function PurchaseItemList() {
                       </TableCell>
                       <TableCell className="hidden xl:table-cell text-xs py-1.5 px-3 text-foreground/70">
                         {item.itemType || "-"}
+                      </TableCell>
+                      <TableCell className="text-center py-1.5 px-1" onClick={e => e.stopPropagation()}>
+                        <button
+                          className="p-0.5 hover:scale-110 transition-transform"
+                          onClick={() => toggleFavMutation.mutate({ id: item.id, isFavorite: !item.isFavorite })}
+                          data-testid={`button-fav-${item.id}`}
+                        >
+                          <Star className={`h-3.5 w-3.5 ${item.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30 hover:text-yellow-400"}`} />
+                        </button>
                       </TableCell>
                       <TableCell className="text-center py-1.5 px-1">
                         <div className={`w-1.5 h-1.5 rounded-full mx-auto ${item.active ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`} />

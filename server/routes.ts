@@ -4186,6 +4186,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-orders/next-number", async (req, res) => {
+    try {
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const nextNumber = await storage.getNextOrderNumber(year);
+      res.json({ nextNumber });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/purchase-orders/:id", async (req, res) => {
     try {
       const order = await storage.getPurchaseOrder(req.params.id);
@@ -4201,6 +4211,10 @@ export async function registerRoutes(
       const { paymentDate, items, ...orderData } = req.body;
       if (!orderData.vendor) return res.status(400).json({ message: "구매처는 필수입니다" });
       if (orderData.expectedDeliveryDate === "") orderData.expectedDeliveryDate = null;
+      if (!orderData.orderNumber) {
+        const year = orderData.year || new Date().getFullYear();
+        orderData.orderNumber = await storage.getNextOrderNumber(year);
+      }
       const order = await storage.createPurchaseOrder(orderData);
 
       if (items && Array.isArray(items)) {

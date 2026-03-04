@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import {
@@ -17,9 +17,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem } from "@shared/schema";
+import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem, Vendor } from "@shared/schema";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -418,6 +418,15 @@ function PurchaseItemSearchPopover({ onSelect }: { onSelect: (item: PurchaseItem
     },
   });
 
+  const toggleFavMutation = useMutation({
+    mutationFn: async ({ id, isFavorite }: { id: string; isFavorite: boolean }) => {
+      await apiRequest("PATCH", `/api/purchase-items/${id}`, { isFavorite });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-items"] });
+    },
+  });
+
   const activeItems = useMemo(() => allItems.filter(i => i.active !== false), [allItems]);
 
   const cat1List = useMemo(() => {
@@ -438,6 +447,11 @@ function PurchaseItemSearchPopover({ onSelect }: { onSelect: (item: PurchaseItem
         i.brand?.toLowerCase().includes(q)
       );
     }
+    list = [...list].sort((a, b) => {
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+      return 0;
+    });
     return list.slice(0, 60);
   }, [activeItems, search, cat1Filter]);
 
@@ -467,25 +481,109 @@ function PurchaseItemSearchPopover({ onSelect }: { onSelect: (item: PurchaseItem
           ) : filtered.map(item => (
             <div
               key={item.id}
-              className="px-3 py-1.5 hover:bg-accent cursor-pointer border-b last:border-b-0"
-              onClick={() => { onSelect(item); setOpen(false); setSearch(""); setCat1Filter("all"); }}
+              className="px-3 py-1.5 hover:bg-accent cursor-pointer border-b last:border-b-0 flex items-center gap-2"
               data-testid={`item-option-${item.id}`}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground font-mono">{item.itemCode}</span>
-                  <span className="text-xs font-medium">{item.itemName}</span>
+              <button
+                type="button"
+                className="shrink-0"
+                onClick={(e) => { e.stopPropagation(); toggleFavMutation.mutate({ id: item.id, isFavorite: !item.isFavorite }); }}
+                data-testid={`button-fav-${item.id}`}
+              >
+                <Star className={`h-3.5 w-3.5 ${item.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30 hover:text-yellow-400"}`} />
+              </button>
+              <div className="flex-1 min-w-0" onClick={() => { onSelect(item); setOpen(false); setSearch(""); setCat1Filter("all"); }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted-foreground font-mono">{item.itemCode}</span>
+                    <span className="text-xs font-medium">{item.itemName}</span>
+                  </div>
+                  <span className="text-xs font-medium">{(item.cost || 0).toLocaleString()}원</span>
                 </div>
-                <span className="text-xs font-medium">{(item.cost || 0).toLocaleString()}원</span>
-              </div>
-              <div className="flex gap-2 text-[10px] text-muted-foreground">
-                {item.spec && <span>{item.spec}</span>}
-                {item.brand && <span>· {item.brand}</span>}
-                {item.category1 && <span>· {item.category1}</span>}
+                <div className="flex gap-2 text-[10px] text-muted-foreground">
+                  {item.spec && <span>{item.spec}</span>}
+                  {item.brand && <span>· {item.brand}</span>}
+                  {item.category1 && <span>· {item.category1}</span>}
+                </div>
               </div>
             </div>
           ))}
         </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function VendorSearchPopover({ vendor, onSelect }: { vendor: string; onSelect: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const { data: vendors = [] } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const filtered = useMemo(() => {
+    if (!search) return vendors;
+    const q = search.toLowerCase();
+    return vendors.filter(v => v.companyName?.toLowerCase().includes(q));
+  }, [vendors, search]);
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(""); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="h-8 text-sm px-3 w-full border rounded-md text-left truncate flex items-center justify-between hover:bg-muted/50"
+          data-testid="button-select-vendor"
+        >
+          <span className={vendor ? "" : "text-muted-foreground"}>{vendor || "구매처 선택 또는 입력"}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <div className="p-2 border-b">
+          <Input
+            placeholder="구매처 검색 또는 직접 입력..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-7 text-xs"
+            autoFocus
+            data-testid="input-vendor-search"
+            onKeyDown={e => {
+              if (e.key === "Enter" && search.trim()) {
+                onSelect(search.trim());
+                setOpen(false);
+                setSearch("");
+              }
+            }}
+          />
+        </div>
+        <ScrollArea className="max-h-[200px]">
+          {search.trim() && !filtered.some(v => v.companyName === search.trim()) && (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted text-blue-600 font-medium border-b"
+              onClick={() => { onSelect(search.trim()); setOpen(false); setSearch(""); }}
+              data-testid="button-vendor-direct-input"
+            >
+              "{search.trim()}" 직접 입력
+            </button>
+          )}
+          {filtered.map(v => (
+            <button
+              key={v.id}
+              type="button"
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${vendor === v.companyName ? "bg-accent font-medium" : ""}`}
+              onClick={() => { onSelect(v.companyName); setOpen(false); setSearch(""); }}
+              data-testid={`vendor-option-${v.id}`}
+            >
+              {v.companyName}
+            </button>
+          ))}
+          {filtered.length === 0 && !search.trim() && (
+            <p className="p-3 text-xs text-muted-foreground text-center">등록된 구매처가 없습니다</p>
+          )}
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   );
@@ -502,6 +600,14 @@ function CreateOrderDialog({
   onCreate: (data: Record<string, any>) => void;
   isPending: boolean;
 }) {
+  const { data: nextNumberData } = useQuery<{ nextNumber: string }>({
+    queryKey: ["/api/purchase-orders/next-number", year],
+    queryFn: async () => {
+      const res = await fetch(`/api/purchase-orders/next-number?year=${year}`);
+      return res.json();
+    },
+  });
+
   const [form, setForm] = useState({
     orderNumber: "",
     vendor: "",
@@ -514,8 +620,7 @@ function CreateOrderDialog({
   const [items, setItems] = useState<OrderItemRow[]>([]);
   const [showFreeItem, setShowFreeItem] = useState(false);
   const [freeItem, setFreeItem] = useState({ itemName: "", spec: "", brand: "", unitPrice: "", quantity: "1" });
-  const [showAdjustment, setShowAdjustment] = useState(false);
-  const [adjustment, setAdjustment] = useState({ itemName: "", amount: "" });
+  const [finalAmountOverride, setFinalAmountOverride] = useState<string>("");
 
   const nextKey = useCallback(() => String(Date.now() + Math.random()), []);
 
@@ -554,25 +659,6 @@ function CreateOrderDialog({
     setShowFreeItem(false);
   };
 
-  const handleAddAdjustment = () => {
-    if (!adjustment.itemName.trim()) return;
-    const amt = parseInt(adjustment.amount) || 0;
-    setItems(prev => [...prev, {
-      key: nextKey(),
-      itemCode: "",
-      itemName: adjustment.itemName,
-      spec: "",
-      brand: "",
-      quantity: 1,
-      unitPrice: amt,
-      amount: amt,
-      category1: "",
-      isAdjustment: true,
-    }]);
-    setAdjustment({ itemName: "", amount: "" });
-    setShowAdjustment(false);
-  };
-
   const updateItem = (key: string, field: string, value: any) => {
     setItems(prev => prev.map(item => {
       if (item.key !== key) return item;
@@ -582,15 +668,17 @@ function CreateOrderDialog({
       }
       return updated;
     }));
+    setFinalAmountOverride("");
   };
 
   const removeItem = (key: string) => {
     setItems(prev => prev.filter(i => i.key !== key));
+    setFinalAmountOverride("");
   };
 
-  const regularItems = items.filter(i => !i.isAdjustment);
-  const adjustmentItems = items.filter(i => i.isAdjustment);
-  const supplyAmount = items.reduce((s, i) => s + i.amount, 0);
+  const itemSubtotal = items.reduce((s, i) => s + i.amount, 0);
+  const supplyAmount = finalAmountOverride !== "" ? (parseInt(finalAmountOverride) || 0) : itemSubtotal;
+  const adjustmentDiff = supplyAmount - itemSubtotal;
   const taxAmount = Math.round(supplyAmount * 0.1);
   const totalAmount = supplyAmount + taxAmount;
 
@@ -608,13 +696,13 @@ function CreateOrderDialog({
       amount: item.amount,
       category1: item.category1 || null,
       sortOrder: idx,
-      isAdjustment: item.isAdjustment,
+      isAdjustment: false,
     }));
 
     onCreate({
       orderNumber: form.orderNumber || null,
       vendor: form.vendor,
-      description: form.description || regularItems.map(i => i.itemName).join(", ") || null,
+      description: form.description || items.map(i => i.itemName).join(", ") || null,
       supplyAmount: supplyAmount || null,
       taxAmount: taxAmount || null,
       totalAmount: totalAmount || null,
@@ -641,11 +729,14 @@ function CreateOrderDialog({
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">발주번호</Label>
-              <Input className="h-8 text-sm" placeholder={`${year.toString().slice(2)}-`} value={form.orderNumber} onChange={e => setForm(f => ({ ...f, orderNumber: e.target.value }))} data-testid="input-create-order-number" />
+              <Input className="h-8 text-sm" placeholder={nextNumberData?.nextNumber || "자동생성"} value={form.orderNumber} onChange={e => setForm(f => ({ ...f, orderNumber: e.target.value }))} data-testid="input-create-order-number" />
+              {!form.orderNumber && nextNumberData?.nextNumber && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">→ {nextNumberData.nextNumber} 자동 부여</p>
+              )}
             </div>
             <div>
               <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
-              <Input className="h-8 text-sm" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} data-testid="input-create-vendor" />
+              <VendorSearchPopover vendor={form.vendor} onSelect={v => setForm(f => ({ ...f, vendor: v }))} />
             </div>
             <div>
               <Label className="text-xs">상태</Label>
@@ -673,9 +764,6 @@ function CreateOrderDialog({
                 <PurchaseItemSearchPopover onSelect={handleAddPurchaseItem} />
                 <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowFreeItem(true)} data-testid="button-add-free-item">
                   <Plus className="h-3 w-3 mr-1" />직접 입력
-                </Button>
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowAdjustment(true)} data-testid="button-add-adjustment">
-                  <Plus className="h-3 w-3 mr-1" />가격 조정
                 </Button>
               </div>
             </div>
@@ -713,26 +801,7 @@ function CreateOrderDialog({
               </div>
             )}
 
-            {showAdjustment && (
-              <div className="border rounded p-2 mb-2 bg-muted/20 space-y-1.5" data-testid="panel-adjustment">
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <Label className="text-[10px]">항목명 *</Label>
-                    <Input className="h-7 text-xs" placeholder="예: 할인, 운반비" value={adjustment.itemName} onChange={e => setAdjustment(f => ({ ...f, itemName: e.target.value }))} data-testid="input-adjustment-name" />
-                  </div>
-                  <div>
-                    <Label className="text-[10px]">금액 (- 가능)</Label>
-                    <Input type="number" className="h-7 text-xs" placeholder="예: -50000" value={adjustment.amount} onChange={e => setAdjustment(f => ({ ...f, amount: e.target.value }))} data-testid="input-adjustment-amount" />
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <Button size="sm" className="h-7 text-xs" onClick={handleAddAdjustment} data-testid="button-confirm-adjustment">추가</Button>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowAdjustment(false)}>취소</Button>
-                </div>
-              </div>
-            )}
-
-            {regularItems.length > 0 && (
+            {items.length > 0 && (
               <table className="w-full text-xs border-collapse" data-testid="table-order-items">
                 <thead>
                   <tr className="border-b bg-muted/30">
@@ -745,7 +814,7 @@ function CreateOrderDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {regularItems.map(item => (
+                  {items.map(item => (
                     <tr key={item.key} className="border-b last:border-b-0" data-testid={`row-item-${item.key}`}>
                       <td className="py-1 px-2">
                         <div className="font-medium">{item.itemName}</div>
@@ -770,23 +839,6 @@ function CreateOrderDialog({
               </table>
             )}
 
-            {adjustmentItems.length > 0 && (
-              <div className="mt-2">
-                <Label className="text-[10px] text-muted-foreground mb-1 block">가격 조정</Label>
-                {adjustmentItems.map(item => (
-                  <div key={item.key} className="flex items-center justify-between py-1 px-2 border-b last:border-b-0 text-xs" data-testid={`row-adjustment-${item.key}`}>
-                    <span className="text-muted-foreground">{item.itemName}</span>
-                    <div className="flex items-center gap-2">
-                      <span className={`font-medium ${item.amount < 0 ? "text-red-600" : "text-blue-600"}`}>{item.amount > 0 ? "+" : ""}{item.amount.toLocaleString()}원</span>
-                      <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" onClick={() => removeItem(item.key)} data-testid={`button-remove-adj-${item.key}`}>
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
             {items.length === 0 && (
               <div className="text-center py-6 text-xs text-muted-foreground border rounded" data-testid="text-empty-items">
                 품목을 추가해 주세요
@@ -794,13 +846,34 @@ function CreateOrderDialog({
             )}
 
             {items.length > 0 && (
-              <div className="mt-3 border-t pt-2 space-y-1 text-sm" data-testid="panel-totals">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground text-xs">공급가액</span>
-                  <span className="font-medium">{supplyAmount.toLocaleString()}원</span>
+              <div className="mt-3 border-t pt-2 space-y-1.5 text-sm" data-testid="panel-totals">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">품목 소계</span>
+                  <span>{itemSubtotal.toLocaleString()}원</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground text-xs">세액 (10%)</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-medium">최종금액 (공급가액)</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      className="h-7 text-xs text-right w-28"
+                      placeholder={itemSubtotal.toLocaleString()}
+                      value={finalAmountOverride}
+                      onChange={e => setFinalAmountOverride(e.target.value)}
+                      data-testid="input-final-amount"
+                    />
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">원</span>
+                  </div>
+                </div>
+                {adjustmentDiff !== 0 && (
+                  <div className="flex justify-end">
+                    <span className={`text-[10px] ${adjustmentDiff > 0 ? "text-blue-600" : "text-red-600"}`}>
+                      조정: {adjustmentDiff > 0 ? "+" : ""}{adjustmentDiff.toLocaleString()}원
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">세액 (10%)</span>
                   <span>{taxAmount.toLocaleString()}원</span>
                 </div>
                 <div className="flex justify-between text-base font-bold border-t pt-1">
@@ -1226,8 +1299,6 @@ function OrderDetailModal({
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [showDetailFreeItem, setShowDetailFreeItem] = useState(false);
   const [detailFreeItem, setDetailFreeItem] = useState({ itemName: "", spec: "", brand: "", unitPrice: "", quantity: "1" });
-  const [showDetailAdjustment, setShowDetailAdjustment] = useState(false);
-  const [detailAdjustment, setDetailAdjustment] = useState({ itemName: "", amount: "" });
 
   useEffect(() => {
     setForm(buildFormState());
@@ -1308,25 +1379,6 @@ function OrderDetailModal({
     setShowDetailFreeItem(false);
   };
 
-  const handleAddDetailAdjustment = () => {
-    if (!detailAdjustment.itemName.trim()) return;
-    const amt = parseInt(detailAdjustment.amount) || 0;
-    addItemMutation.mutate({
-      itemCode: null,
-      itemName: detailAdjustment.itemName,
-      spec: null,
-      brand: null,
-      quantity: 1,
-      unitPrice: amt,
-      amount: amt,
-      category1: null,
-      sortOrder: orderItems.length,
-      isAdjustment: true,
-    });
-    setDetailAdjustment({ itemName: "", amount: "" });
-    setShowDetailAdjustment(false);
-  };
-
   const handleItemFieldBlur = (item: PurchaseOrderItem, field: string, value: number) => {
     const qty = field === "quantity" ? value : item.quantity;
     const price = field === "unitPrice" ? value : item.unitPrice;
@@ -1380,8 +1432,7 @@ function OrderDetailModal({
 
   const expensePayments = payments.filter(p => p.type === "expense");
 
-  const regularOrderItems = orderItems.filter(i => !i.isAdjustment);
-  const adjustmentOrderItems = orderItems.filter(i => i.isAdjustment);
+  const detailItemSubtotal = orderItems.reduce((s, i) => s + (i.amount || 0), 0);
 
   return (
     <>
@@ -1444,9 +1495,6 @@ function OrderDetailModal({
                   <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowDetailFreeItem(true)} data-testid="button-detail-add-free">
                     <Plus className="h-3 w-3 mr-1" />직접 입력
                   </Button>
-                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowDetailAdjustment(true)} data-testid="button-detail-add-adjustment">
-                    <Plus className="h-3 w-3 mr-1" />가격 조정
-                  </Button>
                 </div>
               </div>
 
@@ -1483,26 +1531,7 @@ function OrderDetailModal({
                 </div>
               )}
 
-              {showDetailAdjustment && (
-                <div className="border rounded p-2 mb-2 bg-muted/20 space-y-1.5">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <Label className="text-[10px]">항목명 *</Label>
-                      <Input className="h-7 text-xs" placeholder="예: 할인, 운반비" value={detailAdjustment.itemName} onChange={e => setDetailAdjustment(f => ({ ...f, itemName: e.target.value }))} data-testid="input-detail-adj-name" />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">금액 (- 가능)</Label>
-                      <Input type="number" className="h-7 text-xs" placeholder="예: -50000" value={detailAdjustment.amount} onChange={e => setDetailAdjustment(f => ({ ...f, amount: e.target.value }))} data-testid="input-detail-adj-amount" />
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button size="sm" className="h-7 text-xs" onClick={handleAddDetailAdjustment} data-testid="button-detail-confirm-adj">추가</Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowDetailAdjustment(false)}>취소</Button>
-                  </div>
-                </div>
-              )}
-
-              {regularOrderItems.length > 0 && (
+              {orderItems.length > 0 && (
                 <table className="w-full text-xs border-collapse" data-testid="table-detail-items">
                   <thead>
                     <tr className="border-b bg-muted/30">
@@ -1515,7 +1544,7 @@ function OrderDetailModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {regularOrderItems.map(item => (
+                    {orderItems.map(item => (
                       <tr key={item.id} className="border-b last:border-b-0" data-testid={`row-detail-item-${item.id}`}>
                         <td className="py-1 px-2">
                           <div className="font-medium">{item.itemName}</div>
@@ -1552,23 +1581,6 @@ function OrderDetailModal({
                 </table>
               )}
 
-              {adjustmentOrderItems.length > 0 && (
-                <div className="mt-2">
-                  <Label className="text-[10px] text-muted-foreground mb-1 block">가격 조정</Label>
-                  {adjustmentOrderItems.map(item => (
-                    <div key={item.id} className="flex items-center justify-between py-1 px-2 border-b last:border-b-0 text-xs" data-testid={`row-detail-adj-${item.id}`}>
-                      <span className="text-muted-foreground">{item.itemName}</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`font-medium ${(item.amount || 0) < 0 ? "text-red-600" : "text-blue-600"}`}>{(item.amount || 0) > 0 ? "+" : ""}{(item.amount || 0).toLocaleString()}원</span>
-                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" onClick={() => deleteItemMutation.mutate(item.id)} data-testid={`button-detail-remove-adj-${item.id}`}>
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {orderItems.length === 0 && (
                 <div className="text-center py-4 text-xs text-muted-foreground border rounded" data-testid="text-detail-empty-items">
                   등록된 품목이 없습니다
@@ -1576,43 +1588,45 @@ function OrderDetailModal({
               )}
 
               {orderItems.length > 0 && (
-                <div className="mt-2 bg-muted/20 rounded p-2 space-y-0.5 text-xs" data-testid="panel-detail-totals">
+                <div className="mt-2 bg-muted/20 rounded p-2 space-y-1 text-xs" data-testid="panel-detail-totals">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">품목 합계 (공급가액)</span>
-                    <span className="font-medium">{orderItems.reduce((s, i) => s + (i.amount || 0), 0).toLocaleString()}원</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">세액 (10%)</span>
-                    <span>{Math.round(orderItems.reduce((s, i) => s + (i.amount || 0), 0) * 0.1).toLocaleString()}원</span>
-                  </div>
-                  <div className="flex justify-between font-bold border-t pt-1 mt-1">
-                    <span>합계</span>
-                    <span>{(orderItems.reduce((s, i) => s + (i.amount || 0), 0) + Math.round(orderItems.reduce((s, i) => s + (i.amount || 0), 0) * 0.1)).toLocaleString()}원</span>
+                    <span className="text-muted-foreground">품목 소계</span>
+                    <span>{detailItemSubtotal.toLocaleString()}원</span>
                   </div>
                 </div>
               )}
             </div>
 
             <div className="border-t pt-3">
-              <Label className="text-xs font-medium mb-2 block">상세 정보</Label>
+              <Label className="text-xs font-medium mb-2 block">금액</Label>
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <div>
-                    <Label className="text-[10px] text-muted-foreground">공급가액</Label>
+                    <Label className="text-[10px] text-muted-foreground">최종금액 (공급가액)</Label>
                     <div className="flex items-center gap-2">
-                      <Input type="number" className="h-7 text-xs flex-1" value={form.supplyAmount} onChange={e => handleSupplyAmountChange(e.target.value)} data-testid="input-supply-amount" />
+                      <Input type="number" className="h-7 text-xs flex-1" placeholder={detailItemSubtotal ? detailItemSubtotal.toLocaleString() : ""} value={form.supplyAmount} onChange={e => handleSupplyAmountChange(e.target.value)} data-testid="input-supply-amount" />
                       <span className="text-[10px] text-muted-foreground whitespace-nowrap">{form.supplyAmount ? `${parseInt(form.supplyAmount).toLocaleString()}원` : ""}</span>
                     </div>
+                    {detailItemSubtotal > 0 && form.supplyAmount && parseInt(form.supplyAmount) !== detailItemSubtotal && (
+                      <div className="flex justify-end mt-0.5">
+                        <span className={`text-[10px] ${(parseInt(form.supplyAmount) - detailItemSubtotal) > 0 ? "text-blue-600" : "text-red-600"}`}>
+                          조정: {(parseInt(form.supplyAmount) - detailItemSubtotal) > 0 ? "+" : ""}{(parseInt(form.supplyAmount) - detailItemSubtotal).toLocaleString()}원
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <Label className="text-[10px] text-muted-foreground">세액</Label>
-                      <Input type="number" className="h-7 text-xs" value={form.taxAmount} onChange={e => { const tax = parseInt(e.target.value) || 0; const supply = parseInt(form.supplyAmount) || 0; setForm(f => ({ ...f, taxAmount: e.target.value, totalAmount: String(supply + tax) })); }} data-testid="input-tax-amount" />
+                      <Label className="text-[10px] text-muted-foreground">세액 (10%)</Label>
+                      <div className="flex items-center gap-1">
+                        <Input type="number" className="h-7 text-xs" value={form.taxAmount} readOnly data-testid="input-tax-amount" />
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">{form.taxAmount ? `${parseInt(form.taxAmount).toLocaleString()}원` : ""}</span>
+                      </div>
                     </div>
                     <div>
                       <Label className="text-[10px] text-muted-foreground">합계</Label>
                       <div className="flex items-center gap-1">
-                        <Input type="number" className="h-7 text-xs flex-1" value={form.totalAmount} onChange={e => setForm(f => ({ ...f, totalAmount: e.target.value }))} data-testid="input-total-amount" />
+                        <Input type="number" className="h-7 text-xs" value={form.totalAmount} readOnly data-testid="input-total-amount" />
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap">{form.totalAmount ? `${parseInt(form.totalAmount).toLocaleString()}원` : ""}</span>
                       </div>
                     </div>
