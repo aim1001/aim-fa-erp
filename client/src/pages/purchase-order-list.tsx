@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2 } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import {
@@ -56,6 +56,7 @@ export default function PurchaseOrderList() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const { data: orders, isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ["/api/purchase-orders", selectedYear],
@@ -118,6 +119,26 @@ export default function PurchaseOrderList() {
     },
   });
 
+  const createMutation = useMutation({
+    mutationFn: async (data: Record<string, any>) => {
+      const res = await apiRequest("POST", "/api/purchase-orders", data);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      setShowCreateForm(false);
+      const msgs: string[] = [];
+      if (data.purchaseInvoice) msgs.push("매입계산서 생성");
+      if (data.payment) msgs.push("자금계획 생성");
+      toast({ title: "발주가 등록되었습니다", description: msgs.length ? msgs.join(", ") : undefined });
+    },
+    onError: (err: Error) => {
+      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const filtered = useMemo(() => {
     if (!orders) return [];
     let list = orders;
@@ -169,6 +190,14 @@ export default function PurchaseOrderList() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setShowCreateForm(true)}
+            data-testid="button-new-order"
+          >
+            <Plus className="h-4 w-4 mr-1" />신규 발주
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -330,6 +359,15 @@ export default function PurchaseOrderList() {
         총 {filtered.length}건 {statusFilter !== "all" ? `(필터: ${statusFilter})` : ""}
       </div>
 
+      {showCreateForm && (
+        <CreateOrderDialog
+          year={selectedYear}
+          onClose={() => setShowCreateForm(false)}
+          onCreate={(data) => createMutation.mutate(data)}
+          isPending={createMutation.isPending}
+        />
+      )}
+
       {selectedOrder && (
         <OrderDetailModal
           order={selectedOrder}
@@ -351,6 +389,129 @@ type OneDriveFile = {
   size: number;
   mimeType?: string;
 };
+
+function CreateOrderDialog({
+  year,
+  onClose,
+  onCreate,
+  isPending,
+}: {
+  year: number;
+  onClose: () => void;
+  onCreate: (data: Record<string, any>) => void;
+  isPending: boolean;
+}) {
+  const [form, setForm] = useState({
+    orderNumber: "",
+    vendor: "",
+    description: "",
+    supplyAmount: "",
+    status: "일반",
+    expectedDeliveryDate: "",
+    paymentDate: "",
+  });
+
+  const taxAmount = form.supplyAmount ? Math.round(parseInt(form.supplyAmount) * 0.1) : 0;
+  const totalAmount = form.supplyAmount ? parseInt(form.supplyAmount) + taxAmount : 0;
+
+  const canSubmit = form.vendor.trim() !== "";
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onCreate({
+      orderNumber: form.orderNumber || null,
+      vendor: form.vendor,
+      description: form.description || null,
+      supplyAmount: form.supplyAmount ? parseInt(form.supplyAmount) : null,
+      taxAmount: form.supplyAmount ? taxAmount : null,
+      totalAmount: form.supplyAmount ? totalAmount : null,
+      status: form.status,
+      expectedDeliveryDate: form.expectedDeliveryDate || null,
+      paymentDate: form.paymentDate || null,
+      year,
+    });
+  };
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md" data-testid="modal-create-order">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            신규 발주 등록
+          </DialogTitle>
+          <DialogDescription className="sr-only">신규 발주 등록 양식</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">발주번호</Label>
+              <Input className="h-8 text-sm" placeholder={`${year.toString().slice(2)}-`} value={form.orderNumber} onChange={e => setForm(f => ({ ...f, orderNumber: e.target.value }))} data-testid="input-create-order-number" />
+            </div>
+            <div>
+              <Label className="text-xs">상태</Label>
+              <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-create-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="일반">일반</SelectItem>
+                  <SelectItem value="수입">수입</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
+            <Input className="h-8 text-sm" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} data-testid="input-create-vendor" />
+          </div>
+
+          <div>
+            <Label className="text-xs">내용</Label>
+            <Input className="h-8 text-sm" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} data-testid="input-create-description" />
+          </div>
+
+          <div>
+            <Label className="text-xs">공급가액</Label>
+            <Input type="number" className="h-8 text-sm" value={form.supplyAmount} onChange={e => setForm(f => ({ ...f, supplyAmount: e.target.value }))} data-testid="input-create-supply-amount" />
+            {form.supplyAmount && (
+              <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground">
+                <span>세액: {taxAmount.toLocaleString()}원</span>
+                <span>합계: {totalAmount.toLocaleString()}원</span>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-3 space-y-3">
+            <div>
+              <Label className="text-xs">예정입고일</Label>
+              <Input type="date" className="h-8 text-sm" value={form.expectedDeliveryDate} onChange={e => setForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))} data-testid="input-create-delivery-date" />
+              {form.expectedDeliveryDate && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">→ 매입계산서 접수일로 자동 등록</p>
+              )}
+            </div>
+            <div>
+              <Label className="text-xs">결재(송금)예정일</Label>
+              <Input type="date" className="h-8 text-sm" value={form.paymentDate} onChange={e => setForm(f => ({ ...f, paymentDate: e.target.value }))} data-testid="input-create-payment-date" />
+              {form.paymentDate && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">→ 자금계획(출금)에 자동 등록</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <Button variant="outline" size="sm" onClick={onClose} data-testid="button-cancel-create">취소</Button>
+          <Button size="sm" onClick={handleSubmit} disabled={!canSubmit || isPending} data-testid="button-submit-create">
+            {isPending ? "등록 중..." : "발주 등록"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function ExcelAmountParser({ orderId, onAmountParsed }: { orderId: string; onAmountParsed: (data: { supplyAmount: number; taxAmount: number; totalAmount: number }) => void }) {
   const { toast } = useToast();

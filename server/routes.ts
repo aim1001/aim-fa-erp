@@ -4196,6 +4196,50 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/purchase-orders", async (req, res) => {
+    try {
+      const { paymentDate, ...orderData } = req.body;
+      if (!orderData.vendor) return res.status(400).json({ message: "구매처는 필수입니다" });
+      if (orderData.expectedDeliveryDate === "") orderData.expectedDeliveryDate = null;
+      const order = await storage.createPurchaseOrder(orderData);
+
+      let purchaseInvoice = null;
+      let payment = null;
+
+      if (order.vendor && order.totalAmount) {
+        purchaseInvoice = await storage.createPurchaseInvoice({
+          companyName: order.vendor,
+          item: order.description || "",
+          supplyAmount: order.supplyAmount,
+          taxAmount: order.taxAmount,
+          totalAmount: order.totalAmount,
+          issueDate: order.expectedDeliveryDate || null,
+          year: order.year,
+          status: "pending",
+        });
+        await storage.updatePurchaseOrder(order.id, { purchaseInvoiceId: purchaseInvoice.id });
+      }
+
+      if (paymentDate && order.totalAmount) {
+        payment = await storage.createPayment({
+          type: "expense",
+          purchaseInvoiceId: purchaseInvoice?.id || null,
+          companyName: order.vendor || "",
+          description: order.description || "",
+          amount: order.totalAmount,
+          plannedDate: paymentDate,
+          status: "planned",
+        });
+        await storage.updatePurchaseOrder(order.id, { paymentId: payment.id });
+      }
+
+      const updated = await storage.getPurchaseOrder(order.id);
+      res.status(201).json({ order: updated, purchaseInvoice, payment });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.patch("/api/purchase-orders/:id", async (req, res) => {
     try {
       const result = await storage.updatePurchaseOrder(req.params.id, req.body);
