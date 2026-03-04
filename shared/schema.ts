@@ -357,6 +357,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderNumber: text("order_number"),
   vendor: text("vendor"),
+  vendorId: varchar("vendor_id"),
   description: text("description"),
   supplyAmount: integer("supply_amount"),
   taxAmount: integer("tax_amount"),

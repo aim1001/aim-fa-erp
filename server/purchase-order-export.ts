@@ -29,7 +29,11 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
   const companyInfo = await storage.getCompanySettings();
 
   const vendors = await storage.getVendors();
-  const vendorRecord = order.vendor ? vendors.find(v => v.companyName === order.vendor) : null;
+  const vendorRecord = order.vendorId
+    ? vendors.find(v => v.id === order.vendorId)
+    : order.vendor
+      ? vendors.find(v => v.companyName === order.vendor)
+      : null;
 
   const regularItems = orderItems.filter(i => !i.isAdjustment);
   const supplyAmount = order.supplyAmount || regularItems.reduce((s, i) => s + (i.amount || 0), 0);

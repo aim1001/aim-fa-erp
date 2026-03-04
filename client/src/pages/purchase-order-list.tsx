@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2 } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect } from "react";
 import {
@@ -59,6 +59,17 @@ export default function PurchaseOrderList() {
   const [search, setSearch] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [sortField, setSortField] = useState<"orderNumber" | "vendor" | "expectedDeliveryDate" | null>("orderNumber");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const toggleSort = (field: "orderNumber" | "vendor" | "expectedDeliveryDate") => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir(field === "vendor" ? "asc" : "desc");
+    }
+  };
 
   const { data: orders, isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ["/api/purchase-orders", selectedYear],
@@ -139,7 +150,7 @@ export default function PurchaseOrderList() {
 
   const filtered = useMemo(() => {
     if (!orders) return [];
-    let list = orders;
+    let list = [...orders];
     if (statusFilter !== "all") {
       list = list.filter(o => o.status === statusFilter);
     }
@@ -151,8 +162,28 @@ export default function PurchaseOrderList() {
         (o.description || "").toLowerCase().includes(q)
       );
     }
+    if (sortField) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      list.sort((a, b) => {
+        if (sortField === "orderNumber") {
+          const parseNum = (s: string | null) => {
+            if (!s) return 0;
+            const m = s.match(/^(\d+)-(\d+)/);
+            return m ? parseInt(m[1]) * 10000 + parseInt(m[2]) : 0;
+          };
+          return (parseNum(a.orderNumber) - parseNum(b.orderNumber)) * dir;
+        }
+        if (sortField === "vendor") {
+          return (a.vendor || "").localeCompare(b.vendor || "", "ko") * dir;
+        }
+        if (sortField === "expectedDeliveryDate") {
+          return (a.expectedDeliveryDate || "").localeCompare(b.expectedDeliveryDate || "") * dir;
+        }
+        return 0;
+      });
+    }
     return list;
-  }, [orders, statusFilter, search]);
+  }, [orders, statusFilter, search, sortField, sortDir]);
 
   const statusCounts = useMemo(() => {
     if (!orders) return { all: 0, "일반": 0, "수입": 0, "입고완료": 0 };
@@ -254,11 +285,17 @@ export default function PurchaseOrderList() {
           <table className="w-full text-sm" data-testid="table-orders">
             <thead className="sticky top-0 bg-background border-b">
               <tr className="text-xs text-muted-foreground">
-                <th className="text-left px-4 py-2 font-medium">발주번호</th>
-                <th className="text-left px-4 py-2 font-medium">구매처</th>
+                <th className="text-left px-4 py-2 font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("orderNumber")} data-testid="sort-orderNumber">
+                  <span className="inline-flex items-center gap-1">발주번호 {sortField === "orderNumber" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </th>
+                <th className="text-left px-4 py-2 font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("vendor")} data-testid="sort-vendor">
+                  <span className="inline-flex items-center gap-1">구매처 {sortField === "vendor" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </th>
                 <th className="text-left px-4 py-2 font-medium">내용</th>
                 <th className="text-right px-4 py-2 font-medium">금액</th>
-                <th className="text-center px-4 py-2 font-medium">납품예정일</th>
+                <th className="text-center px-4 py-2 font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("expectedDeliveryDate")} data-testid="sort-deliveryDate">
+                  <span className="inline-flex items-center gap-1">납품예정일 {sortField === "expectedDeliveryDate" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </th>
                 <th className="text-center px-4 py-2 font-medium">납품일</th>
                 <th className="text-center px-4 py-2 font-medium">상태</th>
                 <th className="text-center px-4 py-2 font-medium">입고</th>
@@ -518,7 +555,7 @@ function PurchaseItemSearchPopover({ onSelect }: { onSelect: (item: PurchaseItem
   );
 }
 
-function VendorSearchPopover({ vendor, onSelect }: { vendor: string; onSelect: (name: string) => void }) {
+function VendorSearchPopover({ vendor, onSelect }: { vendor: string; onSelect: (name: string, vendorId?: string) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -578,7 +615,7 @@ function VendorSearchPopover({ vendor, onSelect }: { vendor: string; onSelect: (
               key={v.id}
               type="button"
               className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${vendor === v.companyName ? "bg-accent font-medium" : ""}`}
-              onClick={() => { onSelect(v.companyName); setOpen(false); setSearch(""); }}
+              onClick={() => { onSelect(v.companyName, v.id); setOpen(false); setSearch(""); }}
               data-testid={`vendor-option-${v.id}`}
             >
               {v.companyName}
@@ -615,6 +652,7 @@ function CreateOrderDialog({
   const [form, setForm] = useState({
     orderNumber: "",
     vendor: "",
+    vendorId: null as string | null,
     description: "",
     status: "일반",
     expectedDeliveryDate: "",
@@ -706,6 +744,7 @@ function CreateOrderDialog({
     onCreate({
       orderNumber: form.orderNumber || null,
       vendor: form.vendor,
+      vendorId: form.vendorId,
       description: form.description || items.map(i => i.itemName).join(", ") || null,
       supplyAmount: supplyAmount || null,
       taxAmount: taxAmount || null,
@@ -740,7 +779,7 @@ function CreateOrderDialog({
             </div>
             <div>
               <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
-              <VendorSearchPopover vendor={form.vendor} onSelect={v => setForm(f => ({ ...f, vendor: v }))} />
+              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid) => setForm(f => ({ ...f, vendor: v, vendorId: vid || null }))} />
             </div>
             <div>
               <Label className="text-xs">상태</Label>
@@ -1310,8 +1349,9 @@ function OrderDetailModal({
   const { data: vendors = [] } = useQuery<Vendor[]>({ queryKey: ["/api/vendors"] });
 
   const vendorRecord = useMemo(() => {
+    if (order.vendorId) return vendors.find(v => v.id === order.vendorId) || null;
     return order.vendor ? vendors.find(v => v.companyName === order.vendor) : null;
-  }, [order.vendor, vendors]);
+  }, [order.vendorId, order.vendor, vendors]);
 
   const handleOpenEmailDialog = () => {
     setEmailForm({
