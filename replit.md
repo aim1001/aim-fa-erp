@@ -29,7 +29,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **customers** 테이블: 사업자등록 기준 공식 고객사 (상호명, 사업자등록번호, 대표자, 주소, 업태, 종목) - 영업/경영지원 공유
 - **companies** 테이블: 담당자/연락처 (contactName, email, phone) - customerId로 고객사에 연결 (1:N)
 - **vendors** 테이블: 공급업체 (상호명, 사업자등록번호, 대표자, 담당자 정보, 즐겨찾기) - 매입계산서용
-- **inquiries** 테이블: customerId(고객사)와 companyId(담당자) 모두 참조 + 스냅샷 필드로 연결 시점 정보 보존
+- **inquiries** 테이블: customerId(고객사)와 companyId(담당자) 모두 참조 + 스냅샷 필드로 연결 시점 정보 보존; 고객정보 카드에서 담당자 Select 드롭다운으로 해당 고객의 담당자 목록에서 선택/전환 가능, 새 담당자 인라인 추가 가능
 - **sales_invoices** 테이블: 매출계산서 (customerId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보)

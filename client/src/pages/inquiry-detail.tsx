@@ -620,10 +620,15 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
       });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: async (newCompany: any) => {
       toast({ title: "담당자 등록 완료" });
       setContactForm({ contactName: "", email: "", phone: "" });
-      invalidateAll();
+      setIsAddingNewContact(false);
+      if (newCompany?.id && isLinked) {
+        linkContactMutation.mutate(newCompany.id);
+      } else {
+        invalidateAll();
+      }
     },
     onError: (err: Error) => {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
@@ -702,8 +707,23 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
     setContactForm({ contactName: "", email: "", phone: "" });
   };
 
+  const [isAddingNewContact, setIsAddingNewContact] = useState(false);
+
+  const linkContactMutation = useMutation({
+    mutationFn: async (companyId: string) => {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/link-company`, { companyId });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateAll();
+    },
+    onError: (err: Error) => {
+      toast({ title: "담당자 연결 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const isSaving = saveCustomerInfoMutation.isPending || createContactMutation.isPending || updateContactMutation.isPending;
-  const primaryContact = contacts.length > 0 ? contacts[0] : null;
+  const selectedContact = contacts.find(c => c.id === inquiry.companyId) || (contacts.length > 0 ? contacts[0] : null);
 
   return (
     <Card>
@@ -797,20 +817,109 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
             </>
           )}
 
-          {isLinked && primaryContact && !isEditingContact ? (
+          {isLinked && contacts.length > 0 && !isEditingContact && !isAddingNewContact ? (
             <>
               <span className="text-muted-foreground flex items-center gap-1"><User className="h-3 w-3" />담당자</span>
               <div className="flex items-center gap-2">
-                <span>{primaryContact.contactName || "-"}</span>
-                {contacts.length > 1 && <span className="text-xs text-muted-foreground">외 {contacts.length - 1}명</span>}
-                <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1.5 text-muted-foreground" onClick={() => startEditContact(primaryContact)} data-testid="button-edit-contact">
-                  <Pencil className="h-2.5 w-2.5" />
-                </Button>
+                <Select
+                  value={selectedContact?.id || ""}
+                  onValueChange={(val) => {
+                    if (val === "__new__") {
+                      setIsAddingNewContact(true);
+                      setContactForm({ contactName: "", email: "", phone: "" });
+                    } else {
+                      linkContactMutation.mutate(val);
+                    }
+                  }}
+                  data-testid="select-contact"
+                >
+                  <SelectTrigger className="h-7 text-xs w-auto min-w-[140px] max-w-[200px]" data-testid="select-contact-trigger">
+                    <SelectValue placeholder="담당자 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contacts.map(c => (
+                      <SelectItem key={c.id} value={c.id} data-testid={`option-contact-${c.id}`}>
+                        {c.contactName || c.companyName || "-"}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__new__" data-testid="option-contact-new">
+                      <span className="text-primary">+ 새 담당자 추가</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {selectedContact && (
+                  <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1.5 text-muted-foreground" onClick={() => startEditContact(selectedContact)} data-testid="button-edit-contact">
+                    <Pencil className="h-2.5 w-2.5" />
+                  </Button>
+                )}
               </div>
               <span className="text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />이메일</span>
-              <span>{primaryContact.email || "-"}</span>
+              <span>{selectedContact?.email || "-"}</span>
               <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
-              <span>{primaryContact.phone || "-"}</span>
+              <span>{selectedContact?.phone || "-"}</span>
+            </>
+          ) : isLinked && (isEditingContact || isAddingNewContact) ? (
+            <>
+              <span className="text-muted-foreground flex items-center gap-1"><User className="h-3 w-3" />{isEditingContact ? "담당자 수정" : "새 담당자"}</span>
+              <Input
+                placeholder="담당자명"
+                value={contactForm.contactName}
+                onChange={(e) => setContactForm(f => ({ ...f, contactName: e.target.value }))}
+                className="h-7 text-xs"
+                data-testid="input-contact-name"
+              />
+              <span className="text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />이메일</span>
+              <Input
+                type="email"
+                placeholder="example@company.com"
+                value={contactForm.email}
+                onChange={(e) => setContactForm(f => ({ ...f, email: e.target.value }))}
+                className="h-7 text-xs"
+                data-testid="input-contact-email"
+              />
+              <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
+              <Input
+                type="tel"
+                placeholder="010-1234-5678"
+                value={contactForm.phone}
+                onChange={(e) => setContactForm(f => ({ ...f, phone: e.target.value }))}
+                className="h-7 text-xs"
+                data-testid="input-contact-phone"
+              />
+              <span />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={isAddingNewContact ? () => createContactMutation.mutate(contactForm) : handleSaveContact}
+                  disabled={isSaving || !contactForm.contactName.trim()}
+                  data-testid="button-save-contact"
+                >
+                  {isSaving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                  {isEditingContact ? "수정" : "추가"}
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { cancelEditContact(); setIsAddingNewContact(false); }} data-testid="button-cancel-edit-contact">
+                  취소
+                </Button>
+                {hasOneDrive && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => scanMutation.mutate()}
+                        disabled={scanMutation.isPending}
+                        data-testid="button-scan-excel-inline"
+                      >
+                        {scanMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSpreadsheet className="h-3 w-3" />}
+                        <span className="ml-1">엑셀</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>엑셀에서 담당자 정보 가져오기</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -850,14 +959,9 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
                   data-testid="button-save-contact"
                 >
                   {isSaving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-                  {isEditingContact ? "수정" : "저장"}
+                  저장
                 </Button>
-                {isEditingContact && (
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelEditContact} data-testid="button-cancel-edit-contact">
-                    취소
-                  </Button>
-                )}
-                {hasOneDrive && isLinked && (
+                {hasOneDrive && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button

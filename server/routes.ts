@@ -1114,18 +1114,23 @@ export async function registerRoutes(
     try {
       const inquiry = await storage.getInquiry(req.params.id);
       if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
-      const { customerId } = z.object({ customerId: z.string() }).parse(req.body);
+      const { customerId, companyId } = z.object({ customerId: z.string(), companyId: z.string().optional() }).parse(req.body);
       const customer = await storage.getCustomer(customerId);
       if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
       const contacts = await storage.getCompaniesByCustomerId(customerId);
-      const firstContact = contacts.length > 0 ? contacts[0] : null;
-      const snapshotUpdate = {
+      let selectedContact = contacts.length > 0 ? contacts[0] : null;
+      if (companyId) {
+        const found = contacts.find(c => c.id === companyId);
+        if (found) selectedContact = found;
+      }
+      const snapshotUpdate: Record<string, any> = {
         customerId: customer.id,
+        companyId: selectedContact?.id || null,
         snapshotCompanyName: customer.companyName,
         snapshotAddress: customer.address || null,
-        snapshotContactName: firstContact?.contactName || null,
-        snapshotEmail: firstContact?.email || null,
-        snapshotPhone: firstContact?.phone || null,
+        snapshotContactName: selectedContact?.contactName || null,
+        snapshotEmail: selectedContact?.email || null,
+        snapshotPhone: selectedContact?.phone || null,
       };
       const updated = await storage.updateInquiry(inquiry.id, {
         ...snapshotUpdate,
