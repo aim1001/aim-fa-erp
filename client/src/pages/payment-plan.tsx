@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split } from "lucide-react";
+import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -113,6 +113,10 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
     updateMutation.mutate({ actualDate: today, actualAmount: payment?.amount || 0, status: "completed", plannedDate: null });
   };
 
+  const undoCompleted = () => {
+    updateMutation.mutate({ status: "planned", actualDate: null, actualAmount: null });
+  };
+
   const renderField = (label: string, field: string, value: string, inputType = "text") => (
     <>
       <span className="text-muted-foreground text-xs font-medium">{label}</span>
@@ -215,9 +219,13 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
           </>
         )}
       </div>
-      {payment.status !== "completed" && (
+      {payment.status !== "completed" ? (
         <Button size="sm" className="mt-2" onClick={markCompleted} data-testid="button-mark-completed">
           <Check className="h-4 w-4 mr-1" />결제 완료 처리
+        </Button>
+      ) : (
+        <Button size="sm" variant="outline" className="mt-2 text-orange-600 border-orange-300" onClick={undoCompleted} data-testid="button-undo-completed">
+          <Undo2 className="h-4 w-4 mr-1" />완료 취소
         </Button>
       )}
     </DialogContent>
@@ -452,6 +460,10 @@ export default function PaymentPlan() {
     inlineUpdate.mutate({ id: p.id, patch: { actualAmount: p.amount || 0, actualDate: today, plannedDate: null, status: "completed" } });
   };
 
+  const handleUndoPayment = (p: EnrichedPayment) => {
+    inlineUpdate.mutate({ id: p.id, patch: { status: "planned", actualDate: null, actualAmount: null } });
+  };
+
   const [partialAmount, setPartialAmount] = useState("");
   const [partialPaymentId, setPartialPaymentId] = useState<string | null>(null);
   const [remainderDate, setRemainderDate] = useState<Date | undefined>(undefined);
@@ -677,9 +689,14 @@ export default function PaymentPlan() {
                       </td>
                       <td className="py-1.5 px-2 text-right" onClick={e => e.stopPropagation()}>
                         {isCompleted ? (
-                          <span className={`text-xs font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>
-                            {(p.amount || 0).toLocaleString()}
-                          </span>
+                          <div className="flex items-center justify-end gap-1">
+                            <span className={`text-xs font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>
+                              {(p.actualAmount || p.amount || 0).toLocaleString()}
+                            </span>
+                            <Button variant="ghost" size="sm" className="h-6 px-1 text-orange-500" onClick={() => handleUndoPayment(p)} data-testid={`button-undo-${p.id}`} title="완료 취소">
+                              <Undo2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         ) : (
                           <Popover open={partialPaymentId === p.id} onOpenChange={open => { if (!open) { setPartialPaymentId(null); setPartialAmount(""); } }}>
                             <PopoverTrigger asChild>

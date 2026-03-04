@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
@@ -68,7 +68,7 @@ function PaymentStatusBadge({ inv }: { inv: PurchaseInvoiceWithPayment }) {
   );
 }
 
-function PaymentRow({ payment, onUpdate, onDelete, onComplete }: { payment: Payment; onUpdate: (id: string, data: Record<string, any>) => void; onDelete: (id: string) => void; onComplete: (id: string) => void }) {
+function PaymentRow({ payment, onUpdate, onDelete, onComplete, onUncomplete }: { payment: Payment; onUpdate: (id: string, data: Record<string, any>) => void; onDelete: (id: string) => void; onComplete: (id: string) => void; onUncomplete: (id: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState({
     plannedDate: payment.plannedDate || "",
@@ -155,6 +155,11 @@ function PaymentRow({ payment, onUpdate, onDelete, onComplete }: { payment: Paym
           {!isCompleted && (
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onComplete(payment.id)} data-testid={`button-complete-${payment.id}`}>
               <Check className="h-3 w-3" />
+            </Button>
+          )}
+          {isCompleted && (
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-orange-500" onClick={() => onUncomplete(payment.id)} data-testid={`button-uncomplete-${payment.id}`} title="완료 취소">
+              <Undo2 className="h-3 w-3" />
             </Button>
           )}
           <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => onDelete(payment.id)} data-testid={`button-delete-payment-${payment.id}`}>
@@ -252,6 +257,21 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
     },
   });
 
+  const uncompleteMutation = useMutation({
+    mutationFn: async (paymentId: string) => {
+      const res = await apiRequest("PATCH", `/api/payments/${paymentId}`, {
+        status: "planned",
+        actualDate: null,
+        actualAmount: null,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateAll();
+      toast({ title: "완료가 취소되었습니다" });
+    },
+  });
+
   return (
     <div className="border-t pt-3 mt-3">
       <div className="flex items-center justify-between mb-2">
@@ -297,6 +317,7 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
               onUpdate={(id, data) => updateMutation.mutate({ id, data })}
               onDelete={(id) => deleteMutation.mutate(id)}
               onComplete={(id) => completeMutation.mutate(id)}
+              onUncomplete={(id) => uncompleteMutation.mutate(id)}
             />
           ))}
         </div>
