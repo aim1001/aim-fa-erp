@@ -4418,8 +4418,26 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-orders/:id", async (req, res) => {
     try {
+      const existing = await storage.getPurchaseOrder(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+
       const result = await storage.updatePurchaseOrder(req.params.id, req.body);
-      if (!result) return res.status(404).json({ message: "Not found" });
+
+      if ("purchaseInvoiceId" in req.body && existing.paymentId) {
+        const newInvoiceId = req.body.purchaseInvoiceId;
+        const oldInvoiceId = existing.purchaseInvoiceId;
+
+        if (newInvoiceId && newInvoiceId !== oldInvoiceId) {
+          await storage.updatePayment(existing.paymentId, {
+            purchaseInvoiceId: newInvoiceId,
+          });
+        } else if (!newInvoiceId && oldInvoiceId) {
+          await storage.updatePayment(existing.paymentId, {
+            purchaseInvoiceId: null,
+          });
+        }
+      }
+
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

@@ -308,6 +308,15 @@ export default function PurchaseOrderList() {
               {filtered.map(order => {
                 const linkedInvoice = invoices?.find(inv => inv.id === order.purchaseInvoiceId);
                 const linkedPayment = payments?.find(p => p.id === order.paymentId);
+                const invoicePayments = linkedInvoice
+                  ? payments?.filter(p => p.purchaseInvoiceId === linkedInvoice.id) || []
+                  : [];
+                const hasInvoicePayments = invoicePayments.length > 0;
+                const allInvoicePaymentsCompleted = hasInvoicePayments && invoicePayments.every(p => p.status === "completed");
+                const someInvoicePaymentsCompleted = hasInvoicePayments && invoicePayments.some(p => p.status === "completed");
+                const nextInvoicePayment = hasInvoicePayments
+                  ? invoicePayments.filter(p => p.status !== "completed").sort((a, b) => (a.plannedDate || "").localeCompare(b.plannedDate || ""))[0]
+                  : null;
 
                 return (
                   <tr
@@ -360,7 +369,27 @@ export default function PurchaseOrderList() {
                       )}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      {linkedPayment ? (
+                      {linkedInvoice ? (
+                        hasInvoicePayments ? (
+                          allInvoicePaymentsCompleted ? (
+                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-done-${order.id}`}>
+                              <Check className="h-3 w-3 mr-1" />완료
+                            </Badge>
+                          ) : someInvoicePaymentsCompleted ? (
+                            <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border-0" data-testid={`badge-payment-partial-${order.id}`}>
+                              부분완료
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground" data-testid={`text-payment-planned-${order.id}`}>
+                              {nextInvoicePayment?.plannedDate ? nextInvoicePayment.plannedDate.slice(5).replace("-", "/") + " 예정" : "예정"}
+                            </span>
+                          )
+                        ) : (
+                          <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-payment-none-${order.id}`}>
+                            미설정
+                          </Badge>
+                        )
+                      ) : linkedPayment ? (
                         linkedPayment.status === "completed" ? (
                           <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-done-${order.id}`}>
                             <Check className="h-3 w-3 mr-1" />완료
@@ -1769,17 +1798,72 @@ function OrderDetailModal({
                   defaultSearch={order.vendor || ""}
                   testIdPrefix="invoice"
                 />
-                <PaymentSearchPicker
-                  label="송금 연결"
-                  items={expensePayments}
-                  selectedId={form.paymentId}
-                  onSelect={id => setForm(f => ({ ...f, paymentId: id }))}
-                  renderSelected={p => (
-                    <span className="text-xs">{p.companyName} - {p.description || ""} ({formatAmount(p.amount)}) {p.plannedDate || ""}</span>
-                  )}
-                  defaultSearch={order.vendor || ""}
-                  testIdPrefix="payment"
-                />
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">송금 상태</Label>
+                  {(() => {
+                    const invoiceId = form.purchaseInvoiceId;
+                    const invoicePaymentList = invoiceId ? payments.filter(p => p.purchaseInvoiceId === invoiceId) : [];
+                    const directPayment = form.paymentId ? payments.find(p => p.id === form.paymentId) : null;
+
+                    if (invoiceId) {
+                      if (invoicePaymentList.length > 0) {
+                        const completed = invoicePaymentList.filter(p => p.status === "completed");
+                        const planned = invoicePaymentList.filter(p => p.status !== "completed");
+                        const paidTotal = completed.reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
+                        return (
+                          <div className="rounded border p-2 mt-1 space-y-1 bg-muted/30" data-testid="payment-status-summary">
+                            <div className="flex items-center gap-2">
+                              {invoicePaymentList.every(p => p.status === "completed") ? (
+                                <Badge className="bg-green-100 text-green-700 border-0"><Check className="h-3 w-3 mr-1" />송금 완료</Badge>
+                              ) : completed.length > 0 ? (
+                                <Badge className="bg-yellow-100 text-yellow-700 border-0">부분 송금 ({formatAmount(paidTotal)})</Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-muted-foreground">송금 예정</Badge>
+                              )}
+                            </div>
+                            {planned.length > 0 && (
+                              <div className="text-[10px] text-muted-foreground">
+                                {planned.map(p => (
+                                  <div key={p.id}>{p.plannedDate || "미정"} - {formatAmount(p.amount)}</div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="text-[10px] text-blue-600">계산서에서 송금을 관리합니다</div>
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div className="rounded border p-2 mt-1 bg-muted/30" data-testid="payment-status-invoice-no-payment">
+                            <Badge variant="outline" className="text-muted-foreground">송금 미설정</Badge>
+                            <div className="text-[10px] text-blue-600 mt-1">계산서에서 송금을 설정합니다</div>
+                          </div>
+                        );
+                      }
+                    } else if (directPayment) {
+                      return (
+                        <div className="rounded border p-2 mt-1 space-y-1 bg-muted/30" data-testid="payment-status-direct">
+                          <div className="flex items-center gap-2">
+                            {directPayment.status === "completed" ? (
+                              <Badge className="bg-green-100 text-green-700 border-0"><Check className="h-3 w-3 mr-1" />송금 완료</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-muted-foreground">
+                                {directPayment.plannedDate || "예정"} - {formatAmount(directPayment.amount)}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">계산서를 연결하면 송금 관리가 가능합니다</div>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="rounded border p-2 mt-1 bg-muted/30 text-[10px] text-muted-foreground" data-testid="payment-status-none">
+                          송금 정보 없음
+                          <div>계산서를 연결하면 송금 관리가 가능합니다</div>
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
                 <div>
                   <Label className="text-[10px] text-muted-foreground">메모</Label>
                   <Input className="h-7 text-xs" value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} data-testid="input-memo" />
