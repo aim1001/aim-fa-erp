@@ -541,7 +541,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNextOrderNumber(year: number): Promise<string> {
-    const prefix = String(year).slice(-2);
+    const prefix = `P${String(year).slice(-2)}`;
     const yearOrders = await db.select({ orderNumber: purchaseOrders.orderNumber })
       .from(purchaseOrders)
       .where(eq(purchaseOrders.year, year));
@@ -549,7 +549,7 @@ export class DatabaseStorage implements IStorage {
     let maxSeq = 0;
     for (const row of yearOrders) {
       if (!row.orderNumber) continue;
-      const match = row.orderNumber.match(/^\d+-(\d+)$/);
+      const match = row.orderNumber.match(/^P?\d+-(\d+)$/);
       if (match) {
         const seq = parseInt(match[1]);
         if (seq > maxSeq) maxSeq = seq;
