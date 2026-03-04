@@ -377,6 +377,25 @@ export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit
 export type InsertPurchaseOrder = z.infer<typeof insertPurchaseOrderSchema>;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 
+export const purchaseOrderItems = pgTable("purchase_order_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseOrderId: varchar("purchase_order_id").notNull(),
+  itemCode: text("item_code"),
+  itemName: text("item_name").notNull(),
+  spec: text("spec"),
+  brand: text("brand"),
+  quantity: integer("quantity").notNull().default(1),
+  unitPrice: integer("unit_price").notNull().default(0),
+  amount: integer("amount").notNull().default(0),
+  category1: text("category1"),
+  sortOrder: integer("sort_order").default(0),
+  isAdjustment: boolean("is_adjustment").default(false),
+});
+
+export const insertPurchaseOrderItemSchema = createInsertSchema(purchaseOrderItems).omit({ id: true });
+export type InsertPurchaseOrderItem = z.infer<typeof insertPurchaseOrderItemSchema>;
+export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
+
 export const onedriveTokens = pgTable("onedrive_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   accessToken: text("access_token").notNull(),

@@ -17,7 +17,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { PurchaseOrder, PurchaseInvoice, Payment } from "@shared/schema";
+import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem } from "@shared/schema";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -390,6 +392,105 @@ type OneDriveFile = {
   mimeType?: string;
 };
 
+type OrderItemRow = {
+  key: string;
+  itemCode: string;
+  itemName: string;
+  spec: string;
+  brand: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+  category1: string;
+  isAdjustment: boolean;
+};
+
+function PurchaseItemSearchPopover({ onSelect }: { onSelect: (item: PurchaseItem) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [cat1Filter, setCat1Filter] = useState("all");
+
+  const { data: allItems = [] } = useQuery<PurchaseItem[]>({
+    queryKey: ["/api/purchase-items"],
+    queryFn: async () => {
+      const res = await fetch("/api/purchase-items");
+      return res.json();
+    },
+  });
+
+  const activeItems = useMemo(() => allItems.filter(i => i.active !== false), [allItems]);
+
+  const cat1List = useMemo(() => {
+    const cats = new Set<string>();
+    activeItems.forEach(i => { if (i.category1) cats.add(i.category1); });
+    return Array.from(cats).sort();
+  }, [activeItems]);
+
+  const filtered = useMemo(() => {
+    let list = activeItems;
+    if (cat1Filter !== "all") list = list.filter(i => i.category1 === cat1Filter);
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(i =>
+        i.itemName?.toLowerCase().includes(q) ||
+        i.itemCode?.toLowerCase().includes(q) ||
+        i.spec?.toLowerCase().includes(q) ||
+        i.brand?.toLowerCase().includes(q)
+      );
+    }
+    return list.slice(0, 60);
+  }, [activeItems, search, cat1Filter]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline" className="text-xs" data-testid="button-add-purchase-item">
+          <Plus className="h-3 w-3 mr-1" />구매품 추가
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[480px] p-0" align="start">
+        <div className="p-2 border-b space-y-1.5">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="품목코드, 품명, 사양, 브랜드 검색..." className="h-7 text-xs pl-7" value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-purchase-item" />
+          </div>
+          <div className="flex gap-1 flex-wrap">
+            <Button size="sm" variant={cat1Filter === "all" ? "default" : "ghost"} className="h-5 text-[10px] px-1.5" onClick={() => setCat1Filter("all")}>전체</Button>
+            {cat1List.map(c => (
+              <Button key={c} size="sm" variant={cat1Filter === c ? "default" : "ghost"} className="h-5 text-[10px] px-1.5" onClick={() => setCat1Filter(c)}>{c}</Button>
+            ))}
+          </div>
+        </div>
+        <div className="max-h-[250px] overflow-y-auto">
+          {filtered.length === 0 ? (
+            <p className="p-3 text-xs text-muted-foreground text-center">검색 결과가 없습니다</p>
+          ) : filtered.map(item => (
+            <div
+              key={item.id}
+              className="px-3 py-1.5 hover:bg-accent cursor-pointer border-b last:border-b-0"
+              onClick={() => { onSelect(item); setOpen(false); setSearch(""); setCat1Filter("all"); }}
+              data-testid={`item-option-${item.id}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground font-mono">{item.itemCode}</span>
+                  <span className="text-xs font-medium">{item.itemName}</span>
+                </div>
+                <span className="text-xs font-medium">{(item.cost || 0).toLocaleString()}원</span>
+              </div>
+              <div className="flex gap-2 text-[10px] text-muted-foreground">
+                {item.spec && <span>{item.spec}</span>}
+                {item.brand && <span>· {item.brand}</span>}
+                {item.category1 && <span>· {item.category1}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function CreateOrderDialog({
   year,
   onClose,
@@ -405,36 +506,129 @@ function CreateOrderDialog({
     orderNumber: "",
     vendor: "",
     description: "",
-    supplyAmount: "",
     status: "일반",
     expectedDeliveryDate: "",
     paymentDate: "",
   });
 
-  const taxAmount = form.supplyAmount ? Math.round(parseInt(form.supplyAmount) * 0.1) : 0;
-  const totalAmount = form.supplyAmount ? parseInt(form.supplyAmount) + taxAmount : 0;
+  const [items, setItems] = useState<OrderItemRow[]>([]);
+  const [showFreeItem, setShowFreeItem] = useState(false);
+  const [freeItem, setFreeItem] = useState({ itemName: "", spec: "", brand: "", unitPrice: "", quantity: "1" });
+  const [showAdjustment, setShowAdjustment] = useState(false);
+  const [adjustment, setAdjustment] = useState({ itemName: "", amount: "" });
+
+  const nextKey = useCallback(() => String(Date.now() + Math.random()), []);
+
+  const handleAddPurchaseItem = (pi: PurchaseItem) => {
+    setItems(prev => [...prev, {
+      key: nextKey(),
+      itemCode: pi.itemCode || "",
+      itemName: pi.itemName,
+      spec: pi.spec || "",
+      brand: pi.brand || "",
+      quantity: 1,
+      unitPrice: pi.cost || 0,
+      amount: pi.cost || 0,
+      category1: pi.category1 || "",
+      isAdjustment: false,
+    }]);
+  };
+
+  const handleAddFreeItem = () => {
+    if (!freeItem.itemName.trim()) return;
+    const qty = parseInt(freeItem.quantity) || 1;
+    const price = parseInt(freeItem.unitPrice) || 0;
+    setItems(prev => [...prev, {
+      key: nextKey(),
+      itemCode: "",
+      itemName: freeItem.itemName,
+      spec: freeItem.spec,
+      brand: freeItem.brand,
+      quantity: qty,
+      unitPrice: price,
+      amount: qty * price,
+      category1: "",
+      isAdjustment: false,
+    }]);
+    setFreeItem({ itemName: "", spec: "", brand: "", unitPrice: "", quantity: "1" });
+    setShowFreeItem(false);
+  };
+
+  const handleAddAdjustment = () => {
+    if (!adjustment.itemName.trim()) return;
+    const amt = parseInt(adjustment.amount) || 0;
+    setItems(prev => [...prev, {
+      key: nextKey(),
+      itemCode: "",
+      itemName: adjustment.itemName,
+      spec: "",
+      brand: "",
+      quantity: 1,
+      unitPrice: amt,
+      amount: amt,
+      category1: "",
+      isAdjustment: true,
+    }]);
+    setAdjustment({ itemName: "", amount: "" });
+    setShowAdjustment(false);
+  };
+
+  const updateItem = (key: string, field: string, value: any) => {
+    setItems(prev => prev.map(item => {
+      if (item.key !== key) return item;
+      const updated = { ...item, [field]: value };
+      if (field === "quantity" || field === "unitPrice") {
+        updated.amount = (updated.quantity || 0) * (updated.unitPrice || 0);
+      }
+      return updated;
+    }));
+  };
+
+  const removeItem = (key: string) => {
+    setItems(prev => prev.filter(i => i.key !== key));
+  };
+
+  const regularItems = items.filter(i => !i.isAdjustment);
+  const adjustmentItems = items.filter(i => i.isAdjustment);
+  const supplyAmount = items.reduce((s, i) => s + i.amount, 0);
+  const taxAmount = Math.round(supplyAmount * 0.1);
+  const totalAmount = supplyAmount + taxAmount;
 
   const canSubmit = form.vendor.trim() !== "";
 
   const handleSubmit = () => {
     if (!canSubmit) return;
+    const itemsData = items.map((item, idx) => ({
+      itemCode: item.itemCode || null,
+      itemName: item.itemName,
+      spec: item.spec || null,
+      brand: item.brand || null,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      amount: item.amount,
+      category1: item.category1 || null,
+      sortOrder: idx,
+      isAdjustment: item.isAdjustment,
+    }));
+
     onCreate({
       orderNumber: form.orderNumber || null,
       vendor: form.vendor,
-      description: form.description || null,
-      supplyAmount: form.supplyAmount ? parseInt(form.supplyAmount) : null,
-      taxAmount: form.supplyAmount ? taxAmount : null,
-      totalAmount: form.supplyAmount ? totalAmount : null,
+      description: form.description || regularItems.map(i => i.itemName).join(", ") || null,
+      supplyAmount: supplyAmount || null,
+      taxAmount: taxAmount || null,
+      totalAmount: totalAmount || null,
       status: form.status,
       expectedDeliveryDate: form.expectedDeliveryDate || null,
       paymentDate: form.paymentDate || null,
       year,
+      items: itemsData,
     });
   };
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md" data-testid="modal-create-order">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="modal-create-order">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
@@ -443,11 +637,15 @@ function CreateOrderDialog({
           <DialogDescription className="sr-only">신규 발주 등록 양식</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">발주번호</Label>
               <Input className="h-8 text-sm" placeholder={`${year.toString().slice(2)}-`} value={form.orderNumber} onChange={e => setForm(f => ({ ...f, orderNumber: e.target.value }))} data-testid="input-create-order-number" />
+            </div>
+            <div>
+              <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
+              <Input className="h-8 text-sm" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} data-testid="input-create-vendor" />
             </div>
             <div>
               <Label className="text-xs">상태</Label>
@@ -464,27 +662,156 @@ function CreateOrderDialog({
           </div>
 
           <div>
-            <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
-            <Input className="h-8 text-sm" value={form.vendor} onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))} data-testid="input-create-vendor" />
-          </div>
-
-          <div>
-            <Label className="text-xs">내용</Label>
+            <Label className="text-xs">내용 (메모)</Label>
             <Input className="h-8 text-sm" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} data-testid="input-create-description" />
           </div>
 
-          <div>
-            <Label className="text-xs">공급가액</Label>
-            <Input type="number" className="h-8 text-sm" value={form.supplyAmount} onChange={e => setForm(f => ({ ...f, supplyAmount: e.target.value }))} data-testid="input-create-supply-amount" />
-            {form.supplyAmount && (
-              <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground">
-                <span>세액: {taxAmount.toLocaleString()}원</span>
-                <span>합계: {totalAmount.toLocaleString()}원</span>
+          <div className="border-t pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-xs font-medium">품목</Label>
+              <div className="flex gap-1">
+                <PurchaseItemSearchPopover onSelect={handleAddPurchaseItem} />
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowFreeItem(true)} data-testid="button-add-free-item">
+                  <Plus className="h-3 w-3 mr-1" />직접 입력
+                </Button>
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowAdjustment(true)} data-testid="button-add-adjustment">
+                  <Plus className="h-3 w-3 mr-1" />가격 조정
+                </Button>
+              </div>
+            </div>
+
+            {showFreeItem && (
+              <div className="border rounded p-2 mb-2 bg-muted/20 space-y-1.5" data-testid="panel-free-item">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-[10px]">품명 *</Label>
+                    <Input className="h-7 text-xs" value={freeItem.itemName} onChange={e => setFreeItem(f => ({ ...f, itemName: e.target.value }))} data-testid="input-free-item-name" />
+                  </div>
+                  <div>
+                    <Label className="text-[10px]">사양</Label>
+                    <Input className="h-7 text-xs" value={freeItem.spec} onChange={e => setFreeItem(f => ({ ...f, spec: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label className="text-[10px]">브랜드</Label>
+                    <Input className="h-7 text-xs" value={freeItem.brand} onChange={e => setFreeItem(f => ({ ...f, brand: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-[10px]">수량</Label>
+                    <Input type="number" className="h-7 text-xs" value={freeItem.quantity} onChange={e => setFreeItem(f => ({ ...f, quantity: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label className="text-[10px]">단가</Label>
+                    <Input type="number" className="h-7 text-xs" value={freeItem.unitPrice} onChange={e => setFreeItem(f => ({ ...f, unitPrice: e.target.value }))} />
+                  </div>
+                  <div className="flex items-end gap-1">
+                    <Button size="sm" className="h-7 text-xs" onClick={handleAddFreeItem} data-testid="button-confirm-free-item">추가</Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowFreeItem(false)}>취소</Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showAdjustment && (
+              <div className="border rounded p-2 mb-2 bg-muted/20 space-y-1.5" data-testid="panel-adjustment">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <Label className="text-[10px]">항목명 *</Label>
+                    <Input className="h-7 text-xs" placeholder="예: 할인, 운반비" value={adjustment.itemName} onChange={e => setAdjustment(f => ({ ...f, itemName: e.target.value }))} data-testid="input-adjustment-name" />
+                  </div>
+                  <div>
+                    <Label className="text-[10px]">금액 (- 가능)</Label>
+                    <Input type="number" className="h-7 text-xs" placeholder="예: -50000" value={adjustment.amount} onChange={e => setAdjustment(f => ({ ...f, amount: e.target.value }))} data-testid="input-adjustment-amount" />
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <Button size="sm" className="h-7 text-xs" onClick={handleAddAdjustment} data-testid="button-confirm-adjustment">추가</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowAdjustment(false)}>취소</Button>
+                </div>
+              </div>
+            )}
+
+            {regularItems.length > 0 && (
+              <table className="w-full text-xs border-collapse" data-testid="table-order-items">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left py-1 px-2 font-medium">품명</th>
+                    <th className="text-left py-1 px-2 font-medium w-[100px]">사양</th>
+                    <th className="text-center py-1 px-2 font-medium w-[60px]">수량</th>
+                    <th className="text-right py-1 px-2 font-medium w-[90px]">단가</th>
+                    <th className="text-right py-1 px-2 font-medium w-[90px]">금액</th>
+                    <th className="w-[30px]"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {regularItems.map(item => (
+                    <tr key={item.key} className="border-b last:border-b-0" data-testid={`row-item-${item.key}`}>
+                      <td className="py-1 px-2">
+                        <div className="font-medium">{item.itemName}</div>
+                        {item.brand && <div className="text-[10px] text-muted-foreground">{item.brand}</div>}
+                      </td>
+                      <td className="py-1 px-2 text-muted-foreground">{item.spec || "-"}</td>
+                      <td className="py-1 px-2 text-center">
+                        <Input type="number" className="h-6 text-xs text-center w-14 mx-auto" value={item.quantity} onChange={e => updateItem(item.key, "quantity", parseInt(e.target.value) || 0)} data-testid={`input-qty-${item.key}`} />
+                      </td>
+                      <td className="py-1 px-2 text-right">
+                        <Input type="number" className="h-6 text-xs text-right w-20 ml-auto" value={item.unitPrice} onChange={e => updateItem(item.key, "unitPrice", parseInt(e.target.value) || 0)} data-testid={`input-price-${item.key}`} />
+                      </td>
+                      <td className="py-1 px-2 text-right font-medium">{item.amount.toLocaleString()}</td>
+                      <td className="py-1 px-1">
+                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" onClick={() => removeItem(item.key)} data-testid={`button-remove-${item.key}`}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {adjustmentItems.length > 0 && (
+              <div className="mt-2">
+                <Label className="text-[10px] text-muted-foreground mb-1 block">가격 조정</Label>
+                {adjustmentItems.map(item => (
+                  <div key={item.key} className="flex items-center justify-between py-1 px-2 border-b last:border-b-0 text-xs" data-testid={`row-adjustment-${item.key}`}>
+                    <span className="text-muted-foreground">{item.itemName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-medium ${item.amount < 0 ? "text-red-600" : "text-blue-600"}`}>{item.amount > 0 ? "+" : ""}{item.amount.toLocaleString()}원</span>
+                      <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" onClick={() => removeItem(item.key)} data-testid={`button-remove-adj-${item.key}`}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {items.length === 0 && (
+              <div className="text-center py-6 text-xs text-muted-foreground border rounded" data-testid="text-empty-items">
+                품목을 추가해 주세요
+              </div>
+            )}
+
+            {items.length > 0 && (
+              <div className="mt-3 border-t pt-2 space-y-1 text-sm" data-testid="panel-totals">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground text-xs">공급가액</span>
+                  <span className="font-medium">{supplyAmount.toLocaleString()}원</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground text-xs">세액 (10%)</span>
+                  <span>{taxAmount.toLocaleString()}원</span>
+                </div>
+                <div className="flex justify-between text-base font-bold border-t pt-1">
+                  <span>합계</span>
+                  <span>{totalAmount.toLocaleString()}원</span>
+                </div>
               </div>
             )}
           </div>
 
-          <div className="border-t pt-3 space-y-3">
+          <div className="border-t pt-3 grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">예정입고일</Label>
               <Input type="date" className="h-8 text-sm" value={form.expectedDeliveryDate} onChange={e => setForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))} data-testid="input-create-delivery-date" />
@@ -881,6 +1208,7 @@ function OrderDetailModal({
   onUpdate: (id: string, data: Record<string, any>) => void;
   onDelete: (id: string) => void;
 }) {
+  const { toast } = useToast();
   const buildFormState = useCallback(() => ({
     supplyAmount: String(order.supplyAmount || ""),
     taxAmount: String(order.taxAmount || ""),
@@ -896,10 +1224,117 @@ function OrderDetailModal({
   const [form, setForm] = useState(buildFormState);
   const [showUnsavedAlert, setShowUnsavedAlert] = useState(false);
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
+  const [showDetailFreeItem, setShowDetailFreeItem] = useState(false);
+  const [detailFreeItem, setDetailFreeItem] = useState({ itemName: "", spec: "", brand: "", unitPrice: "", quantity: "1" });
+  const [showDetailAdjustment, setShowDetailAdjustment] = useState(false);
+  const [detailAdjustment, setDetailAdjustment] = useState({ itemName: "", amount: "" });
 
   useEffect(() => {
     setForm(buildFormState());
   }, [buildFormState]);
+
+  const { data: orderItems = [], refetch: refetchItems } = useQuery<PurchaseOrderItem[]>({
+    queryKey: ["/api/purchase-orders", order.id, "items"],
+    queryFn: async () => {
+      const res = await fetch(`/api/purchase-orders/${order.id}/items`);
+      return res.json();
+    },
+  });
+
+  const addItemMutation = useMutation({
+    mutationFn: async (item: Record<string, any>) => {
+      const res = await apiRequest("POST", `/api/purchase-orders/${order.id}/items`, item);
+      return res.json();
+    },
+    onSuccess: () => { refetchItems(); recalcAmountsFromItems(); },
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/purchase-order-items/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => { refetchItems(); },
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/purchase-order-items/${id}`);
+    },
+    onSuccess: () => { refetchItems(); recalcAmountsFromItems(); },
+  });
+
+  const recalcAmountsFromItems = useCallback(async () => {
+    const res = await fetch(`/api/purchase-orders/${order.id}/items`);
+    const freshItems: PurchaseOrderItem[] = await res.json();
+    const supply = freshItems.reduce((s, i) => s + (i.amount || 0), 0);
+    const tax = Math.round(supply * 0.1);
+    const total = supply + tax;
+    setForm(f => ({ ...f, supplyAmount: String(supply || ""), taxAmount: String(tax || ""), totalAmount: String(total || "") }));
+  }, [order.id]);
+
+  const handleAddItemFromSearch = (pi: PurchaseItem) => {
+    addItemMutation.mutate({
+      itemCode: pi.itemCode || null,
+      itemName: pi.itemName,
+      spec: pi.spec || null,
+      brand: pi.brand || null,
+      quantity: 1,
+      unitPrice: pi.cost || 0,
+      amount: pi.cost || 0,
+      category1: pi.category1 || null,
+      sortOrder: orderItems.length,
+      isAdjustment: false,
+    });
+  };
+
+  const handleAddDetailFreeItem = () => {
+    if (!detailFreeItem.itemName.trim()) return;
+    const qty = parseInt(detailFreeItem.quantity) || 1;
+    const price = parseInt(detailFreeItem.unitPrice) || 0;
+    addItemMutation.mutate({
+      itemCode: null,
+      itemName: detailFreeItem.itemName,
+      spec: detailFreeItem.spec || null,
+      brand: detailFreeItem.brand || null,
+      quantity: qty,
+      unitPrice: price,
+      amount: qty * price,
+      category1: null,
+      sortOrder: orderItems.length,
+      isAdjustment: false,
+    });
+    setDetailFreeItem({ itemName: "", spec: "", brand: "", unitPrice: "", quantity: "1" });
+    setShowDetailFreeItem(false);
+  };
+
+  const handleAddDetailAdjustment = () => {
+    if (!detailAdjustment.itemName.trim()) return;
+    const amt = parseInt(detailAdjustment.amount) || 0;
+    addItemMutation.mutate({
+      itemCode: null,
+      itemName: detailAdjustment.itemName,
+      spec: null,
+      brand: null,
+      quantity: 1,
+      unitPrice: amt,
+      amount: amt,
+      category1: null,
+      sortOrder: orderItems.length,
+      isAdjustment: true,
+    });
+    setDetailAdjustment({ itemName: "", amount: "" });
+    setShowDetailAdjustment(false);
+  };
+
+  const handleItemFieldBlur = (item: PurchaseOrderItem, field: string, value: number) => {
+    const qty = field === "quantity" ? value : item.quantity;
+    const price = field === "unitPrice" ? value : item.unitPrice;
+    const amount = qty * price;
+    updateItemMutation.mutate({ id: item.id, data: { [field]: value, amount } }, {
+      onSuccess: () => recalcAmountsFromItems(),
+    });
+  };
 
   const isDirty = useMemo(() => {
     return (
@@ -945,10 +1380,13 @@ function OrderDetailModal({
 
   const expensePayments = payments.filter(p => p.type === "expense");
 
+  const regularOrderItems = orderItems.filter(i => !i.isAdjustment);
+  const adjustmentOrderItems = orderItems.filter(i => i.isAdjustment);
+
   return (
     <>
       <Dialog open onOpenChange={handleClose}>
-        <DialogContent className="max-w-lg" data-testid="modal-order-detail">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="modal-order-detail">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2" data-testid="text-modal-title">
               <ClipboardCheck className="h-5 w-5" />
@@ -996,6 +1434,163 @@ function OrderDetailModal({
                   <Trash2 className="h-3 w-3 mr-1" />삭제
                 </Button>
               </div>
+            </div>
+
+            <div className="border-t pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs font-medium">품목</Label>
+                <div className="flex gap-1">
+                  <PurchaseItemSearchPopover onSelect={handleAddItemFromSearch} />
+                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowDetailFreeItem(true)} data-testid="button-detail-add-free">
+                    <Plus className="h-3 w-3 mr-1" />직접 입력
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowDetailAdjustment(true)} data-testid="button-detail-add-adjustment">
+                    <Plus className="h-3 w-3 mr-1" />가격 조정
+                  </Button>
+                </div>
+              </div>
+
+              {showDetailFreeItem && (
+                <div className="border rounded p-2 mb-2 bg-muted/20 space-y-1.5">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-[10px]">품명 *</Label>
+                      <Input className="h-7 text-xs" value={detailFreeItem.itemName} onChange={e => setDetailFreeItem(f => ({ ...f, itemName: e.target.value }))} data-testid="input-detail-free-name" />
+                    </div>
+                    <div>
+                      <Label className="text-[10px]">사양</Label>
+                      <Input className="h-7 text-xs" value={detailFreeItem.spec} onChange={e => setDetailFreeItem(f => ({ ...f, spec: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label className="text-[10px]">브랜드</Label>
+                      <Input className="h-7 text-xs" value={detailFreeItem.brand} onChange={e => setDetailFreeItem(f => ({ ...f, brand: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-[10px]">수량</Label>
+                      <Input type="number" className="h-7 text-xs" value={detailFreeItem.quantity} onChange={e => setDetailFreeItem(f => ({ ...f, quantity: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label className="text-[10px]">단가</Label>
+                      <Input type="number" className="h-7 text-xs" value={detailFreeItem.unitPrice} onChange={e => setDetailFreeItem(f => ({ ...f, unitPrice: e.target.value }))} />
+                    </div>
+                    <div className="flex items-end gap-1">
+                      <Button size="sm" className="h-7 text-xs" onClick={handleAddDetailFreeItem} data-testid="button-detail-confirm-free">추가</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowDetailFreeItem(false)}>취소</Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showDetailAdjustment && (
+                <div className="border rounded p-2 mb-2 bg-muted/20 space-y-1.5">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <Label className="text-[10px]">항목명 *</Label>
+                      <Input className="h-7 text-xs" placeholder="예: 할인, 운반비" value={detailAdjustment.itemName} onChange={e => setDetailAdjustment(f => ({ ...f, itemName: e.target.value }))} data-testid="input-detail-adj-name" />
+                    </div>
+                    <div>
+                      <Label className="text-[10px]">금액 (- 가능)</Label>
+                      <Input type="number" className="h-7 text-xs" placeholder="예: -50000" value={detailAdjustment.amount} onChange={e => setDetailAdjustment(f => ({ ...f, amount: e.target.value }))} data-testid="input-detail-adj-amount" />
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button size="sm" className="h-7 text-xs" onClick={handleAddDetailAdjustment} data-testid="button-detail-confirm-adj">추가</Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowDetailAdjustment(false)}>취소</Button>
+                  </div>
+                </div>
+              )}
+
+              {regularOrderItems.length > 0 && (
+                <table className="w-full text-xs border-collapse" data-testid="table-detail-items">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <th className="text-left py-1 px-2 font-medium">품명</th>
+                      <th className="text-left py-1 px-2 font-medium w-[100px]">사양</th>
+                      <th className="text-center py-1 px-2 font-medium w-[60px]">수량</th>
+                      <th className="text-right py-1 px-2 font-medium w-[90px]">단가</th>
+                      <th className="text-right py-1 px-2 font-medium w-[90px]">금액</th>
+                      <th className="w-[30px]"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {regularOrderItems.map(item => (
+                      <tr key={item.id} className="border-b last:border-b-0" data-testid={`row-detail-item-${item.id}`}>
+                        <td className="py-1 px-2">
+                          <div className="font-medium">{item.itemName}</div>
+                          {item.brand && <div className="text-[10px] text-muted-foreground">{item.brand}</div>}
+                        </td>
+                        <td className="py-1 px-2 text-muted-foreground">{item.spec || "-"}</td>
+                        <td className="py-1 px-2 text-center">
+                          <Input
+                            type="number"
+                            className="h-6 text-xs text-center w-14 mx-auto"
+                            defaultValue={item.quantity}
+                            onBlur={e => handleItemFieldBlur(item, "quantity", parseInt(e.target.value) || 0)}
+                            data-testid={`input-detail-qty-${item.id}`}
+                          />
+                        </td>
+                        <td className="py-1 px-2 text-right">
+                          <Input
+                            type="number"
+                            className="h-6 text-xs text-right w-20 ml-auto"
+                            defaultValue={item.unitPrice}
+                            onBlur={e => handleItemFieldBlur(item, "unitPrice", parseInt(e.target.value) || 0)}
+                            data-testid={`input-detail-price-${item.id}`}
+                          />
+                        </td>
+                        <td className="py-1 px-2 text-right font-medium">{(item.amount || 0).toLocaleString()}</td>
+                        <td className="py-1 px-1">
+                          <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" onClick={() => deleteItemMutation.mutate(item.id)} data-testid={`button-detail-remove-${item.id}`}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {adjustmentOrderItems.length > 0 && (
+                <div className="mt-2">
+                  <Label className="text-[10px] text-muted-foreground mb-1 block">가격 조정</Label>
+                  {adjustmentOrderItems.map(item => (
+                    <div key={item.id} className="flex items-center justify-between py-1 px-2 border-b last:border-b-0 text-xs" data-testid={`row-detail-adj-${item.id}`}>
+                      <span className="text-muted-foreground">{item.itemName}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-medium ${(item.amount || 0) < 0 ? "text-red-600" : "text-blue-600"}`}>{(item.amount || 0) > 0 ? "+" : ""}{(item.amount || 0).toLocaleString()}원</span>
+                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-red-400 hover:text-red-600" onClick={() => deleteItemMutation.mutate(item.id)} data-testid={`button-detail-remove-adj-${item.id}`}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {orderItems.length === 0 && (
+                <div className="text-center py-4 text-xs text-muted-foreground border rounded" data-testid="text-detail-empty-items">
+                  등록된 품목이 없습니다
+                </div>
+              )}
+
+              {orderItems.length > 0 && (
+                <div className="mt-2 bg-muted/20 rounded p-2 space-y-0.5 text-xs" data-testid="panel-detail-totals">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">품목 합계 (공급가액)</span>
+                    <span className="font-medium">{orderItems.reduce((s, i) => s + (i.amount || 0), 0).toLocaleString()}원</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">세액 (10%)</span>
+                    <span>{Math.round(orderItems.reduce((s, i) => s + (i.amount || 0), 0) * 0.1).toLocaleString()}원</span>
+                  </div>
+                  <div className="flex justify-between font-bold border-t pt-1 mt-1">
+                    <span>합계</span>
+                    <span>{(orderItems.reduce((s, i) => s + (i.amount || 0), 0) + Math.round(orderItems.reduce((s, i) => s + (i.amount || 0), 0) * 0.1)).toLocaleString()}원</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="border-t pt-3">

@@ -4198,18 +4198,25 @@ export async function registerRoutes(
 
   app.post("/api/purchase-orders", async (req, res) => {
     try {
-      const { paymentDate, ...orderData } = req.body;
+      const { paymentDate, items, ...orderData } = req.body;
       if (!orderData.vendor) return res.status(400).json({ message: "구매처는 필수입니다" });
       if (orderData.expectedDeliveryDate === "") orderData.expectedDeliveryDate = null;
       const order = await storage.createPurchaseOrder(orderData);
+
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          await storage.addPurchaseOrderItem({ ...item, purchaseOrderId: order.id });
+        }
+      }
 
       let purchaseInvoice = null;
       let payment = null;
 
       if (order.vendor && order.totalAmount) {
+        const itemDesc = items?.filter((i: any) => !i.isAdjustment).map((i: any) => i.itemName).join(", ") || order.description || "";
         purchaseInvoice = await storage.createPurchaseInvoice({
           companyName: order.vendor,
-          item: order.description || "",
+          item: itemDesc,
           supplyAmount: order.supplyAmount,
           taxAmount: order.taxAmount,
           totalAmount: order.totalAmount,
@@ -4235,6 +4242,58 @@ export async function registerRoutes(
 
       const updated = await storage.getPurchaseOrder(order.id);
       res.status(201).json({ order: updated, purchaseInvoice, payment });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-orders/:id/items", async (req, res) => {
+    try {
+      const items = await storage.getPurchaseOrderItems(req.params.id);
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-orders/:id/items", async (req, res) => {
+    try {
+      const order = await storage.getPurchaseOrder(req.params.id);
+      if (!order) return res.status(404).json({ message: "Purchase order not found" });
+      if (!req.body.itemName) return res.status(400).json({ message: "itemName is required" });
+      const item = await storage.addPurchaseOrderItem({
+        purchaseOrderId: req.params.id,
+        itemCode: req.body.itemCode || null,
+        itemName: req.body.itemName,
+        spec: req.body.spec || null,
+        brand: req.body.brand || null,
+        quantity: req.body.quantity ?? 1,
+        unitPrice: req.body.unitPrice ?? 0,
+        amount: req.body.amount ?? 0,
+        category1: req.body.category1 || null,
+        sortOrder: req.body.sortOrder ?? 0,
+        isAdjustment: req.body.isAdjustment ?? false,
+      });
+      res.status(201).json(item);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/purchase-order-items/:id", async (req, res) => {
+    try {
+      const item = await storage.updatePurchaseOrderItem(req.params.id, req.body);
+      if (!item) return res.status(404).json({ message: "Not found" });
+      res.json(item);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/purchase-order-items/:id", async (req, res) => {
+    try {
+      await storage.deletePurchaseOrderItem(req.params.id);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

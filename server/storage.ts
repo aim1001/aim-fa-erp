@@ -23,11 +23,12 @@ import {
   type CompanySettings, type InsertCompanySettings,
   type Staff, type InsertStaff,
   type PurchaseOrder, type InsertPurchaseOrder,
+  type PurchaseOrderItem, type InsertPurchaseOrderItem,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
-  purchaseOrders,
+  purchaseOrders, purchaseOrderItems,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -221,6 +222,11 @@ export interface IStorage {
   createPurchaseOrder(order: InsertPurchaseOrder): Promise<PurchaseOrder>;
   updatePurchaseOrder(id: string, order: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined>;
   deletePurchaseOrder(id: string): Promise<void>;
+
+  getPurchaseOrderItems(orderId: string): Promise<PurchaseOrderItem[]>;
+  addPurchaseOrderItem(item: InsertPurchaseOrderItem): Promise<PurchaseOrderItem>;
+  updatePurchaseOrderItem(id: string, item: Partial<InsertPurchaseOrderItem>): Promise<PurchaseOrderItem | undefined>;
+  deletePurchaseOrderItem(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1179,7 +1185,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePurchaseOrder(id: string): Promise<void> {
+    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, id));
     await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+  }
+
+  async getPurchaseOrderItems(orderId: string): Promise<PurchaseOrderItem[]> {
+    return db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, orderId));
+  }
+
+  async addPurchaseOrderItem(item: InsertPurchaseOrderItem): Promise<PurchaseOrderItem> {
+    const [row] = await db.insert(purchaseOrderItems).values(item).returning();
+    return row;
+  }
+
+  async updatePurchaseOrderItem(id: string, item: Partial<InsertPurchaseOrderItem>): Promise<PurchaseOrderItem | undefined> {
+    const [row] = await db.update(purchaseOrderItems).set(item).where(eq(purchaseOrderItems.id, id)).returning();
+    return row;
+  }
+
+  async deletePurchaseOrderItem(id: string): Promise<void> {
+    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
   }
 }
 
