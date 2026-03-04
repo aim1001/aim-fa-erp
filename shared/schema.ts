@@ -515,6 +515,8 @@ export const companySettings = pgTable("company_settings", {
   email: text("email"),
   logoUrl: text("logo_url"),
   signatureUrl: text("signature_url"),
+  logoData: text("logo_data"),
+  signatureData: text("signature_data"),
   bankInfo: text("bank_info"),
   autoCc: text("auto_cc"),
   emailTemplate: text("email_template"),

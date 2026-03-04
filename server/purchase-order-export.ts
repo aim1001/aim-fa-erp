@@ -64,14 +64,22 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
       const rightTextW = PAGE_RIGHT - rightBlockX;
       let rY = headerTop;
 
-      if (companyInfo.logoUrl) {
-        const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
-        if (fs.existsSync(logoPath)) {
-          try {
-            doc.image(logoPath, PAGE_RIGHT - 70, rY, { width: 70, height: 18, fit: [70, 18] });
+      if (companyInfo.logoData || companyInfo.logoUrl) {
+        try {
+          let logoSource: string | Buffer | undefined;
+          if (companyInfo.logoData) {
+            const matches = companyInfo.logoData.match(/^data:[^;]+;base64,(.+)$/);
+            if (matches) logoSource = Buffer.from(matches[1], "base64");
+          }
+          if (!logoSource && companyInfo.logoUrl) {
+            const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
+            if (fs.existsSync(logoPath)) logoSource = logoPath;
+          }
+          if (logoSource) {
+            doc.image(logoSource, PAGE_RIGHT - 70, rY, { width: 70, height: 18, fit: [70, 18] });
             rY += 23;
-          } catch (e) {}
-        }
+          }
+        } catch (e) {}
       }
 
       if (companyInfo.companyName) {
@@ -250,13 +258,21 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
         doc.font("Regular").fontSize(6.5).fillColor("#000");
         doc.text(sellerLine, signRightX + 4, signBodyY + 3, { width: signW - 8, align: "center", lineBreak: false });
       }
-      if (companyInfo.signatureUrl) {
-        const sigPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.signatureUrl));
-        if (fs.existsSync(sigPath)) {
-          try {
-            doc.image(sigPath, signRightX + 10, signBodyY + 13, { width: 40, height: 18, fit: [40, 18] });
-          } catch (e) {}
-        }
+      if (companyInfo.signatureData || companyInfo.signatureUrl) {
+        try {
+          let sigSource: string | Buffer | undefined;
+          if (companyInfo.signatureData) {
+            const matches = companyInfo.signatureData.match(/^data:[^;]+;base64,(.+)$/);
+            if (matches) sigSource = Buffer.from(matches[1], "base64");
+          }
+          if (!sigSource && companyInfo.signatureUrl) {
+            const sigPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.signatureUrl));
+            if (fs.existsSync(sigPath)) sigSource = sigPath;
+          }
+          if (sigSource) {
+            doc.image(sigSource, signRightX + 10, signBodyY + 13, { width: 40, height: 18, fit: [40, 18] });
+          }
+        } catch (e) {}
       }
       doc.font("Regular").fontSize(6.5).fillColor("#000");
       doc.text(fmtDate(todayStr()), signRightX + 4, signBodyY + 16, { width: signW - 8, align: "right", lineBreak: false });

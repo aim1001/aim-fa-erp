@@ -854,6 +854,17 @@ export async function registerRoutes(
       const data = insertCustomerSchema.partial().parse(req.body);
       const customer = await storage.updateCustomer(req.params.id, data);
       if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+
+      const relatedInquiries = await storage.getInquiriesByCustomerId(req.params.id);
+      for (const inq of relatedInquiries) {
+        const snapshotUpdate: Record<string, any> = {};
+        if (data.companyName !== undefined) snapshotUpdate.snapshotCompanyName = data.companyName;
+        if (data.address !== undefined) snapshotUpdate.snapshotAddress = data.address || null;
+        if (Object.keys(snapshotUpdate).length > 0) {
+          await storage.updateInquiry(inq.id, snapshotUpdate);
+        }
+      }
+
       res.json(customer);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1697,8 +1708,6 @@ export async function registerRoutes(
 
       await storage.updateQuotation(req.params.id, { status: "sent" });
 
-      await storage.updateInquiry(inquiry.id, { status: "quoted" });
-
       await syncQuotationTotalsToInquiry(req.params.id);
 
       try {
@@ -1803,6 +1812,20 @@ export async function registerRoutes(
       const data = insertCompanySchema.partial().parse(req.body);
       const company = await storage.updateCompany(req.params.id, data);
       if (!company) return res.status(404).json({ message: "회사를 찾을 수 없습니다" });
+
+      const relatedInquiries = await storage.getInquiriesByCompanyId(req.params.id);
+      for (const inq of relatedInquiries) {
+        const snapshotUpdate: Record<string, any> = {};
+        if (data.companyName !== undefined) snapshotUpdate.snapshotCompanyName = data.companyName;
+        if (data.address !== undefined) snapshotUpdate.snapshotAddress = data.address || null;
+        if (data.contactName !== undefined) snapshotUpdate.snapshotContactName = data.contactName || null;
+        if (data.email !== undefined) snapshotUpdate.snapshotEmail = data.email || null;
+        if (data.phone !== undefined) snapshotUpdate.snapshotPhone = data.phone || null;
+        if (Object.keys(snapshotUpdate).length > 0) {
+          await storage.updateInquiry(inq.id, snapshotUpdate);
+        }
+      }
+
       res.json(company);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -4014,7 +4037,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, bankInfo, autoCc, emailTemplate } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -4039,6 +4062,8 @@ export async function registerRoutes(
         email: email || null,
         logoUrl: logoUrl === undefined ? undefined : (logoUrl || null),
         signatureUrl: signatureUrl === undefined ? undefined : (signatureUrl || null),
+        logoData: logoData === undefined ? undefined : (logoData || null),
+        signatureData: signatureData === undefined ? undefined : (signatureData || null),
         bankInfo: bankInfo || null,
         autoCc: autoCc || null,
         emailTemplate: emailTemplate || null,
@@ -4058,7 +4083,10 @@ export async function registerRoutes(
         const oldPath = path.join(uploadsDir, path.basename(existing.logoUrl));
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
-      const settings = await storage.saveCompanySettings({ logoUrl });
+      const fileBuffer = fs.readFileSync(req.file.path);
+      const mimeType = req.file.mimetype || "image/png";
+      const logoData = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
+      const settings = await storage.saveCompanySettings({ logoUrl, logoData });
       res.json({ logoUrl: settings.logoUrl });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -4074,7 +4102,10 @@ export async function registerRoutes(
         const oldPath = path.join(uploadsDir, path.basename(existing.signatureUrl));
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
-      const settings = await storage.saveCompanySettings({ signatureUrl });
+      const fileBuffer = fs.readFileSync(req.file.path);
+      const mimeType = req.file.mimetype || "image/png";
+      const signatureData = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
+      const settings = await storage.saveCompanySettings({ signatureUrl, signatureData });
       res.json({ signatureUrl: settings.signatureUrl });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

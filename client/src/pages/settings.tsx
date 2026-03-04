@@ -87,7 +87,7 @@ export default function SettingsPage() {
 
   const removeLogo = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PUT", "/api/company-settings", { ...form, logoUrl: null });
+      const res = await apiRequest("PUT", "/api/company-settings", { ...form, logoUrl: null, logoData: null });
       return res.json();
     },
     onSuccess: () => {
@@ -119,7 +119,7 @@ export default function SettingsPage() {
 
   const removeSignature = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PUT", "/api/company-settings", { ...form, signatureUrl: null });
+      const res = await apiRequest("PUT", "/api/company-settings", { ...form, signatureUrl: null, signatureData: null });
       return res.json();
     },
     onSuccess: () => {
@@ -181,9 +181,9 @@ export default function SettingsPage() {
           <CardContent>
             <div className="flex items-center gap-6">
               <div className="w-32 h-32 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 overflow-hidden">
-                {settings?.logoUrl ? (
+                {(settings?.logoData || settings?.logoUrl) ? (
                   <img
-                    src={settings.logoUrl}
+                    src={settings.logoData || settings.logoUrl}
                     alt="회사 로고"
                     className="w-full h-full object-contain p-2"
                     data-testid="img-company-logo"
@@ -211,7 +211,7 @@ export default function SettingsPage() {
                   <Upload className="h-4 w-4 mr-1" />
                   {uploadMutation.isPending ? "업로드 중..." : "로고 업로드"}
                 </Button>
-                {settings?.logoUrl && (
+                {(settings?.logoData || settings?.logoUrl) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -242,9 +242,9 @@ export default function SettingsPage() {
           <CardContent>
             <div className="flex items-center gap-6">
               <div className="w-32 h-20 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 overflow-hidden">
-                {settings?.signatureUrl ? (
+                {(settings?.signatureData || settings?.signatureUrl) ? (
                   <img
-                    src={settings.signatureUrl}
+                    src={settings.signatureData || settings.signatureUrl}
                     alt="대표이사 서명"
                     className="w-full h-full object-contain p-2"
                     data-testid="img-signature"
@@ -272,7 +272,7 @@ export default function SettingsPage() {
                   <Upload className="h-4 w-4 mr-1" />
                   {uploadSignatureMutation.isPending ? "업로드 중..." : "서명 업로드"}
                 </Button>
-                {settings?.signatureUrl && (
+                {(settings?.signatureData || settings?.signatureUrl) && (
                   <Button
                     variant="ghost"
                     size="sm"
