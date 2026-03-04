@@ -125,7 +125,7 @@ function ItemSearchPopover({ onSelect, disabled }: {
           </div>
           <div>
             <div className="text-[10px] text-muted-foreground mb-1">대분류</div>
-            <div className="flex gap-1 flex-wrap">
+            <div className="flex gap-1 flex-wrap max-h-[72px] overflow-y-auto">
               <Button
                 size="sm"
                 variant={cat1Filter === "all" ? "default" : "outline"}
@@ -152,7 +152,7 @@ function ItemSearchPopover({ onSelect, disabled }: {
           {cat2List.length > 0 && (
             <div>
               <div className="text-[10px] text-muted-foreground mb-1">소분류</div>
-              <div className="flex gap-1 flex-wrap">
+              <div className="flex gap-1 flex-wrap max-h-[72px] overflow-y-auto">
                 <Button
                   size="sm"
                   variant={cat2Filter === "all" ? "default" : "outline"}
