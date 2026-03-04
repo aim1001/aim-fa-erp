@@ -411,21 +411,39 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     const sumStartY = y;
 
     const ptLabelW = 55;
-    const ptValW = 80;
+    const ptValW = 140;
     const ptTableW = ptLabelW + ptValW + 10;
     const ptRowH = 15;
     const ptX = PAGE_LEFT;
     let ptY = sumStartY;
+
+    const formatTiming = (type: string | null | undefined, days: number | null | undefined, afterDelivery?: string | null): string => {
+      if (!type) return "";
+      const TIMING_LABELS: Record<string, string> = {
+        "end_of_next_month": "익월말",
+        "two_weeks": "2주이내",
+        "end_of_month": "월말",
+        "specific_days": days ? `${days}일(지정)` : "일자지정",
+        "within_days": days ? `${days}일이내` : "N일이내",
+      };
+      const label = TIMING_LABELS[type] || type;
+      const prefix = afterDelivery === "true" || afterDelivery === "yes" ? "납품후" : "계약후";
+      return `${prefix} ${label}`;
+    };
 
     doc.rect(ptX, ptY, ptTableW, ptRowH).fill("#E8E8E8");
     doc.fillColor("#333").font("Bold").fontSize(7.5);
     doc.text("결재조건 (현금)", ptX + 2, ptY + 3, { width: ptTableW - 4, align: "center" });
     ptY += ptRowH;
 
+    const contractTiming = formatTiming(inquiry.contractTimingType, inquiry.contractTimingDays);
+    const midTiming = formatTiming(inquiry.midTimingType, inquiry.midTimingDays, inquiry.midAfterDelivery);
+    const finalTiming = formatTiming(inquiry.finalTimingType, inquiry.finalTimingDays, inquiry.finalAfterDelivery);
+
     const ptRows = [
-      { label: "계약금", value: inquiry.contractRatio ? `${inquiry.contractRatio}%` : "-" },
-      { label: "중도금", value: inquiry.midRatio ? `${inquiry.midRatio}%` : "-" },
-      { label: "잔금", value: inquiry.finalRatio ? `${inquiry.finalRatio}%` : "-" },
+      { label: "계약금", value: inquiry.contractRatio ? `${inquiry.contractRatio}%${contractTiming ? ` (${contractTiming})` : ""}` : "-" },
+      { label: "중도금", value: inquiry.midRatio ? `${inquiry.midRatio}%${midTiming ? ` (${midTiming})` : ""}` : "-" },
+      { label: "잔금", value: inquiry.finalRatio ? `${inquiry.finalRatio}%${finalTiming ? ` (${finalTiming})` : ""}` : "-" },
     ];
 
     doc.font("Regular").fontSize(7.5);
