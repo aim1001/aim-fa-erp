@@ -105,7 +105,7 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
     const numFields = ["amount", "actualAmount"];
     const newVal = numFields.includes(field) ? (editValue ? parseInt(editValue) : null) : (editValue || null);
     if (field === "actualDate" && newVal) {
-      updateMutation.mutate({ actualDate: newVal, plannedDate: newVal });
+      updateMutation.mutate({ actualDate: newVal, plannedDate: null });
     } else {
       updateMutation.mutate({ [field]: newVal });
     }
@@ -114,7 +114,7 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
 
   const markCompleted = () => {
     const today = new Date().toISOString().split("T")[0];
-    updateMutation.mutate({ actualDate: today, actualAmount: payment?.amount || 0, status: "completed", plannedDate: today });
+    updateMutation.mutate({ actualDate: today, actualAmount: payment?.amount || 0, status: "completed", plannedDate: null });
   };
 
   const renderField = (label: string, field: string, value: string, inputType = "text") => (
@@ -321,8 +321,9 @@ function CalendarView({ payments, year, month, onSelectPayment }: {
   const paymentsByDate = useMemo(() => {
     const map = new Map<number, Payment[]>();
     payments.forEach(p => {
-      if (p.plannedDate) {
-        const d = parseInt(p.plannedDate.substring(8, 10));
+      const dateStr = p.actualDate || p.plannedDate;
+      if (dateStr) {
+        const d = parseInt(dateStr.substring(8, 10));
         if (!map.has(d)) map.set(d, []);
         map.get(d)!.push(p);
       }
@@ -448,7 +449,7 @@ export default function PaymentPlan() {
 
   const handleFullPayment = (p: EnrichedPayment) => {
     const today = formatDateStr(new Date());
-    inlineUpdate.mutate({ id: p.id, patch: { actualAmount: p.amount || 0, actualDate: today, plannedDate: today, status: "completed" } });
+    inlineUpdate.mutate({ id: p.id, patch: { actualAmount: p.amount || 0, actualDate: today, plannedDate: null, status: "completed" } });
   };
 
   const [partialAmount, setPartialAmount] = useState("");
@@ -462,7 +463,7 @@ export default function PaymentPlan() {
     if (!paid || paid <= 0) return;
     const today = formatDateStr(new Date());
     const remaining = (p.amount || 0) - paid;
-    inlineUpdate.mutate({ id: p.id, patch: { actualAmount: paid, actualDate: today, plannedDate: today, status: "completed", amount: paid } });
+    inlineUpdate.mutate({ id: p.id, patch: { actualAmount: paid, actualDate: today, plannedDate: null, status: "completed", amount: paid } });
     if (remaining > 0) {
       setRemainderInfo({ payment: p, paidAmount: paid });
       setShowRemainderPicker(true);
@@ -502,7 +503,7 @@ export default function PaymentPlan() {
 
   const sorted = useMemo(() => {
     if (!payments) return [];
-    return [...payments].sort((a, b) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
+    return [...payments].sort((a, b) => (a.actualDate || a.plannedDate || "").localeCompare(b.actualDate || b.plannedDate || ""));
   }, [payments]);
 
   const totals = useMemo(() => {
@@ -633,19 +634,19 @@ export default function PaymentPlan() {
                               data-testid={`button-date-${p.id}`}
                             >
                               <CalendarIcon className="mr-1 h-3 w-3 text-muted-foreground" />
-                              {p.plannedDate || "날짜 선택"}
+                              {isCompleted ? (p.actualDate || "완료") : (p.plannedDate || "날짜 선택")}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
-                              selected={p.plannedDate ? parseDateString(p.plannedDate) : undefined}
+                              selected={(p.actualDate || p.plannedDate) ? parseDateString(p.actualDate || p.plannedDate!) : undefined}
                               onSelect={(date) => {
                                 if (date) handleInlineDateChange(p.id, date);
                               }}
                               locale={ko}
                             />
-                            {p.plannedDate && (
+                            {(p.plannedDate || p.actualDate) && (
                               <div className="p-2 border-t">
                                 <Button
                                   variant="ghost"
