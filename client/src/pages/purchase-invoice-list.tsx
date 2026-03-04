@@ -1,13 +1,13 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2 } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, XCircle, Package } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { PurchaseInvoice, Vendor, Payment } from "@shared/schema";
+import type { PurchaseInvoice, Vendor, Payment, PurchaseOrder } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -328,6 +328,127 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
   );
 }
 
+function PurchaseOrderLinkSection({ invoiceId, vendorName }: { invoiceId: string; vendorName: string }) {
+  const { toast } = useToast();
+  const { data: allOrders } = useQuery<PurchaseOrder[]>({
+    queryKey: ["/api/purchase-orders"],
+  });
+  const [searchText, setSearchText] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  const linkedOrders = useMemo(() =>
+    (allOrders || []).filter(o => o.purchaseInvoiceId === invoiceId),
+    [allOrders, invoiceId]
+  );
+
+  const linkMutation = useMutation({
+    mutationFn: async ({ orderId, invoiceIdVal }: { orderId: string; invoiceIdVal: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/purchase-orders/${orderId}`, { purchaseInvoiceId: invoiceIdVal });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", "expense", invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices", invoiceId] });
+      toast({ title: "발주서 연결 변경됨" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleOpen = () => {
+    if (!isOpen) setSearchText(vendorName || "");
+    setIsOpen(!isOpen);
+  };
+
+  const unlinkedOrders = useMemo(() => {
+    if (!isOpen) return [];
+    let list = (allOrders || []).filter(o => !o.purchaseInvoiceId);
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
+      list = list.filter(o => (o.vendor || "").toLowerCase().includes(q) || (o.description || "").toLowerCase().includes(q) || (o.orderNumber || "").toLowerCase().includes(q));
+    }
+    return list.slice(0, 30);
+  }, [allOrders, searchText, isOpen]);
+
+  const formatAmount = (val: number | null | undefined) => val ? val.toLocaleString() + "원" : "-";
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Package className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-medium">연결된 발주서</span>
+      </div>
+      {linkedOrders.length > 0 ? (
+        <div className="space-y-1">
+          {linkedOrders.map(order => (
+            <div key={order.id} className="flex items-center gap-1 p-1.5 rounded border bg-muted/50 text-xs" data-testid={`linked-order-${order.id}`}>
+              <div className="flex-1 min-w-0 truncate">
+                <span className="font-medium">{order.orderNumber}</span>
+                <span className="mx-1 text-muted-foreground">|</span>
+                <span>{order.vendor}</span>
+                <span className="mx-1 text-muted-foreground">|</span>
+                <span>{order.description || "-"}</span>
+                <span className="mx-1 text-muted-foreground">|</span>
+                <span>{formatAmount(order.totalAmount)}</span>
+              </div>
+              <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => linkMutation.mutate({ orderId: order.id, invoiceIdVal: null })} data-testid={`button-unlink-order-${order.id}`}>
+                <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <Button variant="outline" size="sm" className="text-xs w-full justify-start text-muted-foreground" onClick={handleOpen} data-testid="button-open-order-search">
+        <Search className="h-3 w-3 mr-1" />{isOpen ? "검색 닫기" : "발주서 검색하여 연결"}
+      </Button>
+      {isOpen && (
+        <div className="border rounded p-2 space-y-2 bg-background" data-testid="search-panel-order">
+          <div className="flex items-center gap-1">
+            <Input
+              className="h-7 text-xs flex-1"
+              placeholder="업체명, 내용, 발주번호 검색..."
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              data-testid="input-search-order"
+              autoFocus
+            />
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => { setIsOpen(false); setSearchText(""); }} data-testid="button-close-order-search">
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="max-h-40 overflow-y-auto border rounded">
+            {unlinkedOrders.length === 0 ? (
+              <p className="text-xs text-muted-foreground p-2 text-center">
+                {searchText.trim() ? "검색 결과가 없습니다" : "업체명 또는 발주번호를 입력하세요"}
+              </p>
+            ) : (
+              unlinkedOrders.map(order => (
+                <div
+                  key={order.id}
+                  className="w-full text-left px-2 py-1.5 text-xs cursor-pointer border-b last:border-b-0 flex items-center justify-between gap-2 transition-colors hover:bg-accent"
+                  onClick={() => { linkMutation.mutate({ orderId: order.id, invoiceIdVal: invoiceId }); setIsOpen(false); setSearchText(""); }}
+                  data-testid={`item-order-${order.id}`}
+                >
+                  <span className="truncate">
+                    <span className="font-medium">{order.orderNumber}</span>
+                    <span className="mx-1">|</span>
+                    {order.vendor} - {order.description || "내용없음"} ({formatAmount(order.totalAmount)})
+                  </span>
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">{order.orderDate || ""}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose: () => void }) {
   const { toast } = useToast();
   const { data: invoice } = useQuery<PurchaseInvoice>({
@@ -444,6 +565,7 @@ function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; onClose
         {renderField("이메일", "email1", invoice.email1 || "")}
         {renderField("메모", "memo", invoice.memo || "")}
       </div>
+      <PurchaseOrderLinkSection invoiceId={invoiceId} vendorName={invoice.companyName || vendorName} />
       <PaymentSection invoiceId={invoiceId} type="expense" />
     </DialogContent>
   );
