@@ -562,32 +562,37 @@ export default function PaymentPlan() {
           </Button>
         </div>
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
-          <Button
-            variant={viewMode === "list" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("list")}
-            data-testid="button-view-list"
-          >
-            <List className="h-4 w-4 mr-1" />리스트
-          </Button>
-          <Button
-            variant={viewMode === "calendar" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("calendar")}
-            data-testid="button-view-calendar"
-          >
-            <CalendarIcon className="h-4 w-4 mr-1" />캘린더
-          </Button>
+          {viewMode !== "fund" && (
+            <>
+              <Button
+                variant={viewMode === "list" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("list")}
+                data-testid="button-view-list"
+              >
+                <List className="h-4 w-4 mr-1" />리스트
+              </Button>
+              <Button
+                variant={viewMode === "calendar" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("calendar")}
+                data-testid="button-view-calendar"
+              >
+                <CalendarIcon className="h-4 w-4 mr-1" />캘린더
+              </Button>
+            </>
+          )}
           <Button
             variant={viewMode === "fund" ? "default" : "ghost"}
             size="sm"
             onClick={() => {
-              if (fundAuthenticated) { setViewMode("fund"); }
+              if (viewMode === "fund") { setViewMode("list"); }
+              else if (fundAuthenticated) { setViewMode("fund"); }
               else { setShowPasswordDialog(true); setFundPassword(""); setPasswordError(false); }
             }}
             data-testid="button-view-fund"
           >
-            <LayoutDashboard className="h-4 w-4 mr-1" />자금현황
+            <LayoutDashboard className="h-4 w-4 mr-1" />{viewMode === "fund" ? "자금계획으로" : "자금현황"}
           </Button>
         </div>
       </div>

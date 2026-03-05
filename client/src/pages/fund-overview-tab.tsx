@@ -15,6 +15,7 @@ import {
   Plus, Trash2, Check, Clock, AlertTriangle,
   ChevronDown, ChevronUp, RefreshCw, CreditCard, Building2, Receipt,
   Landmark, Home, Wallet, X, Power, PowerOff,
+  List, Calendar as CalendarIcon, Download, FileSpreadsheet, Loader2,
 } from "lucide-react";
 
 type EnrichedPayment = Payment & {
@@ -425,7 +426,181 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
   );
 }
 
+function FundCalendarView({ payments, year, month }: { payments: EnrichedPayment[]; year: number; month: number }) {
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const startDow = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+
+  const paymentsByDate = useMemo(() => {
+    const map = new Map<number, EnrichedPayment[]>();
+    payments.forEach(p => {
+      const dateStr = p.actualDate || p.plannedDate;
+      if (dateStr) {
+        const d = parseInt(dateStr.substring(8, 10));
+        if (!map.has(d)) map.set(d, []);
+        map.get(d)!.push(p);
+      }
+    });
+    return map;
+  }, [payments]);
+
+  const weeks: (number | null)[][] = [];
+  let currentWeek: (number | null)[] = Array(startDow).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    currentWeek.push(d);
+    if (currentWeek.length === 7) {
+      weeks.push(currentWeek);
+      currentWeek = [];
+    }
+  }
+  if (currentWeek.length > 0) {
+    while (currentWeek.length < 7) currentWeek.push(null);
+    weeks.push(currentWeek);
+  }
+
+  const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+
+  return (
+    <div className="border rounded-lg overflow-hidden" data-testid="fund-calendar-view">
+      <div className="grid grid-cols-7 bg-muted/50">
+        {dayNames.map(d => (
+          <div key={d} className="text-center text-xs font-medium py-2 border-b">{d}</div>
+        ))}
+      </div>
+      {weeks.map((week, wi) => (
+        <div key={wi} className="grid grid-cols-7 border-b last:border-b-0">
+          {week.map((day, di) => {
+            const dayPayments = day ? paymentsByDate.get(day) || [] : [];
+            const income = dayPayments.filter(p => p.type === "income").reduce((s, p) => s + (p.amount || 0), 0);
+            const expense = dayPayments.filter(p => p.type === "expense").reduce((s, p) => s + (p.amount || 0), 0);
+            return (
+              <div key={di} className={`min-h-[80px] p-1 border-r last:border-r-0 ${day ? "bg-background" : "bg-muted/20"} ${di === 0 ? "text-red-500" : di === 6 ? "text-blue-500" : ""}`}>
+                {day && (
+                  <>
+                    <div className="text-xs font-medium mb-1">{day}</div>
+                    <div className="space-y-0.5">
+                      {income > 0 && (
+                        <div className="text-[10px] bg-blue-50 text-blue-700 rounded px-1 truncate" data-testid={`fund-cal-income-${day}`}>
+                          +{income.toLocaleString()}
+                        </div>
+                      )}
+                      {expense > 0 && (
+                        <div className="text-[10px] bg-red-50 text-red-700 rounded px-1 truncate" data-testid={`fund-cal-expense-${day}`}>
+                          -{expense.toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OneDriveImportSection({ year, month }: { year: number; month: number }) {
+  const { toast } = useToast();
+  const [selectedFileId, setSelectedFileId] = useState<string>("");
+  const [selectedFileName, setSelectedFileName] = useState<string>("");
+
+  const { data: files, isLoading: filesLoading } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/bank-statements", year],
+    queryFn: async () => {
+      const res = await fetch(`/api/bank-statements?year=${year}`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedFileId) throw new Error("파일을 선택해주세요");
+      const res = await apiRequest("POST", "/api/bank-statements/import", {
+        fileId: selectedFileId,
+        fileName: selectedFileName,
+        year,
+        month,
+      });
+      return res.json();
+    },
+    onSuccess: (data: { created: number; total: number; skipped: number; fileName: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      const msg = data.skipped > 0
+        ? `${data.fileName}에서 ${data.created}건 가져왔습니다 (${data.skipped}건 중복 건너뜀)`
+        : `${data.fileName}에서 ${data.created}건 가져왔습니다`;
+      toast({ title: msg });
+      setSelectedFileId("");
+      setSelectedFileName("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "가져오기 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-muted-foreground">
+        OneDrive의 <span className="font-mono bg-muted px-1 rounded">4.경영지원/database/{year}/</span> 폴더에서 은행 거래내역 엑셀 파일을 가져옵니다.
+      </div>
+      {filesLoading ? (
+        <Skeleton className="h-10" />
+      ) : files && files.length > 0 ? (
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <Label className="text-xs">엑셀 파일 선택</Label>
+            <Select
+              value={selectedFileId}
+              onValueChange={(val) => {
+                setSelectedFileId(val);
+                const f = files.find(f => f.id === val);
+                setSelectedFileName(f?.name || "");
+              }}
+            >
+              <SelectTrigger className="h-8 text-xs" data-testid="select-bank-file">
+                <SelectValue placeholder="파일을 선택하세요" />
+              </SelectTrigger>
+              <SelectContent>
+                {files.map(f => (
+                  <SelectItem key={f.id} value={f.id}>
+                    <span className="inline-flex items-center gap-1">
+                      <FileSpreadsheet className="h-3 w-3" />
+                      {f.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => importMutation.mutate()}
+            disabled={importMutation.isPending || !selectedFileId}
+            data-testid="button-import-bank"
+          >
+            {importMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5 mr-1" />
+            )}
+            가져오기
+          </Button>
+        </div>
+      ) : (
+        <div className="text-center py-4 text-muted-foreground text-sm">
+          해당 연도 폴더에 엑셀 파일이 없습니다.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FundOverviewTab({ year, month }: { year: number; month: number }) {
+  const [fundViewMode, setFundViewMode] = useState<"list" | "calendar">("list");
+
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
     queryFn: async () => {
@@ -478,8 +653,31 @@ export function FundOverviewTab({ year, month }: { year: number; month: number }
         </div>
       </div>
 
+      <div className="flex justify-end">
+        <div className="flex items-center gap-1 border rounded-lg p-0.5">
+          <Button
+            variant={fundViewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setFundViewMode("list")}
+            data-testid="button-fund-view-list"
+          >
+            <List className="h-4 w-4 mr-1" />리스트
+          </Button>
+          <Button
+            variant={fundViewMode === "calendar" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setFundViewMode("calendar")}
+            data-testid="button-fund-view-calendar"
+          >
+            <CalendarIcon className="h-4 w-4 mr-1" />캘린더
+          </Button>
+        </div>
+      </div>
+
       {isLoading ? (
         <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}</div>
+      ) : fundViewMode === "calendar" ? (
+        <FundCalendarView payments={payments || []} year={year} month={month} />
       ) : (
         <>
           <CollapsibleSection title="매출 (입금)" count={incomePayments.length}>
@@ -496,6 +694,10 @@ export function FundOverviewTab({ year, month }: { year: number; month: number }
 
           <CollapsibleSection title="월 정기 예정금액" defaultOpen={false}>
             <RecurringExpenseSection year={year} month={month} />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="OneDrive 은행거래 가져오기" defaultOpen={false}>
+            <OneDriveImportSection year={year} month={month} />
           </CollapsibleSection>
         </>
       )}

@@ -576,6 +576,118 @@ export async function writePurchaseListToOneDrive(): Promise<void> {
   console.log("[purchaselist] OneDrive에 purchaselist.xlsx 업로드 완료");
 }
 
+export interface BankStatementRow {
+  date: string;
+  type: "income" | "expense";
+  amount: number;
+  companyName: string | null;
+  description: string | null;
+}
+
+export function parseBankStatement(buffer: Buffer, year: number, month: number): BankStatementRow[] {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) return [];
+
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  const rows: BankStatementRow[] = [];
+
+  const headerRow = range.s.r;
+  const headers: string[] = [];
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r: headerRow, c })];
+    headers.push(cell ? String(cell.v || "").trim() : "");
+  }
+
+  let dateCol = -1, depositCol = -1, withdrawalCol = -1, descCol = -1, memoCol = -1, balanceCol = -1;
+
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i].replace(/\s+/g, "");
+    if (h.includes("거래일") || h.includes("일자") || h.includes("날짜") || h === "거래일시") dateCol = i;
+    else if (h.includes("입금") || h.includes("들어온") || h === "입금액" || h === "입금(원)") depositCol = i;
+    else if (h.includes("출금") || h.includes("나간") || h === "출금액" || h === "출금(원)") withdrawalCol = i;
+    else if (h.includes("적요") || h.includes("내용") || h.includes("거래내용") || h.includes("메모")) {
+      if (descCol === -1) descCol = i;
+      else memoCol = i;
+    }
+    else if (h.includes("잔액") || h.includes("잔고")) balanceCol = i;
+    else if (h.includes("상대") || h.includes("받는") || h.includes("보내는") || h.includes("거래처")) {
+      if (memoCol === -1) memoCol = i;
+    }
+  }
+
+  if (dateCol === -1) {
+    for (let i = 0; i < headers.length; i++) {
+      if (headers[i]) { dateCol = i; break; }
+    }
+  }
+  if (depositCol === -1 && withdrawalCol === -1) {
+    for (let i = 1; i < headers.length; i++) {
+      if (depositCol === -1 && headers[i]) { depositCol = i; continue; }
+      if (withdrawalCol === -1 && headers[i]) { withdrawalCol = i; break; }
+    }
+  }
+
+  const monthStr = String(month).padStart(2, "0");
+
+  for (let r = headerRow + 1; r <= range.e.r; r++) {
+    const getVal = (c: number) => {
+      if (c < 0) return null;
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      return cell ? cell.v : null;
+    };
+
+    const rawDate = getVal(dateCol);
+    if (!rawDate) continue;
+
+    let dateStr = "";
+    if (typeof rawDate === "number") {
+      const d = XLSX.SSF.parse_date_code(rawDate);
+      if (d) dateStr = `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+    } else {
+      const s = String(rawDate).trim();
+      const match = s.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+      if (match) {
+        dateStr = `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+      } else {
+        const match2 = s.match(/(\d{1,2})[-./](\d{1,2})/);
+        if (match2) {
+          dateStr = `${year}-${match2[1].padStart(2, "0")}-${match2[2].padStart(2, "0")}`;
+        }
+      }
+    }
+
+    if (!dateStr) continue;
+
+    const parseAmount = (val: any): number => {
+      if (val === null || val === undefined || val === "") return 0;
+      if (typeof val === "number") return Math.abs(Math.round(val));
+      return Math.abs(Math.round(Number(String(val).replace(/[^0-9.-]/g, "")))) || 0;
+    };
+
+    const deposit = parseAmount(getVal(depositCol));
+    const withdrawal = parseAmount(getVal(withdrawalCol));
+
+    if (deposit === 0 && withdrawal === 0) continue;
+
+    const desc = getVal(descCol);
+    const memo = getVal(memoCol);
+
+    const type: "income" | "expense" = deposit > 0 ? "income" : "expense";
+    const amount = deposit > 0 ? deposit : withdrawal;
+
+    rows.push({
+      date: dateStr,
+      type,
+      amount,
+      companyName: memo ? String(memo).trim() : null,
+      description: desc ? String(desc).trim() : null,
+    });
+  }
+
+  return rows;
+}
+
 export async function getAvailableInvoiceYears(): Promise<number[]> {
   try {
     const folders = await listFoldersByPath("4.경영지원/database");

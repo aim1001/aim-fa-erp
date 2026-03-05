@@ -189,6 +189,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-03-04: 발주 계산서/송금 연결 개선 — 매입계산서 자동생성 제거 (발주 생성 시 계산서 미생성, 상세에서 수동 연결만), 목록 계산서 열 "미연결"/"연결됨" 배지 표시, 송금 열 예정일/완료 상태 표시 (완료 시 녹색 배지, 미완료 시 "MM/DD 예정" 텍스트)
 - 2026-03-04: 발주서 계약상세 필드 추가 — purchase_orders에 staffId(인력풀FK), contactPerson(담당자명), paymentTerms(지급조건, 기본: 입고후 익월말), deliveryLocation(입고장소, 기본: 회사주소), warrantyTerms(보증조건, 기본: 하자보증 1년) 추가. 생성/상세 모달에서 편집 가능. PDF에 합계 후 계약상세 섹션 표시, 사인 섹션 좌우 반전 (좌=발주처+서명, 우=구매처)
 - 2026-03-05: 자금현황 모달 추가 — payments.category 필드 추가 (카드사용/정기결제/세금납부/관리비/임대료/대출상환/기타), recurring_expenses 테이블 (정기지출 관리), 자금계획 페이지에 "자금현황" 버튼 추가 → 전체화면 모달 (매출 입금 리스트, 매입 출금 리스트, 경비 직접 입력(카테고리별), 월 정기 예정금액 CRUD+일괄생성)
+- 2026-03-05: 자금현황 탭 개선 — ① 자금현황 모드에서 기존 리스트/캘린더 탭 버튼 숨기기 (자금현황 버튼만 표시, 클릭 시 자금계획으로 복귀), ② 자금현황 내부 리스트/캘린더 토글 추가 (월별 입출금 캘린더 뷰), ③ OneDrive 은행거래 가져오기 (4.경영지원/database/{year}/ 폴더에서 은행 엑셀 파일 선택→파싱→payments 테이블 일괄 등록, parseBankStatement 함수 — 거래일/입금/출금/적요/거래처 컬럼 자동 감지)
 
 ## Hooks
 - `useDialogContainer` (`client/src/hooks/use-dialog-container.ts`): Dialog 내부에서 Popover/Select 등 Portal 기반 컴포넌트가 정상 작동하도록 Dialog DOM 요소를 container로 제공하는 hook. Radix Dialog의 inert 속성으로 Portal'd 콘텐츠가 클릭 불가능해지는 문제 해결.

@@ -4644,5 +4644,69 @@ export async function registerRoutes(
     res.json({ created, total: active.length });
   });
 
+  app.get("/api/bank-statements", async (req: Request, res: Response) => {
+    try {
+      const year = req.query.year as string;
+      if (!year) return res.status(400).json({ message: "year required" });
+      const { listFilesByPath } = await import("./onedrive");
+      const files = await listFilesByPath(`4.경영지원/database/${year}`);
+      const excelFiles = files.filter((f: any) =>
+        /\.(xls|xlsx)$/i.test(f.name)
+      );
+      res.json(excelFiles);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-statements/import", async (req: Request, res: Response) => {
+    try {
+      const { fileId, fileName, year, month } = req.body;
+      if (!fileId || !year || !month) return res.status(400).json({ message: "fileId, year, month required" });
+      const { downloadFile } = await import("./onedrive");
+      const { parseBankStatement } = await import("./excel-parser");
+      const buffer = await downloadFile(fileId);
+      const rows = parseBankStatement(buffer, parseInt(year), parseInt(month));
+
+      if (rows.length === 0) {
+        return res.json({ created: 0, total: 0, skipped: 0, fileName });
+      }
+
+      const existingPayments = await storage.getPaymentsByMonth(parseInt(year), parseInt(month));
+      const existingKeys = new Set(
+        existingPayments
+          .filter(p => p.category === "은행거래")
+          .map(p => `${p.plannedDate}|${p.amount}|${p.type}|${p.companyName || ""}|${p.description || ""}`)
+      );
+
+      let created = 0;
+      let skipped = 0;
+      for (const row of rows) {
+        const key = `${row.date}|${row.amount}|${row.type}|${row.companyName || ""}|${row.description || ""}`;
+        if (existingKeys.has(key)) {
+          skipped++;
+          continue;
+        }
+        await storage.createPayment({
+          type: row.type,
+          category: "은행거래",
+          companyName: row.companyName || null,
+          description: row.description || null,
+          amount: row.amount,
+          plannedDate: row.date,
+          actualDate: row.date,
+          actualAmount: row.amount,
+          status: "completed",
+        });
+        existingKeys.add(key);
+        created++;
+      }
+
+      res.json({ created, total: rows.length, skipped, fileName });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
