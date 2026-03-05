@@ -414,6 +414,9 @@ export default function PaymentPlan() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showFundOverview, setShowFundOverview] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [fundPassword, setFundPassword] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
 
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
@@ -540,7 +543,7 @@ export default function PaymentPlan() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">자금계획</h1>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setShowFundOverview(true)} data-testid="button-fund-overview">
+          <Button size="sm" variant="outline" onClick={() => { setShowPasswordDialog(true); setFundPassword(""); setPasswordError(false); }} data-testid="button-fund-overview">
             <LayoutDashboard className="h-4 w-4 mr-1" />자금현황
           </Button>
           <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
@@ -793,6 +796,32 @@ export default function PaymentPlan() {
       </Dialog>
 
       <AddPaymentDialog open={showAdd} onOpenChange={setShowAdd} />
+      <Dialog open={showPasswordDialog} onOpenChange={open => { if (!open) setShowPasswordDialog(false); }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader><DialogTitle>비밀번호 입력</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Input
+              type="password"
+              placeholder="비밀번호를 입력하세요"
+              value={fundPassword}
+              onChange={e => { setFundPassword(e.target.value); setPasswordError(false); }}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  if (fundPassword === "6937") { setShowPasswordDialog(false); setShowFundOverview(true); }
+                  else setPasswordError(true);
+                }
+              }}
+              autoFocus
+              data-testid="input-fund-password"
+            />
+            {passwordError && <p className="text-xs text-red-500">비밀번호가 올바르지 않습니다.</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setShowPasswordDialog(false)}>취소</Button>
+            <Button onClick={() => { if (fundPassword === "6937") { setShowPasswordDialog(false); setShowFundOverview(true); } else setPasswordError(true); }} data-testid="button-confirm-fund-password">확인</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <FundOverviewModal open={showFundOverview} onClose={() => setShowFundOverview(false)} />
 
       <Dialog open={showRemainderPicker} onOpenChange={open => { if (!open) { setShowRemainderPicker(false); setRemainderInfo(null); setRemainderDate(undefined); } }}>
