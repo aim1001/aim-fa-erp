@@ -891,9 +891,19 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
   };
 
   const openEmailDialog = async () => {
-    setEmailTo(inquiry.snapshotEmail || "");
+    let latestEmail = inquiry.snapshotEmail || "";
+    let latestCompanyName = inquiry.snapshotCompanyName || "고객";
+    try {
+      const inqRes = await fetch(`/api/inquiries/${inquiryId}`);
+      if (inqRes.ok) {
+        const latestInquiry = await inqRes.json();
+        latestEmail = latestInquiry.snapshotEmail || latestEmail;
+        latestCompanyName = latestInquiry.snapshotCompanyName || latestCompanyName;
+      }
+    } catch {}
+    setEmailTo(latestEmail);
     setEmailSubject(`[견적서] ${quotation.quoteNumber}`);
-    const defaultBody = `안녕하세요, ${inquiry.snapshotCompanyName || "고객"}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: ${quotation.quoteNumber}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`;
+    const defaultBody = `안녕하세요, ${latestCompanyName}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: ${quotation.quoteNumber}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`;
     try {
       const settingsRes = await fetch("/api/company-settings");
       if (settingsRes.ok) {
@@ -901,7 +911,7 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
         setEmailCc(settings.autoCc || "");
         if (settings.emailTemplate) {
           const body = settings.emailTemplate
-            .replace(/\{고객명\}/g, inquiry.snapshotCompanyName || "고객")
+            .replace(/\{고객명\}/g, latestCompanyName)
             .replace(/\{견적번호\}/g, quotation.quoteNumber);
           setEmailBody(body);
         } else {

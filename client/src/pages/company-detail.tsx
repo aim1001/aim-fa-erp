@@ -38,6 +38,7 @@ function useCompanyUpdate(companyId: string) {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/companies/${companyId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
     },
   });
 }
