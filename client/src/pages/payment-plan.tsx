@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard } from "lucide-react";
 import { useState, useMemo } from "react";
-import { FundOverviewModal } from "./fund-overview-modal";
+import { FundOverviewTab } from "./fund-overview-tab";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Payment } from "@shared/schema";
@@ -410,13 +410,13 @@ export default function PaymentPlan() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [showFundOverview, setShowFundOverview] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [fundPassword, setFundPassword] = useState("");
   const [passwordError, setPasswordError] = useState(false);
+  const [fundAuthenticated, setFundAuthenticated] = useState(false);
 
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
@@ -543,9 +543,6 @@ export default function PaymentPlan() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">자금계획</h1>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => { setShowPasswordDialog(true); setFundPassword(""); setPasswordError(false); }} data-testid="button-fund-overview">
-            <LayoutDashboard className="h-4 w-4 mr-1" />자금현황
-          </Button>
           <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
             <Plus className="h-4 w-4 mr-1" />추가
           </Button>
@@ -581,27 +578,40 @@ export default function PaymentPlan() {
           >
             <CalendarIcon className="h-4 w-4 mr-1" />캘린더
           </Button>
+          <Button
+            variant={viewMode === "fund" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => {
+              if (fundAuthenticated) { setViewMode("fund"); }
+              else { setShowPasswordDialog(true); setFundPassword(""); setPasswordError(false); }
+            }}
+            data-testid="button-view-fund"
+          >
+            <LayoutDashboard className="h-4 w-4 mr-1" />자금현황
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="border rounded-lg p-3 bg-blue-50/50">
-          <div className="text-xs text-muted-foreground">예정 입금</div>
-          <div className="text-lg font-semibold text-blue-600" data-testid="text-planned-income">{formatAmount(totals.plannedIncome)}</div>
+      {viewMode !== "fund" && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="border rounded-lg p-3 bg-blue-50/50">
+            <div className="text-xs text-muted-foreground">예정 입금</div>
+            <div className="text-lg font-semibold text-blue-600" data-testid="text-planned-income">{formatAmount(totals.plannedIncome)}</div>
+          </div>
+          <div className="border rounded-lg p-3 bg-red-50/50">
+            <div className="text-xs text-muted-foreground">예정 출금</div>
+            <div className="text-lg font-semibold text-red-600" data-testid="text-planned-expense">{formatAmount(totals.plannedExpense)}</div>
+          </div>
+          <div className="border rounded-lg p-3 bg-blue-50/50">
+            <div className="text-xs text-muted-foreground">실제 입금</div>
+            <div className="text-lg font-semibold text-blue-600" data-testid="text-actual-income">{formatAmount(totals.actualIncome)}</div>
+          </div>
+          <div className="border rounded-lg p-3 bg-red-50/50">
+            <div className="text-xs text-muted-foreground">실제 출금</div>
+            <div className="text-lg font-semibold text-red-600" data-testid="text-actual-expense">{formatAmount(totals.actualExpense)}</div>
+          </div>
         </div>
-        <div className="border rounded-lg p-3 bg-red-50/50">
-          <div className="text-xs text-muted-foreground">예정 출금</div>
-          <div className="text-lg font-semibold text-red-600" data-testid="text-planned-expense">{formatAmount(totals.plannedExpense)}</div>
-        </div>
-        <div className="border rounded-lg p-3 bg-blue-50/50">
-          <div className="text-xs text-muted-foreground">실제 입금</div>
-          <div className="text-lg font-semibold text-blue-600" data-testid="text-actual-income">{formatAmount(totals.actualIncome)}</div>
-        </div>
-        <div className="border rounded-lg p-3 bg-red-50/50">
-          <div className="text-xs text-muted-foreground">실제 출금</div>
-          <div className="text-lg font-semibold text-red-600" data-testid="text-actual-expense">{formatAmount(totals.actualExpense)}</div>
-        </div>
-      </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
@@ -785,11 +795,13 @@ export default function PaymentPlan() {
             <p>이 달에 등록된 결제 계획이 없습니다.</p>
           </div>
         )
-      ) : (
+      ) : viewMode === "calendar" ? (
         <CalendarView payments={sorted} year={year} month={month} onSelectPayment={setSelectedId} />
+      ) : (
+        <FundOverviewTab year={year} month={month} />
       )}
 
-      <div className="text-xs text-muted-foreground">{sorted.length > 0 && `총 ${sorted.length}건`}</div>
+      {viewMode !== "fund" && <div className="text-xs text-muted-foreground">{sorted.length > 0 && `총 ${sorted.length}건`}</div>}
 
       <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null); }}>
         {selectedId && <PaymentDetailModal paymentId={selectedId} onClose={() => setSelectedId(null)} />}
@@ -807,7 +819,7 @@ export default function PaymentPlan() {
               onChange={e => { setFundPassword(e.target.value); setPasswordError(false); }}
               onKeyDown={e => {
                 if (e.key === "Enter") {
-                  if (fundPassword === "6937") { setShowPasswordDialog(false); setShowFundOverview(true); }
+                  if (fundPassword === "6937") { setShowPasswordDialog(false); setFundAuthenticated(true); setViewMode("fund"); }
                   else setPasswordError(true);
                 }
               }}
@@ -818,11 +830,10 @@ export default function PaymentPlan() {
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowPasswordDialog(false)}>취소</Button>
-            <Button onClick={() => { if (fundPassword === "6937") { setShowPasswordDialog(false); setShowFundOverview(true); } else setPasswordError(true); }} data-testid="button-confirm-fund-password">확인</Button>
+            <Button onClick={() => { if (fundPassword === "6937") { setShowPasswordDialog(false); setFundAuthenticated(true); setViewMode("fund"); } else setPasswordError(true); }} data-testid="button-confirm-fund-password">확인</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <FundOverviewModal open={showFundOverview} onClose={() => setShowFundOverview(false)} />
 
       <Dialog open={showRemainderPicker} onOpenChange={open => { if (!open) { setShowRemainderPicker(false); setRemainderInfo(null); setRemainderDate(undefined); } }}>
         <DialogContent className="max-w-sm" data-testid="modal-remainder-date">

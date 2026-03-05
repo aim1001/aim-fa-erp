@@ -9,13 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  ChevronLeft, ChevronRight, Plus, Trash2, Check, Clock, AlertTriangle,
+  Plus, Trash2, Check, Clock, AlertTriangle,
   ChevronDown, ChevronUp, RefreshCw, CreditCard, Building2, Receipt,
   Landmark, Home, Wallet, X, Power, PowerOff,
 } from "lucide-react";
@@ -428,28 +425,14 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
   );
 }
 
-export function FundOverviewModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-
+export function FundOverviewTab({ year, month }: { year: number; month: number }) {
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
     queryFn: async () => {
       const res = await fetch(`/api/payments?year=${year}&month=${month}`);
       return res.json();
     },
-    enabled: open,
   });
-
-  const prevMonth = () => {
-    if (month === 1) { setYear(y => y - 1); setMonth(12); }
-    else setMonth(m => m - 1);
-  };
-  const nextMonth = () => {
-    if (month === 12) { setYear(y => y + 1); setMonth(1); }
-    else setMonth(m => m + 1);
-  };
 
   const { incomePayments, expensePayments, totals } = useMemo(() => {
     if (!payments) return { incomePayments: [], expensePayments: [], totals: { plannedIncome: 0, plannedExpense: 0, actualIncome: 0, actualExpense: 0 } };
@@ -469,74 +452,53 @@ export function FundOverviewModal({ open, onClose }: { open: boolean; onClose: (
   }, [payments]);
 
   return (
-    <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-[95vw] w-[1200px] max-h-[90vh] overflow-hidden flex flex-col" data-testid="modal-fund-overview">
-        <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-lg">자금 현황</DialogTitle>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-fund-prev-month">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-base font-semibold min-w-[110px] text-center" data-testid="text-fund-month">
-                {year}년 {month}월
-              </span>
-              <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-fund-next-month">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="border rounded-lg p-3 bg-blue-50/50 dark:bg-blue-900/20">
-              <div className="text-[10px] text-muted-foreground">예정 입금</div>
-              <div className="text-base font-semibold text-blue-600" data-testid="text-fund-planned-income">{formatAmount(totals.plannedIncome)}</div>
-            </div>
-            <div className="border rounded-lg p-3 bg-red-50/50 dark:bg-red-900/20">
-              <div className="text-[10px] text-muted-foreground">예정 출금</div>
-              <div className="text-base font-semibold text-red-600" data-testid="text-fund-planned-expense">{formatAmount(totals.plannedExpense)}</div>
-            </div>
-            <div className="border rounded-lg p-3 bg-blue-50/50 dark:bg-blue-900/20">
-              <div className="text-[10px] text-muted-foreground">실제 입금</div>
-              <div className="text-base font-semibold text-blue-600" data-testid="text-fund-actual-income">{formatAmount(totals.actualIncome)}</div>
-            </div>
-            <div className="border rounded-lg p-3 bg-red-50/50 dark:bg-red-900/20">
-              <div className="text-[10px] text-muted-foreground">실제 출금</div>
-              <div className="text-base font-semibold text-red-600" data-testid="text-fund-actual-expense">{formatAmount(totals.actualExpense)}</div>
-            </div>
-            <div className="border rounded-lg p-3 bg-emerald-50/50 dark:bg-emerald-900/20">
-              <div className="text-[10px] text-muted-foreground">예정 잔액</div>
-              <div className={`text-base font-semibold ${(totals.plannedIncome - totals.plannedExpense) >= 0 ? "text-emerald-600" : "text-red-600"}`} data-testid="text-fund-balance">
-                {formatAmount(totals.plannedIncome - totals.plannedExpense)}
-              </div>
-            </div>
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}</div>
-          ) : (
-            <>
-              <CollapsibleSection title="매출 (입금)" count={incomePayments.length}>
-                <PaymentTable payments={incomePayments} type="income" />
-              </CollapsibleSection>
-
-              <CollapsibleSection title="매입 (출금)" count={expensePayments.length}>
-                <PaymentTable payments={expensePayments} type="expense" />
-              </CollapsibleSection>
-
-              <CollapsibleSection title="경비 직접 입력" defaultOpen={false}>
-                <AddExpenseForm year={year} month={month} onSuccess={() => {}} />
-              </CollapsibleSection>
-
-              <CollapsibleSection title="월 정기 예정금액" defaultOpen={false}>
-                <RecurringExpenseSection year={year} month={month} />
-              </CollapsibleSection>
-            </>
-          )}
+    <div className="space-y-4" data-testid="fund-overview-tab">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="border rounded-lg p-3 bg-blue-50/50 dark:bg-blue-900/20">
+          <div className="text-[10px] text-muted-foreground">예정 입금</div>
+          <div className="text-base font-semibold text-blue-600" data-testid="text-fund-planned-income">{formatAmount(totals.plannedIncome)}</div>
         </div>
-      </DialogContent>
-    </Dialog>
+        <div className="border rounded-lg p-3 bg-red-50/50 dark:bg-red-900/20">
+          <div className="text-[10px] text-muted-foreground">예정 출금</div>
+          <div className="text-base font-semibold text-red-600" data-testid="text-fund-planned-expense">{formatAmount(totals.plannedExpense)}</div>
+        </div>
+        <div className="border rounded-lg p-3 bg-blue-50/50 dark:bg-blue-900/20">
+          <div className="text-[10px] text-muted-foreground">실제 입금</div>
+          <div className="text-base font-semibold text-blue-600" data-testid="text-fund-actual-income">{formatAmount(totals.actualIncome)}</div>
+        </div>
+        <div className="border rounded-lg p-3 bg-red-50/50 dark:bg-red-900/20">
+          <div className="text-[10px] text-muted-foreground">실제 출금</div>
+          <div className="text-base font-semibold text-red-600" data-testid="text-fund-actual-expense">{formatAmount(totals.actualExpense)}</div>
+        </div>
+        <div className="border rounded-lg p-3 bg-emerald-50/50 dark:bg-emerald-900/20">
+          <div className="text-[10px] text-muted-foreground">예정 잔액</div>
+          <div className={`text-base font-semibold ${(totals.plannedIncome - totals.plannedExpense) >= 0 ? "text-emerald-600" : "text-red-600"}`} data-testid="text-fund-balance">
+            {formatAmount(totals.plannedIncome - totals.plannedExpense)}
+          </div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}</div>
+      ) : (
+        <>
+          <CollapsibleSection title="매출 (입금)" count={incomePayments.length}>
+            <PaymentTable payments={incomePayments} type="income" />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="매입 (출금)" count={expensePayments.length}>
+            <PaymentTable payments={expensePayments} type="expense" />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="경비 직접 입력" defaultOpen={false}>
+            <AddExpenseForm year={year} month={month} onSuccess={() => {}} />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="월 정기 예정금액" defaultOpen={false}>
+            <RecurringExpenseSection year={year} month={month} />
+          </CollapsibleSection>
+        </>
+      )}
+    </div>
   );
 }
