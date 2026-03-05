@@ -190,6 +190,7 @@ export const payments = pgTable("payments", {
   status: text("status").default("planned"),
   splitIndex: integer("split_index").default(1),
   splitTotal: integer("split_total").default(1),
+  category: text("category"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({
@@ -545,3 +546,18 @@ export const staff = pgTable("staff", {
 export const insertStaffSchema = createInsertSchema(staff).omit({ id: true, createdAt: true });
 export type InsertStaff = z.infer<typeof insertStaffSchema>;
 export type Staff = typeof staff.$inferSelect;
+
+export const recurringExpenses = pgTable("recurring_expenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  category: text("category").notNull(),
+  description: text("description"),
+  companyName: text("company_name"),
+  amount: integer("amount").notNull(),
+  paymentDay: integer("payment_day").notNull(),
+  isActive: text("is_active").default("true"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRecurringExpenseSchema = createInsertSchema(recurringExpenses).omit({ id: true, createdAt: true });
+export type InsertRecurringExpense = z.infer<typeof insertRecurringExpenseSchema>;
+export type RecurringExpense = typeof recurringExpenses.$inferSelect;

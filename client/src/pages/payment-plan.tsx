@@ -3,8 +3,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2 } from "lucide-react";
+import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard } from "lucide-react";
 import { useState, useMemo } from "react";
+import { FundOverviewModal } from "./fund-overview-modal";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Payment } from "@shared/schema";
@@ -412,6 +413,7 @@ export default function PaymentPlan() {
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showFundOverview, setShowFundOverview] = useState(false);
 
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
@@ -538,6 +540,9 @@ export default function PaymentPlan() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">자금계획</h1>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowFundOverview(true)} data-testid="button-fund-overview">
+            <LayoutDashboard className="h-4 w-4 mr-1" />자금현황
+          </Button>
           <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
             <Plus className="h-4 w-4 mr-1" />추가
           </Button>
@@ -788,6 +793,7 @@ export default function PaymentPlan() {
       </Dialog>
 
       <AddPaymentDialog open={showAdd} onOpenChange={setShowAdd} />
+      <FundOverviewModal open={showFundOverview} onClose={() => setShowFundOverview(false)} />
 
       <Dialog open={showRemainderPicker} onOpenChange={open => { if (!open) { setShowRemainderPicker(false); setRemainderInfo(null); setRemainderDate(undefined); } }}>
         <DialogContent className="max-w-sm" data-testid="modal-remainder-date">

@@ -6,7 +6,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import { pool } from "./db";
-import { insertInquirySchema, insertCompanySchema, insertCustomerSchema, insertVendorSchema, insertSalesInvoiceSchema, insertPurchaseInvoiceSchema } from "@shared/schema";
+import { insertInquirySchema, insertCompanySchema, insertCustomerSchema, insertVendorSchema, insertSalesInvoiceSchema, insertPurchaseInvoiceSchema, insertRecurringExpenseSchema } from "@shared/schema";
 import {
   listRootSalesFolder,
   listYearFolders,
@@ -4578,6 +4578,70 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
+  });
+
+  app.get("/api/recurring-expenses", async (_req: Request, res: Response) => {
+    const list = await storage.getRecurringExpenses();
+    res.json(list);
+  });
+
+  app.post("/api/recurring-expenses", async (req: Request, res: Response) => {
+    const parsed = insertRecurringExpenseSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const row = await storage.createRecurringExpense(parsed.data);
+    res.json(row);
+  });
+
+  app.patch("/api/recurring-expenses/:id", async (req: Request, res: Response) => {
+    const updated = await storage.updateRecurringExpense(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ message: "Not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/recurring-expenses/:id", async (req: Request, res: Response) => {
+    await storage.deleteRecurringExpense(req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/recurring-expenses/generate", async (req: Request, res: Response) => {
+    const { year, month } = req.query as { year: string; month: string };
+    if (!year || !month) return res.status(400).json({ message: "year and month required" });
+    const y = parseInt(year);
+    const m = parseInt(month);
+    if (isNaN(y) || isNaN(m) || m < 1 || m > 12) return res.status(400).json({ message: "invalid year/month" });
+    const allRecurring = await storage.getRecurringExpenses();
+    const active = allRecurring.filter(r => r.isActive === "true");
+
+    const existingPayments = await storage.getPaymentsByMonth(y, m);
+    const monthStr = `${y}-${String(m).padStart(2, "0")}`;
+
+    let created = 0;
+    for (const r of active) {
+      const alreadyExists = existingPayments.some(p =>
+        p.category === r.category &&
+        p.description === r.description &&
+        p.companyName === r.companyName &&
+        p.plannedDate?.startsWith(monthStr)
+      );
+      if (alreadyExists) continue;
+
+      const lastDay = new Date(y, m, 0).getDate();
+      const day = Math.min(r.paymentDay, lastDay);
+      const plannedDate = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+      await storage.createPayment({
+        type: "expense",
+        companyName: r.companyName,
+        description: r.description,
+        amount: r.amount,
+        plannedDate,
+        status: "planned",
+        category: r.category,
+      });
+      created++;
+    }
+
+    res.json({ created, total: active.length });
   });
 
   return httpServer;

@@ -24,11 +24,12 @@ import {
   type Staff, type InsertStaff,
   type PurchaseOrder, type InsertPurchaseOrder,
   type PurchaseOrderItem, type InsertPurchaseOrderItem,
+  type RecurringExpense, type InsertRecurringExpense,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
-  purchaseOrders, purchaseOrderItems,
+  purchaseOrders, purchaseOrderItems, recurringExpenses,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -228,6 +229,11 @@ export interface IStorage {
   addPurchaseOrderItem(item: InsertPurchaseOrderItem): Promise<PurchaseOrderItem>;
   updatePurchaseOrderItem(id: string, item: Partial<InsertPurchaseOrderItem>): Promise<PurchaseOrderItem | undefined>;
   deletePurchaseOrderItem(id: string): Promise<void>;
+
+  getRecurringExpenses(): Promise<RecurringExpense[]>;
+  createRecurringExpense(data: InsertRecurringExpense): Promise<RecurringExpense>;
+  updateRecurringExpense(id: string, data: Partial<InsertRecurringExpense>): Promise<RecurringExpense | undefined>;
+  deleteRecurringExpense(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1225,6 +1231,24 @@ export class DatabaseStorage implements IStorage {
 
   async deletePurchaseOrderItem(id: string): Promise<void> {
     await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+  }
+
+  async getRecurringExpenses(): Promise<RecurringExpense[]> {
+    return db.select().from(recurringExpenses).orderBy(recurringExpenses.paymentDay);
+  }
+
+  async createRecurringExpense(data: InsertRecurringExpense): Promise<RecurringExpense> {
+    const [row] = await db.insert(recurringExpenses).values(data).returning();
+    return row;
+  }
+
+  async updateRecurringExpense(id: string, data: Partial<InsertRecurringExpense>): Promise<RecurringExpense | undefined> {
+    const [row] = await db.update(recurringExpenses).set(data).where(eq(recurringExpenses.id, id)).returning();
+    return row;
+  }
+
+  async deleteRecurringExpense(id: string): Promise<void> {
+    await db.delete(recurringExpenses).where(eq(recurringExpenses.id, id));
   }
 }
 

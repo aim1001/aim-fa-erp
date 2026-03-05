@@ -32,7 +32,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **inquiries** 테이블: customerId(고객사)와 companyId(담당자) 모두 참조 + 스냅샷 필드로 연결 시점 정보 보존; 고객정보 카드에서 담당자 Select 드롭다운으로 해당 고객의 담당자 목록에서 선택/전환 가능, 새 담당자 인라인 추가 가능
 - **sales_invoices** 테이블: 매출계산서 (customerId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
-- **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보)
+- **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보, category(카드사용/정기결제/세금납부/관리비/임대료/대출상환/기타))
+- **recurring_expenses** 테이블: 월 정기지출 (category, description, companyName, amount, paymentDay(매월 결제일), isActive) — "자금현황" 모달에서 관리, 월별 payments 일괄 생성 기능
 - **projects** 테이블: 프로젝트 (프로젝트번호, 고객사명, 내용, 연도, OneDrive 폴더 정보, 상태)
 - **item_master** 테이블: 판매제품 마스터 (카테고리, 품목코드(unique), 품목명, 사양, 원가, 판매가, 활성여부, 제품유형, isFavorite 즐겨찾기)
 - **item_inventory** 테이블: 재고 관리 (품목코드, 재고유형(AVAILABLE/TEST/DEMO), 수량, 업데이트일)
@@ -102,7 +103,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `client/src/pages/vendor-list.tsx` - Vendor list page (공급업체 목록, 모달 편집, 즐겨찾기)
 - `client/src/pages/sales-invoice-list.tsx` - Sales invoice list page (매출계산서)
 - `client/src/pages/purchase-invoice-list.tsx` - Purchase invoice list page (매입계산서)
-- `client/src/pages/payment-plan.tsx` - Payment plan page (자금계획, 리스트+캘린더 뷰)
+- `client/src/pages/payment-plan.tsx` - Payment plan page (자금계획, 리스트+캘린더 뷰, 자금현황 버튼)
+- `client/src/pages/fund-overview-modal.tsx` - Fund overview modal (자금현황 전체 모달: 매출/매입 리스트, 경비 직접 입력, 월 정기 예정금액 관리)
 - `client/src/pages/item-list.tsx` - Item/product list page (판매제품관리, OneDrive sync)
 - `client/src/pages/purchase-item-list.tsx` - Purchase item list page (구매품관리, OneDrive sync)
 - `client/src/components/app-sidebar.tsx` - Sidebar navigation (영업/경영지원/관리 섹션)
@@ -186,6 +188,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 2026-03-04: 발주 4대 개선 — ① 구매품 즐겨찾기(isFavorite) 추가 (purchase_items.is_favorite, PurchaseItemSearchPopover 즐겨찾기 우선정렬+Star토글, purchase-item-list.tsx Star토글), ② 구매처 vendors 검색/연결 (VendorSearchPopover 컴포넌트, CreateOrderDialog에서 구매처 검색/직접입력), ③ 발주번호 자동생성 (getNextOrderNumber YY-N 포맷, POST 시 자동할당, 미리보기), ④ 가격조정→최종금액 방식 변경 (isAdjustment 항목 UI 제거, 최종금액(공급가액) 직접입력, 품목소계 대비 조정금액 표시, 세액/합계 자동계산)
 - 2026-03-04: 발주 계산서/송금 연결 개선 — 매입계산서 자동생성 제거 (발주 생성 시 계산서 미생성, 상세에서 수동 연결만), 목록 계산서 열 "미연결"/"연결됨" 배지 표시, 송금 열 예정일/완료 상태 표시 (완료 시 녹색 배지, 미완료 시 "MM/DD 예정" 텍스트)
 - 2026-03-04: 발주서 계약상세 필드 추가 — purchase_orders에 staffId(인력풀FK), contactPerson(담당자명), paymentTerms(지급조건, 기본: 입고후 익월말), deliveryLocation(입고장소, 기본: 회사주소), warrantyTerms(보증조건, 기본: 하자보증 1년) 추가. 생성/상세 모달에서 편집 가능. PDF에 합계 후 계약상세 섹션 표시, 사인 섹션 좌우 반전 (좌=발주처+서명, 우=구매처)
+- 2026-03-05: 자금현황 모달 추가 — payments.category 필드 추가 (카드사용/정기결제/세금납부/관리비/임대료/대출상환/기타), recurring_expenses 테이블 (정기지출 관리), 자금계획 페이지에 "자금현황" 버튼 추가 → 전체화면 모달 (매출 입금 리스트, 매입 출금 리스트, 경비 직접 입력(카테고리별), 월 정기 예정금액 CRUD+일괄생성)
 
 ## Hooks
 - `useDialogContainer` (`client/src/hooks/use-dialog-container.ts`): Dialog 내부에서 Popover/Select 등 Portal 기반 컴포넌트가 정상 작동하도록 Dialog DOM 요소를 container로 제공하는 hook. Radix Dialog의 inert 속성으로 Portal'd 콘텐츠가 클릭 불가능해지는 문제 해결.
