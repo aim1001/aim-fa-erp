@@ -642,8 +642,9 @@ export function parseBankStatement(buffer: Buffer, year: number, month: number):
 
     let dateStr = "";
     if (typeof rawDate === "number") {
-      const d = XLSX.SSF.parse_date_code(rawDate);
-      if (d) dateStr = `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+      const excelEpoch = new Date(1899, 11, 30);
+      const jsDate = new Date(excelEpoch.getTime() + rawDate * 86400000);
+      dateStr = `${jsDate.getFullYear()}-${String(jsDate.getMonth() + 1).padStart(2, "0")}-${String(jsDate.getDate()).padStart(2, "0")}`;
     } else {
       const s = String(rawDate).trim();
       const match = s.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
