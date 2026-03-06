@@ -1386,8 +1386,47 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
     },
   });
 
+  const invalidateTaskCaches = () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/tasks`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/project-tasks/pending"] });
+  };
+
+  const syncTaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/tasks/${id}/sync-calendar`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateTaskCaches();
+      toast({ title: "캘린더에 등록되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "캘린더 등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const syncAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/tasks/sync-calendar", {});
+      return res.json();
+    },
+    onSuccess: (data: { synced: number; failed: number; total: number }) => {
+      invalidateTaskCaches();
+      if (data.synced > 0) {
+        toast({ title: `${data.synced}건 캘린더 등록 완료` });
+      } else {
+        toast({ title: "등록할 항목이 없습니다" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "캘린더 동기화 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const pendingTasks = tasks.filter(t => !t.completed);
   const completedTasks = tasks.filter(t => t.completed);
+  const unsyncedCount = pendingTasks.filter(t => t.dueDate && !t.calendarEventId).length;
 
   const isOverdue = (d: string | null) => {
     if (!d) return false;
@@ -1397,13 +1436,27 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-center gap-1.5">
-          <Check className="h-4 w-4" />
-          할일
-          {pendingTasks.length > 0 && (
-            <Badge variant="secondary" className="text-xs ml-1">{pendingTasks.length}</Badge>
-          )}
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm flex items-center gap-1.5">
+            <Check className="h-4 w-4" />
+            할일
+            {pendingTasks.length > 0 && (
+              <Badge variant="secondary" className="text-xs ml-1">{pendingTasks.length}</Badge>
+            )}
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[10px] gap-1 px-2"
+            onClick={() => syncAllMutation.mutate()}
+            disabled={syncAllMutation.isPending}
+            data-testid="button-sync-calendar-tasks"
+          >
+            <RefreshCw className={`h-3 w-3 ${syncAllMutation.isPending ? "animate-spin" : ""}`} />
+            캘린더 동기화
+            {unsyncedCount > 0 && <span className="bg-orange-100 text-orange-600 px-1 rounded-full text-[9px]">{unsyncedCount}</span>}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="flex gap-1.5">
@@ -1458,7 +1511,15 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
                 />
                 <span className="text-sm flex-1 min-w-0 truncate">{task.content}</span>
                 {task.dueDate && (
-                  <span className={`text-[10px] shrink-0 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                  <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                    <button
+                      onClick={() => syncTaskMutation.mutate(task.id)}
+                      disabled={syncTaskMutation.isPending}
+                      title={task.calendarEventId ? "캘린더 등록됨 (클릭 시 갱신)" : "캘린더 미등록 (클릭 시 등록)"}
+                      data-testid={`button-sync-task-${task.id}`}
+                    >
+                      <CalendarDays className={`h-3 w-3 ${task.calendarEventId ? "text-green-500" : "text-muted-foreground/40 hover:text-orange-500"}`} />
+                    </button>
                     {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
                   </span>
                 )}

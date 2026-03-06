@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, CalendarDays, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useSearch, useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -1321,8 +1321,47 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
     },
   });
 
+  const invalidateTaskCaches = () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/tasks`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/project-tasks/pending"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
+  };
+
+  const syncTaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/project-tasks/${id}/sync-calendar`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateTaskCaches();
+      toast({ title: "캘린더에 등록되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "캘린더 등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const syncAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/tasks/sync-calendar", {});
+      return res.json();
+    },
+    onSuccess: (data: { synced: number; failed: number; total: number }) => {
+      invalidateTaskCaches();
+      if (data.synced > 0) {
+        toast({ title: `${data.synced}건 캘린더 등록 완료` });
+      } else {
+        toast({ title: "등록할 항목이 없습니다" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "캘린더 동기화 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const pendingTasks = tasks.filter((t: any) => !t.completed);
   const completedTasks = tasks.filter((t: any) => t.completed);
+  const unsyncedCount = pendingTasks.filter((t: any) => t.dueDate && !t.calendarEventId).length;
 
   const isOverdue = (d: string | null) => {
     if (!d) return false;
@@ -1337,6 +1376,20 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
         {pendingTasks.length > 0 && (
           <span className="text-[10px] bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 px-1.5 rounded-full">{pendingTasks.length}</span>
         )}
+        <div className="ml-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 text-[9px] gap-0.5 px-1.5"
+            onClick={() => syncAllMutation.mutate()}
+            disabled={syncAllMutation.isPending}
+            data-testid="button-sync-calendar-project-tasks"
+          >
+            <RefreshCw className={`h-2.5 w-2.5 ${syncAllMutation.isPending ? "animate-spin" : ""}`} />
+            캘린더
+            {unsyncedCount > 0 && <span className="bg-orange-100 text-orange-600 px-1 rounded-full">{unsyncedCount}</span>}
+          </Button>
+        </div>
       </div>
       <div className="flex gap-1.5 mb-2">
         <Input
@@ -1390,7 +1443,15 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
               />
               <span className="text-xs flex-1 min-w-0 truncate">{task.content}</span>
               {task.dueDate && (
-                <span className={`text-[10px] shrink-0 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                  <button
+                    onClick={() => syncTaskMutation.mutate(task.id)}
+                    disabled={syncTaskMutation.isPending}
+                    title={task.calendarEventId ? "캘린더 등록됨 (클릭 시 갱신)" : "캘린더 미등록 (클릭 시 등록)"}
+                    data-testid={`button-sync-project-task-${task.id}`}
+                  >
+                    <CalendarDays className={`h-3 w-3 ${task.calendarEventId ? "text-green-500" : "text-muted-foreground/40 hover:text-orange-500"}`} />
+                  </button>
                   {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
                 </span>
               )}

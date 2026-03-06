@@ -1475,6 +1475,90 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/tasks/sync-calendar", async (_req, res) => {
+    try {
+      const { createTaskEvent } = await import("./google-calendar");
+      const inquiryTasksList = await storage.getAllPendingTasks();
+      const projectTasksList = await storage.getAllPendingProjectTasks();
+
+      let synced = 0, failed = 0;
+
+      for (const task of inquiryTasksList) {
+        if (task.calendarEventId || !task.dueDate) continue;
+        try {
+          const title = `[할일] ${task.inquiryNumber || ""}_${task.customerName || ""}: ${task.content}`;
+          const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
+          if (eventId) {
+            await storage.updateTask(task.id, { calendarEventId: eventId });
+            synced++;
+          } else { failed++; }
+        } catch { failed++; }
+      }
+
+      for (const task of projectTasksList) {
+        if (task.calendarEventId || !task.dueDate) continue;
+        try {
+          const title = `[할일] P:${task.projectNumber || ""}_${task.customerName || ""}: ${task.content}`;
+          const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
+          if (eventId) {
+            await storage.updateProjectTask(task.id, { calendarEventId: eventId });
+            synced++;
+          } else { failed++; }
+        } catch { failed++; }
+      }
+
+      const totalUnsyncedInquiry = inquiryTasksList.filter(t => !t.calendarEventId && t.dueDate).length;
+      const totalUnsyncedProject = projectTasksList.filter(t => !t.calendarEventId && t.dueDate).length;
+      res.json({ synced, failed, total: totalUnsyncedInquiry + totalUnsyncedProject });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/tasks/:id/sync-calendar", async (req, res) => {
+    try {
+      const existing = await storage.getTask(req.params.id);
+      if (!existing) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
+      if (!existing.dueDate) return res.status(400).json({ message: "기한이 설정되지 않았습니다" });
+
+      const { createTaskEvent, deleteCalendarEvent } = await import("./google-calendar");
+      if (existing.calendarEventId) {
+        try { await deleteCalendarEvent(existing.calendarEventId); } catch {}
+      }
+
+      const inquiry = await storage.getInquiry(existing.inquiryId);
+      const title = `[할일] ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${existing.content}`;
+      const eventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+      await storage.updateTask(existing.id, { calendarEventId: eventId });
+      const updated = await storage.getTask(existing.id);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/project-tasks/:id/sync-calendar", async (req, res) => {
+    try {
+      const existing = await storage.getProjectTask(req.params.id);
+      if (!existing) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
+      if (!existing.dueDate) return res.status(400).json({ message: "기한이 설정되지 않았습니다" });
+
+      const { createTaskEvent, deleteCalendarEvent } = await import("./google-calendar");
+      if (existing.calendarEventId) {
+        try { await deleteCalendarEvent(existing.calendarEventId); } catch {}
+      }
+
+      const project = await storage.getProject(existing.projectId);
+      const title = `[할일] P:${project?.projectNumber || ""}_${project?.customerName || ""}: ${existing.content}`;
+      const eventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+      await storage.updateProjectTask(existing.id, { calendarEventId: eventId });
+      const updated = await storage.getProjectTask(existing.id);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Quotation routes
   app.get("/api/inquiries/:id/quotations", async (req, res) => {
     try {

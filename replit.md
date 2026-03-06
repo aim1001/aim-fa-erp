@@ -111,7 +111,14 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `client/src/components/quotation-section.tsx` - Quotation section component (견적서 생성/편집/내보내기)
 - `server/quotation-export.ts` - PDF + Excel generation for quotations (pdfkit, exceljs)
 - `server/purchase-order-export.ts` - PDF generation for purchase orders (pdfkit, Pretendard font, A4 layout: 헤더+구매처정보+품목테이블+합계+서명란+비고)
-- `server/google-calendar.ts` - Google Calendar integration (견적 발송 시 이벤트 생성)
+- `server/google-calendar.ts` - Google Calendar integration (견적 발송 시 이벤트 생성, 할일 캘린더 등록)
+
+## Google Calendar 수동 동기화
+- POST /api/tasks/sync-calendar: 모든 미등록 할일(inquiry_tasks + project_tasks 중 dueDate 있고 calendarEventId 없는 항목) 일괄 캘린더 등록
+- POST /api/tasks/:id/sync-calendar: 개별 inquiry_task 캘린더 등록/갱신 (기존 이벤트 있으면 삭제 후 재생성)
+- POST /api/project-tasks/:id/sync-calendar: 개별 project_task 캘린더 등록/갱신
+- UI: 대시보드 할일 카드, 인콰이어리 상세 TaskSection, 프로젝트 상세 ProjectTaskSection에 일괄/개별 동기화 버튼
+- 캘린더 상태 아이콘: CalendarDays 아이콘 (초록=등록됨, 회색=미등록), 클릭 시 개별 동기화
 - `client/src/pages/settings.tsx` - Company settings page (회사 정보 + 로고 관리)
 - `client/src/pages/staff-list.tsx` - Staff pool page (인력풀 관리, 부서별 필터, 테이블+모달)
 - `server/uploads/` - Uploaded files (company logo, etc.)
