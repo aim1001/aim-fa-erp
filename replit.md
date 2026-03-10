@@ -49,7 +49,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
 - **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate) - 견적서 PDF 헤더에 반영, signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시), logoData/signatureData는 base64 data URI로 DB에 저장(배포 환경에서도 유지), autoCc는 이메일 발송 시 자동 CC, emailTemplate은 이메일 본문 템플릿({고객명},{견적번호} 치환), quotationNotesTemplate은 견적서 제외사항/기술지원 기본 템플릿
   - 설정 페이지는 탭 구조: "회사 정보" 탭 (로고, 서명, 기본정보, 계좌) + "견적서" 탭 (제외사항/기술지원 템플릿, 이메일 자동CC, 이메일 본문 템플릿)
-- **staff** 테이블: 인력풀 (name, department(자유입력+자동완성), title(직함: 대표이사/매니저/팀원 등 자유입력), email, phone(휴대폰), createdAt) — 대표이사는 부서 "-"
+- **vendor_contacts** 테이블: 구매처 담당자 인력풀 (vendorId FK→vendors, name, email, phone) — 구매처별 여러 담당자 관리, 발주서에서 선택/등록 가능
+- **staff** 테이블: 자사 인력풀 (name, department(자유입력+자동완성), title(직함: 대표이사/매니저/팀원 등 자유입력), email, phone(휴대폰), createdAt) — 대표이사는 부서 "-"
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - 발주서↔계산서↔송금 연동: 발주서 생성 시 송금 예정(payment) 자동 생성 → 계산서 연결 시 해당 payment에 purchaseInvoiceId 설정하여 계산서로 이관 → 계산서에서 송금 관리(조정/분할/완료) → 발주서는 연결된 계산서의 결제 상태를 참조하여 표시 (계산서 미연결 시 직접 paymentId 기반 표시). 발주서 상세에서는 송금 상태 조회만 가능, 관리는 계산서에서.
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지

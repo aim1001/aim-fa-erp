@@ -2287,6 +2287,54 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/vendors/:vendorId/contacts", async (req, res) => {
+    try {
+      const contacts = await storage.getVendorContacts(req.params.vendorId);
+      res.json(contacts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/vendors/:vendorId/contacts", async (req, res) => {
+    try {
+      const { name, email, phone } = req.body;
+      if (!name) return res.status(400).json({ message: "이름은 필수입니다" });
+      const created = await storage.createVendorContact({
+        vendorId: req.params.vendorId,
+        name,
+        email: email || null,
+        phone: phone || null,
+      });
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/vendor-contacts/:id", async (req, res) => {
+    try {
+      const allowedFields = ["name", "email", "phone"];
+      const patch: Record<string, any> = {};
+      for (const key of allowedFields) {
+        if (key in req.body) patch[key] = req.body[key];
+      }
+      const updated = await storage.updateVendorContact(req.params.id, patch);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/vendor-contacts/:id", async (req, res) => {
+    try {
+      await storage.deleteVendorContact(req.params.id);
+      res.json({ message: "삭제 완료" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/vendors/sync-from-invoices", async (_req, res) => {
     try {
       const allInvoices = await storage.getPurchaseInvoices();

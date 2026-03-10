@@ -125,6 +125,18 @@ export const vendors = pgTable("vendors", {
   isFavorite: boolean("is_favorite").default(false),
 });
 
+export const vendorContacts = pgTable("vendor_contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vendorId: varchar("vendor_id").notNull(),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+});
+
+export const insertVendorContactSchema = createInsertSchema(vendorContacts).omit({ id: true });
+export type InsertVendorContact = z.infer<typeof insertVendorContactSchema>;
+export type VendorContact = typeof vendorContacts.$inferSelect;
+
 export const salesInvoices = pgTable("sales_invoices", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   customerId: varchar("customer_id"),
@@ -376,6 +388,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   memo: text("memo"),
   staffId: varchar("staff_id"),
   contactPerson: text("contact_person"),
+  vendorContactId: varchar("vendor_contact_id"),
   paymentTerms: text("payment_terms"),
   deliveryLocation: text("delivery_location"),
   warrantyTerms: text("warranty_terms"),

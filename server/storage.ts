@@ -24,12 +24,13 @@ import {
   type Staff, type InsertStaff,
   type PurchaseOrder, type InsertPurchaseOrder,
   type PurchaseOrderItem, type InsertPurchaseOrderItem,
+  type VendorContact, type InsertVendorContact,
   type RecurringExpense, type InsertRecurringExpense,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
-  purchaseOrders, purchaseOrderItems, recurringExpenses,
+  purchaseOrders, purchaseOrderItems, vendorContacts, recurringExpenses,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -229,6 +230,11 @@ export interface IStorage {
   addPurchaseOrderItem(item: InsertPurchaseOrderItem): Promise<PurchaseOrderItem>;
   updatePurchaseOrderItem(id: string, item: Partial<InsertPurchaseOrderItem>): Promise<PurchaseOrderItem | undefined>;
   deletePurchaseOrderItem(id: string): Promise<void>;
+
+  getVendorContacts(vendorId: string): Promise<VendorContact[]>;
+  createVendorContact(data: InsertVendorContact): Promise<VendorContact>;
+  updateVendorContact(id: string, data: Partial<InsertVendorContact>): Promise<VendorContact | undefined>;
+  deleteVendorContact(id: string): Promise<void>;
 
   getRecurringExpenses(): Promise<RecurringExpense[]>;
   createRecurringExpense(data: InsertRecurringExpense): Promise<RecurringExpense>;
@@ -1231,6 +1237,24 @@ export class DatabaseStorage implements IStorage {
 
   async deletePurchaseOrderItem(id: string): Promise<void> {
     await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+  }
+
+  async getVendorContacts(vendorId: string): Promise<VendorContact[]> {
+    return db.select().from(vendorContacts).where(eq(vendorContacts.vendorId, vendorId));
+  }
+
+  async createVendorContact(data: InsertVendorContact): Promise<VendorContact> {
+    const [row] = await db.insert(vendorContacts).values(data).returning();
+    return row;
+  }
+
+  async updateVendorContact(id: string, data: Partial<InsertVendorContact>): Promise<VendorContact | undefined> {
+    const [row] = await db.update(vendorContacts).set(data).where(eq(vendorContacts.id, id)).returning();
+    return row;
+  }
+
+  async deleteVendorContact(id: string): Promise<void> {
+    await db.delete(vendorContacts).where(eq(vendorContacts.id, id));
   }
 
   async getRecurringExpenses(): Promise<RecurringExpense[]> {

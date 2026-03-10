@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem, Vendor, Staff, CompanySettings } from "@shared/schema";
+import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem, Vendor, VendorContact, Staff, CompanySettings } from "@shared/schema";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -819,6 +819,157 @@ function StaffSearchPopover({ staffList, selectedStaffId, contactPerson, onSelec
   );
 }
 
+function VendorContactSearchPopover({ vendorId, selectedContactId, onSelect, container }: {
+  vendorId: string | null;
+  selectedContactId: string;
+  onSelect: (contactId: string, contact: VendorContact | null) => void;
+  container?: HTMLElement | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [newContact, setNewContact] = useState({ name: "", email: "", phone: "" });
+  const { toast } = useToast();
+
+  const { data: contacts = [] } = useQuery<VendorContact[]>({
+    queryKey: ["/api/vendors", vendorId, "contacts"],
+    queryFn: async () => {
+      if (!vendorId) return [];
+      const res = await fetch(`/api/vendors/${vendorId}/contacts`);
+      return res.json();
+    },
+    enabled: !!vendorId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: { name: string; email: string; phone: string }) => {
+      const res = await apiRequest("POST", `/api/vendors/${vendorId}/contacts`, data);
+      return res.json();
+    },
+    onSuccess: (created: VendorContact) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "contacts"] });
+      onSelect(created.id, created);
+      setOpen(false);
+      setSearch("");
+      setShowNew(false);
+      setNewContact({ name: "", email: "", phone: "" });
+      toast({ title: "담당자가 등록되었습니다" });
+    },
+    onError: (err: any) => {
+      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const filtered = useMemo(() => {
+    if (!search) return contacts;
+    const q = search.toLowerCase();
+    return contacts.filter(c => c.name.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q));
+  }, [contacts, search]);
+
+  const selectedContact = contacts.find(c => c.id === selectedContactId);
+  const displayLabel = selectedContact ? selectedContact.name : "구매처 담당자 선택";
+
+  if (!vendorId) {
+    return (
+      <div className="h-8 text-sm px-3 w-full border rounded-md flex items-center text-muted-foreground" data-testid="text-no-vendor-contact">
+        구매처를 먼저 선택해주세요
+      </div>
+    );
+  }
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setSearch(""); setShowNew(false); } }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="h-8 text-sm px-3 w-full border rounded-md text-left truncate flex items-center justify-between hover:bg-muted/50"
+          data-testid="button-select-vendor-contact"
+        >
+          <span className={selectedContact ? "" : "text-muted-foreground"}>{displayLabel}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start" container={container}>
+        {!showNew ? (
+          <>
+            <div className="p-2 border-b">
+              <Input
+                placeholder="담당자 검색..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-7 text-xs"
+                autoFocus
+                data-testid="input-vendor-contact-search"
+              />
+            </div>
+            <ScrollArea className="max-h-[180px]">
+              {contacts.length > 0 && (
+                <button
+                  type="button"
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${!selectedContactId ? "bg-accent font-medium" : ""}`}
+                  onClick={() => { onSelect("", null); setOpen(false); setSearch(""); }}
+                  data-testid="vendor-contact-option-none"
+                >
+                  <span className="text-muted-foreground">선택 안함</span>
+                </button>
+              )}
+              {filtered.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${selectedContactId === c.id ? "bg-accent font-medium" : ""}`}
+                  onClick={() => { onSelect(c.id, c); setOpen(false); setSearch(""); }}
+                  data-testid={`vendor-contact-option-${c.id}`}
+                >
+                  <span className="font-medium">{c.name}</span>
+                  {c.email && <span className="text-muted-foreground ml-1 text-[10px]">{c.email}</span>}
+                  {c.phone && <span className="text-muted-foreground ml-1 text-[10px]">({c.phone})</span>}
+                </button>
+              ))}
+              {filtered.length === 0 && !search.trim() && (
+                <p className="p-3 text-xs text-muted-foreground text-center">등록된 담당자가 없습니다</p>
+              )}
+            </ScrollArea>
+            <div className="border-t p-1.5">
+              <button
+                type="button"
+                className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted rounded flex items-center gap-1.5 text-blue-600 font-medium"
+                onClick={() => setShowNew(true)}
+                data-testid="button-new-vendor-contact"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                새 담당자 등록
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="p-3 space-y-2">
+            <p className="text-xs font-medium">새 담당자 등록</p>
+            <div>
+              <Label className="text-[10px]">이름 *</Label>
+              <Input className="h-7 text-xs" value={newContact.name} onChange={e => setNewContact(f => ({ ...f, name: e.target.value }))} data-testid="input-new-vendor-contact-name" autoFocus />
+            </div>
+            <div>
+              <Label className="text-[10px]">이메일</Label>
+              <Input className="h-7 text-xs" type="email" value={newContact.email} onChange={e => setNewContact(f => ({ ...f, email: e.target.value }))} data-testid="input-new-vendor-contact-email" />
+            </div>
+            <div>
+              <Label className="text-[10px]">전화번호</Label>
+              <Input className="h-7 text-xs" value={newContact.phone} onChange={e => setNewContact(f => ({ ...f, phone: e.target.value }))} data-testid="input-new-vendor-contact-phone" />
+            </div>
+            <div className="flex gap-1 pt-1">
+              <Button size="sm" className="h-7 text-xs flex-1" disabled={!newContact.name.trim() || createMutation.isPending} onClick={() => createMutation.mutate(newContact)} data-testid="button-confirm-new-vendor-contact">
+                {createMutation.isPending ? "등록 중..." : "등록 후 선택"}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowNew(false)}>취소</Button>
+            </div>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function CreateOrderDialog({
   year,
   onClose,
@@ -842,12 +993,14 @@ function CreateOrderDialog({
 
   const { data: staffList } = useQuery<Staff[]>({ queryKey: ["/api/staff"] });
   const { data: companySettings } = useQuery<CompanySettings>({ queryKey: ["/api/company-settings"] });
+  const { data: vendors = [] } = useQuery<Vendor[]>({ queryKey: ["/api/vendors"] });
 
   const [form, setForm] = useState({
     orderNumber: "",
     vendor: "",
     vendorId: null as string | null,
     vendorBusinessNumber: "",
+    vendorContactId: "",
     description: "",
     status: "일반",
     expectedDeliveryDate: "",
@@ -858,6 +1011,11 @@ function CreateOrderDialog({
     deliveryLocation: "",
     warrantyTerms: "하자보증 1년",
   });
+
+  const selectedVendor = useMemo(() => {
+    if (form.vendorId) return vendors.find(v => v.id === form.vendorId) || null;
+    return form.vendor ? vendors.find(v => v.companyName === form.vendor) || null : null;
+  }, [form.vendorId, form.vendor, vendors]);
 
   useEffect(() => {
     if (companySettings?.address && !form.deliveryLocation) {
@@ -952,6 +1110,7 @@ function CreateOrderDialog({
       orderNumber: form.orderNumber || null,
       vendor: form.vendor,
       vendorId: form.vendorId,
+      vendorContactId: form.vendorContactId || null,
       description: form.description || items.map(i => i.itemName).join(", ") || null,
       supplyAmount: supplyAmount || null,
       taxAmount: taxAmount || null,
@@ -991,10 +1150,7 @@ function CreateOrderDialog({
             </div>
             <div>
               <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
-              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid, bnum) => setForm(f => ({ ...f, vendor: v, vendorId: vid || null, vendorBusinessNumber: bnum || "" }))} container={dialogContainer} />
-              {form.vendorBusinessNumber && (
-                <p className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-vendor-business-number">사업자번호: {form.vendorBusinessNumber}</p>
-              )}
+              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid, bnum) => setForm(f => ({ ...f, vendor: v, vendorId: vid || null, vendorBusinessNumber: bnum || "", vendorContactId: "" }))} container={dialogContainer} />
             </div>
             <div>
               <Label className="text-xs">상태</Label>
@@ -1010,9 +1166,46 @@ function CreateOrderDialog({
             </div>
           </div>
 
-          <div>
-            <Label className="text-xs">내용 (메모)</Label>
-            <Input className="h-8 text-sm" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} data-testid="input-create-description" />
+          {selectedVendor && (
+            <div className="bg-muted/30 rounded-md p-2.5 space-y-1" data-testid="panel-vendor-info">
+              <p className="text-[10px] font-medium text-muted-foreground">구매처 정보</p>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                {selectedVendor.businessNumber && (
+                  <div>
+                    <span className="text-muted-foreground">사업자번호: </span>
+                    <span data-testid="text-vendor-business-number">{selectedVendor.businessNumber}</span>
+                  </div>
+                )}
+                {selectedVendor.phone && (
+                  <div>
+                    <span className="text-muted-foreground">전화: </span>
+                    <span>{selectedVendor.phone}</span>
+                  </div>
+                )}
+                {selectedVendor.address && (
+                  <div className="col-span-3">
+                    <span className="text-muted-foreground">주소: </span>
+                    <span>{selectedVendor.address}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">구매처 담당자</Label>
+              <VendorContactSearchPopover
+                vendorId={form.vendorId}
+                selectedContactId={form.vendorContactId}
+                onSelect={(cid, _contact) => setForm(f => ({ ...f, vendorContactId: cid }))}
+                container={dialogContainer}
+              />
+            </div>
+            <div>
+              <Label className="text-xs">내용 (메모)</Label>
+              <Input className="h-8 text-sm" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} data-testid="input-create-description" />
+            </div>
           </div>
 
           <div className="border-t pt-3">
@@ -1572,6 +1765,7 @@ function OrderDetailModal({
     vendor: order.vendor || "",
     vendorId: order.vendorId || "",
     vendorBusinessNumber: "",
+    vendorContactId: order.vendorContactId || "",
     supplyAmount: String(order.supplyAmount || ""),
     taxAmount: String(order.taxAmount || ""),
     totalAmount: String(order.totalAmount || ""),
@@ -1608,9 +1802,26 @@ function OrderDetailModal({
     return null;
   }, [form.vendorId, form.vendor, vendors]);
 
+  const currentVendorId = form.vendorId || order.vendorId;
+  const { data: vendorContactsList = [] } = useQuery<VendorContact[]>({
+    queryKey: ["/api/vendors", currentVendorId, "contacts"],
+    queryFn: async () => {
+      if (!currentVendorId) return [];
+      const res = await fetch(`/api/vendors/${currentVendorId}/contacts`);
+      return res.json();
+    },
+    enabled: !!currentVendorId,
+  });
+
+  const selectedVendorContact = useMemo(() => {
+    if (!form.vendorContactId) return null;
+    return vendorContactsList.find(c => c.id === form.vendorContactId) || null;
+  }, [form.vendorContactId, vendorContactsList]);
+
   const handleOpenEmailDialog = () => {
+    const emailTo = selectedVendorContact?.email || vendorRecord?.contactEmail || "";
     setEmailForm({
-      to: vendorRecord?.contactEmail || "",
+      to: emailTo,
       subject: `[발주서] ${order.orderNumber || ""} - 발주 안내`,
       body: "",
       cc: "",
@@ -1736,6 +1947,7 @@ function OrderDetailModal({
     return (
       form.vendor !== (order.vendor || "") ||
       form.vendorId !== (order.vendorId || "") ||
+      form.vendorContactId !== (order.vendorContactId || "") ||
       form.supplyAmount !== String(order.supplyAmount || "") ||
       form.taxAmount !== String(order.taxAmount || "") ||
       form.totalAmount !== String(order.totalAmount || "") ||
@@ -1757,6 +1969,7 @@ function OrderDetailModal({
     onUpdate(order.id, {
       vendor: form.vendor || null,
       vendorId: form.vendorId || null,
+      vendorContactId: form.vendorContactId || null,
       supplyAmount: form.supplyAmount ? parseInt(form.supplyAmount) : null,
       taxAmount: form.taxAmount ? parseInt(form.taxAmount) : null,
       totalAmount: form.totalAmount ? parseInt(form.totalAmount) : null,
@@ -1814,14 +2027,35 @@ function OrderDetailModal({
                 <Label className="text-xs text-muted-foreground">구매처</Label>
                 <VendorSearchPopover
                   vendor={form.vendor}
-                  onSelect={(v, vid, bnum) => setForm(f => ({ ...f, vendor: v, vendorId: vid || "", vendorBusinessNumber: bnum || "" }))}
+                  onSelect={(v, vid, bnum) => setForm(f => ({ ...f, vendor: v, vendorId: vid || "", vendorBusinessNumber: bnum || "", vendorContactId: "" }))}
                   container={detailDialogContainer}
                 />
-                {(form.vendorBusinessNumber || vendorRecord?.businessNumber) && (
-                  <p className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-detail-vendor-business-number">사업자번호: {form.vendorBusinessNumber || vendorRecord?.businessNumber}</p>
-                )}
               </div>
-              <div className="col-span-2">
+              {vendorRecord && (
+                <div className="col-span-2 bg-muted/30 rounded-md p-2 space-y-0.5" data-testid="panel-detail-vendor-info">
+                  <div className="grid grid-cols-3 gap-2 text-[10px]">
+                    {vendorRecord.businessNumber && (
+                      <div><span className="text-muted-foreground">사업자번호: </span><span>{vendorRecord.businessNumber}</span></div>
+                    )}
+                    {vendorRecord.phone && (
+                      <div><span className="text-muted-foreground">전화: </span><span>{vendorRecord.phone}</span></div>
+                    )}
+                    {vendorRecord.address && (
+                      <div className="col-span-3"><span className="text-muted-foreground">주소: </span><span>{vendorRecord.address}</span></div>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div>
+                <Label className="text-xs text-muted-foreground">구매처 담당자</Label>
+                <VendorContactSearchPopover
+                  vendorId={form.vendorId || null}
+                  selectedContactId={form.vendorContactId}
+                  onSelect={(cid, _contact) => setForm(f => ({ ...f, vendorContactId: cid }))}
+                  container={detailDialogContainer}
+                />
+              </div>
+              <div>
                 <Label className="text-xs text-muted-foreground">내용</Label>
                 <p className="text-sm" data-testid="text-detail-description">{order.description || "-"}</p>
               </div>
@@ -2205,8 +2439,8 @@ function OrderDetailModal({
                 onChange={e => setEmailForm(f => ({ ...f, to: e.target.value }))}
                 data-testid="input-email-to"
               />
-              {vendorRecord?.contactName && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">담당자: {vendorRecord.contactName}{vendorRecord.contactPhone ? ` (${vendorRecord.contactPhone})` : ""}</p>
+              {(selectedVendorContact || vendorRecord?.contactName) && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">담당자: {selectedVendorContact?.name || vendorRecord?.contactName}{(selectedVendorContact?.phone || vendorRecord?.contactPhone) ? ` (${selectedVendorContact?.phone || vendorRecord?.contactPhone})` : ""}</p>
               )}
             </div>
             <div>
