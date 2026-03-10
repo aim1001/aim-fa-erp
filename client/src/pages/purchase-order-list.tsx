@@ -1569,6 +1569,9 @@ function OrderDetailModal({
   const { data: staffList } = useQuery<Staff[]>({ queryKey: ["/api/staff"] });
 
   const buildFormState = useCallback(() => ({
+    vendor: order.vendor || "",
+    vendorId: order.vendorId || "",
+    vendorBusinessNumber: "",
     supplyAmount: String(order.supplyAmount || ""),
     taxAmount: String(order.taxAmount || ""),
     totalAmount: String(order.totalAmount || ""),
@@ -1600,9 +1603,10 @@ function OrderDetailModal({
   const { data: vendors = [] } = useQuery<Vendor[]>({ queryKey: ["/api/vendors"] });
 
   const vendorRecord = useMemo(() => {
-    if (order.vendorId) return vendors.find(v => v.id === order.vendorId) || null;
-    return order.vendor ? vendors.find(v => v.companyName === order.vendor) : null;
-  }, [order.vendorId, order.vendor, vendors]);
+    if (form.vendorId) return vendors.find(v => v.id === form.vendorId) || null;
+    if (form.vendor) return vendors.find(v => v.companyName === form.vendor) || null;
+    return null;
+  }, [form.vendorId, form.vendor, vendors]);
 
   const handleOpenEmailDialog = () => {
     setEmailForm({
@@ -1730,6 +1734,8 @@ function OrderDetailModal({
 
   const isDirty = useMemo(() => {
     return (
+      form.vendor !== (order.vendor || "") ||
+      form.vendorId !== (order.vendorId || "") ||
       form.supplyAmount !== String(order.supplyAmount || "") ||
       form.taxAmount !== String(order.taxAmount || "") ||
       form.totalAmount !== String(order.totalAmount || "") ||
@@ -1749,6 +1755,8 @@ function OrderDetailModal({
 
   const handleSave = () => {
     onUpdate(order.id, {
+      vendor: form.vendor || null,
+      vendorId: form.vendorId || null,
       supplyAmount: form.supplyAmount ? parseInt(form.supplyAmount) : null,
       taxAmount: form.taxAmount ? parseInt(form.taxAmount) : null,
       totalAmount: form.totalAmount ? parseInt(form.totalAmount) : null,
@@ -1804,7 +1812,14 @@ function OrderDetailModal({
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">구매처</Label>
-                <p className="text-sm font-medium" data-testid="text-detail-vendor">{order.vendor || "-"}</p>
+                <VendorSearchPopover
+                  vendor={form.vendor}
+                  onSelect={(v, vid, bnum) => setForm(f => ({ ...f, vendor: v, vendorId: vid || "", vendorBusinessNumber: bnum || "" }))}
+                  container={detailDialogContainer}
+                />
+                {(form.vendorBusinessNumber || vendorRecord?.businessNumber) && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-detail-vendor-business-number">사업자번호: {form.vendorBusinessNumber || vendorRecord?.businessNumber}</p>
+                )}
               </div>
               <div className="col-span-2">
                 <Label className="text-xs text-muted-foreground">내용</Label>
