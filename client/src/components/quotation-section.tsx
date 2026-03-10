@@ -908,12 +908,16 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
   const openEmailDialog = async () => {
     let latestEmail = inquiry.snapshotEmail || "";
     let latestCompanyName = inquiry.snapshotCompanyName || "고객";
+    let latestContactName = inquiry.snapshotContactName || "";
+    let latestProductInfo = inquiry.productInfo || "";
     try {
       const inqRes = await fetch(`/api/inquiries/${inquiryId}`);
       if (inqRes.ok) {
         const latestInquiry = await inqRes.json();
         latestEmail = latestInquiry.snapshotEmail || latestEmail;
         latestCompanyName = latestInquiry.snapshotCompanyName || latestCompanyName;
+        latestContactName = latestInquiry.snapshotContactName || latestContactName;
+        latestProductInfo = latestInquiry.productInfo || latestProductInfo;
       }
     } catch {}
     setEmailTo(latestEmail);
@@ -927,7 +931,9 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
         if (settings.emailTemplate) {
           const body = settings.emailTemplate
             .replace(/\{고객명\}/g, latestCompanyName)
-            .replace(/\{견적번호\}/g, quotation.quoteNumber);
+            .replace(/\{이름\}/g, latestContactName)
+            .replace(/\{견적번호\}/g, quotation.quoteNumber)
+            .replace(/\{견적이름\}/g, latestProductInfo);
           setEmailBody(body);
         } else {
           setEmailBody(defaultBody);

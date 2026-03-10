@@ -441,7 +441,7 @@ export default function SettingsPage() {
                   data-testid="input-emailTemplate"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  견적 이메일 발송 시 기본 본문으로 사용됩니다. 치환 변수: <code>{"{고객명}"}</code>, <code>{"{견적번호}"}</code>
+                  견적 이메일 발송 시 기본 본문으로 사용됩니다. 치환 변수: <code>{"{고객명}"}</code>, <code>{"{이름}"}</code>, <code>{"{견적번호}"}</code>, <code>{"{견적이름}"}</code>
                 </p>
               </CardContent>
             </Card>
