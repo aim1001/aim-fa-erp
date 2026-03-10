@@ -47,8 +47,10 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, adjustmentAmount, adjustmentNote, discountType(percent/amount 선택), discountValue(비율% 또는 금액), discountTruncUnit(none/1000/10000/100000/1000000 - 최종공급가액에 절사 적용), deliveryDays(납기일수 - purchase_items의 최대 leadTimeDays 자동계산, 수정가능), createdAt)
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder, isAdjustment) — isAdjustment=true인 항목은 추가/할인 항목으로 별도 관리
 - **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
-- **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate) - 견적서 PDF 헤더에 반영, signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시), logoData/signatureData는 base64 data URI로 DB에 저장(배포 환경에서도 유지), autoCc는 이메일 발송 시 자동 CC, emailTemplate은 이메일 본문 템플릿({고객명},{견적번호} 치환), quotationNotesTemplate은 견적서 제외사항/기술지원 기본 템플릿
-  - 설정 페이지는 탭 구조: "회사 정보" 탭 (로고, 서명, 기본정보, 계좌) + "견적서" 탭 (제외사항/기술지원 템플릿, 이메일 자동CC, 이메일 본문 템플릿)
+- **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms) - 견적서 PDF 헤더에 반영, signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시), logoData/signatureData는 base64 data URI로 DB에 저장(배포 환경에서도 유지), autoCc는 이메일 발송 시 자동 CC, emailTemplate은 이메일 본문 템플릿({고객명},{견적번호} 치환), quotationNotesTemplate은 견적서 제외사항/기술지원 기본 템플릿, poDefault*는 발주서 기본값 설정
+  - 설정 페이지는 탭 구조: "회사 정보" 탭 (로고, 서명, 기본정보, 계좌) + "견적서" 탭 (제외사항/기술지원 템플릿, 이메일 자동CC, 이메일 본문 템플릿) + "발주서" 탭 (기본 담당자, 기본 지급조건, 기본 보증조건)
+- 발주서 계약상세: 지급조건은 프리셋 Select(익월말/선처리/월말/2주이내) + 직접입력 + 계약금/중도금/잔금 분할 체크박스, 보증조건은 하자보증 1년 체크박스 + 직접입력, 입고장소는 회사주소 기본값 + 수동수정
+- **StaffSearchPopover** 컴포넌트: `client/src/components/staff-search-popover.tsx`로 분리 — 발주서, 설정 페이지에서 공통 사용
 - **vendor_contacts** 테이블: 구매처 담당자 인력풀 (vendorId FK→vendors, name, email, phone) — 구매처별 여러 담당자 관리, 발주서에서 선택/등록 가능
 - **staff** 테이블: 자사 인력풀 (name, department(자유입력+자동완성), title(직함: 대표이사/매니저/팀원 등 자유입력), email, phone(휴대폰), createdAt) — 대표이사는 부서 "-"
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결

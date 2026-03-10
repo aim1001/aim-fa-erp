@@ -540,6 +540,9 @@ export const companySettings = pgTable("company_settings", {
   autoCc: text("auto_cc"),
   emailTemplate: text("email_template"),
   quotationNotesTemplate: text("quotation_notes_template"),
+  poDefaultStaffId: varchar("po_default_staff_id"),
+  poDefaultPaymentTerms: text("po_default_payment_terms"),
+  poDefaultWarrantyTerms: text("po_default_warranty_terms"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

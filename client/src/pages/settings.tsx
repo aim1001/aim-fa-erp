@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Upload, Trash2, Save, Building2, FileText, Mail } from "lucide-react";
-import type { CompanySettings } from "@shared/schema";
+import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart } from "lucide-react";
+import type { CompanySettings, Staff } from "@shared/schema";
+import StaffSearchPopover from "@/components/staff-search-popover";
 
 const DEFAULT_QUOTATION_NOTES = `[제외사항]
 - 기술지원료
@@ -31,6 +32,10 @@ export default function SettingsPage() {
     queryKey: ["/api/company-settings"],
   });
 
+  const { data: staffList } = useQuery<Staff[]>({
+    queryKey: ["/api/staff"],
+  });
+
   const [form, setForm] = useState({
     companyName: "",
     businessNumber: "",
@@ -43,7 +48,12 @@ export default function SettingsPage() {
     autoCc: "",
     emailTemplate: "",
     quotationNotesTemplate: "",
+    poDefaultStaffId: "" as string | null,
+    poDefaultPaymentTerms: "입고후 익월말",
+    poDefaultWarrantyTerms: "하자보증 1년",
   });
+
+  const [poDefaultContactPerson, setPoDefaultContactPerson] = useState("");
 
   useEffect(() => {
     if (settings) {
@@ -59,9 +69,16 @@ export default function SettingsPage() {
         autoCc: settings.autoCc || "",
         emailTemplate: settings.emailTemplate || "",
         quotationNotesTemplate: settings.quotationNotesTemplate || DEFAULT_QUOTATION_NOTES,
+        poDefaultStaffId: settings.poDefaultStaffId || null,
+        poDefaultPaymentTerms: settings.poDefaultPaymentTerms || "입고후 익월말",
+        poDefaultWarrantyTerms: settings.poDefaultWarrantyTerms || "하자보증 1년",
       });
+      if (settings.poDefaultStaffId && staffList) {
+        const s = staffList.find(st => st.id === settings.poDefaultStaffId);
+        if (s) setPoDefaultContactPerson(s.name);
+      }
     }
-  }, [settings]);
+  }, [settings, staffList]);
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof form) => {
@@ -185,7 +202,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="company" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="company" data-testid="tab-company-info">
               <Building2 className="h-4 w-4 mr-2" />
               회사 정보
@@ -193,6 +210,10 @@ export default function SettingsPage() {
             <TabsTrigger value="quotation" data-testid="tab-quotation-settings">
               <FileText className="h-4 w-4 mr-2" />
               견적서
+            </TabsTrigger>
+            <TabsTrigger value="purchaseOrder" data-testid="tab-purchase-order-settings">
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              발주서
             </TabsTrigger>
           </TabsList>
 
@@ -451,6 +472,63 @@ export default function SettingsPage() {
                 onClick={() => saveMutation.mutate(form)}
                 disabled={saveMutation.isPending}
                 data-testid="button-save-quotation-settings"
+              >
+                <Save className="h-4 w-4 mr-1" />
+                {saveMutation.isPending ? "저장 중..." : "저장"}
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="purchaseOrder" className="space-y-6 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ShoppingCart className="h-4 w-4" />
+                  발주서 기본값 설정
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-sm">기본 담당자</Label>
+                  <p className="text-xs text-muted-foreground mb-1">발주서 작성 시 자동으로 설정될 담당자입니다.</p>
+                  <StaffSearchPopover
+                    staffList={staffList || []}
+                    selectedStaffId={form.poDefaultStaffId || ""}
+                    contactPerson={poDefaultContactPerson}
+                    onSelect={(sid, name) => {
+                      setForm(f => ({ ...f, poDefaultStaffId: sid || null }));
+                      setPoDefaultContactPerson(name);
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">기본 지급조건</Label>
+                  <p className="text-xs text-muted-foreground mb-1">발주서 작성 시 기본 지급조건 텍스트입니다.</p>
+                  <Input
+                    value={form.poDefaultPaymentTerms}
+                    onChange={(e) => updateField("poDefaultPaymentTerms", e.target.value)}
+                    placeholder="입고후 익월말"
+                    data-testid="input-po-default-payment-terms"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">기본 보증조건</Label>
+                  <p className="text-xs text-muted-foreground mb-1">발주서 작성 시 기본 보증조건 텍스트입니다.</p>
+                  <Input
+                    value={form.poDefaultWarrantyTerms}
+                    onChange={(e) => updateField("poDefaultWarrantyTerms", e.target.value)}
+                    placeholder="하자보증 1년"
+                    data-testid="input-po-default-warranty-terms"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end pb-6">
+              <Button
+                onClick={() => saveMutation.mutate(form)}
+                disabled={saveMutation.isPending}
+                data-testid="button-save-po-settings"
               >
                 <Save className="h-4 w-4 mr-1" />
                 {saveMutation.isPending ? "저장 중..." : "저장"}

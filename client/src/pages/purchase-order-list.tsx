@@ -16,9 +16,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem, Vendor, VendorContact, Staff, CompanySettings } from "@shared/schema";
+import StaffSearchPopover from "@/components/staff-search-popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -680,145 +682,6 @@ function VendorSearchPopover({ vendor, onSelect, container }: { vendor: string; 
   );
 }
 
-function StaffSearchPopover({ staffList, selectedStaffId, contactPerson, onSelect, container }: {
-  staffList: Staff[];
-  selectedStaffId: string;
-  contactPerson: string;
-  onSelect: (staffId: string, name: string) => void;
-  container?: HTMLElement | null;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [showNew, setShowNew] = useState(false);
-  const [newStaff, setNewStaff] = useState({ name: "", department: "", title: "" });
-  const { toast } = useToast();
-
-  const createMutation = useMutation({
-    mutationFn: async (data: { name: string; department: string; title: string }) => {
-      const res = await apiRequest("POST", "/api/staff", data);
-      return res.json();
-    },
-    onSuccess: (created: Staff) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
-      onSelect(created.id, created.name);
-      setOpen(false);
-      setSearch("");
-      setShowNew(false);
-      setNewStaff({ name: "", department: "", title: "" });
-      toast({ title: "인력풀에 등록되었습니다" });
-    },
-    onError: (err: any) => {
-      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const filtered = useMemo(() => {
-    if (!search) return staffList;
-    const q = search.toLowerCase();
-    return staffList.filter(s => s.name.toLowerCase().includes(q) || s.department?.toLowerCase().includes(q) || s.title?.toLowerCase().includes(q));
-  }, [staffList, search]);
-
-  const displayLabel = contactPerson || "담당자 선택";
-
-  return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setSearch(""); setShowNew(false); } }}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="h-8 text-sm px-3 w-full border rounded-md text-left truncate flex items-center justify-between hover:bg-muted/50"
-          data-testid="button-select-staff"
-        >
-          <span className={contactPerson ? "" : "text-muted-foreground"}>{displayLabel}</span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0" align="start" container={container}>
-        {!showNew ? (
-          <>
-            <div className="p-2 border-b">
-              <Input
-                placeholder="이름 검색 또는 직접 입력..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="h-7 text-xs"
-                autoFocus
-                data-testid="input-staff-search"
-                onKeyDown={e => {
-                  if (e.key === "Enter" && search.trim()) {
-                    onSelect("", search.trim());
-                    setOpen(false);
-                    setSearch("");
-                  }
-                }}
-              />
-            </div>
-            <ScrollArea className="max-h-[180px]">
-              {search.trim() && !filtered.some(s => s.name === search.trim()) && (
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted text-blue-600 font-medium border-b"
-                  onClick={() => { onSelect("", search.trim()); setOpen(false); setSearch(""); }}
-                  data-testid="button-staff-direct-input"
-                >
-                  "{search.trim()}" 직접 입력
-                </button>
-              )}
-              {filtered.map(s => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${selectedStaffId === s.id ? "bg-accent font-medium" : ""}`}
-                  onClick={() => { onSelect(s.id, s.name); setOpen(false); setSearch(""); }}
-                  data-testid={`staff-option-${s.id}`}
-                >
-                  <span className="font-medium">{s.name}</span>
-                  <span className="text-muted-foreground ml-1">{s.title || s.department}</span>
-                </button>
-              ))}
-              {filtered.length === 0 && !search.trim() && (
-                <p className="p-3 text-xs text-muted-foreground text-center">등록된 인력이 없습니다</p>
-              )}
-            </ScrollArea>
-            <div className="border-t p-1.5">
-              <button
-                type="button"
-                className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted rounded flex items-center gap-1.5 text-blue-600 font-medium"
-                onClick={() => setShowNew(true)}
-                data-testid="button-new-staff"
-              >
-                <UserPlus className="h-3.5 w-3.5" />
-                새 인력 등록
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="p-3 space-y-2">
-            <p className="text-xs font-medium">새 인력 등록</p>
-            <div>
-              <Label className="text-[10px]">이름 *</Label>
-              <Input className="h-7 text-xs" value={newStaff.name} onChange={e => setNewStaff(f => ({ ...f, name: e.target.value }))} data-testid="input-new-staff-name" autoFocus />
-            </div>
-            <div>
-              <Label className="text-[10px]">부서 *</Label>
-              <Input className="h-7 text-xs" value={newStaff.department} onChange={e => setNewStaff(f => ({ ...f, department: e.target.value }))} data-testid="input-new-staff-department" />
-            </div>
-            <div>
-              <Label className="text-[10px]">직함</Label>
-              <Input className="h-7 text-xs" value={newStaff.title} onChange={e => setNewStaff(f => ({ ...f, title: e.target.value }))} data-testid="input-new-staff-title" />
-            </div>
-            <div className="flex gap-1 pt-1">
-              <Button size="sm" className="h-7 text-xs flex-1" disabled={!newStaff.name.trim() || !newStaff.department.trim() || createMutation.isPending} onClick={() => createMutation.mutate(newStaff)} data-testid="button-confirm-new-staff">
-                {createMutation.isPending ? "등록 중..." : "등록 후 선택"}
-              </Button>
-              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowNew(false)}>취소</Button>
-            </div>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 function VendorContactSearchPopover({ vendorId, selectedContactId, onSelect, container }: {
   vendorId: string | null;
   selectedContactId: string;
@@ -970,6 +833,178 @@ function VendorContactSearchPopover({ vendorId, selectedContactId, onSelect, con
   );
 }
 
+const PO_PAYMENT_TERM_OPTIONS = [
+  { value: "입고후 익월말", label: "익월말" },
+  { value: "선처리", label: "선처리" },
+  { value: "입고후 월말", label: "월말" },
+  { value: "입고후 2주이내", label: "2주이내" },
+];
+
+function buildPaymentTermsText(
+  baseTerm: string,
+  showSplit: boolean,
+  split: { deposit: string; mid: string; final: string }
+): string {
+  let text = baseTerm;
+  if (showSplit) {
+    const parts: string[] = [];
+    if (split.deposit) parts.push(`계약금 ${split.deposit}%`);
+    if (split.mid) parts.push(`중도금 ${split.mid}%`);
+    if (split.final) parts.push(`잔금 ${split.final}%`);
+    if (parts.length > 0) text += ` (${parts.join(", ")})`;
+  }
+  return text;
+}
+
+function parseSplitPaymentFromTerms(terms: string): { baseTerm: string; hasSplit: boolean; split: { deposit: string; mid: string; final: string } } {
+  const match = terms.match(/^(.+?)\s*\((.+)\)\s*$/);
+  if (!match) return { baseTerm: terms, hasSplit: false, split: { deposit: "", mid: "", final: "" } };
+  const baseTerm = match[1].trim();
+  const splitText = match[2];
+  const deposit = splitText.match(/계약금\s*(\d+)%/)?.[1] || "";
+  const mid = splitText.match(/중도금\s*(\d+)%/)?.[1] || "";
+  const final = splitText.match(/잔금\s*(\d+)%/)?.[1] || "";
+  if (!deposit && !mid && !final) return { baseTerm: terms, hasSplit: false, split: { deposit: "", mid: "", final: "" } };
+  return { baseTerm, hasSplit: true, split: { deposit, mid, final: final } };
+}
+
+function PaymentTermsField({
+  value,
+  onChange,
+  showSplit,
+  setShowSplit,
+  splitPayment,
+  setSplitPayment,
+  container,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  showSplit: boolean;
+  setShowSplit: (v: boolean) => void;
+  splitPayment: { deposit: string; mid: string; final: string };
+  setSplitPayment: (v: { deposit: string; mid: string; final: string }) => void;
+  container?: HTMLElement | null;
+}) {
+  const isPreset = PO_PAYMENT_TERM_OPTIONS.some(o => o.value === value);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-1.5">
+        <Select
+          value={isPreset ? value : "__custom__"}
+          onValueChange={v => {
+            if (v === "__custom__") return;
+            onChange(v);
+          }}
+        >
+          <SelectTrigger className="h-8 text-xs flex-1" data-testid="select-payment-terms">
+            <SelectValue placeholder="선택" />
+          </SelectTrigger>
+          <SelectContent container={container}>
+            {PO_PAYMENT_TERM_OPTIONS.map(o => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+            <SelectItem value="__custom__">직접입력</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {!isPreset && (
+        <Input
+          className="h-7 text-xs"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="지급조건 직접 입력"
+          data-testid="input-payment-terms-custom"
+        />
+      )}
+      <div className="flex items-center gap-1.5">
+        <Checkbox
+          id="split-payment"
+          checked={showSplit}
+          onCheckedChange={(c) => setShowSplit(!!c)}
+          data-testid="checkbox-split-payment"
+        />
+        <label htmlFor="split-payment" className="text-[10px] text-muted-foreground cursor-pointer">계약금/중도금/잔금 분할</label>
+      </div>
+      {showSplit && (
+        <div className="grid grid-cols-3 gap-1.5 pl-4">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] whitespace-nowrap">계약금</span>
+            <Input
+              type="number"
+              className="h-6 text-[10px] w-14"
+              value={splitPayment.deposit}
+              onChange={e => setSplitPayment({ ...splitPayment, deposit: e.target.value })}
+              placeholder="0"
+              data-testid="input-split-deposit"
+            />
+            <span className="text-[10px]">%</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] whitespace-nowrap">중도금</span>
+            <Input
+              type="number"
+              className="h-6 text-[10px] w-14"
+              value={splitPayment.mid}
+              onChange={e => setSplitPayment({ ...splitPayment, mid: e.target.value })}
+              placeholder="0"
+              data-testid="input-split-mid"
+            />
+            <span className="text-[10px]">%</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] whitespace-nowrap">잔금</span>
+            <Input
+              type="number"
+              className="h-6 text-[10px] w-14"
+              value={splitPayment.final}
+              onChange={e => setSplitPayment({ ...splitPayment, final: e.target.value })}
+              placeholder="0"
+              data-testid="input-split-final"
+            />
+            <span className="text-[10px]">%</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WarrantyTermsField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const isDefault = value === "하자보증 1년";
+  const hasCustom = value && !isDefault;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <Checkbox
+          id="warranty-default"
+          checked={isDefault || value.startsWith("하자보증 1년")}
+          onCheckedChange={(c) => {
+            if (c) onChange("하자보증 1년");
+            else onChange("");
+          }}
+          data-testid="checkbox-warranty-default"
+        />
+        <label htmlFor="warranty-default" className="text-xs cursor-pointer">하자보증 1년</label>
+      </div>
+      {(!isDefault || hasCustom) && (
+        <Input
+          className="h-7 text-xs"
+          value={isDefault ? "" : value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="보증조건 직접 입력"
+          data-testid="input-warranty-custom"
+        />
+      )}
+    </div>
+  );
+}
+
 function CreateOrderDialog({
   year,
   onClose,
@@ -1007,21 +1042,33 @@ function CreateOrderDialog({
     paymentDate: "",
     staffId: "" as string,
     contactPerson: "",
-    paymentTerms: "입고후 익월말",
+    paymentTerms: "",
     deliveryLocation: "",
-    warrantyTerms: "하자보증 1년",
+    warrantyTerms: "",
   });
+
+  const [showSplitPayment, setShowSplitPayment] = useState(false);
+  const [splitPayment, setSplitPayment] = useState({ deposit: "", mid: "", final: "" });
 
   const selectedVendor = useMemo(() => {
     if (form.vendorId) return vendors.find(v => v.id === form.vendorId) || null;
     return form.vendor ? vendors.find(v => v.companyName === form.vendor) || null : null;
   }, [form.vendorId, form.vendor, vendors]);
 
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
   useEffect(() => {
-    if (companySettings?.address && !form.deliveryLocation) {
-      setForm(f => ({ ...f, deliveryLocation: companySettings.address || "" }));
+    if (companySettings && !defaultsApplied) {
+      setDefaultsApplied(true);
+      setForm(f => ({
+        ...f,
+        deliveryLocation: f.deliveryLocation || companySettings.address || "",
+        paymentTerms: f.paymentTerms || companySettings.poDefaultPaymentTerms || "입고후 익월말",
+        warrantyTerms: f.warrantyTerms || companySettings.poDefaultWarrantyTerms || "하자보증 1년",
+        staffId: f.staffId || companySettings.poDefaultStaffId || "",
+        contactPerson: f.contactPerson || (companySettings.poDefaultStaffId && staffList ? (staffList.find(s => s.id === companySettings.poDefaultStaffId)?.name || "") : ""),
+      }));
     }
-  }, [companySettings]);
+  }, [companySettings, staffList]);
 
   const [items, setItems] = useState<OrderItemRow[]>([]);
   const [showFreeItem, setShowFreeItem] = useState(false);
@@ -1122,7 +1169,7 @@ function CreateOrderDialog({
       items: itemsData,
       staffId: form.staffId || null,
       contactPerson: form.contactPerson || (selectedStaff ? selectedStaff.name : null),
-      paymentTerms: form.paymentTerms || null,
+      paymentTerms: buildPaymentTermsText(form.paymentTerms, showSplitPayment, splitPayment) || null,
       deliveryLocation: form.deliveryLocation || null,
       warrantyTerms: form.warrantyTerms || null,
     });
@@ -1364,7 +1411,15 @@ function CreateOrderDialog({
               </div>
               <div>
                 <Label className="text-xs">지급조건</Label>
-                <Input className="h-8 text-sm" value={form.paymentTerms} onChange={e => setForm(f => ({ ...f, paymentTerms: e.target.value }))} data-testid="input-create-payment-terms" />
+                <PaymentTermsField
+                  value={form.paymentTerms}
+                  onChange={v => setForm(f => ({ ...f, paymentTerms: v }))}
+                  showSplit={showSplitPayment}
+                  setShowSplit={setShowSplitPayment}
+                  splitPayment={splitPayment}
+                  setSplitPayment={setSplitPayment}
+                  container={dialogContainer}
+                />
               </div>
               <div>
                 <Label className="text-xs">입고장소</Label>
@@ -1372,7 +1427,10 @@ function CreateOrderDialog({
               </div>
               <div>
                 <Label className="text-xs">보증조건</Label>
-                <Input className="h-8 text-sm" value={form.warrantyTerms} onChange={e => setForm(f => ({ ...f, warrantyTerms: e.target.value }))} data-testid="input-create-warranty-terms" />
+                <WarrantyTermsField
+                  value={form.warrantyTerms}
+                  onChange={v => setForm(f => ({ ...f, warrantyTerms: v }))}
+                />
               </div>
             </div>
           </div>
@@ -1790,8 +1848,17 @@ function OrderDetailModal({
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [emailForm, setEmailForm] = useState({ to: "", subject: "", body: "", cc: "" });
 
+  const initParsed = parseSplitPaymentFromTerms(order.paymentTerms || "");
+  const [detailShowSplitPayment, setDetailShowSplitPayment] = useState(initParsed.hasSplit);
+  const [detailSplitPayment, setDetailSplitPayment] = useState(initParsed.split);
+  const [detailPaymentBase, setDetailPaymentBase] = useState(initParsed.baseTerm);
+
   useEffect(() => {
     setForm(buildFormState());
+    const parsed = parseSplitPaymentFromTerms(order.paymentTerms || "");
+    setDetailShowSplitPayment(parsed.hasSplit);
+    setDetailSplitPayment(parsed.split);
+    setDetailPaymentBase(parsed.baseTerm);
   }, [buildFormState]);
 
   const { data: vendors = [] } = useQuery<Vendor[]>({ queryKey: ["/api/vendors"] });
@@ -1943,6 +2010,8 @@ function OrderDetailModal({
     });
   };
 
+  const computedPaymentTerms = buildPaymentTermsText(detailPaymentBase, detailShowSplitPayment, detailSplitPayment);
+
   const isDirty = useMemo(() => {
     return (
       form.vendor !== (order.vendor || "") ||
@@ -1959,11 +2028,11 @@ function OrderDetailModal({
       form.memo !== (order.memo || "") ||
       form.staffId !== (order.staffId || "") ||
       form.contactPerson !== (order.contactPerson || "") ||
-      form.paymentTerms !== (order.paymentTerms || "") ||
+      computedPaymentTerms !== (order.paymentTerms || "") ||
       form.deliveryLocation !== (order.deliveryLocation || "") ||
       form.warrantyTerms !== (order.warrantyTerms || "")
     );
-  }, [form, order]);
+  }, [form, order, computedPaymentTerms]);
 
   const handleSave = () => {
     onUpdate(order.id, {
@@ -1981,7 +2050,7 @@ function OrderDetailModal({
       memo: form.memo || null,
       staffId: form.staffId || null,
       contactPerson: form.contactPerson || null,
-      paymentTerms: form.paymentTerms || null,
+      paymentTerms: computedPaymentTerms || null,
       deliveryLocation: form.deliveryLocation || null,
       warrantyTerms: form.warrantyTerms || null,
     });
@@ -2365,7 +2434,15 @@ function OrderDetailModal({
                     </div>
                     <div>
                       <Label className="text-[10px] text-muted-foreground">지급조건</Label>
-                      <Input className="h-7 text-xs" value={form.paymentTerms} onChange={e => setForm(f => ({ ...f, paymentTerms: e.target.value }))} data-testid="input-detail-payment-terms" />
+                      <PaymentTermsField
+                        value={detailPaymentBase}
+                        onChange={v => setDetailPaymentBase(v)}
+                        showSplit={detailShowSplitPayment}
+                        setShowSplit={setDetailShowSplitPayment}
+                        splitPayment={detailSplitPayment}
+                        setSplitPayment={setDetailSplitPayment}
+                        container={detailDialogContainer}
+                      />
                     </div>
                     <div>
                       <Label className="text-[10px] text-muted-foreground">입고장소</Label>
@@ -2373,7 +2450,10 @@ function OrderDetailModal({
                     </div>
                     <div>
                       <Label className="text-[10px] text-muted-foreground">보증조건</Label>
-                      <Input className="h-7 text-xs" value={form.warrantyTerms} onChange={e => setForm(f => ({ ...f, warrantyTerms: e.target.value }))} data-testid="input-detail-warranty-terms" />
+                      <WarrantyTermsField
+                        value={form.warrantyTerms}
+                        onChange={v => setForm(f => ({ ...f, warrantyTerms: v }))}
+                      />
                     </div>
                   </div>
                 </div>
