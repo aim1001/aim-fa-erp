@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
@@ -604,7 +604,7 @@ function PurchaseItemSearchPopover({ onSelect, container }: { onSelect: (item: P
   );
 }
 
-function VendorSearchPopover({ vendor, onSelect, container }: { vendor: string; onSelect: (name: string, vendorId?: string) => void; container?: HTMLElement | null }) {
+function VendorSearchPopover({ vendor, onSelect, container }: { vendor: string; onSelect: (name: string, vendorId?: string, businessNumber?: string) => void; container?: HTMLElement | null }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -664,16 +664,156 @@ function VendorSearchPopover({ vendor, onSelect, container }: { vendor: string; 
               key={v.id}
               type="button"
               className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${vendor === v.companyName ? "bg-accent font-medium" : ""}`}
-              onClick={() => { onSelect(v.companyName, v.id); setOpen(false); setSearch(""); }}
+              onClick={() => { onSelect(v.companyName, v.id, v.businessNumber || undefined); setOpen(false); setSearch(""); }}
               data-testid={`vendor-option-${v.id}`}
             >
-              {v.companyName}
+              <span>{v.companyName}</span>
+              {v.businessNumber && <span className="text-[10px] text-muted-foreground ml-1">({v.businessNumber})</span>}
             </button>
           ))}
           {filtered.length === 0 && !search.trim() && (
             <p className="p-3 text-xs text-muted-foreground text-center">등록된 구매처가 없습니다</p>
           )}
         </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function StaffSearchPopover({ staffList, selectedStaffId, contactPerson, onSelect, container }: {
+  staffList: Staff[];
+  selectedStaffId: string;
+  contactPerson: string;
+  onSelect: (staffId: string, name: string) => void;
+  container?: HTMLElement | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showNew, setShowNew] = useState(false);
+  const [newStaff, setNewStaff] = useState({ name: "", department: "", title: "" });
+  const { toast } = useToast();
+
+  const createMutation = useMutation({
+    mutationFn: async (data: { name: string; department: string; title: string }) => {
+      const res = await apiRequest("POST", "/api/staff", data);
+      return res.json();
+    },
+    onSuccess: (created: Staff) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
+      onSelect(created.id, created.name);
+      setOpen(false);
+      setSearch("");
+      setShowNew(false);
+      setNewStaff({ name: "", department: "", title: "" });
+      toast({ title: "인력풀에 등록되었습니다" });
+    },
+    onError: (err: any) => {
+      toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const filtered = useMemo(() => {
+    if (!search) return staffList;
+    const q = search.toLowerCase();
+    return staffList.filter(s => s.name.toLowerCase().includes(q) || s.department?.toLowerCase().includes(q) || s.title?.toLowerCase().includes(q));
+  }, [staffList, search]);
+
+  const displayLabel = contactPerson || "담당자 선택";
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setSearch(""); setShowNew(false); } }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="h-8 text-sm px-3 w-full border rounded-md text-left truncate flex items-center justify-between hover:bg-muted/50"
+          data-testid="button-select-staff"
+        >
+          <span className={contactPerson ? "" : "text-muted-foreground"}>{displayLabel}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[280px] p-0" align="start" container={container}>
+        {!showNew ? (
+          <>
+            <div className="p-2 border-b">
+              <Input
+                placeholder="이름 검색 또는 직접 입력..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="h-7 text-xs"
+                autoFocus
+                data-testid="input-staff-search"
+                onKeyDown={e => {
+                  if (e.key === "Enter" && search.trim()) {
+                    onSelect("", search.trim());
+                    setOpen(false);
+                    setSearch("");
+                  }
+                }}
+              />
+            </div>
+            <ScrollArea className="max-h-[180px]">
+              {search.trim() && !filtered.some(s => s.name === search.trim()) && (
+                <button
+                  type="button"
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted text-blue-600 font-medium border-b"
+                  onClick={() => { onSelect("", search.trim()); setOpen(false); setSearch(""); }}
+                  data-testid="button-staff-direct-input"
+                >
+                  "{search.trim()}" 직접 입력
+                </button>
+              )}
+              {filtered.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted ${selectedStaffId === s.id ? "bg-accent font-medium" : ""}`}
+                  onClick={() => { onSelect(s.id, s.name); setOpen(false); setSearch(""); }}
+                  data-testid={`staff-option-${s.id}`}
+                >
+                  <span className="font-medium">{s.name}</span>
+                  <span className="text-muted-foreground ml-1">{s.title || s.department}</span>
+                </button>
+              ))}
+              {filtered.length === 0 && !search.trim() && (
+                <p className="p-3 text-xs text-muted-foreground text-center">등록된 인력이 없습니다</p>
+              )}
+            </ScrollArea>
+            <div className="border-t p-1.5">
+              <button
+                type="button"
+                className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted rounded flex items-center gap-1.5 text-blue-600 font-medium"
+                onClick={() => setShowNew(true)}
+                data-testid="button-new-staff"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                새 인력 등록
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="p-3 space-y-2">
+            <p className="text-xs font-medium">새 인력 등록</p>
+            <div>
+              <Label className="text-[10px]">이름 *</Label>
+              <Input className="h-7 text-xs" value={newStaff.name} onChange={e => setNewStaff(f => ({ ...f, name: e.target.value }))} data-testid="input-new-staff-name" autoFocus />
+            </div>
+            <div>
+              <Label className="text-[10px]">부서 *</Label>
+              <Input className="h-7 text-xs" value={newStaff.department} onChange={e => setNewStaff(f => ({ ...f, department: e.target.value }))} data-testid="input-new-staff-department" />
+            </div>
+            <div>
+              <Label className="text-[10px]">직함</Label>
+              <Input className="h-7 text-xs" value={newStaff.title} onChange={e => setNewStaff(f => ({ ...f, title: e.target.value }))} data-testid="input-new-staff-title" />
+            </div>
+            <div className="flex gap-1 pt-1">
+              <Button size="sm" className="h-7 text-xs flex-1" disabled={!newStaff.name.trim() || !newStaff.department.trim() || createMutation.isPending} onClick={() => createMutation.mutate(newStaff)} data-testid="button-confirm-new-staff">
+                {createMutation.isPending ? "등록 중..." : "등록 후 선택"}
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowNew(false)}>취소</Button>
+            </div>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -707,6 +847,7 @@ function CreateOrderDialog({
     orderNumber: "",
     vendor: "",
     vendorId: null as string | null,
+    vendorBusinessNumber: "",
     description: "",
     status: "일반",
     expectedDeliveryDate: "",
@@ -850,7 +991,10 @@ function CreateOrderDialog({
             </div>
             <div>
               <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
-              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid) => setForm(f => ({ ...f, vendor: v, vendorId: vid || null }))} container={dialogContainer} />
+              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid, bnum) => setForm(f => ({ ...f, vendor: v, vendorId: vid || null, vendorBusinessNumber: bnum || "" }))} container={dialogContainer} />
+              {form.vendorBusinessNumber && (
+                <p className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-vendor-business-number">사업자번호: {form.vendorBusinessNumber}</p>
+              )}
             </div>
             <div>
               <Label className="text-xs">상태</Label>
@@ -1017,17 +1161,13 @@ function CreateOrderDialog({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">담당자</Label>
-                <div className="flex gap-1">
-                  <Select value={form.staffId} onValueChange={v => { const s = staffList?.find(st => st.id === v); setForm(f => ({ ...f, staffId: v, contactPerson: s ? s.name : f.contactPerson })); }}>
-                    <SelectTrigger className="h-8 text-sm flex-1" data-testid="select-create-staff">
-                      <SelectValue placeholder="인력풀에서 선택" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(staffList || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.title || s.department})</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Input className="h-7 text-xs mt-1" placeholder="또는 직접 입력" value={form.contactPerson} onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value, staffId: "" }))} data-testid="input-create-contact-person" />
+                <StaffSearchPopover
+                  staffList={staffList || []}
+                  selectedStaffId={form.staffId}
+                  contactPerson={form.contactPerson}
+                  onSelect={(sid, name) => setForm(f => ({ ...f, staffId: sid, contactPerson: name }))}
+                  container={dialogContainer}
+                />
               </div>
               <div>
                 <Label className="text-xs">지급조건</Label>
@@ -1966,15 +2106,13 @@ function OrderDetailModal({
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label className="text-[10px] text-muted-foreground">담당자</Label>
-                      <Select value={form.staffId} onValueChange={v => { const s = staffList?.find(st => st.id === v); setForm(f => ({ ...f, staffId: v, contactPerson: s ? s.name : f.contactPerson })); }}>
-                        <SelectTrigger className="h-7 text-xs" data-testid="select-detail-staff">
-                          <SelectValue placeholder="인력풀에서 선택" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(staffList || []).map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.title || s.department})</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      <Input className="h-6 text-[10px] mt-1" placeholder="또는 직접 입력" value={form.contactPerson} onChange={e => setForm(f => ({ ...f, contactPerson: e.target.value, staffId: "" }))} data-testid="input-detail-contact-person" />
+                      <StaffSearchPopover
+                        staffList={staffList || []}
+                        selectedStaffId={form.staffId}
+                        contactPerson={form.contactPerson}
+                        onSelect={(sid, name) => setForm(f => ({ ...f, staffId: sid, contactPerson: name }))}
+                        container={detailDialogContainer}
+                      />
                     </div>
                     <div>
                       <Label className="text-[10px] text-muted-foreground">지급조건</Label>
