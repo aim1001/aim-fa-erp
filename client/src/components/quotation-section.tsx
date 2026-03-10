@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Quotation, QuotationItem, Inquiry, ItemMaster } from "@shared/schema";
+import type { Quotation, QuotationItem, Inquiry, ItemMaster, CompanySettings } from "@shared/schema";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
 
 function fmtNum(n: number | null | undefined) {
@@ -432,13 +432,7 @@ function ItemsTab({ quotation, items, onRefresh }: {
   );
 }
 
-function PricingTab({ quotation, items, inquiryId, onRefresh }: {
-  quotation: Quotation;
-  items: QuotationItem[];
-  inquiryId: string;
-  onRefresh: () => void;
-}) {
-  const DEFAULT_NOTES = `[제외사항]
+const FALLBACK_NOTES = `[제외사항]
 - 기술지원료
 - 모니터, 키보드, 마우스, 배선 설치 및 배선
 - 피더용 SMPS(24V 5A 이상), 조명용 SMPS(24V 2.5A 이상)
@@ -448,8 +442,29 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
   대전 이남 80만원
 - 원격 기술지원: 4시간 20만원`;
 
+function PricingTab({ quotation, items, inquiryId, onRefresh }: {
+  quotation: Quotation;
+  items: QuotationItem[];
+  inquiryId: string;
+  onRefresh: () => void;
+}) {
+  const { data: companySettings } = useQuery<CompanySettings>({
+    queryKey: ["/api/company-settings"],
+  });
+
+  const defaultNotes = companySettings?.quotationNotesTemplate || FALLBACK_NOTES;
+
   const { toast } = useToast();
-  const [notes, setNotes] = useState(quotation.notes || DEFAULT_NOTES);
+  const [notes, setNotes] = useState(quotation.notes || defaultNotes);
+  const [notesInitialized, setNotesInitialized] = useState(!!quotation.notes);
+
+  useEffect(() => {
+    if (!notesInitialized && !quotation.notes && companySettings?.quotationNotesTemplate) {
+      setNotes(companySettings.quotationNotesTemplate);
+      setNotesInitialized(true);
+    }
+  }, [companySettings?.quotationNotesTemplate, quotation.notes, notesInitialized]);
+
   const [newAdj, setNewAdj] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [editingAdjId, setEditingAdjId] = useState<string | null>(null);
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
@@ -809,7 +824,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
           <button
             type="button"
             className="text-xs text-blue-500 hover:underline"
-            onClick={() => setNotes(DEFAULT_NOTES)}
+            onClick={() => setNotes(defaultNotes)}
             data-testid="button-load-default-notes"
           >
             기본 메모 불러오기

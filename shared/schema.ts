@@ -526,6 +526,7 @@ export const companySettings = pgTable("company_settings", {
   bankInfo: text("bank_info"),
   autoCc: text("auto_cc"),
   emailTemplate: text("email_template"),
+  quotationNotesTemplate: text("quotation_notes_template"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

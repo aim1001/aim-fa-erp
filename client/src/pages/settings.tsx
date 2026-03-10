@@ -8,8 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Settings, Upload, Trash2, Save, Building2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Settings, Upload, Trash2, Save, Building2, FileText, Mail } from "lucide-react";
 import type { CompanySettings } from "@shared/schema";
+
+const DEFAULT_QUOTATION_NOTES = `[제외사항]
+- 기술지원료
+- 모니터, 키보드, 마우스, 배선 설치 및 배선
+- 피더용 SMPS(24V 5A 이상), 조명용 SMPS(24V 2.5A 이상)
+
+[기술지원]
+- 현장 출장 1MD: 60만원 (8시간, 이동시간 제외, 숙식비 제외)
+  대전 이남 80만원
+- 원격 기술지원: 4시간 20만원`;
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -31,6 +42,7 @@ export default function SettingsPage() {
     bankInfo: "",
     autoCc: "",
     emailTemplate: "",
+    quotationNotesTemplate: "",
   });
 
   useEffect(() => {
@@ -46,6 +58,7 @@ export default function SettingsPage() {
         bankInfo: settings.bankInfo || "",
         autoCc: settings.autoCc || "",
         emailTemplate: settings.emailTemplate || "",
+        quotationNotesTemplate: settings.quotationNotesTemplate || DEFAULT_QUOTATION_NOTES,
       });
     }
   }, [settings]);
@@ -57,7 +70,7 @@ export default function SettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/company-settings"] });
-      toast({ title: "저장 완료", description: "회사 정보가 저장되었습니다." });
+      toast({ title: "저장 완료", description: "설정이 저장되었습니다." });
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
@@ -168,217 +181,283 @@ export default function SettingsPage() {
       <div className="p-6 max-w-3xl mx-auto space-y-6">
         <div className="flex items-center gap-3">
           <Settings className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold" data-testid="text-settings-title">회사 정보 설정</h1>
+          <h1 className="text-2xl font-bold" data-testid="text-settings-title">설정</h1>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Upload className="h-4 w-4" />
-              회사 로고
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-6">
-              <div className="w-32 h-32 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 overflow-hidden">
-                {(settings?.logoData || settings?.logoUrl) ? (
-                  <img
-                    src={settings.logoData || settings.logoUrl}
-                    alt="회사 로고"
-                    className="w-full h-full object-contain p-2"
-                    data-testid="img-company-logo"
-                  />
-                ) : (
-                  <Building2 className="h-12 w-12 text-muted-foreground/40" />
-                )}
-              </div>
-              <div className="space-y-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
-                  className="hidden"
-                  onChange={handleFileChange}
-                  data-testid="input-logo-file"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadMutation.isPending}
-                  data-testid="button-upload-logo"
-                >
-                  <Upload className="h-4 w-4 mr-1" />
-                  {uploadMutation.isPending ? "업로드 중..." : "로고 업로드"}
-                </Button>
-                {(settings?.logoData || settings?.logoUrl) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => removeLogo.mutate()}
-                    disabled={removeLogo.isPending}
-                    data-testid="button-remove-logo"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    로고 삭제
-                  </Button>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  PNG, JPG, SVG, WebP (최대 5MB)
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="company" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="company" data-testid="tab-company-info">
+              <Building2 className="h-4 w-4 mr-2" />
+              회사 정보
+            </TabsTrigger>
+            <TabsTrigger value="quotation" data-testid="tab-quotation-settings">
+              <FileText className="h-4 w-4 mr-2" />
+              견적서
+            </TabsTrigger>
+          </TabsList>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Upload className="h-4 w-4" />
-              대표이사 서명
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-6">
-              <div className="w-32 h-20 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 overflow-hidden">
-                {(settings?.signatureData || settings?.signatureUrl) ? (
-                  <img
-                    src={settings.signatureData || settings.signatureUrl}
-                    alt="대표이사 서명"
-                    className="w-full h-full object-contain p-2"
-                    data-testid="img-signature"
-                  />
-                ) : (
-                  <span className="text-xs text-muted-foreground/40">서명 없음</span>
-                )}
-              </div>
-              <div className="space-y-2">
-                <input
-                  ref={signatureInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
-                  className="hidden"
-                  onChange={handleSignatureChange}
-                  data-testid="input-signature-file"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => signatureInputRef.current?.click()}
-                  disabled={uploadSignatureMutation.isPending}
-                  data-testid="button-upload-signature"
-                >
-                  <Upload className="h-4 w-4 mr-1" />
-                  {uploadSignatureMutation.isPending ? "업로드 중..." : "서명 업로드"}
-                </Button>
-                {(settings?.signatureData || settings?.signatureUrl) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => removeSignature.mutate()}
-                    disabled={removeSignature.isPending}
-                    data-testid="button-remove-signature"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    서명 삭제
-                  </Button>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  PNG, JPG (투명 배경 PNG 권장, 최대 5MB)
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Building2 className="h-4 w-4" />
-              기본 정보
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {fields.map(({ key, label, placeholder }) => (
-                <div key={key} className={key === "address" ? "md:col-span-2" : ""}>
-                  <Label htmlFor={key} className="text-sm font-medium">{label}</Label>
-                  <Input
-                    id={key}
-                    value={form[key]}
-                    onChange={(e) => updateField(key, e.target.value)}
-                    placeholder={placeholder}
-                    className="mt-1"
-                    data-testid={`input-${key}`}
-                  />
+          <TabsContent value="company" className="space-y-6 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Upload className="h-4 w-4" />
+                  회사 로고
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-6">
+                  <div className="w-32 h-32 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 overflow-hidden">
+                    {(settings?.logoData || settings?.logoUrl) ? (
+                      <img
+                        src={settings.logoData || settings.logoUrl}
+                        alt="회사 로고"
+                        className="w-full h-full object-contain p-2"
+                        data-testid="img-company-logo"
+                      />
+                    ) : (
+                      <Building2 className="h-12 w-12 text-muted-foreground/40" />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
+                      className="hidden"
+                      onChange={handleFileChange}
+                      data-testid="input-logo-file"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadMutation.isPending}
+                      data-testid="button-upload-logo"
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      {uploadMutation.isPending ? "업로드 중..." : "로고 업로드"}
+                    </Button>
+                    {(settings?.logoData || settings?.logoUrl) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => removeLogo.mutate()}
+                        disabled={removeLogo.isPending}
+                        data-testid="button-remove-logo"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        로고 삭제
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      PNG, JPG, SVG, WebP (최대 5MB)
+                    </p>
+                  </div>
                 </div>
-              ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Upload className="h-4 w-4" />
+                  대표이사 서명
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-6">
+                  <div className="w-32 h-20 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 overflow-hidden">
+                    {(settings?.signatureData || settings?.signatureUrl) ? (
+                      <img
+                        src={settings.signatureData || settings.signatureUrl}
+                        alt="대표이사 서명"
+                        className="w-full h-full object-contain p-2"
+                        data-testid="img-signature"
+                      />
+                    ) : (
+                      <span className="text-xs text-muted-foreground/40">서명 없음</span>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <input
+                      ref={signatureInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/gif,image/svg+xml,image/webp"
+                      className="hidden"
+                      onChange={handleSignatureChange}
+                      data-testid="input-signature-file"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => signatureInputRef.current?.click()}
+                      disabled={uploadSignatureMutation.isPending}
+                      data-testid="button-upload-signature"
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      {uploadSignatureMutation.isPending ? "업로드 중..." : "서명 업로드"}
+                    </Button>
+                    {(settings?.signatureData || settings?.signatureUrl) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => removeSignature.mutate()}
+                        disabled={removeSignature.isPending}
+                        data-testid="button-remove-signature"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        서명 삭제
+                      </Button>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      PNG, JPG (투명 배경 PNG 권장, 최대 5MB)
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Building2 className="h-4 w-4" />
+                  기본 정보
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {fields.map(({ key, label, placeholder }) => (
+                    <div key={key} className={key === "address" ? "md:col-span-2" : ""}>
+                      <Label htmlFor={key} className="text-sm font-medium">{label}</Label>
+                      <Input
+                        id={key}
+                        value={form[key]}
+                        onChange={(e) => updateField(key, e.target.value)}
+                        placeholder={placeholder}
+                        className="mt-1"
+                        data-testid={`input-${key}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">입금 계좌 정보</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={form.bankInfo}
+                  onChange={(e) => updateField("bankInfo", e.target.value)}
+                  placeholder="은행명, 계좌번호, 예금주 등을 입력하세요"
+                  rows={3}
+                  data-testid="input-bankInfo"
+                />
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-end pb-6">
+              <Button
+                onClick={() => saveMutation.mutate(form)}
+                disabled={saveMutation.isPending}
+                data-testid="button-save-company-settings"
+              >
+                <Save className="h-4 w-4 mr-1" />
+                {saveMutation.isPending ? "저장 중..." : "저장"}
+              </Button>
             </div>
-          </CardContent>
-        </Card>
+          </TabsContent>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">이메일 자동 CC</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Input
-              value={form.autoCc}
-              onChange={(e) => updateField("autoCc", e.target.value)}
-              placeholder="견적 발송 시 자동 CC할 이메일 (쉼표로 구분)"
-              data-testid="input-autoCc"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              견적 이메일 발송 시 자동으로 CC에 추가됩니다. 여러 이메일은 쉼표(,)로 구분하세요.
-            </p>
-          </CardContent>
-        </Card>
+          <TabsContent value="quotation" className="space-y-6 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <FileText className="h-4 w-4" />
+                  제외사항 및 기술지원 기본 템플릿
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={form.quotationNotesTemplate}
+                  onChange={(e) => updateField("quotationNotesTemplate", e.target.value)}
+                  placeholder={DEFAULT_QUOTATION_NOTES}
+                  rows={10}
+                  className="font-mono text-sm"
+                  data-testid="input-quotationNotesTemplate"
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-xs text-muted-foreground">
+                    견적서 작성 시 [제외사항]과 [기술지원] 항목의 기본 내용으로 사용됩니다.
+                  </p>
+                  <button
+                    type="button"
+                    className="text-xs text-blue-500 hover:underline"
+                    onClick={() => updateField("quotationNotesTemplate", DEFAULT_QUOTATION_NOTES)}
+                    data-testid="button-reset-quotation-notes"
+                  >
+                    기본값으로 초기화
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">이메일 본문 템플릿</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={form.emailTemplate}
-              onChange={(e) => updateField("emailTemplate", e.target.value)}
-              placeholder={"안녕하세요, {고객명}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: {견적번호}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다."}
-              rows={8}
-              data-testid="input-emailTemplate"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              견적 이메일 발송 시 기본 본문으로 사용됩니다. 치환 변수: <code>{"{고객명}"}</code>, <code>{"{견적번호}"}</code>
-            </p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Mail className="h-4 w-4" />
+                  이메일 자동 CC
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Input
+                  value={form.autoCc}
+                  onChange={(e) => updateField("autoCc", e.target.value)}
+                  placeholder="houns9@aim-fa.com,yups@aim-fa.com"
+                  data-testid="input-autoCc"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  견적 이메일 발송 시 자동으로 CC에 추가됩니다. 여러 이메일은 쉼표(,)로 구분하세요.
+                </p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">입금 계좌 정보</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={form.bankInfo}
-              onChange={(e) => updateField("bankInfo", e.target.value)}
-              placeholder="은행명, 계좌번호, 예금주 등을 입력하세요"
-              rows={3}
-              data-testid="input-bankInfo"
-            />
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Mail className="h-4 w-4" />
+                  이메일 본문 템플릿
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={form.emailTemplate}
+                  onChange={(e) => updateField("emailTemplate", e.target.value)}
+                  placeholder={"안녕하세요, {고객명}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: {견적번호}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다."}
+                  rows={8}
+                  data-testid="input-emailTemplate"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  견적 이메일 발송 시 기본 본문으로 사용됩니다. 치환 변수: <code>{"{고객명}"}</code>, <code>{"{견적번호}"}</code>
+                </p>
+              </CardContent>
+            </Card>
 
-        <div className="flex justify-end pb-6">
-          <Button
-            onClick={() => saveMutation.mutate(form)}
-            disabled={saveMutation.isPending}
-            data-testid="button-save-settings"
-          >
-            <Save className="h-4 w-4 mr-1" />
-            {saveMutation.isPending ? "저장 중..." : "저장"}
-          </Button>
-        </div>
+            <div className="flex justify-end pb-6">
+              <Button
+                onClick={() => saveMutation.mutate(form)}
+                disabled={saveMutation.isPending}
+                data-testid="button-save-quotation-settings"
+              >
+                <Save className="h-4 w-4 mr-1" />
+                {saveMutation.isPending ? "저장 중..." : "저장"}
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
