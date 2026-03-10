@@ -4169,7 +4169,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -4200,6 +4200,12 @@ export async function registerRoutes(
         autoCc: autoCc || null,
         emailTemplate: emailTemplate || null,
         quotationNotesTemplate: quotationNotesTemplate === undefined ? undefined : (quotationNotesTemplate || null),
+        poDefaultStaffId: poDefaultStaffId === undefined ? undefined : (poDefaultStaffId || null),
+        poDefaultPaymentTerms: poDefaultPaymentTerms === undefined ? undefined : (poDefaultPaymentTerms || null),
+        poDefaultWarrantyTerms: poDefaultWarrantyTerms === undefined ? undefined : (poDefaultWarrantyTerms || null),
+        poAutoCc: poAutoCc === undefined ? undefined : (poAutoCc || null),
+        poEmailTemplate: poEmailTemplate === undefined ? undefined : (poEmailTemplate || null),
+        poCalendarId: poCalendarId === undefined ? undefined : (poCalendarId || null),
       });
       res.json(settings);
     } catch (err: any) {
@@ -4406,6 +4412,20 @@ export async function registerRoutes(
         await storage.updatePurchaseOrder(order.id, { paymentId: payment.id });
       }
 
+      if (order.expectedDeliveryDate) {
+        try {
+          const settings = await storage.getCompanySettings();
+          const calId = settings?.poCalendarId || "sales@aim-fa.com";
+          const { createDeliveryEvent } = await import("./google-calendar");
+          const eventId = await createDeliveryEvent(order.orderNumber || "", order.vendor || "", order.expectedDeliveryDate, calId);
+          if (eventId) {
+            await storage.updatePurchaseOrder(order.id, { calendarEventId: eventId });
+          }
+        } catch (calErr: any) {
+          console.log(`Google Calendar 입고일정 등록 실패 (발주 생성은 계속): ${calErr.message}`);
+        }
+      }
+
       const updated = await storage.getPurchaseOrder(order.id);
       res.status(201).json({ order: updated, payment });
     } catch (err: any) {
@@ -4571,7 +4591,40 @@ export async function registerRoutes(
         }
       }
 
-      res.json(result);
+      if ("expectedDeliveryDate" in req.body) {
+        const newDate = req.body.expectedDeliveryDate;
+        const oldDate = existing.expectedDeliveryDate;
+        if (newDate !== oldDate) {
+          try {
+            const settings = await storage.getCompanySettings();
+            const calId = settings?.poCalendarId || "sales@aim-fa.com";
+            const { createDeliveryEvent, deleteCalendarEvent } = await import("./google-calendar");
+            if (existing.calendarEventId) {
+              const deleted = await deleteCalendarEvent(existing.calendarEventId, calId);
+              if (deleted) {
+                await storage.updatePurchaseOrder(req.params.id, { calendarEventId: null });
+              }
+            }
+            if (newDate) {
+              const updatedOrder = await storage.getPurchaseOrder(req.params.id);
+              const eventId = await createDeliveryEvent(
+                updatedOrder?.orderNumber || existing.orderNumber || "",
+                updatedOrder?.vendor || existing.vendor || "",
+                newDate,
+                calId
+              );
+              if (eventId) {
+                await storage.updatePurchaseOrder(req.params.id, { calendarEventId: eventId });
+              }
+            }
+          } catch (calErr: any) {
+            console.log(`Google Calendar 입고일정 업데이트 실패: ${calErr.message}`);
+          }
+        }
+      }
+
+      const final = await storage.getPurchaseOrder(req.params.id);
+      res.json(final);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -4579,6 +4632,17 @@ export async function registerRoutes(
 
   app.delete("/api/purchase-orders/:id", async (req, res) => {
     try {
+      const existing = await storage.getPurchaseOrder(req.params.id);
+      if (existing?.calendarEventId) {
+        try {
+          const settings = await storage.getCompanySettings();
+          const calId = settings?.poCalendarId || "sales@aim-fa.com";
+          const { deleteCalendarEvent } = await import("./google-calendar");
+          await deleteCalendarEvent(existing.calendarEventId, calId);
+        } catch (calErr: any) {
+          console.log(`Google Calendar 입고일정 삭제 실패: ${calErr.message}`);
+        }
+      }
       await storage.deletePurchaseOrder(req.params.id);
       res.json({ success: true });
     } catch (err: any) {

@@ -43,7 +43,7 @@ async function getCalendarClient() {
   return google.calendar({ version: 'v3', auth: oauth2Client });
 }
 
-export async function createTaskEvent(title: string, date: string, time?: string | null): Promise<string | null> {
+export async function createTaskEvent(title: string, date: string, time?: string | null, calendarId: string = 'primary'): Promise<string | null> {
   try {
     const calendar = await getCalendarClient();
     let requestBody: any;
@@ -63,7 +63,7 @@ export async function createTaskEvent(title: string, date: string, time?: string
         end: { date },
       };
     }
-    const res = await calendar.events.insert({ calendarId: 'primary', requestBody });
+    const res = await calendar.events.insert({ calendarId, requestBody });
     return res.data.id || null;
   } catch (err) {
     console.error('Google Calendar task event creation failed:', err);
@@ -71,14 +71,33 @@ export async function createTaskEvent(title: string, date: string, time?: string
   }
 }
 
-export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
+export async function deleteCalendarEvent(eventId: string, calendarId: string = 'primary'): Promise<boolean> {
   try {
     const calendar = await getCalendarClient();
-    await calendar.events.delete({ calendarId: 'primary', eventId });
+    await calendar.events.delete({ calendarId, eventId });
     return true;
   } catch (err) {
     console.error('Google Calendar event deletion failed:', err);
     return false;
+  }
+}
+
+export async function createDeliveryEvent(orderNumber: string, vendor: string, date: string, calendarId: string = 'primary'): Promise<string | null> {
+  try {
+    const calendar = await getCalendarClient();
+    const title = `[입고] ${orderNumber} - ${vendor}`;
+    const res = await calendar.events.insert({
+      calendarId,
+      requestBody: {
+        summary: title,
+        start: { date },
+        end: { date },
+      },
+    });
+    return res.data.id || null;
+  } catch (err) {
+    console.error('Google Calendar delivery event creation failed:', err);
+    return null;
   }
 }
 

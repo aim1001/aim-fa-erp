@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart } from "lucide-react";
+import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays } from "lucide-react";
 import type { CompanySettings, Staff } from "@shared/schema";
 import StaffSearchPopover from "@/components/staff-search-popover";
 
@@ -53,6 +53,7 @@ export default function SettingsPage() {
     poDefaultWarrantyTerms: "하자보증 1년",
     poAutoCc: "",
     poEmailTemplate: "",
+    poCalendarId: "sales@aim-fa.com",
   });
 
   const [poDefaultContactPerson, setPoDefaultContactPerson] = useState("");
@@ -76,6 +77,7 @@ export default function SettingsPage() {
         poDefaultWarrantyTerms: settings.poDefaultWarrantyTerms || "하자보증 1년",
         poAutoCc: settings.poAutoCc || "",
         poEmailTemplate: settings.poEmailTemplate || "",
+        poCalendarId: settings.poCalendarId || "sales@aim-fa.com",
       });
       if (settings.poDefaultStaffId && staffList) {
         const s = staffList.find(st => st.id === settings.poDefaultStaffId);
@@ -565,6 +567,26 @@ export default function SettingsPage() {
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   발주서 이메일 발송 시 기본 본문으로 사용됩니다. 치환 변수: <code>{"{발주번호}"}</code>, <code>{"{입고일자}"}</code>, <code>{"{구매처명}"}</code>, <code>{"{담당자명}"}</code>
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarDays className="h-4 w-4" />
+                  입고일정 캘린더
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Input
+                  value={form.poCalendarId}
+                  onChange={(e) => updateField("poCalendarId", e.target.value)}
+                  placeholder="sales@aim-fa.com"
+                  data-testid="input-poCalendarId"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  발주서 예정입고일을 등록할 Google Calendar ID입니다.
                 </p>
               </CardContent>
             </Card>

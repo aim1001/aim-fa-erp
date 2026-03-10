@@ -392,6 +392,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   paymentTerms: text("payment_terms"),
   deliveryLocation: text("delivery_location"),
   warrantyTerms: text("warranty_terms"),
+  calendarEventId: text("calendar_event_id"),
 });
 
 export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({ id: true });
@@ -545,6 +546,7 @@ export const companySettings = pgTable("company_settings", {
   poDefaultWarrantyTerms: text("po_default_warranty_terms"),
   poAutoCc: text("po_auto_cc"),
   poEmailTemplate: text("po_email_template"),
+  poCalendarId: text("po_calendar_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
