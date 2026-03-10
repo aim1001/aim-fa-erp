@@ -3,7 +3,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useDialogContainer } from "@/hooks/use-dialog-container";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -494,7 +495,7 @@ type OrderItemRow = {
   isAdjustment: boolean;
 };
 
-function PurchaseItemSearchPopover({ onSelect }: { onSelect: (item: PurchaseItem) => void }) {
+function PurchaseItemSearchPopover({ onSelect, container }: { onSelect: (item: PurchaseItem) => void; container?: HTMLElement | null }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [cat1Filter, setCat1Filter] = useState("all");
@@ -551,7 +552,7 @@ function PurchaseItemSearchPopover({ onSelect }: { onSelect: (item: PurchaseItem
           <Plus className="h-3 w-3 mr-1" />구매품 추가
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[480px] p-0" align="start">
+      <PopoverContent className="w-[480px] p-0" align="start" container={container}>
         <div className="p-2 border-b space-y-1.5">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -603,7 +604,7 @@ function PurchaseItemSearchPopover({ onSelect }: { onSelect: (item: PurchaseItem
   );
 }
 
-function VendorSearchPopover({ vendor, onSelect }: { vendor: string; onSelect: (name: string, vendorId?: string) => void }) {
+function VendorSearchPopover({ vendor, onSelect, container }: { vendor: string; onSelect: (name: string, vendorId?: string) => void; container?: HTMLElement | null }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -629,7 +630,7 @@ function VendorSearchPopover({ vendor, onSelect }: { vendor: string; onSelect: (
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
+      <PopoverContent className="w-[300px] p-0" align="start" container={container}>
         <div className="p-2 border-b">
           <Input
             placeholder="구매처 검색 또는 직접 입력..."
@@ -689,6 +690,8 @@ function CreateOrderDialog({
   onCreate: (data: Record<string, any>) => void;
   isPending: boolean;
 }) {
+  const { ref: containerRef, container: dialogContainer } = useDialogContainer();
+
   const { data: nextNumberData } = useQuery<{ nextNumber: string }>({
     queryKey: ["/api/purchase-orders/next-number", year],
     queryFn: async () => {
@@ -836,7 +839,7 @@ function CreateOrderDialog({
           <DialogDescription className="sr-only">신규 발주 등록 양식</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div ref={containerRef} className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">발주번호</Label>
@@ -847,7 +850,7 @@ function CreateOrderDialog({
             </div>
             <div>
               <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
-              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid) => setForm(f => ({ ...f, vendor: v, vendorId: vid || null }))} />
+              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid) => setForm(f => ({ ...f, vendor: v, vendorId: vid || null }))} container={dialogContainer} />
             </div>
             <div>
               <Label className="text-xs">상태</Label>
@@ -872,7 +875,7 @@ function CreateOrderDialog({
             <div className="flex items-center justify-between mb-2">
               <Label className="text-xs font-medium">품목</Label>
               <div className="flex gap-1">
-                <PurchaseItemSearchPopover onSelect={handleAddPurchaseItem} />
+                <PurchaseItemSearchPopover onSelect={handleAddPurchaseItem} container={dialogContainer} />
                 <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowFreeItem(true)} data-testid="button-add-free-item">
                   <Plus className="h-3 w-3 mr-1" />직접 입력
                 </Button>
@@ -1422,6 +1425,7 @@ function OrderDetailModal({
   onDelete: (id: string) => void;
 }) {
   const { toast } = useToast();
+  const { ref: detailContainerRef, container: detailDialogContainer } = useDialogContainer();
   const { data: staffList } = useQuery<Staff[]>({ queryKey: ["/api/staff"] });
 
   const buildFormState = useCallback(() => ({
@@ -1652,7 +1656,7 @@ function OrderDetailModal({
             <DialogDescription className="sr-only">발주 상세 정보</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div ref={detailContainerRef} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs text-muted-foreground">발주번호</Label>
@@ -1703,7 +1707,7 @@ function OrderDetailModal({
               <div className="flex items-center justify-between mb-2">
                 <Label className="text-xs font-medium">품목</Label>
                 <div className="flex gap-1">
-                  <PurchaseItemSearchPopover onSelect={handleAddItemFromSearch} />
+                  <PurchaseItemSearchPopover onSelect={handleAddItemFromSearch} container={detailDialogContainer} />
                   <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setShowDetailFreeItem(true)} data-testid="button-detail-add-free">
                     <Plus className="h-3 w-3 mr-1" />직접 입력
                   </Button>
