@@ -470,6 +470,36 @@ export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({ i
 export type InsertProjectTask = z.infer<typeof insertProjectTaskSchema>;
 export type ProjectTask = typeof projectTasks.$inferSelect;
 
+export const purchaseOrderTasks = pgTable("purchase_order_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseOrderId: varchar("purchase_order_id"),
+  content: text("content").notNull(),
+  completed: boolean("completed").default(false).notNull(),
+  dueDate: text("due_date"),
+  dueTime: text("due_time"),
+  calendarEventId: text("calendar_event_id"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertPurchaseOrderTaskSchema = createInsertSchema(purchaseOrderTasks).omit({ id: true });
+export type InsertPurchaseOrderTask = z.infer<typeof insertPurchaseOrderTaskSchema>;
+export type PurchaseOrderTask = typeof purchaseOrderTasks.$inferSelect;
+
+export const financeTasks = pgTable("finance_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  category: text("category"),
+  content: text("content").notNull(),
+  completed: boolean("completed").default(false).notNull(),
+  dueDate: text("due_date"),
+  dueTime: text("due_time"),
+  calendarEventId: text("calendar_event_id"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertFinanceTaskSchema = createInsertSchema(financeTasks).omit({ id: true });
+export type InsertFinanceTask = z.infer<typeof insertFinanceTaskSchema>;
+export type FinanceTask = typeof financeTasks.$inferSelect;
+
 export const quotations = pgTable("quotations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inquiryId: varchar("inquiry_id").notNull(),

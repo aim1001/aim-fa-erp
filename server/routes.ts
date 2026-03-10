@@ -1507,9 +1507,37 @@ export async function registerRoutes(
         } catch { failed++; }
       }
 
+      const poTasksList = await storage.getAllPendingPurchaseOrderTasks();
+      for (const task of poTasksList) {
+        if (task.calendarEventId || !task.dueDate) continue;
+        try {
+          const title = `[구매발주] ${task.content}`;
+          const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
+          if (eventId) {
+            await storage.updatePurchaseOrderTask(task.id, { calendarEventId: eventId });
+            synced++;
+          } else { failed++; }
+        } catch { failed++; }
+      }
+
+      const finTasksList = await storage.getAllPendingFinanceTasks();
+      for (const task of finTasksList) {
+        if (task.calendarEventId || !task.dueDate) continue;
+        try {
+          const title = `[경영지원] ${task.content}`;
+          const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
+          if (eventId) {
+            await storage.updateFinanceTask(task.id, { calendarEventId: eventId });
+            synced++;
+          } else { failed++; }
+        } catch { failed++; }
+      }
+
       const totalUnsyncedInquiry = inquiryTasksList.filter(t => !t.calendarEventId && t.dueDate).length;
       const totalUnsyncedProject = projectTasksList.filter(t => !t.calendarEventId && t.dueDate).length;
-      res.json({ synced, failed, total: totalUnsyncedInquiry + totalUnsyncedProject });
+      const totalUnsyncedPO = poTasksList.filter(t => !t.calendarEventId && t.dueDate).length;
+      const totalUnsyncedFin = finTasksList.filter(t => !t.calendarEventId && t.dueDate).length;
+      res.json({ synced, failed, total: totalUnsyncedInquiry + totalUnsyncedProject + totalUnsyncedPO + totalUnsyncedFin });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1554,6 +1582,233 @@ export async function registerRoutes(
       await storage.updateProjectTask(existing.id, { calendarEventId: eventId });
       const updated = await storage.getProjectTask(existing.id);
       res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Purchase Order Tasks
+  app.get("/api/purchase-order-tasks/pending", async (req, res) => {
+    try {
+      const tasks = await storage.getAllPendingPurchaseOrderTasks();
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-order-tasks", async (req, res) => {
+    try {
+      const { content, dueDate, dueTime, purchaseOrderId } = req.body;
+      if (!content) return res.status(400).json({ message: "내용은 필수입니다" });
+      const normalizedDueDate = dueDate || null;
+      const normalizedDueTime = dueTime || null;
+
+      let calendarEventId: string | null = null;
+      if (normalizedDueDate) {
+        try {
+          const title = `[구매발주] ${content}`;
+          const { createTaskEvent } = await import("./google-calendar");
+          calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+        } catch (calErr: any) {
+          console.log(`Google Calendar 등록 실패 (구매발주 할일 생성은 계속): ${calErr.message}`);
+        }
+      }
+
+      const task = await storage.createPurchaseOrderTask({
+        purchaseOrderId: purchaseOrderId || null,
+        content,
+        completed: false,
+        dueDate: normalizedDueDate,
+        dueTime: normalizedDueTime,
+        calendarEventId,
+        createdAt: new Date().toISOString(),
+      });
+      res.status(201).json(task);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/purchase-order-tasks/:id", async (req, res) => {
+    try {
+      const existing = await storage.getPurchaseOrderTask(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+
+      const allowed: any = {};
+      if ("content" in req.body) allowed.content = req.body.content;
+      if ("completed" in req.body) {
+        allowed.completed = req.body.completed;
+        if (req.body.completed && existing.calendarEventId) {
+          try {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          } catch (calErr: any) {
+            console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+          }
+          allowed.calendarEventId = null;
+        }
+      }
+      if ("dueDate" in req.body || "dueTime" in req.body) {
+        const newDueDate = "dueDate" in req.body ? (req.body.dueDate || null) : existing.dueDate;
+        const newDueTime = "dueTime" in req.body ? (req.body.dueTime || null) : existing.dueTime;
+        allowed.dueDate = newDueDate;
+        allowed.dueTime = newDueTime;
+
+        if (existing.calendarEventId) {
+          try {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          } catch {}
+          allowed.calendarEventId = null;
+        }
+        const isCompleted = "completed" in req.body ? req.body.completed : existing.completed;
+        if (newDueDate && !isCompleted) {
+          try {
+            const title = `[구매발주] ${req.body.content || existing.content}`;
+            const { createTaskEvent } = await import("./google-calendar");
+            const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
+            allowed.calendarEventId = newEventId;
+          } catch (calErr: any) {
+            console.log(`Google Calendar 재등록 실패: ${calErr.message}`);
+          }
+        }
+      }
+
+      const updated = await storage.updatePurchaseOrderTask(req.params.id, allowed);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/purchase-order-tasks/:id", async (req, res) => {
+    try {
+      const existing = await storage.getPurchaseOrderTask(req.params.id);
+      if (existing?.calendarEventId) {
+        try {
+          const { deleteCalendarEvent } = await import("./google-calendar");
+          await deleteCalendarEvent(existing.calendarEventId);
+        } catch (calErr: any) {
+          console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+        }
+      }
+      await storage.deletePurchaseOrderTask(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Finance Tasks
+  app.get("/api/finance-tasks/pending", async (req, res) => {
+    try {
+      const tasks = await storage.getAllPendingFinanceTasks();
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/finance-tasks", async (req, res) => {
+    try {
+      const { content, dueDate, dueTime, category } = req.body;
+      if (!content) return res.status(400).json({ message: "내용은 필수입니다" });
+      const normalizedDueDate = dueDate || null;
+      const normalizedDueTime = dueTime || null;
+
+      let calendarEventId: string | null = null;
+      if (normalizedDueDate) {
+        try {
+          const title = `[경영지원] ${content}`;
+          const { createTaskEvent } = await import("./google-calendar");
+          calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+        } catch (calErr: any) {
+          console.log(`Google Calendar 등록 실패 (경영지원 할일 생성은 계속): ${calErr.message}`);
+        }
+      }
+
+      const task = await storage.createFinanceTask({
+        category: category || null,
+        content,
+        completed: false,
+        dueDate: normalizedDueDate,
+        dueTime: normalizedDueTime,
+        calendarEventId,
+        createdAt: new Date().toISOString(),
+      });
+      res.status(201).json(task);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/finance-tasks/:id", async (req, res) => {
+    try {
+      const existing = await storage.getFinanceTask(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+
+      const allowed: any = {};
+      if ("content" in req.body) allowed.content = req.body.content;
+      if ("category" in req.body) allowed.category = req.body.category;
+      if ("completed" in req.body) {
+        allowed.completed = req.body.completed;
+        if (req.body.completed && existing.calendarEventId) {
+          try {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          } catch (calErr: any) {
+            console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+          }
+          allowed.calendarEventId = null;
+        }
+      }
+      if ("dueDate" in req.body || "dueTime" in req.body) {
+        const newDueDate = "dueDate" in req.body ? (req.body.dueDate || null) : existing.dueDate;
+        const newDueTime = "dueTime" in req.body ? (req.body.dueTime || null) : existing.dueTime;
+        allowed.dueDate = newDueDate;
+        allowed.dueTime = newDueTime;
+
+        if (existing.calendarEventId) {
+          try {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          } catch {}
+          allowed.calendarEventId = null;
+        }
+        const isCompleted = "completed" in req.body ? req.body.completed : existing.completed;
+        if (newDueDate && !isCompleted) {
+          try {
+            const title = `[경영지원] ${req.body.content || existing.content}`;
+            const { createTaskEvent } = await import("./google-calendar");
+            const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
+            allowed.calendarEventId = newEventId;
+          } catch (calErr: any) {
+            console.log(`Google Calendar 재등록 실패: ${calErr.message}`);
+          }
+        }
+      }
+
+      const updated = await storage.updateFinanceTask(req.params.id, allowed);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/finance-tasks/:id", async (req, res) => {
+    try {
+      const existing = await storage.getFinanceTask(req.params.id);
+      if (existing?.calendarEventId) {
+        try {
+          const { deleteCalendarEvent } = await import("./google-calendar");
+          await deleteCalendarEvent(existing.calendarEventId);
+        } catch (calErr: any) {
+          console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+        }
+      }
+      await storage.deleteFinanceTask(req.params.id);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

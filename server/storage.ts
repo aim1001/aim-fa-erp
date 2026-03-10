@@ -26,11 +26,14 @@ import {
   type PurchaseOrderItem, type InsertPurchaseOrderItem,
   type VendorContact, type InsertVendorContact,
   type RecurringExpense, type InsertRecurringExpense,
+  type PurchaseOrderTask, type InsertPurchaseOrderTask,
+  type FinanceTask, type InsertFinanceTask,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
   purchaseOrders, purchaseOrderItems, vendorContacts, recurringExpenses,
+  purchaseOrderTasks, financeTasks,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -218,6 +221,18 @@ export interface IStorage {
   createProjectTask(data: InsertProjectTask): Promise<ProjectTask>;
   updateProjectTask(id: string, data: Partial<InsertProjectTask>): Promise<ProjectTask | undefined>;
   deleteProjectTask(id: string): Promise<void>;
+
+  getPurchaseOrderTask(id: string): Promise<PurchaseOrderTask | undefined>;
+  getAllPendingPurchaseOrderTasks(): Promise<(PurchaseOrderTask & { orderNumber: string; vendor: string })[]>;
+  createPurchaseOrderTask(data: InsertPurchaseOrderTask): Promise<PurchaseOrderTask>;
+  updatePurchaseOrderTask(id: string, data: Partial<InsertPurchaseOrderTask>): Promise<PurchaseOrderTask | undefined>;
+  deletePurchaseOrderTask(id: string): Promise<void>;
+
+  getFinanceTask(id: string): Promise<FinanceTask | undefined>;
+  getAllPendingFinanceTasks(): Promise<FinanceTask[]>;
+  createFinanceTask(data: InsertFinanceTask): Promise<FinanceTask>;
+  updateFinanceTask(id: string, data: Partial<InsertFinanceTask>): Promise<FinanceTask | undefined>;
+  deleteFinanceTask(id: string): Promise<void>;
 
   getPurchaseOrders(year?: number): Promise<PurchaseOrder[]>;
   getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined>;
@@ -1187,6 +1202,68 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProjectTask(id: string): Promise<void> {
     await db.delete(projectTasks).where(eq(projectTasks.id, id));
+  }
+
+  async getPurchaseOrderTask(id: string): Promise<PurchaseOrderTask | undefined> {
+    const [task] = await db.select().from(purchaseOrderTasks).where(eq(purchaseOrderTasks.id, id));
+    return task;
+  }
+
+  async getAllPendingPurchaseOrderTasks(): Promise<(PurchaseOrderTask & { orderNumber: string; vendor: string })[]> {
+    const allTasks = await db.select().from(purchaseOrderTasks)
+      .where(eq(purchaseOrderTasks.completed, false))
+      .orderBy(purchaseOrderTasks.dueDate, desc(purchaseOrderTasks.createdAt));
+    const result = [];
+    for (const task of allTasks) {
+      let orderNumber = "";
+      let vendor = "";
+      if (task.purchaseOrderId) {
+        const [po] = await db.select({ orderNumber: purchaseOrders.orderNumber, vendor: purchaseOrders.vendor })
+          .from(purchaseOrders).where(eq(purchaseOrders.id, task.purchaseOrderId));
+        if (po) { orderNumber = po.orderNumber || ""; vendor = po.vendor || ""; }
+      }
+      result.push({ ...task, orderNumber, vendor });
+    }
+    return result;
+  }
+
+  async createPurchaseOrderTask(data: InsertPurchaseOrderTask): Promise<PurchaseOrderTask> {
+    const [task] = await db.insert(purchaseOrderTasks).values(data).returning();
+    return task;
+  }
+
+  async updatePurchaseOrderTask(id: string, data: Partial<InsertPurchaseOrderTask>): Promise<PurchaseOrderTask | undefined> {
+    const [task] = await db.update(purchaseOrderTasks).set(data).where(eq(purchaseOrderTasks.id, id)).returning();
+    return task;
+  }
+
+  async deletePurchaseOrderTask(id: string): Promise<void> {
+    await db.delete(purchaseOrderTasks).where(eq(purchaseOrderTasks.id, id));
+  }
+
+  async getFinanceTask(id: string): Promise<FinanceTask | undefined> {
+    const [task] = await db.select().from(financeTasks).where(eq(financeTasks.id, id));
+    return task;
+  }
+
+  async getAllPendingFinanceTasks(): Promise<FinanceTask[]> {
+    return db.select().from(financeTasks)
+      .where(eq(financeTasks.completed, false))
+      .orderBy(financeTasks.dueDate, desc(financeTasks.createdAt));
+  }
+
+  async createFinanceTask(data: InsertFinanceTask): Promise<FinanceTask> {
+    const [task] = await db.insert(financeTasks).values(data).returning();
+    return task;
+  }
+
+  async updateFinanceTask(id: string, data: Partial<InsertFinanceTask>): Promise<FinanceTask | undefined> {
+    const [task] = await db.update(financeTasks).set(data).where(eq(financeTasks.id, id)).returning();
+    return task;
+  }
+
+  async deleteFinanceTask(id: string): Promise<void> {
+    await db.delete(financeTasks).where(eq(financeTasks.id, id));
   }
 
   async getPurchaseOrders(year?: number): Promise<PurchaseOrder[]> {

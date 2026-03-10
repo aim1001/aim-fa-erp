@@ -85,6 +85,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 견적서 이메일 전송 - Gmail API로 PDF 첨부 이메일 전송 (OneDrive 자동 저장 후 발송, PDF 미리보기, CC 지원, 자동CC, 발송 시 상태 업데이트+캘린더 등록+판매가/원가/마진 저장)
 - 발주서 PDF/이메일 - 발주 상세 모달에서 PDF 다운로드 + 구매처 이메일 발송 (Gmail API, 발주서 PDF 첨부, OneDrive 자동 저장, vendor contactEmail 자동 채움, CC/autoCc 지원)
 - 발주서 입고일정 Google Calendar 연동 - 예정입고일 설정 시 캘린더에 `[입고] {발주번호} - {구매처명}` 이벤트 자동 등록/수정/삭제 (calendarId 설정 가능, 기본: sales@aim-fa.com)
+- 대시보드 할일 4카테고리 탭: 전체/영업/프로젝트/구매발주/경영지원. 구매발주·경영지원 할일은 독립 테이블(`purchase_order_tasks`, `finance_tasks`)로 직접 추가/완료/삭제 가능. 캘린더 동기화 포함.
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:
