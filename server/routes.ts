@@ -5040,12 +5040,25 @@ export async function registerRoutes(
   app.post("/api/recurring-expenses", async (req: Request, res: Response) => {
     const parsed = insertRecurringExpenseSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const row = await storage.createRecurringExpense(parsed.data);
+    const data = parsed.data;
+    const freq = data.frequency || "monthly";
+    if (!["weekly", "monthly", "yearly"].includes(freq)) return res.status(400).json({ message: "Invalid frequency" });
+    if (freq === "weekly" && (data.weekday == null || data.weekday < 0 || data.weekday > 6)) return res.status(400).json({ message: "weekday must be 0-6" });
+    if (freq === "yearly" && (data.paymentMonth == null || data.paymentMonth < 1 || data.paymentMonth > 12)) return res.status(400).json({ message: "paymentMonth must be 1-12" });
+    if (freq !== "weekly" && (data.paymentDay < 1 || data.paymentDay > 31)) return res.status(400).json({ message: "paymentDay must be 1-31" });
+    const row = await storage.createRecurringExpense(data);
     res.json(row);
   });
 
   app.patch("/api/recurring-expenses/:id", async (req: Request, res: Response) => {
-    const updated = await storage.updateRecurringExpense(req.params.id, req.body);
+    const partial = insertRecurringExpenseSchema.partial().safeParse(req.body);
+    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    const data = partial.data;
+    if (data.frequency && !["weekly", "monthly", "yearly"].includes(data.frequency)) return res.status(400).json({ message: "Invalid frequency" });
+    if (data.weekday != null && (data.weekday < 0 || data.weekday > 6)) return res.status(400).json({ message: "weekday must be 0-6" });
+    if (data.paymentMonth != null && (data.paymentMonth < 1 || data.paymentMonth > 12)) return res.status(400).json({ message: "paymentMonth must be 1-12" });
+    if (data.paymentDay != null && (data.paymentDay < 1 || data.paymentDay > 31)) return res.status(400).json({ message: "paymentDay must be 1-31" });
+    const updated = await storage.updateRecurringExpense(req.params.id, data);
     if (!updated) return res.status(404).json({ message: "Not found" });
     res.json(updated);
   });
@@ -5066,31 +5079,62 @@ export async function registerRoutes(
 
     const existingPayments = await storage.getPaymentsByMonth(y, m);
     const monthStr = `${y}-${String(m).padStart(2, "0")}`;
+    const lastDay = new Date(y, m, 0).getDate();
 
     let created = 0;
     for (const r of active) {
-      const alreadyExists = existingPayments.some(p =>
-        p.category === r.category &&
-        p.description === r.description &&
-        p.companyName === r.companyName &&
-        p.plannedDate?.startsWith(monthStr)
-      );
-      if (alreadyExists) continue;
+      const freq = r.frequency || "monthly";
 
-      const lastDay = new Date(y, m, 0).getDate();
-      const day = Math.min(r.paymentDay, lastDay);
-      const plannedDate = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-      await storage.createPayment({
-        type: "expense",
-        companyName: r.companyName,
-        description: r.description,
-        amount: r.amount,
-        plannedDate,
-        status: "planned",
-        category: r.category,
-      });
-      created++;
+      if (freq === "yearly") {
+        const pm = r.paymentMonth ?? 1;
+        if (pm !== m) continue;
+        const day = Math.min(r.paymentDay, lastDay);
+        const plannedDate = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const alreadyExists = existingPayments.some(p =>
+          p.category === r.category && p.description === r.description &&
+          p.companyName === r.companyName && p.plannedDate === plannedDate
+        );
+        if (alreadyExists) continue;
+        await storage.createPayment({
+          type: "expense", companyName: r.companyName, description: r.description,
+          amount: r.amount, plannedDate, status: "planned", category: r.category,
+        });
+        created++;
+      } else if (freq === "weekly") {
+        const targetWeekday = (r.weekday != null && r.weekday >= 0 && r.weekday <= 6) ? r.weekday : 1;
+        const dates: string[] = [];
+        for (let d = 1; d <= lastDay; d++) {
+          const dt = new Date(y, m - 1, d);
+          if (dt.getDay() === targetWeekday) {
+            dates.push(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+          }
+        }
+        for (const plannedDate of dates) {
+          const alreadyExists = existingPayments.some(p =>
+            p.category === r.category && p.description === r.description &&
+            p.companyName === r.companyName && p.plannedDate === plannedDate
+          );
+          if (alreadyExists) continue;
+          await storage.createPayment({
+            type: "expense", companyName: r.companyName, description: r.description,
+            amount: r.amount, plannedDate, status: "planned", category: r.category,
+          });
+          created++;
+        }
+      } else {
+        const day = Math.min(r.paymentDay, lastDay);
+        const plannedDate = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const alreadyExists = existingPayments.some(p =>
+          p.category === r.category && p.description === r.description &&
+          p.companyName === r.companyName && p.plannedDate?.startsWith(monthStr)
+        );
+        if (alreadyExists) continue;
+        await storage.createPayment({
+          type: "expense", companyName: r.companyName, description: r.description,
+          amount: r.amount, plannedDate, status: "planned", category: r.category,
+        });
+        created++;
+      }
     }
 
     res.json({ created, total: active.length });

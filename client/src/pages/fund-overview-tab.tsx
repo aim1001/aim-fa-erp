@@ -214,6 +214,21 @@ function AddExpenseForm({ year, month, onSuccess }: { year: number; month: numbe
   );
 }
 
+const WEEKDAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
+
+function getScheduleLabel(r: RecurringExpense) {
+  const freq = (r as any).frequency || "monthly";
+  if (freq === "weekly") {
+    const wd = (r as any).weekday;
+    return `매주 ${WEEKDAY_NAMES[wd != null && wd >= 0 && wd <= 6 ? wd : 1]}요일`;
+  }
+  if (freq === "yearly") {
+    const pm = (r as any).paymentMonth;
+    return `매년 ${pm >= 1 && pm <= 12 ? pm : 1}월 ${r.paymentDay}일`;
+  }
+  return `매월 ${r.paymentDay}일`;
+}
+
 function RecurringExpenseSection({ year, month }: { year: number; month: number }) {
   const { toast } = useToast();
   const { data: recurring, isLoading } = useQuery<RecurringExpense[]>({
@@ -221,38 +236,67 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
   });
 
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<any>({});
   const [form, setForm] = useState({
     category: "정기결제",
     companyName: "",
     description: "",
     amount: "",
+    frequency: "monthly",
     paymentDay: "25",
+    weekday: "1",
+    paymentMonth: "1",
   });
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const amt = parseInt(form.amount);
-      const day = parseInt(form.paymentDay);
       if (!amt || amt <= 0) throw new Error("금액을 입력해주세요");
-      if (!day || day < 1 || day > 31) throw new Error("결제일을 1~31 사이로 입력해주세요");
-      const res = await apiRequest("POST", "/api/recurring-expenses", {
+      const payload: any = {
         category: form.category,
         companyName: form.companyName || null,
         description: form.description || null,
         amount: amt,
-        paymentDay: day,
+        frequency: form.frequency,
+        paymentDay: form.frequency === "weekly" ? 1 : parseInt(form.paymentDay) || 1,
         isActive: "true",
-      });
+      };
+      if (form.frequency === "weekly") {
+        payload.weekday = parseInt(form.weekday) || 1;
+      }
+      if (form.frequency === "yearly") {
+        payload.paymentMonth = parseInt(form.paymentMonth) || 1;
+      }
+      const day = parseInt(form.paymentDay);
+      if (form.frequency !== "weekly" && (!day || day < 1 || day > 31)) throw new Error("결제일을 1~31 사이로 입력해주세요");
+      payload.paymentDay = form.frequency === "weekly" ? 1 : day;
+      const res = await apiRequest("POST", "/api/recurring-expenses", payload);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/recurring-expenses"] });
-      setForm({ category: "정기결제", companyName: "", description: "", amount: "", paymentDay: "25" });
+      setForm({ category: "정기결제", companyName: "", description: "", amount: "", frequency: "monthly", paymentDay: "25", weekday: "1", paymentMonth: "1" });
       setShowAdd(false);
       toast({ title: "정기지출이 등록되었습니다" });
     },
     onError: (err: Error) => {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/recurring-expenses/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recurring-expenses"] });
+      setEditingId(null);
+      toast({ title: "수정되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "수정 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -294,12 +338,53 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
     },
   });
 
+  const startEdit = (r: RecurringExpense) => {
+    setEditingId(r.id);
+    setEditForm({
+      category: r.category,
+      companyName: r.companyName || "",
+      description: r.description || "",
+      amount: String(r.amount),
+      frequency: (r as any).frequency || "monthly",
+      paymentDay: String(r.paymentDay),
+      weekday: String((r as any).weekday ?? 1),
+      paymentMonth: String((r as any).paymentMonth ?? 1),
+    });
+  };
+
+  const saveEdit = () => {
+    if (!editingId) return;
+    const amt = parseInt(editForm.amount);
+    if (!amt || amt <= 0) { toast({ title: "금액을 입력해주세요", variant: "destructive" }); return; }
+    const data: any = {
+      category: editForm.category,
+      companyName: editForm.companyName || null,
+      description: editForm.description || null,
+      amount: amt,
+      frequency: editForm.frequency,
+    };
+    if (editForm.frequency === "weekly") {
+      data.weekday = parseInt(editForm.weekday) || 1;
+      data.paymentDay = 1;
+    } else {
+      const day = parseInt(editForm.paymentDay);
+      if (!day || day < 1 || day > 31) { toast({ title: "결제일을 1~31 사이로 입력해주세요", variant: "destructive" }); return; }
+      data.paymentDay = day;
+    }
+    if (editForm.frequency === "yearly") {
+      data.paymentMonth = parseInt(editForm.paymentMonth) || 1;
+    }
+    updateMutation.mutate({ id: editingId, data });
+  };
+
   if (isLoading) return <Skeleton className="h-20" />;
+
+  const freqLabel = (f: string) => f === "weekly" ? "주" : f === "yearly" ? "연" : "월";
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-xs text-muted-foreground">매월 반복되는 고정 지출을 등록하고, 한 번에 해당 월에 생성할 수 있습니다.</div>
+        <div className="text-xs text-muted-foreground">주간/월간/연간 반복되는 고정 지출을 등록하고, 해당 월에 일괄 생성할 수 있습니다.</div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setShowAdd(!showAdd)} data-testid="button-toggle-add-recurring">
             {showAdd ? <X className="h-3.5 w-3.5 mr-1" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
@@ -319,7 +404,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
 
       {showAdd && (
         <div className="border rounded-lg p-3 bg-muted/20 space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div>
               <Label className="text-xs">분류</Label>
               <Select value={form.category} onValueChange={val => setForm(p => ({ ...p, category: val }))}>
@@ -340,16 +425,54 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
               <Input className="h-8 text-xs" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} data-testid="input-recurring-desc" />
             </div>
             <div>
-              <Label className="text-xs">월 금액</Label>
+              <Label className="text-xs">금액</Label>
               <Input className="h-8 text-xs" type="number" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} data-testid="input-recurring-amount" />
             </div>
             <div>
-              <Label className="text-xs">결제일 (매월)</Label>
-              <Input className="h-8 text-xs" type="number" min="1" max="31" value={form.paymentDay} onChange={e => setForm(p => ({ ...p, paymentDay: e.target.value }))} data-testid="input-recurring-day" />
+              <Label className="text-xs">주기</Label>
+              <Select value={form.frequency} onValueChange={val => setForm(p => ({ ...p, frequency: val }))}>
+                <SelectTrigger className="h-8 text-xs" data-testid="select-recurring-frequency"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="weekly">매주</SelectItem>
+                  <SelectItem value="monthly">매월</SelectItem>
+                  <SelectItem value="yearly">매년</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              {form.frequency === "weekly" ? (
+                <>
+                  <Label className="text-xs">요일</Label>
+                  <Select value={form.weekday} onValueChange={val => setForm(p => ({ ...p, weekday: val }))}>
+                    <SelectTrigger className="h-8 text-xs" data-testid="select-recurring-weekday"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {WEEKDAY_NAMES.map((name, i) => (
+                        <SelectItem key={i} value={String(i)}>{name}요일</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              ) : form.frequency === "yearly" ? (
+                <div className="flex gap-1">
+                  <div className="flex-1">
+                    <Label className="text-xs">월</Label>
+                    <Input className="h-8 text-xs" type="number" min="1" max="12" value={form.paymentMonth} onChange={e => setForm(p => ({ ...p, paymentMonth: e.target.value }))} data-testid="input-recurring-month" />
+                  </div>
+                  <div className="flex-1">
+                    <Label className="text-xs">일</Label>
+                    <Input className="h-8 text-xs" type="number" min="1" max="31" value={form.paymentDay} onChange={e => setForm(p => ({ ...p, paymentDay: e.target.value }))} data-testid="input-recurring-day" />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Label className="text-xs">결제일</Label>
+                  <Input className="h-8 text-xs" type="number" min="1" max="31" value={form.paymentDay} onChange={e => setForm(p => ({ ...p, paymentDay: e.target.value }))} data-testid="input-recurring-day" />
+                </>
+              )}
             </div>
           </div>
           <div className="flex justify-end">
-            <Button size="sm" onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !form.amount || !form.paymentDay} data-testid="button-save-recurring">
+            <Button size="sm" onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !form.amount} data-testid="button-save-recurring">
               <Plus className="h-3.5 w-3.5 mr-1" />등록
             </Button>
           </div>
@@ -365,58 +488,162 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                 <th className="text-left py-1.5 px-2 font-medium text-xs w-20">분류</th>
                 <th className="text-left py-1.5 px-2 font-medium text-xs">거래처</th>
                 <th className="text-left py-1.5 px-2 font-medium text-xs">설명</th>
-                <th className="text-right py-1.5 px-2 font-medium text-xs">월 금액</th>
-                <th className="text-center py-1.5 px-2 font-medium text-xs w-16">결제일</th>
-                <th className="text-center py-1.5 px-2 font-medium text-xs w-16">관리</th>
+                <th className="text-right py-1.5 px-2 font-medium text-xs">금액</th>
+                <th className="text-center py-1.5 px-2 font-medium text-xs w-28">주기/결제일</th>
+                <th className="text-center py-1.5 px-2 font-medium text-xs w-20">관리</th>
               </tr>
             </thead>
             <tbody>
-              {recurring.map(r => (
-                <tr key={r.id} className={`border-b last:border-b-0 hover:bg-muted/20 ${r.isActive !== "true" ? "opacity-50" : ""}`} data-testid={`recurring-row-${r.id}`}>
-                  <td className="py-1.5 px-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-1.5"
-                      onClick={() => toggleMutation.mutate({ id: r.id, isActive: r.isActive === "true" ? "false" : "true" })}
-                      data-testid={`button-toggle-recurring-${r.id}`}
-                    >
-                      {r.isActive === "true" ? (
-                        <Power className="h-3 w-3 text-green-600" />
-                      ) : (
-                        <PowerOff className="h-3 w-3 text-muted-foreground" />
-                      )}
-                    </Button>
-                  </td>
-                  <td className="py-1.5 px-2">
-                    <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                      {getCategoryIcon(r.category)}
-                      {r.category}
-                    </span>
-                  </td>
-                  <td className="py-1.5 px-2 text-xs font-medium">{r.companyName || "-"}</td>
-                  <td className="py-1.5 px-2 text-xs text-muted-foreground">{r.description || "-"}</td>
-                  <td className="py-1.5 px-2 text-right text-xs font-medium text-red-600">{formatAmount(r.amount)}</td>
-                  <td className="py-1.5 px-2 text-center text-xs">매월 {r.paymentDay}일</td>
-                  <td className="py-1.5 px-2 text-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-1.5 text-red-500 hover:text-red-700"
-                      onClick={() => deleteMutation.mutate(r.id)}
-                      data-testid={`button-delete-recurring-${r.id}`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {recurring.map(r => {
+                const isEditing = editingId === r.id;
+                if (isEditing) {
+                  return (
+                    <tr key={r.id} className="border-b bg-muted/10" data-testid={`recurring-row-edit-${r.id}`}>
+                      <td className="py-1.5 px-2" colSpan={7}>
+                        <div className="grid grid-cols-2 md:grid-cols-7 gap-2 items-end">
+                          <div>
+                            <Label className="text-[10px]">분류</Label>
+                            <Select value={editForm.category} onValueChange={val => setEditForm((p: any) => ({ ...p, category: val }))}>
+                              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {EXPENSE_CATEGORIES.map(c => (
+                                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-[10px]">거래처</Label>
+                            <Input className="h-7 text-xs" value={editForm.companyName} onChange={e => setEditForm((p: any) => ({ ...p, companyName: e.target.value }))} />
+                          </div>
+                          <div>
+                            <Label className="text-[10px]">설명</Label>
+                            <Input className="h-7 text-xs" value={editForm.description} onChange={e => setEditForm((p: any) => ({ ...p, description: e.target.value }))} />
+                          </div>
+                          <div>
+                            <Label className="text-[10px]">금액</Label>
+                            <Input className="h-7 text-xs" type="number" value={editForm.amount} onChange={e => setEditForm((p: any) => ({ ...p, amount: e.target.value }))} />
+                          </div>
+                          <div>
+                            <Label className="text-[10px]">주기</Label>
+                            <Select value={editForm.frequency} onValueChange={val => setEditForm((p: any) => ({ ...p, frequency: val }))}>
+                              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="weekly">매주</SelectItem>
+                                <SelectItem value="monthly">매월</SelectItem>
+                                <SelectItem value="yearly">매년</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            {editForm.frequency === "weekly" ? (
+                              <>
+                                <Label className="text-[10px]">요일</Label>
+                                <Select value={editForm.weekday} onValueChange={val => setEditForm((p: any) => ({ ...p, weekday: val }))}>
+                                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {WEEKDAY_NAMES.map((name, i) => (
+                                      <SelectItem key={i} value={String(i)}>{name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </>
+                            ) : editForm.frequency === "yearly" ? (
+                              <div className="flex gap-1">
+                                <div className="flex-1">
+                                  <Label className="text-[10px]">월</Label>
+                                  <Input className="h-7 text-xs" type="number" min="1" max="12" value={editForm.paymentMonth} onChange={e => setEditForm((p: any) => ({ ...p, paymentMonth: e.target.value }))} />
+                                </div>
+                                <div className="flex-1">
+                                  <Label className="text-[10px]">일</Label>
+                                  <Input className="h-7 text-xs" type="number" min="1" max="31" value={editForm.paymentDay} onChange={e => setEditForm((p: any) => ({ ...p, paymentDay: e.target.value }))} />
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <Label className="text-[10px]">결제일</Label>
+                                <Input className="h-7 text-xs" type="number" min="1" max="31" value={editForm.paymentDay} onChange={e => setEditForm((p: any) => ({ ...p, paymentDay: e.target.value }))} />
+                              </>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            <Button size="sm" className="h-7 px-2 text-xs" onClick={saveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit-recurring">
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditingId(null)} data-testid="button-cancel-edit-recurring">
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr
+                    key={r.id}
+                    className={`border-b last:border-b-0 hover:bg-muted/20 cursor-pointer ${r.isActive !== "true" ? "opacity-50" : ""}`}
+                    onClick={() => startEdit(r)}
+                    data-testid={`recurring-row-${r.id}`}
+                  >
+                    <td className="py-1.5 px-2" onClick={e => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5"
+                        onClick={() => toggleMutation.mutate({ id: r.id, isActive: r.isActive === "true" ? "false" : "true" })}
+                        data-testid={`button-toggle-recurring-${r.id}`}
+                      >
+                        {r.isActive === "true" ? (
+                          <Power className="h-3 w-3 text-green-600" />
+                        ) : (
+                          <PowerOff className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </td>
+                    <td className="py-1.5 px-2">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                        {getCategoryIcon(r.category)}
+                        {r.category}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-2 text-xs font-medium">{r.companyName || "-"}</td>
+                    <td className="py-1.5 px-2 text-xs text-muted-foreground">{r.description || "-"}</td>
+                    <td className="py-1.5 px-2 text-right text-xs font-medium text-red-600">
+                      {formatAmount(r.amount)}
+                      <span className="text-[9px] text-muted-foreground ml-0.5">/{freqLabel((r as any).frequency || "monthly")}</span>
+                    </td>
+                    <td className="py-1.5 px-2 text-center text-xs">{getScheduleLabel(r)}</td>
+                    <td className="py-1.5 px-2 text-center" onClick={e => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5 text-red-500 hover:text-red-700"
+                        onClick={() => deleteMutation.mutate(r.id)}
+                        data-testid={`button-delete-recurring-${r.id}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <div className="mt-2 px-2 text-xs text-muted-foreground">
             월 고정지출 합계: <span className="font-medium text-red-600">
-              {formatAmount(recurring.filter(r => r.isActive === "true").reduce((sum, r) => sum + r.amount, 0))}
+              {formatAmount(recurring.filter(r => r.isActive === "true" && ((r as any).frequency || "monthly") === "monthly").reduce((sum, r) => sum + r.amount, 0))}
             </span>
+            {recurring.some(r => r.isActive === "true" && (r as any).frequency === "weekly") && (
+              <span className="ml-3">주간: <span className="font-medium text-red-600">
+                {formatAmount(recurring.filter(r => r.isActive === "true" && (r as any).frequency === "weekly").reduce((sum, r) => sum + r.amount, 0))}/주
+              </span></span>
+            )}
+            {recurring.some(r => r.isActive === "true" && (r as any).frequency === "yearly") && (
+              <span className="ml-3">연간: <span className="font-medium text-red-600">
+                {formatAmount(recurring.filter(r => r.isActive === "true" && (r as any).frequency === "yearly").reduce((sum, r) => sum + r.amount, 0))}/년
+              </span></span>
+            )}
           </div>
         </div>
       ) : (

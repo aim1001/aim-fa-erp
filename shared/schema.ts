@@ -604,7 +604,10 @@ export const recurringExpenses = pgTable("recurring_expenses", {
   description: text("description"),
   companyName: text("company_name"),
   amount: integer("amount").notNull(),
+  frequency: text("frequency").default("monthly").notNull(),
   paymentDay: integer("payment_day").notNull(),
+  weekday: integer("weekday"),
+  paymentMonth: integer("payment_month"),
   isActive: text("is_active").default("true"),
   createdAt: timestamp("created_at").defaultNow(),
 });
