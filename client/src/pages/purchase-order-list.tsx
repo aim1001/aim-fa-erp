@@ -177,7 +177,7 @@ export default function PurchaseOrderList() {
         if (sortField === "orderNumber") {
           const parseNum = (s: string | null) => {
             if (!s) return 0;
-            const m = s.match(/^(\d+)-(\d+)/);
+            const m = s.match(/^[A-Za-z]*(\d+)-(\d+)/);
             return m ? parseInt(m[1]) * 10000 + parseInt(m[2]) : 0;
           };
           return (parseNum(a.orderNumber) - parseNum(b.orderNumber)) * dir;
