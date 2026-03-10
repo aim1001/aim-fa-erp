@@ -54,6 +54,12 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 발주서↔계산서↔송금 연동: 발주서 생성 시 송금 예정(payment) 자동 생성 → 계산서 연결 시 해당 payment에 purchaseInvoiceId 설정하여 계산서로 이관 → 계산서에서 송금 관리(조정/분할/완료) → 발주서는 연결된 계산서의 결제 상태를 참조하여 표시 (계산서 미연결 시 직접 paymentId 기반 표시). 발주서 상세에서는 송금 상태 조회만 가능, 관리는 계산서에서.
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
+## Authentication
+- 단일 비밀번호 기반 인증 (APP_PASSWORD 환경변수)
+- 세션 저장소: PostgreSQL (`connect-pg-simple`, `user_sessions` 테이블)
+- 세션 유지: 7일 (서버 재시작/재배포에도 유지)
+- `trust proxy` 설정으로 배포 환경에서 secure cookie 사용
+
 ## Key Features
 - OneDrive 폴더 자동 스캔 및 인콰이어리 동기화
 - 인콰이어리 CRUD (수동 추가 가능, 영업번호 자동생성)

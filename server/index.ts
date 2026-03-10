@@ -1,9 +1,10 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { pool } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -25,17 +26,23 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-const MemoryStore = createMemoryStore(session);
+app.set("trust proxy", 1);
+
+const PgStore = connectPgSimple(session);
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "sales-manager-session-secret-2026",
     resave: false,
     saveUninitialized: false,
-    store: new MemoryStore({ checkPeriod: 86400000 }),
+    store: new PgStore({
+      pool,
+      tableName: "user_sessions",
+      createTableIfMissing: true,
+    }),
     cookie: {
       maxAge: 7 * 24 * 60 * 60 * 1000,
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
     },
   })
