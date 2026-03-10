@@ -2123,6 +2123,19 @@ function OrderDetailModal({
                   onSelect={(cid, _contact) => setForm(f => ({ ...f, vendorContactId: cid }))}
                   container={detailDialogContainer}
                 />
+                {selectedVendorContact && (
+                  <div className="mt-1 rounded border bg-muted/30 p-1.5 text-[10px] grid grid-cols-2 gap-x-3 gap-y-0.5" data-testid="panel-vendor-contact-info">
+                    {selectedVendorContact.email && (
+                      <div><span className="text-muted-foreground">이메일: </span><span>{selectedVendorContact.email}</span></div>
+                    )}
+                    {selectedVendorContact.phone && (
+                      <div><span className="text-muted-foreground">전화: </span><span>{selectedVendorContact.phone}</span></div>
+                    )}
+                    {!selectedVendorContact.email && !selectedVendorContact.phone && (
+                      <div className="text-muted-foreground col-span-2">연락처 정보 없음</div>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">내용</Label>
