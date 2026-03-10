@@ -543,6 +543,8 @@ export const companySettings = pgTable("company_settings", {
   poDefaultStaffId: varchar("po_default_staff_id"),
   poDefaultPaymentTerms: text("po_default_payment_terms"),
   poDefaultWarrantyTerms: text("po_default_warranty_terms"),
+  poAutoCc: text("po_auto_cc"),
+  poEmailTemplate: text("po_email_template"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

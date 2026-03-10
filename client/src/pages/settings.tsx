@@ -51,6 +51,8 @@ export default function SettingsPage() {
     poDefaultStaffId: "" as string | null,
     poDefaultPaymentTerms: "입고후 익월말",
     poDefaultWarrantyTerms: "하자보증 1년",
+    poAutoCc: "",
+    poEmailTemplate: "",
   });
 
   const [poDefaultContactPerson, setPoDefaultContactPerson] = useState("");
@@ -72,6 +74,8 @@ export default function SettingsPage() {
         poDefaultStaffId: settings.poDefaultStaffId || null,
         poDefaultPaymentTerms: settings.poDefaultPaymentTerms || "입고후 익월말",
         poDefaultWarrantyTerms: settings.poDefaultWarrantyTerms || "하자보증 1년",
+        poAutoCc: settings.poAutoCc || "",
+        poEmailTemplate: settings.poEmailTemplate || "",
       });
       if (settings.poDefaultStaffId && staffList) {
         const s = staffList.find(st => st.id === settings.poDefaultStaffId);
@@ -521,6 +525,47 @@ export default function SettingsPage() {
                     data-testid="input-po-default-warranty-terms"
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Mail className="h-4 w-4" />
+                  발주서 이메일 자동 CC
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Input
+                  value={form.poAutoCc}
+                  onChange={(e) => updateField("poAutoCc", e.target.value)}
+                  placeholder="houns9@aim-fa.com,yups@aim-fa.com"
+                  data-testid="input-poAutoCc"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  발주서 이메일 발송 시 자동으로 CC에 추가됩니다. 여러 이메일은 쉼표(,)로 구분하세요.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Mail className="h-4 w-4" />
+                  발주서 이메일 본문 템플릿
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={form.poEmailTemplate}
+                  onChange={(e) => updateField("poEmailTemplate", e.target.value)}
+                  placeholder={"안녕하세요.\n\n발주서를 송부드립니다.\n\n발주번호: {발주번호}\n입고예정일: {입고일자}\n\n검토 후 회신 부탁드립니다.\n\n감사합니다."}
+                  rows={8}
+                  data-testid="input-poEmailTemplate"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  발주서 이메일 발송 시 기본 본문으로 사용됩니다. 치환 변수: <code>{"{발주번호}"}</code>, <code>{"{입고일자}"}</code>, <code>{"{구매처명}"}</code>, <code>{"{담당자명}"}</code>
+                </p>
               </CardContent>
             </Card>
 

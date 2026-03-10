@@ -1818,6 +1818,7 @@ function OrderDetailModal({
   const { toast } = useToast();
   const { ref: detailContainerRef, container: detailDialogContainer } = useDialogContainer();
   const { data: staffList } = useQuery<Staff[]>({ queryKey: ["/api/staff"] });
+  const { data: companySettings } = useQuery<CompanySettings>({ queryKey: ["/api/company-settings"] });
 
   const buildFormState = useCallback(() => ({
     vendor: order.vendor || "",
@@ -1887,11 +1888,24 @@ function OrderDetailModal({
 
   const handleOpenEmailDialog = () => {
     const emailTo = selectedVendorContact?.email || vendorRecord?.contactEmail || "";
+    const companyLabel = companySettings?.companyName?.replace(/^주식회사\s*/, "").replace(/\s*주식회사$/, "") || "";
+    const subjectPrefix = companyLabel ? `[${companyLabel}-발주서]` : "[발주서]";
+    const subject = `${subjectPrefix} ${order.orderNumber || ""} - 발주 안내`;
+
+    let body = companySettings?.poEmailTemplate || "";
+    if (body) {
+      body = body
+        .replace(/\{발주번호\}/g, order.orderNumber || "")
+        .replace(/\{입고일자\}/g, order.expectedDeliveryDate || "")
+        .replace(/\{구매처명\}/g, order.vendor || "")
+        .replace(/\{담당자명\}/g, order.contactPerson || "");
+    }
+
     setEmailForm({
       to: emailTo,
-      subject: `[발주서] ${order.orderNumber || ""} - 발주 안내`,
-      body: "",
-      cc: "",
+      subject,
+      body,
+      cc: companySettings?.poAutoCc || "",
     });
     setShowEmailDialog(true);
   };
