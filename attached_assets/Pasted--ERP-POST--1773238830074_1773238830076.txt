@@ -1,0 +1,19 @@
+지금은 “이메일로만” 받는 흐름이라, 같은 제출 이벤트에서 ERP로 POST를 한 번 더 쏘는 방식으로 깔끔하게 붙일 수 있어요. 먼저 현재 사이트에서 문의 폼이 어디에서 전송되는지(EmailJS/자체 API 등) 정확한 위치를 찾아서, 그 지점에 ERP 전송을 “추가”하면 됩니다. 바로 코드 위치부터 확인해볼게요.
+문의 폼 구현 파일이 HomepageBuilder/src/components/common/ContactForm.tsx로 보이고, API 라우트도 src/pages/api/에 있어요. 이제 ContactForm.tsx에서 “이메일 발송” 로직이 어떻게 되어있는지 확인한 뒤, 같은 위치에 ERP POST를 추가하는 형태로 붙이는 가이드를 드릴게요.
+지금 코드 상태를 보니 문의 폼이 2개 버전이 공존해요: 하나는 emailjs로 직접 메일 보내는 폼, 다른 하나는 /api/inquiries로 보내는 폼입니다. 실제로 홈페이지에서 쓰는 게 어느 쪽인지(=어디에 ERP 전송을 붙여야 하는지)부터 먼저 확정하겠습니다.
+어디에 넣으면 되나
+실제 문의 페이지(/contact/)는 EmailJS로 메일 발송하는 폼을 쓰고 있어서, 여기에 ERP 전송 fetch를 “추가”하면 됩니다.
+사용 중인 페이지: HomepageBuilder/src/pages/contact.astro
+import ContactForm from "@/components/contact/ContactForm";---<ContactForm client:load />
+실제 폼/메일 발송 코드: HomepageBuilder/src/components/contact/ContactForm.tsx
+const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {  e.preventDefault();  // ...  const templateParams = {    to_email: 'sales@aim-fa.com',    company: formData.get('company'),    name: formData.get('name'),    phone: formData.get('phone'),    email: formData.get('email'),    product: formData.get('product'),    message: message,  };  await emailjs.send(serviceId, templateId, templateParams, publicKey);  // ...};
+추가로 ERP로도 전송(권장 형태)
+메일 발송(emailjs.send)이 성공한 다음, 같은 try 블록 안에서 ERP로도 전송을 한 번 더 호출하고, ERP 실패는 catch로 무시하면 요청하신 흐름이 됩니다.
+아래처럼 “매핑”만 맞추면 돼요(당신이 준 ERP 필드명 기준).
+// emailjs.send(...) 성공 직후에 추가const erpEndpoint =  import.meta.env.PUBLIC_ERP_INQUIRY_ENDPOINT || "https://[ERP주소]/api/web-inquiry";const erpPayload = {  companyName: String(formData.get("company") ?? ""),  contactName: String(formData.get("name") ?? ""),  phone: String(formData.get("phone") ?? ""),  email: String(formData.get("email") ?? ""),  productInfo: String(formData.get("product") ?? ""),  message: String(message ?? ""),  // 있으면 유용:  // pageUrl: typeof window !== "undefined" ? window.location.href : "",};try {  await fetch(erpEndpoint, {    method: "POST",    headers: { "Content-Type": "application/json" },    body: JSON.stringify(erpPayload),  });} catch (err) {  // ERP 전송 실패해도 EmailJS 메일은 이미 발송됨 — 무시  console.warn("ERP 문의 전송 실패:", err);}
+꼭 체크할 1가지(CORS)
+ERP가 다른 도메인(https://erp...)이면 브라우저에서 바로 호출할 때 CORS 허용이 없으면 전송이 막힙니다. ERP 서버에서 아래를 허용해야 해요.
+Access-Control-Allow-Origin: https://www.aim-fa.com (또는 운영 도메인)
+Access-Control-Allow-Methods: POST, OPTIONS
+Access-Control-Allow-Headers: Content-Type
+원하시면, ERP의 실제 배포 주소(또는 허용하려는 도메인)만 알려주시면 CORS/보안(스팸 방지, rate limit)까지 포함해서 “운영용”으로 더 탄탄한 형태도 설계해드릴게요.
