@@ -16,6 +16,7 @@ import {
   ChevronDown, ChevronUp, RefreshCw, CreditCard, Building2, Receipt,
   Landmark, Home, Wallet, X, Power, PowerOff,
   List, Calendar as CalendarIcon, Download, FileSpreadsheet, Loader2,
+  Filter, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 
 type EnrichedPayment = Payment & {
@@ -90,49 +91,219 @@ function CollapsibleSection({ title, count, defaultOpen = true, children, header
   );
 }
 
-function PaymentTable({ payments, type }: { payments: EnrichedPayment[]; type: "income" | "expense" }) {
-  if (payments.length === 0) {
-    return <div className="text-center py-6 text-muted-foreground text-sm">등록된 항목이 없습니다.</div>;
-  }
+function getPaymentStatus(p: Payment): "completed" | "overdue" | "planned" {
+  if (p.status === "completed") return "completed";
+  if (p.plannedDate && p.plannedDate < new Date().toISOString().split("T")[0]) return "overdue";
+  return "planned";
+}
+
+function UnifiedPaymentTable({ payments }: { payments: EnrichedPayment[] }) {
+  const [statusFilter, setStatusFilter] = useState<"all" | "planned" | "completed" | "overdue">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortField, setSortField] = useState<"date" | "amount" | null>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (field: "date" | "amount") => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const filtered = useMemo(() => {
+    let list = [...payments];
+
+    if (statusFilter !== "all") {
+      list = list.filter(p => getPaymentStatus(p) === statusFilter);
+    }
+    if (typeFilter !== "all") {
+      list = list.filter(p => p.type === typeFilter);
+    }
+    if (dateFrom) {
+      list = list.filter(p => {
+        const d = p.status === "completed" ? (p.actualDate || p.plannedDate) : p.plannedDate;
+        return d && d >= dateFrom;
+      });
+    }
+    if (dateTo) {
+      list = list.filter(p => {
+        const d = p.status === "completed" ? (p.actualDate || p.plannedDate) : p.plannedDate;
+        return d && d <= dateTo;
+      });
+    }
+
+    if (sortField) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      list.sort((a, b) => {
+        if (sortField === "date") {
+          const da = (a.status === "completed" ? (a.actualDate || a.plannedDate) : a.plannedDate) || "";
+          const db = (b.status === "completed" ? (b.actualDate || b.plannedDate) : b.plannedDate) || "";
+          return da.localeCompare(db) * dir;
+        }
+        if (sortField === "amount") {
+          return ((a.amount || 0) - (b.amount || 0)) * dir;
+        }
+        return 0;
+      });
+    }
+
+    return list;
+  }, [payments, statusFilter, typeFilter, dateFrom, dateTo, sortField, sortDir]);
+
+  const statusCounts = useMemo(() => {
+    let planned = 0, completed = 0, overdue = 0;
+    payments.forEach(p => {
+      const s = getPaymentStatus(p);
+      if (s === "planned") planned++;
+      else if (s === "completed") completed++;
+      else overdue++;
+    });
+    return { all: payments.length, planned, completed, overdue };
+  }, [payments]);
+
+  const hasActiveFilters = statusFilter !== "all" || typeFilter !== "all" || dateFrom || dateTo;
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setTypeFilter("all");
+    setDateFrom("");
+    setDateTo("");
+  };
+
+  const SortIcon = ({ field }: { field: "date" | "amount" }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-30" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+  };
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-muted/20">
-            <th className="text-left py-1.5 px-2 font-medium text-xs w-16">상태</th>
-            {type === "expense" && <th className="text-left py-1.5 px-2 font-medium text-xs w-20">분류</th>}
-            <th className="text-left py-1.5 px-2 font-medium text-xs">예정일</th>
-            <th className="text-left py-1.5 px-2 font-medium text-xs">거래처</th>
-            <th className="text-left py-1.5 px-2 font-medium text-xs">설명</th>
-            <th className="text-right py-1.5 px-2 font-medium text-xs">예정금액</th>
-            <th className="text-right py-1.5 px-2 font-medium text-xs">실제금액</th>
-          </tr>
-        </thead>
-        <tbody>
-          {payments.map(p => (
-            <tr key={p.id} className="border-b last:border-b-0 hover:bg-muted/20" data-testid={`fund-row-${p.id}`}>
-              <td className="py-1.5 px-2">{getStatusBadge(p)}</td>
-              {type === "expense" && (
-                <td className="py-1.5 px-2">
-                  <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                    {getCategoryIcon(p.category)}
-                    {p.category || "매입"}
-                  </span>
-                </td>
-              )}
-              <td className="py-1.5 px-2 text-xs">{p.status === "completed" ? p.actualDate || "-" : p.plannedDate || "-"}</td>
-              <td className="py-1.5 px-2 text-xs font-medium truncate max-w-[140px]">{p.companyName || "-"}</td>
-              <td className="py-1.5 px-2 text-xs text-muted-foreground truncate max-w-[180px]">{p.description || "-"}</td>
-              <td className={`py-1.5 px-2 text-right text-xs font-medium ${type === "income" ? "text-blue-600" : "text-red-600"}`}>
-                {formatAmount(p.amount)}
-              </td>
-              <td className="py-1.5 px-2 text-right text-xs">
-                {p.actualAmount ? <span className="text-green-600">{formatAmount(p.actualAmount)}</span> : <span className="text-muted-foreground">-</span>}
-              </td>
-            </tr>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        <div className="flex items-center gap-0.5 border rounded-md p-0.5">
+          {(["all", "planned", "overdue", "completed"] as const).map(s => (
+            <Button
+              key={s}
+              variant={statusFilter === s ? "default" : "ghost"}
+              size="sm"
+              className="h-6 text-[11px] px-2"
+              onClick={() => setStatusFilter(s)}
+              data-testid={`filter-status-${s}`}
+            >
+              {s === "all" ? `전체 (${statusCounts.all})` :
+               s === "planned" ? `예정 (${statusCounts.planned})` :
+               s === "overdue" ? `연체 (${statusCounts.overdue})` :
+               `완료 (${statusCounts.completed})`}
+            </Button>
           ))}
-        </tbody>
-      </table>
+        </div>
+        <div className="flex items-center gap-0.5 border rounded-md p-0.5">
+          {(["all", "income", "expense"] as const).map(t => (
+            <Button
+              key={t}
+              variant={typeFilter === t ? "default" : "ghost"}
+              size="sm"
+              className="h-6 text-[11px] px-2"
+              onClick={() => setTypeFilter(t)}
+              data-testid={`filter-type-${t}`}
+            >
+              {t === "all" ? "전체" : t === "income" ? "입금" : "출금"}
+            </Button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <Input
+            type="date"
+            className="h-6 text-[11px] w-[120px] px-1"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            data-testid="filter-date-from"
+          />
+          <span className="text-xs text-muted-foreground">~</span>
+          <Input
+            type="date"
+            className="h-6 text-[11px] w-[120px] px-1"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            data-testid="filter-date-to"
+          />
+        </div>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground" onClick={clearFilters} data-testid="filter-clear">
+            <X className="h-3 w-3 mr-1" />초기화
+          </Button>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-6 text-muted-foreground text-sm">
+          {hasActiveFilters ? "필터 조건에 맞는 항목이 없습니다." : "등록된 항목이 없습니다."}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/20">
+                <th className="text-left py-1.5 px-2 font-medium text-xs w-16">상태</th>
+                <th className="text-left py-1.5 px-2 font-medium text-xs w-14">구분</th>
+                <th className="text-left py-1.5 px-2 font-medium text-xs w-20">분류</th>
+                <th className="text-left py-1.5 px-2 font-medium text-xs cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("date")} data-testid="sort-date">
+                  <span className="inline-flex items-center gap-1">일자 <SortIcon field="date" /></span>
+                </th>
+                <th className="text-left py-1.5 px-2 font-medium text-xs">거래처</th>
+                <th className="text-left py-1.5 px-2 font-medium text-xs">설명</th>
+                <th className="text-right py-1.5 px-2 font-medium text-xs cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("amount")} data-testid="sort-amount">
+                  <span className="inline-flex items-center gap-1 justify-end">예정금액 <SortIcon field="amount" /></span>
+                </th>
+                <th className="text-right py-1.5 px-2 font-medium text-xs">실제금액</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(p => {
+                const isCompleted = p.status === "completed";
+                const rowClass = isCompleted
+                  ? "border-b last:border-b-0 bg-muted/20 opacity-60"
+                  : "border-b last:border-b-0 hover:bg-muted/20";
+                return (
+                  <tr key={p.id} className={rowClass} data-testid={`fund-row-${p.id}`}>
+                    <td className="py-1.5 px-2">{getStatusBadge(p)}</td>
+                    <td className="py-1.5 px-2">
+                      <Badge variant="outline" className={`text-[10px] ${p.type === "income" ? "text-blue-600 border-blue-200 bg-blue-50/50" : "text-red-600 border-red-200 bg-red-50/50"}`}>
+                        {p.type === "income" ? "입금" : "출금"}
+                      </Badge>
+                    </td>
+                    <td className="py-1.5 px-2">
+                      {p.type === "expense" ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                          {getCategoryIcon(p.category)}
+                          {p.category || "매입"}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">매출</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-xs">{isCompleted ? p.actualDate || p.plannedDate || "-" : p.plannedDate || "-"}</td>
+                    <td className="py-1.5 px-2 text-xs font-medium truncate max-w-[140px]">{p.companyName || "-"}</td>
+                    <td className="py-1.5 px-2 text-xs text-muted-foreground truncate max-w-[180px]">{p.description || "-"}</td>
+                    <td className={`py-1.5 px-2 text-right text-xs font-medium ${p.type === "income" ? "text-blue-600" : "text-red-600"}`}>
+                      {formatAmount(p.amount)}
+                    </td>
+                    <td className="py-1.5 px-2 text-right text-xs">
+                      {p.actualAmount ? <span className="text-green-600">{formatAmount(p.actualAmount)}</span> : <span className="text-muted-foreground">-</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="text-right text-[10px] text-muted-foreground">
+        {hasActiveFilters ? `${filtered.length}건 / 전체 ${payments.length}건` : `${payments.length}건`}
+      </div>
     </div>
   );
 }
@@ -836,10 +1007,8 @@ export function FundOverviewTab({ year, month }: { year: number; month: number }
     },
   });
 
-  const { incomePayments, expensePayments, totals } = useMemo(() => {
-    if (!payments) return { incomePayments: [], expensePayments: [], totals: { plannedIncome: 0, plannedExpense: 0, actualIncome: 0, actualExpense: 0 } };
-    const income = payments.filter(p => p.type === "income").sort((a, b) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
-    const expense = payments.filter(p => p.type === "expense").sort((a, b) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
+  const totals = useMemo(() => {
+    if (!payments) return { plannedIncome: 0, plannedExpense: 0, actualIncome: 0, actualExpense: 0 };
     let plannedIncome = 0, plannedExpense = 0, actualIncome = 0, actualExpense = 0;
     payments.forEach(p => {
       if (p.type === "income") {
@@ -850,7 +1019,7 @@ export function FundOverviewTab({ year, month }: { year: number; month: number }
         actualExpense += p.actualAmount || 0;
       }
     });
-    return { incomePayments: income, expensePayments: expense, totals: { plannedIncome, plannedExpense, actualIncome, actualExpense } };
+    return { plannedIncome, plannedExpense, actualIncome, actualExpense };
   }, [payments]);
 
   return (
@@ -907,13 +1076,9 @@ export function FundOverviewTab({ year, month }: { year: number; month: number }
         <FundCalendarView payments={payments || []} year={year} month={month} />
       ) : (
         <>
-          <CollapsibleSection title="매출 (입금)" count={incomePayments.length}>
-            <PaymentTable payments={incomePayments} type="income" />
-          </CollapsibleSection>
-
-          <CollapsibleSection title="매입 (출금)" count={expensePayments.length}>
-            <PaymentTable payments={expensePayments} type="expense" />
-          </CollapsibleSection>
+          <div className="border rounded-lg p-4">
+            <UnifiedPaymentTable payments={payments || []} />
+          </div>
 
           <CollapsibleSection title="경비 직접 입력" defaultOpen={false}>
             <AddExpenseForm year={year} month={month} onSuccess={() => {}} />
