@@ -439,6 +439,25 @@ export function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; 
         </div>
       </DialogHeader>
       <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
+      {(!invoice.issueDate || invoice.invoiceStage) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {!invoice.issueDate && (
+            <Badge variant="outline" className="text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700" data-testid="badge-detail-unissued">
+              미발행
+            </Badge>
+          )}
+          {invoice.invoiceStage && (
+            <Badge variant="secondary" data-testid="badge-detail-stage">
+              {invoice.invoiceStage}
+            </Badge>
+          )}
+          {invoice.plannedIssueDate && !invoice.issueDate && (
+            <Badge variant="outline" className="text-muted-foreground text-[10px]" data-testid="badge-detail-planned-date">
+              발행예정일: {invoice.plannedIssueDate}
+            </Badge>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-[100px_1fr] gap-y-2 gap-x-2 text-sm items-center">
         <span className="text-muted-foreground">고객사</span>
         <Select value={invoice.customerId || ""} onValueChange={val => updateMutation.mutate({ customerId: val || null })}>
@@ -497,6 +516,7 @@ export default function SalesInvoiceList() {
   const [periodType, setPeriodType] = useState<string>("all");
   const [periodValue, setPeriodValue] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  const [issueStatusFilter, setIssueStatusFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [newInvoice, setNewInvoice] = useState({ customerId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
@@ -530,10 +550,12 @@ export default function SalesInvoiceList() {
     if (!invoices) return [];
     const years = new Set<number>();
     invoices.forEach(inv => {
-      if (inv.issueDate) {
-        const y = parseInt(inv.issueDate.substring(0, 4));
+      const d = inv.issueDate || inv.plannedIssueDate;
+      if (d) {
+        const y = parseInt(d.substring(0, 4));
         if (!isNaN(y)) years.add(y);
       }
+      if (inv.year) years.add(inv.year);
     });
     return Array.from(years).sort((a, b) => b - a);
   }, [invoices]);
@@ -542,22 +564,40 @@ export default function SalesInvoiceList() {
     if (!invoices) return [];
     let list = invoices;
 
+    if (issueStatusFilter === "issued") {
+      list = list.filter(inv => !!inv.issueDate);
+    } else if (issueStatusFilter === "unissued") {
+      list = list.filter(inv => !inv.issueDate);
+    }
+
     if (dateFrom || dateTo) {
-      if (dateFrom) list = list.filter(inv => inv.issueDate && inv.issueDate >= dateFrom);
-      if (dateTo) list = list.filter(inv => inv.issueDate && inv.issueDate <= dateTo);
+      list = list.filter(inv => {
+        const d = inv.issueDate || inv.plannedIssueDate;
+        if (!d) return false;
+        if (dateFrom && d < dateFrom) return false;
+        if (dateTo && d > dateTo) return false;
+        return true;
+      });
     } else if (filterYear !== "all") {
       const y = filterYear;
-      list = list.filter(inv => inv.issueDate?.startsWith(y));
+      list = list.filter(inv => {
+        const d = inv.issueDate || inv.plannedIssueDate;
+        return d?.startsWith(y) || (inv.year && String(inv.year) === y);
+      });
 
       if (periodType === "monthly" && periodValue !== "all") {
         const m = periodValue.padStart(2, "0");
-        list = list.filter(inv => inv.issueDate?.substring(5, 7) === m);
+        list = list.filter(inv => {
+          const d = inv.issueDate || inv.plannedIssueDate;
+          return d?.substring(5, 7) === m;
+        });
       } else if (periodType === "quarterly" && periodValue !== "all") {
         const q = parseInt(periodValue);
         const startMonth = (q - 1) * 3 + 1;
         const endMonth = startMonth + 2;
         list = list.filter(inv => {
-          const month = parseInt(inv.issueDate?.substring(5, 7) || "0");
+          const d = inv.issueDate || inv.plannedIssueDate;
+          const month = parseInt(d?.substring(5, 7) || "0");
           return month >= startMonth && month <= endMonth;
         });
       }
@@ -574,12 +614,13 @@ export default function SalesInvoiceList() {
         (inv.item && inv.item.toLowerCase().includes(s)) ||
         (inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(s)) ||
         (inv.businessNumber && inv.businessNumber.includes(s)) ||
-        (inv.customerId && customerMap.get(inv.customerId)?.toLowerCase().includes(s))
+        (inv.customerId && customerMap.get(inv.customerId)?.toLowerCase().includes(s)) ||
+        (inv.invoiceStage && inv.invoiceStage.toLowerCase().includes(s))
       );
     }
 
     return list;
-  }, [invoices, search, customerMap, filterYear, periodType, periodValue, paymentFilter, dateFrom, dateTo]);
+  }, [invoices, search, customerMap, filterYear, periodType, periodValue, paymentFilter, issueStatusFilter, dateFrom, dateTo]);
 
   const totals = useMemo(() => {
     let supply = 0, tax = 0, total = 0;
@@ -734,26 +775,47 @@ export default function SalesInvoiceList() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 flex-wrap" data-testid="payment-filter-tabs-sales">
-        <Wallet className="h-4 w-4 text-muted-foreground mr-1" />
-        {[
-          { value: "all", label: "전체" },
-          { value: "none", label: "미설정" },
-          { value: "planned", label: "입금계획" },
-          { value: "partial", label: "일부입금" },
-          { value: "completed", label: "입금완료" },
-        ].map(opt => (
-          <Button
-            key={opt.value}
-            variant={paymentFilter === opt.value ? "default" : "outline"}
-            size="sm"
-            className="text-xs"
-            onClick={() => setPaymentFilter(opt.value)}
-            data-testid={`filter-payment-sales-${opt.value}`}
-          >
-            {opt.label}
-          </Button>
-        ))}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-1.5" data-testid="issue-status-filter-tabs">
+          <FileText className="h-4 w-4 text-muted-foreground mr-1" />
+          {[
+            { value: "all", label: "전체" },
+            { value: "issued", label: "발행" },
+            { value: "unissued", label: "미발행" },
+          ].map(opt => (
+            <Button
+              key={opt.value}
+              variant={issueStatusFilter === opt.value ? "default" : "outline"}
+              size="sm"
+              className="text-xs"
+              onClick={() => setIssueStatusFilter(opt.value)}
+              data-testid={`filter-issue-${opt.value}`}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5" data-testid="payment-filter-tabs-sales">
+          <Wallet className="h-4 w-4 text-muted-foreground mr-1" />
+          {[
+            { value: "all", label: "전체" },
+            { value: "none", label: "미설정" },
+            { value: "planned", label: "입금계획" },
+            { value: "partial", label: "일부입금" },
+            { value: "completed", label: "입금완료" },
+          ].map(opt => (
+            <Button
+              key={opt.value}
+              variant={paymentFilter === opt.value ? "default" : "outline"}
+              size="sm"
+              className="text-xs"
+              onClick={() => setPaymentFilter(opt.value)}
+              data-testid={`filter-payment-sales-${opt.value}`}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
@@ -765,6 +827,7 @@ export default function SalesInvoiceList() {
               <tr className="border-b bg-muted/50">
                 <th className="text-left py-2.5 px-4 font-medium">발급일</th>
                 <th className="text-left py-2.5 px-4 font-medium">상호</th>
+                <th className="text-center py-2.5 px-4 font-medium hidden md:table-cell">구분</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">프로젝트</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">사업자번호</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">공급가액</th>
@@ -776,10 +839,24 @@ export default function SalesInvoiceList() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(inv => (
-                <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(inv.id)} data-testid={`row-sales-invoice-${inv.id}`}>
-                  <td className="py-2.5 px-4">{inv.issueDate || "-"}</td>
+              {filtered.map(inv => {
+                const isUnissued = !inv.issueDate;
+                return (
+                <tr key={inv.id} className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${isUnissued ? "bg-amber-50/50 dark:bg-amber-950/10" : ""}`} onClick={() => setSelectedId(inv.id)} data-testid={`row-sales-invoice-${inv.id}`}>
+                  <td className="py-2.5 px-4">
+                    {isUnissued ? (
+                      <div className="flex flex-col gap-0.5">
+                        <Badge variant="outline" className="text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700 text-[10px] w-fit" data-testid={`badge-unissued-${inv.id}`}>미발행</Badge>
+                        {inv.plannedIssueDate && <span className="text-[10px] text-muted-foreground">예정 {inv.plannedIssueDate}</span>}
+                      </div>
+                    ) : inv.issueDate}
+                  </td>
                   <td className="py-2.5 px-4">{inv.companyName || (inv.customerId ? customerMap.get(inv.customerId) : "-") || "-"}</td>
+                  <td className="py-2.5 px-4 text-center hidden md:table-cell">
+                    {inv.invoiceStage ? (
+                      <Badge variant="secondary" className="text-[10px]" data-testid={`badge-stage-${inv.id}`}>{inv.invoiceStage}</Badge>
+                    ) : <span className="text-muted-foreground/50">-</span>}
+                  </td>
                   <td className="py-2.5 px-4 hidden md:table-cell">
                     {inv.projectId && projectMap.get(inv.projectId) ? (
                       <span className="text-xs font-medium text-muted-foreground" data-testid={`text-project-${inv.id}`}>
@@ -799,7 +876,8 @@ export default function SalesInvoiceList() {
                     {inv.paymentCount > 0 ? <span className={inv.remainingAmount > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}>{inv.remainingAmount.toLocaleString()}원</span> : <span className="text-muted-foreground">-</span>}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
