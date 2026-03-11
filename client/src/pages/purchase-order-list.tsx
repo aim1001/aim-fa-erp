@@ -115,6 +115,7 @@ export default function PurchaseOrderList() {
     },
     onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       if (selectedOrder && selectedOrder.id === variables.id) {
         setSelectedOrder({ ...selectedOrder, ...variables.data } as PurchaseOrder);
       }
@@ -131,6 +132,7 @@ export default function PurchaseOrderList() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       setSelectedOrder(null);
       toast({ title: "발주가 삭제되었습니다" });
     },
@@ -1820,6 +1822,8 @@ function OrderDetailModal({
   const { data: staffList } = useQuery<Staff[]>({ queryKey: ["/api/staff"] });
   const { data: companySettings } = useQuery<CompanySettings>({ queryKey: ["/api/company-settings"] });
 
+  const linkedPaymentForOrder = payments.find(p => p.id === order.paymentId);
+
   const buildFormState = useCallback(() => ({
     vendor: order.vendor || "",
     vendorId: order.vendorId || "",
@@ -1833,13 +1837,14 @@ function OrderDetailModal({
     receivingCompleted: order.receivingCompleted || false,
     purchaseInvoiceId: order.purchaseInvoiceId || "",
     paymentId: order.paymentId || "",
+    paymentDate: linkedPaymentForOrder?.plannedDate || "",
     memo: order.memo || "",
     staffId: order.staffId || "",
     contactPerson: order.contactPerson || "",
     paymentTerms: order.paymentTerms || "",
     deliveryLocation: order.deliveryLocation || "",
     warrantyTerms: order.warrantyTerms || "",
-  }), [order]);
+  }), [order, linkedPaymentForOrder]);
 
   const [form, setForm] = useState(buildFormState);
   const [showUnsavedAlert, setShowUnsavedAlert] = useState(false);
@@ -2039,6 +2044,7 @@ function OrderDetailModal({
       form.receivingCompleted !== (order.receivingCompleted || false) ||
       form.purchaseInvoiceId !== (order.purchaseInvoiceId || "") ||
       form.paymentId !== (order.paymentId || "") ||
+      form.paymentDate !== (linkedPaymentForOrder?.plannedDate || "") ||
       form.memo !== (order.memo || "") ||
       form.staffId !== (order.staffId || "") ||
       form.contactPerson !== (order.contactPerson || "") ||
@@ -2061,6 +2067,7 @@ function OrderDetailModal({
       receivingCompleted: form.receivingCompleted,
       purchaseInvoiceId: form.purchaseInvoiceId || null,
       paymentId: form.paymentId || null,
+      paymentDate: form.paymentDate || null,
       memo: form.memo || null,
       staffId: form.staffId || null,
       contactPerson: form.contactPerson || null,
@@ -2351,7 +2358,7 @@ function OrderDetailModal({
                     입고완료 처리
                   </label>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <Label className="text-[10px] text-muted-foreground">납품예정일</Label>
                     <Input type="date" className="h-7 text-xs" value={form.expectedDeliveryDate} onChange={e => setForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))} data-testid="input-expected-date" />
@@ -2359,6 +2366,13 @@ function OrderDetailModal({
                   <div>
                     <Label className="text-[10px] text-muted-foreground">납품일</Label>
                     <Input type="date" className="h-7 text-xs" value={form.actualDeliveryDate} onChange={e => setForm(f => ({ ...f, actualDeliveryDate: e.target.value }))} data-testid="input-actual-date" />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">결제예정일</Label>
+                    <Input type="date" className="h-7 text-xs" value={form.paymentDate} onChange={e => setForm(f => ({ ...f, paymentDate: e.target.value }))} data-testid="input-payment-date" />
+                    {form.paymentDate && !order.paymentId && (
+                      <p className="text-[10px] text-blue-600 mt-0.5">→ 저장 시 자금계획에 등록</p>
+                    )}
                   </div>
                 </div>
                 <InvoiceSearchPicker

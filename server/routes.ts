@@ -4655,12 +4655,12 @@ export async function registerRoutes(
 
       let payment = null;
 
-      if (paymentDate && order.totalAmount) {
+      if (paymentDate) {
         payment = await storage.createPayment({
           type: "expense",
           companyName: order.vendor || "",
           description: order.description || "",
-          amount: order.totalAmount,
+          amount: order.totalAmount || 0,
           plannedDate: paymentDate,
           status: "planned",
         });
@@ -4826,28 +4826,57 @@ export async function registerRoutes(
 
   app.patch("/api/purchase-orders/:id", async (req, res) => {
     try {
+      const { paymentDate, ...updateData } = req.body;
       const existing = await storage.getPurchaseOrder(req.params.id);
       if (!existing) return res.status(404).json({ message: "Not found" });
 
-      const result = await storage.updatePurchaseOrder(req.params.id, req.body);
+      const result = await storage.updatePurchaseOrder(req.params.id, updateData);
 
-      if ("purchaseInvoiceId" in req.body && existing.paymentId) {
-        const newInvoiceId = req.body.purchaseInvoiceId;
-        const oldInvoiceId = existing.purchaseInvoiceId;
+      const updated = await storage.getPurchaseOrder(req.params.id);
 
-        if (newInvoiceId && newInvoiceId !== oldInvoiceId) {
-          await storage.updatePayment(existing.paymentId, {
-            purchaseInvoiceId: newInvoiceId,
-          });
-        } else if (!newInvoiceId && oldInvoiceId) {
-          await storage.updatePayment(existing.paymentId, {
-            purchaseInvoiceId: null,
-          });
+      if (existing.paymentId) {
+        const paymentUpdates: Record<string, any> = {};
+
+        if ("totalAmount" in updateData && updateData.totalAmount !== existing.totalAmount) {
+          paymentUpdates.amount = updateData.totalAmount || 0;
         }
+        if ("vendor" in updateData && updateData.vendor !== existing.vendor) {
+          paymentUpdates.companyName = updateData.vendor || "";
+        }
+        if ("description" in updateData && updateData.description !== existing.description) {
+          paymentUpdates.description = updateData.description || "";
+        }
+        if (paymentDate !== undefined) {
+          paymentUpdates.plannedDate = paymentDate || null;
+        }
+
+        if ("purchaseInvoiceId" in updateData) {
+          const newInvoiceId = updateData.purchaseInvoiceId;
+          const oldInvoiceId = existing.purchaseInvoiceId;
+          if (newInvoiceId && newInvoiceId !== oldInvoiceId) {
+            paymentUpdates.purchaseInvoiceId = newInvoiceId;
+          } else if (!newInvoiceId && oldInvoiceId) {
+            paymentUpdates.purchaseInvoiceId = null;
+          }
+        }
+
+        if (Object.keys(paymentUpdates).length > 0) {
+          await storage.updatePayment(existing.paymentId, paymentUpdates);
+        }
+      } else if (paymentDate) {
+        const payment = await storage.createPayment({
+          type: "expense",
+          companyName: updated?.vendor || existing.vendor || "",
+          description: updated?.description || existing.description || "",
+          amount: updated?.totalAmount || existing.totalAmount || 0,
+          plannedDate: paymentDate,
+          status: "planned",
+        });
+        await storage.updatePurchaseOrder(req.params.id, { paymentId: payment.id });
       }
 
-      if ("expectedDeliveryDate" in req.body) {
-        const newDate = req.body.expectedDeliveryDate;
+      if ("expectedDeliveryDate" in updateData) {
+        const newDate = updateData.expectedDeliveryDate;
         const oldDate = existing.expectedDeliveryDate;
         if (newDate !== oldDate) {
           try {
@@ -4861,10 +4890,10 @@ export async function registerRoutes(
               }
             }
             if (newDate) {
-              const updatedOrder = await storage.getPurchaseOrder(req.params.id);
+              const latestOrder = await storage.getPurchaseOrder(req.params.id);
               const eventId = await createDeliveryEvent(
-                updatedOrder?.orderNumber || existing.orderNumber || "",
-                updatedOrder?.vendor || existing.vendor || "",
+                latestOrder?.orderNumber || existing.orderNumber || "",
+                latestOrder?.vendor || existing.vendor || "",
                 newDate,
                 calId
               );
@@ -4896,6 +4925,13 @@ export async function registerRoutes(
           await deleteCalendarEvent(existing.calendarEventId, calId);
         } catch (calErr: any) {
           console.log(`Google Calendar 입고일정 삭제 실패: ${calErr.message}`);
+        }
+      }
+      if (existing?.paymentId) {
+        try {
+          await storage.deletePayment(existing.paymentId);
+        } catch (payErr: any) {
+          console.log(`연결된 결제 삭제 실패: ${payErr.message}`);
         }
       }
       await storage.deletePurchaseOrder(req.params.id);
