@@ -5281,7 +5281,7 @@ export async function registerRoutes(
     if (!["weekly", "monthly", "yearly"].includes(freq)) return res.status(400).json({ message: "Invalid frequency" });
     if (freq === "weekly" && (data.weekday == null || data.weekday < 0 || data.weekday > 6)) return res.status(400).json({ message: "weekday must be 0-6" });
     if (freq === "yearly" && (data.paymentMonth == null || data.paymentMonth < 1 || data.paymentMonth > 12)) return res.status(400).json({ message: "paymentMonth must be 1-12" });
-    if (freq !== "weekly" && (data.paymentDay < 1 || data.paymentDay > 31)) return res.status(400).json({ message: "paymentDay must be 1-31" });
+    if (freq !== "weekly" && (data.paymentDay < 0 || data.paymentDay > 31)) return res.status(400).json({ message: "paymentDay must be 0-31 (0=월말)" });
     const row = await storage.createRecurringExpense(data);
     res.json(row);
   });
@@ -5293,7 +5293,7 @@ export async function registerRoutes(
     if (data.frequency && !["weekly", "monthly", "yearly"].includes(data.frequency)) return res.status(400).json({ message: "Invalid frequency" });
     if (data.weekday != null && (data.weekday < 0 || data.weekday > 6)) return res.status(400).json({ message: "weekday must be 0-6" });
     if (data.paymentMonth != null && (data.paymentMonth < 1 || data.paymentMonth > 12)) return res.status(400).json({ message: "paymentMonth must be 1-12" });
-    if (data.paymentDay != null && (data.paymentDay < 1 || data.paymentDay > 31)) return res.status(400).json({ message: "paymentDay must be 1-31" });
+    if (data.paymentDay != null && (data.paymentDay < 0 || data.paymentDay > 31)) return res.status(400).json({ message: "paymentDay must be 0-31 (0=월말)" });
     const updated = await storage.updateRecurringExpense(req.params.id, data);
     if (!updated) return res.status(404).json({ message: "Not found" });
     res.json(updated);
@@ -5321,10 +5321,21 @@ export async function registerRoutes(
     for (const r of active) {
       const freq = r.frequency || "monthly";
 
+      if (r.startDate) {
+        const [sy, sm] = r.startDate.split("-").map(Number);
+        if (y < sy || (y === sy && m < sm)) continue;
+      }
+      if (r.endDate) {
+        const [ey, em] = r.endDate.split("-").map(Number);
+        if (y > ey || (y === ey && m > em)) continue;
+      }
+
+      const resolveDay = (pd: number) => pd === 0 ? lastDay : Math.min(pd, lastDay);
+
       if (freq === "yearly") {
         const pm = r.paymentMonth ?? 1;
         if (pm !== m) continue;
-        const day = Math.min(r.paymentDay, lastDay);
+        const day = resolveDay(r.paymentDay);
         const plannedDate = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const alreadyExists = existingPayments.some(p =>
           p.category === r.category && p.description === r.description &&
@@ -5358,7 +5369,7 @@ export async function registerRoutes(
           created++;
         }
       } else {
-        const day = Math.min(r.paymentDay, lastDay);
+        const day = resolveDay(r.paymentDay);
         const plannedDate = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const alreadyExists = existingPayments.some(p =>
           p.category === r.category && p.description === r.description &&

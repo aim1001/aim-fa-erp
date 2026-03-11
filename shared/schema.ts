@@ -631,6 +631,8 @@ export const recurringExpenses = pgTable("recurring_expenses", {
   weekday: integer("weekday"),
   paymentMonth: integer("payment_month"),
   isActive: text("is_active").default("true"),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
