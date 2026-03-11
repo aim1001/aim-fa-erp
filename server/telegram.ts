@@ -1,5 +1,9 @@
 const TELEGRAM_API = "https://api.telegram.org";
 
+function esc(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function getConfig(): { token: string; chatId: string } | null {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -84,11 +88,11 @@ export async function testConnection(): Promise<{ ok: boolean; botName?: string 
 export function notifyInquiry(action: string, inquiry: any): void {
   const status = inquiry.status === "won" ? "수주" : inquiry.status === "lost" ? "실주" : inquiry.status === "active" ? "진행" : inquiry.status || "";
   const lines = [
-    `📋 <b>[인콰이어리 ${action}]</b>`,
-    `번호: ${inquiry.inquiryNumber || ""}`,
-    `고객: ${inquiry.customerName || ""}`,
-    inquiry.productInfo ? `제품: ${inquiry.productInfo}` : "",
-    status ? `상태: ${status}` : "",
+    `📋 <b>[인콰이어리 ${esc(action)}]</b>`,
+    `번호: ${esc(inquiry.inquiryNumber || "")}`,
+    `고객: ${esc(inquiry.customerName || "")}`,
+    inquiry.productInfo ? `제품: ${esc(inquiry.productInfo)}` : "",
+    status ? `상태: ${esc(status)}` : "",
     inquiry.probability != null ? `확률: ${inquiry.probability}%` : "",
   ].filter(Boolean);
   sendTelegramMessage(lines.join("\n"));
@@ -99,11 +103,11 @@ export function notifyProject(action: string, project: any): void {
     active: "진행중", completed: "완료", delayed: "지연", warranty: "하자보수",
   };
   const lines = [
-    `🏗 <b>[프로젝트 ${action}]</b>`,
-    `번호: ${project.projectNumber || ""}`,
-    `고객: ${project.customerName || ""}`,
-    project.description ? `내용: ${project.description}` : "",
-    project.status ? `상태: ${statusMap[project.status] || project.status}` : "",
+    `🏗 <b>[프로젝트 ${esc(action)}]</b>`,
+    `번호: ${esc(project.projectNumber || "")}`,
+    `고객: ${esc(project.customerName || "")}`,
+    project.description ? `내용: ${esc(project.description)}` : "",
+    project.status ? `상태: ${esc(statusMap[project.status] || project.status)}` : "",
   ].filter(Boolean);
   sendTelegramMessage(lines.join("\n"));
 }
@@ -111,9 +115,9 @@ export function notifyProject(action: string, project: any): void {
 export function notifyPayment(action: string, payment: any): void {
   const typeLabel = payment.type === "income" ? "입금" : "출금";
   const lines = [
-    `💰 <b>[${typeLabel} ${action}]</b>`,
-    payment.companyName ? `거래처: ${payment.companyName}` : "",
-    payment.description ? `내용: ${payment.description}` : "",
+    `💰 <b>[${esc(typeLabel)} ${esc(action)}]</b>`,
+    payment.companyName ? `거래처: ${esc(payment.companyName)}` : "",
+    payment.description ? `내용: ${esc(payment.description)}` : "",
     `금액: ${((payment.actualAmount || payment.amount) || 0).toLocaleString()}원`,
     payment.actualDate ? `일자: ${payment.actualDate}` : "",
   ].filter(Boolean);
@@ -123,8 +127,8 @@ export function notifyPayment(action: string, payment: any): void {
 export function notifyTask(action: string, task: any, category: string): void {
   const typeLabel = task.taskType === "schedule" ? "일정" : "할일";
   const lines = [
-    `${task.taskType === "schedule" ? "📅" : "✅"} <b>[${category} ${typeLabel} ${action}]</b>`,
-    `내용: ${task.content || ""}`,
+    `${task.taskType === "schedule" ? "📅" : "✅"} <b>[${esc(category)} ${esc(typeLabel)} ${esc(action)}]</b>`,
+    `내용: ${esc(task.content || "")}`,
     task.dueDate ? `기한: ${task.dueDate}${task.dueTime ? ` ${task.dueTime}` : ""}` : "",
   ].filter(Boolean);
   sendTelegramMessage(lines.join("\n"));

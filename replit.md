@@ -8,7 +8,7 @@
 - **Frontend**: React + Vite + Tailwind CSS + Shadcn UI + Recharts
 - **Backend**: Express.js + Drizzle ORM
 - **Database**: PostgreSQL (Neon-backed, Replit built-in)
-- **Integration**: OneDrive (Microsoft Graph API via Replit connector), Gmail (Google API via Replit connector), Google Calendar (via Replit connector)
+- **Integration**: OneDrive (Microsoft Graph API via Replit connector), Gmail (Google API via Replit connector), Google Calendar (via Replit connector), Telegram Bot (알림 전송)
 
 ## OneDrive Folder Structure
 ```
@@ -134,6 +134,14 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `server/quotation-export.ts` - PDF + Excel generation for quotations (pdfkit, exceljs)
 - `server/purchase-order-export.ts` - PDF generation for purchase orders (pdfkit, Pretendard font, A4 layout: 헤더+구매처정보+품목테이블+합계+서명란+비고)
 - `server/google-calendar.ts` - Google Calendar integration (견적 발송 시 이벤트 생성, 할일 캘린더 등록)
+
+## Telegram 알림
+- `server/telegram.ts` - 텔레그램 봇 API 연동 (sendTelegramMessage, notifyInquiry, notifyProject, notifyPayment, notifyTask)
+- 환경변수: TELEGRAM_BOT_TOKEN (봇 토큰), TELEGRAM_CHAT_ID (그룹 채팅 ID)
+- 알림 대상 이벤트: 인콰이어리 등록/상태변경, 프로젝트 전환/상태변경, 결제 완료, 할일·일정 추가/완료 (영업·프로젝트·구매발주·경영지원 4카테고리)
+- fire-and-forget 패턴: 알림 실패해도 본 요청에 영향 없음
+- 설정 페이지 텔레그램 탭: 연결 상태 확인, Chat ID 자동 감지, 테스트 메시지 전송
+- API: GET /api/telegram/status, POST /api/telegram/detect-chat, POST /api/telegram/test
 
 ## Google Calendar 수동 동기화
 - POST /api/tasks/sync-calendar: 모든 미등록 할일(inquiry_tasks + project_tasks 중 dueDate 있고 calendarEventId 없는 항목) 일괄 캘린더 등록

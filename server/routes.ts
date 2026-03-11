@@ -1362,7 +1362,7 @@ export async function registerRoutes(
 
       const task = await storage.updateTask(req.params.id, allowed);
       if (!task) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
-      if (allowed.completed === true) {
+      if (allowed.completed === true && !existing.completed) {
         import("./telegram").then(t => t.notifyTask("완료", task, "영업")).catch(() => {});
       }
       res.json(task);
@@ -1503,7 +1503,7 @@ export async function registerRoutes(
 
       const task = await storage.updateProjectTask(req.params.id, allowed);
       if (!task) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
-      if (allowed.completed === true) {
+      if (allowed.completed === true && !existing.completed) {
         import("./telegram").then(t => t.notifyTask("완료", task, "프로젝트")).catch(() => {});
       }
       res.json(task);
@@ -1742,7 +1742,7 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updatePurchaseOrderTask(req.params.id, allowed);
-      if (allowed.completed === true) {
+      if (allowed.completed === true && !existing.completed) {
         import("./telegram").then(t => t.notifyTask("완료", updated, "구매발주")).catch(() => {});
       }
       res.json(updated);
@@ -1864,7 +1864,7 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updateFinanceTask(req.params.id, allowed);
-      if (allowed.completed === true) {
+      if (allowed.completed === true && !existing.completed) {
         import("./telegram").then(t => t.notifyTask("완료", updated, "경영지원")).catch(() => {});
       }
       res.json(updated);
