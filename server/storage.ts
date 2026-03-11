@@ -28,12 +28,13 @@ import {
   type RecurringExpense, type InsertRecurringExpense,
   type PurchaseOrderTask, type InsertPurchaseOrderTask,
   type FinanceTask, type InsertFinanceTask,
+  type ProjectItem, type InsertProjectItem,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
   purchaseOrders, purchaseOrderItems, vendorContacts, recurringExpenses,
-  purchaseOrderTasks, financeTasks,
+  purchaseOrderTasks, financeTasks, projectItems,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -233,6 +234,12 @@ export interface IStorage {
   createFinanceTask(data: InsertFinanceTask): Promise<FinanceTask>;
   updateFinanceTask(id: string, data: Partial<InsertFinanceTask>): Promise<FinanceTask | undefined>;
   deleteFinanceTask(id: string): Promise<void>;
+
+  getProjectItems(projectId: string): Promise<ProjectItem[]>;
+  createProjectItem(item: InsertProjectItem): Promise<ProjectItem>;
+  updateProjectItem(id: string, item: Partial<InsertProjectItem>): Promise<ProjectItem | undefined>;
+  deleteProjectItem(id: string): Promise<void>;
+  deleteProjectItemsByProject(projectId: string): Promise<void>;
 
   getPurchaseOrders(year?: number): Promise<PurchaseOrder[]>;
   getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined>;
@@ -814,6 +821,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProject(id: string): Promise<void> {
+    await db.delete(projectItems).where(eq(projectItems.projectId, id));
     await db.delete(projects).where(eq(projects.id, id));
   }
 
@@ -1264,6 +1272,28 @@ export class DatabaseStorage implements IStorage {
 
   async deleteFinanceTask(id: string): Promise<void> {
     await db.delete(financeTasks).where(eq(financeTasks.id, id));
+  }
+
+  async getProjectItems(projectId: string): Promise<ProjectItem[]> {
+    return db.select().from(projectItems).where(eq(projectItems.projectId, projectId)).orderBy(projectItems.sortOrder);
+  }
+
+  async createProjectItem(item: InsertProjectItem): Promise<ProjectItem> {
+    const result = await db.insert(projectItems).values(item).returning();
+    return result[0];
+  }
+
+  async updateProjectItem(id: string, item: Partial<InsertProjectItem>): Promise<ProjectItem | undefined> {
+    const result = await db.update(projectItems).set(item).where(eq(projectItems.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteProjectItem(id: string): Promise<void> {
+    await db.delete(projectItems).where(eq(projectItems.id, id));
+  }
+
+  async deleteProjectItemsByProject(projectId: string): Promise<void> {
+    await db.delete(projectItems).where(eq(projectItems.projectId, projectId));
   }
 
   async getPurchaseOrders(year?: number): Promise<PurchaseOrder[]> {

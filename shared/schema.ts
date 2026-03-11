@@ -288,6 +288,9 @@ export const projects = pgTable("projects", {
   deliveryDate: text("delivery_date"),
   registrationDate: text("registration_date"),
   completionDate: text("completion_date"),
+  inquiryId: varchar("inquiry_id"),
+  warrantyTerms: text("warranty_terms"),
+  contractClauses: text("contract_clauses"),
 });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
@@ -295,6 +298,25 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
 });
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = typeof projects.$inferSelect;
+
+export const projectItems = pgTable("project_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull(),
+  itemCode: text("item_code"),
+  itemName: text("item_name").notNull(),
+  spec: text("spec"),
+  quantity: integer("quantity").notNull().default(1),
+  costPrice: integer("cost_price").default(0),
+  unitPrice: integer("unit_price").notNull().default(0),
+  amount: integer("amount").notNull().default(0),
+  category1: text("category1"),
+  category2: text("category2"),
+  sortOrder: integer("sort_order").default(0),
+});
+
+export const insertProjectItemSchema = createInsertSchema(projectItems).omit({ id: true });
+export type InsertProjectItem = z.infer<typeof insertProjectItemSchema>;
+export type ProjectItem = typeof projectItems.$inferSelect;
 
 export const itemMaster = pgTable("item_master", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

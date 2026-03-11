@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -1767,6 +1767,28 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
     },
   });
 
+  const convertMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/inquiries/${id}/convert-to-project`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "프로젝트로 전환되었습니다", description: `프로젝트 번호: ${data.project.projectNumber}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "프로젝트 전환 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const { data: allProjects } = useQuery<Array<{ id: string; inquiryId?: string | null; projectNumber?: string | null }>>({
+    queryKey: ["/api/projects"],
+  });
+  const linkedProject = allProjects?.find(p => p.inquiryId === id);
+
   if (isLoading) {
     return (
       <div className="space-y-4 p-1">
@@ -1792,18 +1814,44 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
           {inquiry.inquiryNumber} - {inquiry.customerName}
         </h2>
         <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => {
-            if (confirm("정말 삭제하시겠습니까?")) deleteMutation.mutate();
-          }}
-          disabled={deleteMutation.isPending}
-          data-testid="button-delete"
-        >
-          <Trash2 className="h-4 w-4" />
-          <span>삭제</span>
-        </Button>
+        <div className="flex items-center gap-1.5">
+          {linkedProject ? (
+            <Link href={`/projects?id=${linkedProject.id}`}>
+              <Button variant="outline" size="sm" data-testid="button-view-project">
+                <FolderOpen className="h-4 w-4 mr-1" />
+                프로젝트 보기 ({linkedProject.projectNumber})
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => {
+                const msg = inquiry.status === "won"
+                  ? "프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다."
+                  : "아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?";
+                if (confirm(msg)) convertMutation.mutate();
+              }}
+              disabled={convertMutation.isPending}
+              data-testid="button-convert-to-project"
+            >
+              {convertMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FolderOpen className="h-4 w-4 mr-1" />}
+              프로젝트 전환
+            </Button>
+          )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              if (confirm("정말 삭제하시겠습니까?")) deleteMutation.mutate();
+            }}
+            disabled={deleteMutation.isPending}
+            data-testid="button-delete"
+          >
+            <Trash2 className="h-4 w-4" />
+            <span>삭제</span>
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="customer" className="flex-1 flex flex-col min-h-0 [&>[data-state=active]]:flex-1 [&>[data-state=active]]:min-h-0">

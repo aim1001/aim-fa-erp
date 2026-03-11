@@ -23,7 +23,7 @@ import {
   exchangeCodeForTokens,
 } from "./onedrive";
 import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive } from "./excel-parser";
-import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema } from "@shared/schema";
+import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema, insertProjectItemSchema } from "@shared/schema";
 
 declare module "express-session" {
   interface SessionData {
@@ -3669,6 +3669,159 @@ export async function registerRoutes(
     try {
       await storage.deleteProject(req.params.id);
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/projects/:id/items", async (req, res) => {
+    try {
+      const items = await storage.getProjectItems(req.params.id);
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/projects/:id/items", async (req, res) => {
+    try {
+      const parsed = insertProjectItemSchema.parse({ ...req.body, projectId: req.params.id });
+      const item = await storage.createProjectItem(parsed);
+      res.status(201).json(item);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: "유효성 검증 실패", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/project-items/:id", async (req, res) => {
+    try {
+      const { projectId, ...rest } = req.body;
+      const parsed = insertProjectItemSchema.partial().parse(rest);
+      const item = await storage.updateProjectItem(req.params.id, parsed);
+      if (!item) return res.status(404).json({ message: "Not found" });
+      res.json(item);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: "유효성 검증 실패", errors: err.errors });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/project-items/:id", async (req, res) => {
+    try {
+      await storage.deleteProjectItem(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/inquiries/:id/convert-to-project", async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+
+      const allProjects = await storage.getProjects();
+      const existingProject = allProjects.find(p => p.inquiryId === inquiry.id);
+      if (existingProject) {
+        return res.status(409).json({ message: "이미 프로젝트로 전환되었습니다", projectId: existingProject.id });
+      }
+
+      const year = inquiry.year || new Date().getFullYear();
+      const prefix = String(year).slice(-2);
+      const yearProjects = allProjects.filter(p => p.year === year && p.projectNumber);
+      let maxSeq = 0;
+      for (const p of yearProjects) {
+        const match = p.projectNumber?.match(/^\d+-(\d+)/);
+        if (match) {
+          const seq = parseInt(match[1]);
+          if (seq > maxSeq) maxSeq = seq;
+        }
+      }
+      const projectNumber = `${prefix}-${maxSeq + 1}`;
+
+      const customerName = inquiry.customerName || "";
+      const description = inquiry.productInfo || "";
+      const safeName = `${projectNumber}_${customerName}_${description}`.replace(/[<>:"/\\|?*]/g, "_").slice(0, 100);
+
+      let onedriveFolderId: string | null = null;
+      let onedriveWebUrl: string | null = null;
+      try {
+        const { ensureFolderByPath } = await import("./onedrive");
+        const folderPath = `2.공사/${year}/${safeName}`;
+        onedriveFolderId = await ensureFolderByPath(folderPath);
+        if (onedriveFolderId) {
+          const { getAccessToken, DRIVE_ID } = await import("./onedrive");
+          const token = await getAccessToken();
+          const folderRes = await fetch(`https://graph.microsoft.com/v1.0/drives/${DRIVE_ID}/items/${onedriveFolderId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (folderRes.ok) {
+            const folderData = await folderRes.json() as any;
+            onedriveWebUrl = folderData.webUrl || null;
+          }
+        }
+      } catch (driveErr: any) {
+        console.log(`OneDrive 프로젝트 폴더 생성 실패 (전환은 계속): ${driveErr.message}`);
+      }
+
+      const project = await storage.createProject({
+        projectNumber,
+        customerName,
+        customerId: inquiry.customerId || null,
+        description,
+        year,
+        folderName: safeName,
+        onedriveFolderId,
+        onedriveWebUrl,
+        status: "active",
+        totalAmount: inquiry.lastQuoteSales || null,
+        depositRatio: inquiry.contractRatio || null,
+        depositTimingType: inquiry.contractTimingType || null,
+        depositTimingDays: inquiry.contractTimingDays || null,
+        midRatio: inquiry.midRatio || null,
+        midTimingType: inquiry.midTimingType || null,
+        midTimingDays: inquiry.midTimingDays || null,
+        midAfterDelivery: inquiry.midAfterDelivery || null,
+        finalRatio: inquiry.finalRatio || null,
+        finalTimingType: inquiry.finalTimingType || null,
+        finalTimingDays: inquiry.finalTimingDays || null,
+        finalAfterDelivery: inquiry.finalAfterDelivery || null,
+        deliveryDate: inquiry.deliveryDate || null,
+        inquiryId: inquiry.id,
+        warrantyTerms: inquiry.warrantyTerms || null,
+        contractClauses: inquiry.contractClauses || null,
+        registrationDate: new Date().toISOString().split("T")[0],
+      });
+
+      const quots = await storage.getQuotationsByInquiry(inquiry.id);
+      if (quots.length > 0) {
+        const latestQuot = quots[quots.length - 1];
+        const quotData = await storage.getQuotationWithItems(latestQuot.id);
+        if (quotData) {
+          const realItems = quotData.items.filter(i => !i.isAdjustment);
+          for (let idx = 0; idx < realItems.length; idx++) {
+            const qi = realItems[idx];
+            await storage.createProjectItem({
+              projectId: project.id,
+              itemCode: qi.itemCode || null,
+              itemName: qi.itemName,
+              spec: qi.spec || null,
+              quantity: qi.quantity,
+              costPrice: qi.costPrice || 0,
+              unitPrice: qi.unitPrice,
+              amount: qi.amount,
+              category1: qi.category1 || null,
+              category2: qi.category2 || null,
+              sortOrder: idx,
+            });
+          }
+        }
+      }
+
+      await storage.updateInquiry(inquiry.id, { status: "won" });
+
+      res.status(201).json({ project, message: "프로젝트로 전환되었습니다" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

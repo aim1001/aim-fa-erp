@@ -42,7 +42,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보, category(카드사용/정기결제/세금납부/관리비/임대료/대출상환/기타))
 - **recurring_expenses** 테이블: 정기지출 (category, description, companyName, amount, frequency(weekly/monthly/yearly), paymentDay(결제일), weekday(주간용 0-6), paymentMonth(연간용 1-12), isActive) — "자금현황" 모달에서 관리, 주간/월간/연간 주기별 payments 일괄 생성, 인라인 수정 가능
-- **projects** 테이블: 프로젝트 (프로젝트번호, 고객사명, 내용, 연도, OneDrive 폴더 정보, 상태)
+- **projects** 테이블: 프로젝트 (프로젝트번호, 고객사명, 내용, 연도, OneDrive 폴더 정보, 상태, inquiryId 원본인콰이어리, warrantyTerms 보증조건, contractClauses 계약특약)
+- **project_items** 테이블: 프로젝트 품목 (projectId FK→projects, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder) — 인콰이어리→프로젝트 전환 시 견적 품목 복사, 독립적 수정 가능
 - **item_master** 테이블: 판매제품 마스터 (카테고리, 품목코드(unique), 품목명, 사양, 원가, 판매가, 활성여부, 제품유형, isFavorite 즐겨찾기)
 - **item_inventory** 테이블: 재고 관리 (품목코드, 재고유형(AVAILABLE/TEST/DEMO), 수량, 업데이트일)
 - **item_document** 테이블: 제품 문서 (품목코드, 문서유형, URL, 이름)

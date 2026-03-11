@@ -3,12 +3,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, CalendarDays, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, CalendarDays, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users, Package, Loader2 } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useSearch, useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Project, SalesInvoice, PurchaseInvoice, Payment, Customer } from "@shared/schema";
+import type { Project, SalesInvoice, PurchaseInvoice, Payment, Customer, ProjectItem } from "@shared/schema";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -217,6 +217,170 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
       <Button size="sm" className="w-full h-8 text-xs" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || ratioSum !== 100} data-testid="button-save-conditions">
         <Check className="h-3 w-3 mr-1" />{saveMutation.isPending ? "저장중..." : "계약조건 저장"}
       </Button>
+    </div>
+  );
+}
+
+function ProjectItemsTab({ projectId }: { projectId: string }) {
+  const { toast } = useToast();
+  const { data: items, isLoading } = useQuery<ProjectItem[]>({
+    queryKey: ["/api/projects", projectId, "items"],
+  });
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRow, setEditRow] = useState<Partial<ProjectItem>>({});
+  const [showAdd, setShowAdd] = useState(false);
+  const [newItem, setNewItem] = useState({ itemCode: "", itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "items"] });
+  };
+
+  const addMutation = useMutation({
+    mutationFn: async (data: Record<string, any>) => {
+      const res = await apiRequest("POST", `/api/projects/${projectId}/items`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidate();
+      setShowAdd(false);
+      setNewItem({ itemCode: "", itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
+    },
+    onError: (err: Error) => toast({ title: "추가 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/project-items/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => { invalidate(); setEditingId(null); },
+    onError: (err: Error) => toast({ title: "수정 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/project-items/${id}`);
+    },
+    onSuccess: invalidate,
+    onError: (err: Error) => toast({ title: "삭제 실패", description: err.message, variant: "destructive" }),
+  });
+
+  if (isLoading) return <Skeleton className="h-32" />;
+
+  const list = items || [];
+  const totalSales = list.reduce((s, i) => s + (i.amount || 0), 0);
+  const totalCost = list.reduce((s, i) => s + ((i.costPrice || 0) * (i.quantity || 1)), 0);
+  const margin = totalSales - totalCost;
+  const marginRate = totalSales > 0 ? Math.round((margin / totalSales) * 100) : 0;
+
+  const startEdit = (item: ProjectItem) => {
+    setEditingId(item.id);
+    setEditRow({ quantity: item.quantity, costPrice: item.costPrice, unitPrice: item.unitPrice, itemName: item.itemName, spec: item.spec, itemCode: item.itemCode });
+  };
+
+  const saveEdit = (id: string) => {
+    const qty = editRow.quantity || 1;
+    const up = editRow.unitPrice || 0;
+    updateMutation.mutate({ id, data: { ...editRow, amount: qty * up } });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium flex items-center gap-1"><Package className="h-3 w-3" />프로젝트 품목 ({list.length})</span>
+        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => setShowAdd(!showAdd)} data-testid="button-add-item">
+          <Plus className="h-3 w-3 mr-0.5" />품목 추가
+        </Button>
+      </div>
+
+      {showAdd && (
+        <div className="border rounded p-2 space-y-1.5 bg-muted/30">
+          <div className="grid grid-cols-6 gap-1.5">
+            <Input placeholder="품목코드" className="h-7 text-xs" value={newItem.itemCode} onChange={e => setNewItem({ ...newItem, itemCode: e.target.value })} data-testid="input-new-item-code" />
+            <Input placeholder="품목명 *" className="h-7 text-xs col-span-2" value={newItem.itemName} onChange={e => setNewItem({ ...newItem, itemName: e.target.value })} data-testid="input-new-item-name" />
+            <Input placeholder="사양" className="h-7 text-xs" value={newItem.spec} onChange={e => setNewItem({ ...newItem, spec: e.target.value })} data-testid="input-new-item-spec" />
+            <Input placeholder="수량" type="number" className="h-7 text-xs" value={newItem.quantity} onChange={e => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 1 })} data-testid="input-new-item-qty" />
+            <Input placeholder="판매단가" type="number" className="h-7 text-xs" value={newItem.unitPrice} onChange={e => setNewItem({ ...newItem, unitPrice: parseInt(e.target.value) || 0 })} data-testid="input-new-item-price" />
+          </div>
+          <div className="grid grid-cols-6 gap-1.5">
+            <Input placeholder="원가" type="number" className="h-7 text-xs" value={newItem.costPrice} onChange={e => setNewItem({ ...newItem, costPrice: parseInt(e.target.value) || 0 })} data-testid="input-new-item-cost" />
+            <div className="col-span-3" />
+            <Button size="sm" className="h-7 text-xs col-span-2" onClick={() => addMutation.mutate({ ...newItem, amount: newItem.quantity * newItem.unitPrice, sortOrder: list.length })} disabled={!newItem.itemName || addMutation.isPending} data-testid="button-confirm-add-item">
+              {addMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "추가"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {list.length > 0 ? (
+        <div className="border rounded overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-muted/50 text-muted-foreground">
+                <th className="text-left px-2 py-1.5 font-medium w-16">코드</th>
+                <th className="text-left px-2 py-1.5 font-medium">품목명</th>
+                <th className="text-left px-2 py-1.5 font-medium w-24">사양</th>
+                <th className="text-right px-2 py-1.5 font-medium w-12">수량</th>
+                <th className="text-right px-2 py-1.5 font-medium w-20">원가</th>
+                <th className="text-right px-2 py-1.5 font-medium w-20">단가</th>
+                <th className="text-right px-2 py-1.5 font-medium w-24">금액</th>
+                <th className="w-16" />
+              </tr>
+            </thead>
+            <tbody>
+              {list.map(item => (
+                <tr key={item.id} className="border-t hover:bg-muted/20" data-testid={`row-item-${item.id}`}>
+                  {editingId === item.id ? (
+                    <>
+                      <td className="px-1 py-1"><Input className="h-6 text-xs" value={editRow.itemCode || ""} onChange={e => setEditRow({ ...editRow, itemCode: e.target.value })} /></td>
+                      <td className="px-1 py-1"><Input className="h-6 text-xs" value={editRow.itemName || ""} onChange={e => setEditRow({ ...editRow, itemName: e.target.value })} /></td>
+                      <td className="px-1 py-1"><Input className="h-6 text-xs" value={editRow.spec || ""} onChange={e => setEditRow({ ...editRow, spec: e.target.value })} /></td>
+                      <td className="px-1 py-1"><Input type="number" className="h-6 text-xs text-right" value={editRow.quantity || 1} onChange={e => setEditRow({ ...editRow, quantity: parseInt(e.target.value) || 1 })} /></td>
+                      <td className="px-1 py-1"><Input type="number" className="h-6 text-xs text-right" value={editRow.costPrice || 0} onChange={e => setEditRow({ ...editRow, costPrice: parseInt(e.target.value) || 0 })} /></td>
+                      <td className="px-1 py-1"><Input type="number" className="h-6 text-xs text-right" value={editRow.unitPrice || 0} onChange={e => setEditRow({ ...editRow, unitPrice: parseInt(e.target.value) || 0 })} /></td>
+                      <td className="text-right px-2 py-1 font-medium">{((editRow.quantity || 1) * (editRow.unitPrice || 0)).toLocaleString()}</td>
+                      <td className="px-1 py-1">
+                        <div className="flex gap-0.5">
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => saveEdit(item.id)} disabled={updateMutation.isPending} data-testid={`button-save-item-${item.id}`}><Check className="h-3 w-3" /></Button>
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setEditingId(null)} data-testid={`button-cancel-item-${item.id}`}><X className="h-3 w-3" /></Button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-2 py-1.5 text-muted-foreground">{item.itemCode || "-"}</td>
+                      <td className="px-2 py-1.5 font-medium">{item.itemName}</td>
+                      <td className="px-2 py-1.5 text-muted-foreground">{item.spec || "-"}</td>
+                      <td className="text-right px-2 py-1.5">{item.quantity}</td>
+                      <td className="text-right px-2 py-1.5 text-muted-foreground">{(item.costPrice || 0).toLocaleString()}</td>
+                      <td className="text-right px-2 py-1.5">{(item.unitPrice || 0).toLocaleString()}</td>
+                      <td className="text-right px-2 py-1.5 font-medium">{(item.amount || 0).toLocaleString()}</td>
+                      <td className="px-1 py-1.5">
+                        <div className="flex gap-0.5">
+                          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => startEdit(item)} data-testid={`button-edit-item-${item.id}`}><Pencil className="h-3 w-3" /></Button>
+                          <Button size="icon" variant="ghost" className="h-5 w-5 text-red-500 hover:text-red-700" onClick={() => { if (confirm("삭제하시겠습니까?")) deleteMutation.mutate(item.id); }} data-testid={`button-delete-item-${item.id}`}><Trash2 className="h-3 w-3" /></Button>
+                        </div>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="border-t bg-muted/30 px-2 py-1.5 flex items-center justify-between text-xs">
+            <div className="flex gap-4">
+              <span>매출합계: <span className="font-semibold text-blue-600">{totalSales.toLocaleString()}원</span></span>
+              <span>원가합계: <span className="font-semibold text-red-600">{totalCost.toLocaleString()}원</span></span>
+            </div>
+            <span>마진: <span className={`font-semibold ${margin >= 0 ? "text-green-600" : "text-orange-600"}`}>{margin.toLocaleString()}원 ({marginRate}%)</span></span>
+          </div>
+        </div>
+      ) : (
+        <div className="text-center text-muted-foreground text-xs py-6 border rounded">
+          등록된 품목이 없습니다
+        </div>
+      )}
     </div>
   );
 }
@@ -673,10 +837,24 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
         </div>
       )}
 
+      {project.inquiryId && (
+        <div className="flex items-center gap-1.5 mt-1">
+          <span className="text-[10px] text-muted-foreground">원본 인콰이어리:</span>
+          <Button variant="link" size="sm" className="h-5 text-[10px] px-0" onClick={() => {
+            window.location.href = `/inquiries?id=${project.inquiryId}`;
+          }} data-testid="link-source-inquiry">
+            인콰이어리 보기
+          </Button>
+        </div>
+      )}
+
       <Tabs defaultValue="conditions" className="mt-2">
-        <TabsList className="w-full grid grid-cols-3 h-8">
+        <TabsList className="w-full grid grid-cols-4 h-8">
           <TabsTrigger value="conditions" className="text-xs" data-testid="tab-conditions">
             <Settings className="h-3 w-3 mr-1" />계약조건
+          </TabsTrigger>
+          <TabsTrigger value="items" className="text-xs" data-testid="tab-items">
+            <Package className="h-3 w-3 mr-1" />품목
           </TabsTrigger>
           <TabsTrigger value="collection" className="text-xs" data-testid="tab-collection">
             <CalendarClock className="h-3 w-3 mr-1" />수금계획
@@ -688,6 +866,10 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
 
         <TabsContent value="conditions" className="mt-2 space-y-3">
           <CollectionConditionsEditor project={project} onSave={() => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] })} />
+        </TabsContent>
+
+        <TabsContent value="items" className="mt-2">
+          <ProjectItemsTab projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="collection" className="mt-2 space-y-3">
