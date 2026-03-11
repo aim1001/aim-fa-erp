@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2 } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -84,6 +84,43 @@ function formatFileSize(bytes: number | null) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ShareLinkButton({ itemId, fileId }: { itemId: string; fileId: string }) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+
+  const handleShare = async () => {
+    setLoading(true);
+    try {
+      const res = await apiRequest("POST", `/api/onedrive/share/${itemId}`);
+      const data = await res.json();
+      if (data.link) {
+        await navigator.clipboard.writeText(data.link);
+        toast({ title: "링크가 복사되었습니다" });
+      } else {
+        toast({ title: "링크 생성 실패", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "링크 복사 실패", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={handleShare}
+      disabled={loading}
+      className="h-7 px-2 text-xs gap-1"
+      data-testid={`button-share-file-${fileId}`}
+    >
+      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+      링크복사
+    </Button>
+  );
 }
 
 function InlineText({ value, field, inquiryId, placeholder }: {
@@ -2106,6 +2143,9 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
                             <p className="text-sm font-medium truncate">{file.fileName}</p>
                             <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
                           </div>
+                          {file.onedriveItemId && (
+                            <ShareLinkButton itemId={file.onedriveItemId} fileId={file.id} />
+                          )}
                           {file.webUrl && (
                             <Button
                               variant="ghost"

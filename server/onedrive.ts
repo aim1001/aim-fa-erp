@@ -429,6 +429,28 @@ export async function listFolderFiles(folderId: string): Promise<OneDriveFile[]>
     }));
 }
 
+export async function createShareLink(itemId: string): Promise<string> {
+  try {
+    const result = await graphCallWithRetry(
+      (token) => graphFetchDirect(`/me/drive/items/${itemId}/createLink`, token, {
+        method: 'POST',
+        body: { type: 'view', scope: 'organization' },
+      }),
+      'createShareLink'
+    );
+    if (result?.link?.webUrl) return result.link.webUrl;
+  } catch {
+  }
+  const result = await graphCallWithRetry(
+    (token) => graphFetchDirect(`/me/drive/items/${itemId}/createLink`, token, {
+      method: 'POST',
+      body: { type: 'view', scope: 'anonymous' },
+    }),
+    'createShareLink'
+  );
+  return result?.link?.webUrl || '';
+}
+
 export async function downloadFile(itemId: string): Promise<Buffer> {
   const buffer = await graphCallWithRetry(
     (token) => graphFetchDirect(`/me/drive/items/${itemId}/content`, token),

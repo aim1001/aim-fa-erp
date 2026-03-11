@@ -583,6 +583,18 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/onedrive/share/:itemId", async (req, res) => {
+    try {
+      const { createShareLink } = await import("./onedrive");
+      const link = await createShareLink(req.params.itemId);
+      if (!link) return res.status(500).json({ message: "공유 링크 생성 실패" });
+      res.json({ link });
+    } catch (err: any) {
+      console.error("Share link error:", err.message);
+      res.status(500).json({ message: err.message || "공유 링크 생성 실패" });
+    }
+  });
+
   app.post("/api/onedrive/refresh", async (req, res) => {
     try {
       resetTokenCache();
