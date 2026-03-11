@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard } from "lucide-react";
+import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown, Filter } from "lucide-react";
 import { useState, useMemo } from "react";
 import { FundOverviewTab } from "./fund-overview-tab";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -418,6 +418,20 @@ export default function PaymentPlan() {
   const [passwordError, setPasswordError] = useState(false);
   const [fundAuthenticated, setFundAuthenticated] = useState(false);
 
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "completed">("pending");
+  const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
+  const [sortKey, setSortKey] = useState<"status" | "type" | "plannedDate" | "invoiceIssueDate" | "companyName">("plannedDate");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
     queryFn: async () => {
@@ -520,8 +534,44 @@ export default function PaymentPlan() {
 
   const sorted = useMemo(() => {
     if (!payments) return [];
-    return [...payments].sort((a, b) => (a.actualDate || a.plannedDate || "").localeCompare(b.actualDate || b.plannedDate || ""));
-  }, [payments]);
+    let filtered = [...payments];
+
+    if (statusFilter === "pending") {
+      filtered = filtered.filter(p => p.status !== "completed");
+    } else if (statusFilter === "completed") {
+      filtered = filtered.filter(p => p.status === "completed");
+    }
+
+    if (typeFilter !== "all") {
+      filtered = filtered.filter(p => p.type === typeFilter);
+    }
+
+    filtered.sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "status": {
+          const statusOrder = (p: Payment) => p.status === "completed" ? 2 : (p.plannedDate && p.plannedDate < new Date().toISOString().split("T")[0] ? 0 : 1);
+          cmp = statusOrder(a) - statusOrder(b);
+          break;
+        }
+        case "type":
+          cmp = (a.type || "").localeCompare(b.type || "");
+          break;
+        case "plannedDate":
+          cmp = (a.plannedDate || "9999").localeCompare(b.plannedDate || "9999");
+          break;
+        case "invoiceIssueDate":
+          cmp = ((a as EnrichedPayment).invoiceIssueDate || "9999").localeCompare((b as EnrichedPayment).invoiceIssueDate || "9999");
+          break;
+        case "companyName":
+          cmp = (a.companyName || "").localeCompare(b.companyName || "");
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return filtered;
+  }, [payments, statusFilter, typeFilter, sortKey, sortDir]);
 
   const totals = useMemo(() => {
     if (!payments) return { plannedIncome: 0, plannedExpense: 0, actualIncome: 0, actualExpense: 0 };
@@ -618,6 +668,69 @@ export default function PaymentPlan() {
         </div>
       )}
 
+      {viewMode === "list" && (
+        <div className="flex items-center gap-2 flex-wrap" data-testid="section-payment-filters">
+          <div className="flex items-center gap-1 border rounded-lg p-0.5">
+            <Button
+              variant={statusFilter === "pending" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setStatusFilter("pending")}
+              data-testid="filter-status-pending"
+            >
+              <Clock className="h-3 w-3 mr-1" />예정
+            </Button>
+            <Button
+              variant={statusFilter === "completed" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setStatusFilter("completed")}
+              data-testid="filter-status-completed"
+            >
+              <Check className="h-3 w-3 mr-1" />완료
+            </Button>
+            <Button
+              variant={statusFilter === "all" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setStatusFilter("all")}
+              data-testid="filter-status-all"
+            >
+              전체
+            </Button>
+          </div>
+          <div className="flex items-center gap-1 border rounded-lg p-0.5">
+            <Button
+              variant={typeFilter === "all" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setTypeFilter("all")}
+              data-testid="filter-type-all"
+            >
+              전체
+            </Button>
+            <Button
+              variant={typeFilter === "income" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setTypeFilter("income")}
+              data-testid="filter-type-income"
+            >
+              입금
+            </Button>
+            <Button
+              variant={typeFilter === "expense" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setTypeFilter("expense")}
+              data-testid="filter-type-expense"
+            >
+              출금
+            </Button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
       ) : viewMode === "list" ? (
@@ -626,12 +739,22 @@ export default function PaymentPlan() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="text-left py-1.5 px-2 font-medium text-xs w-20">상태</th>
-                  <th className="text-left py-1.5 px-2 font-medium text-xs w-12">구분</th>
-                  <th className="text-left py-1.5 px-2 font-medium text-xs">예정일</th>
-                  <th className="text-left py-1.5 px-2 font-medium text-xs hidden md:table-cell">계산서일</th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs w-20 cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("status")} data-testid="sort-status">
+                    <span className="inline-flex items-center gap-0.5">상태{sortKey === "status" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />}</span>
+                  </th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs w-12 cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("type")} data-testid="sort-type">
+                    <span className="inline-flex items-center gap-0.5">구분{sortKey === "type" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />}</span>
+                  </th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("plannedDate")} data-testid="sort-planned-date">
+                    <span className="inline-flex items-center gap-0.5">예정일{sortKey === "plannedDate" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />}</span>
+                  </th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs hidden md:table-cell cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("invoiceIssueDate")} data-testid="sort-invoice-date">
+                    <span className="inline-flex items-center gap-0.5">계산서일{sortKey === "invoiceIssueDate" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />}</span>
+                  </th>
                   <th className="text-left py-1.5 px-2 font-medium text-xs hidden lg:table-cell">프로젝트</th>
-                  <th className="text-left py-1.5 px-2 font-medium text-xs">거래처</th>
+                  <th className="text-left py-1.5 px-2 font-medium text-xs cursor-pointer select-none hover:bg-muted/80" onClick={() => toggleSort("companyName")} data-testid="sort-company">
+                    <span className="inline-flex items-center gap-0.5">거래처{sortKey === "companyName" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />}</span>
+                  </th>
                   <th className="text-right py-1.5 px-2 font-medium text-xs">예정금액</th>
                   <th className="text-right py-1.5 px-2 font-medium text-xs hidden md:table-cell">실제금액</th>
                   <th className="text-center py-1.5 px-2 font-medium text-xs hidden lg:table-cell w-14">분할</th>
@@ -644,7 +767,7 @@ export default function PaymentPlan() {
                   return (
                     <tr
                       key={p.id}
-                      className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                      className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${isCompleted ? "opacity-50" : ""}`}
                       onClick={() => setSelectedId(p.id)}
                       data-testid={`row-payment-${p.id}`}
                     >
@@ -797,7 +920,7 @@ export default function PaymentPlan() {
         ) : (
           <div className="text-center py-12 text-muted-foreground">
             <CalendarIcon className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p>이 달에 등록된 결제 계획이 없습니다.</p>
+            <p>{(statusFilter !== "all" || typeFilter !== "all") ? "필터 조건에 맞는 항목이 없습니다." : "이 달에 등록된 결제 계획이 없습니다."}</p>
           </div>
         )
       ) : viewMode === "calendar" ? (
@@ -806,7 +929,7 @@ export default function PaymentPlan() {
         <FundOverviewTab year={year} month={month} />
       )}
 
-      {viewMode !== "fund" && <div className="text-xs text-muted-foreground">{sorted.length > 0 && `총 ${sorted.length}건`}</div>}
+      {viewMode !== "fund" && payments && <div className="text-xs text-muted-foreground">{sorted.length === payments.length ? `총 ${sorted.length}건` : `${sorted.length}건 / 총 ${payments.length}건`}</div>}
 
       <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null); }}>
         {selectedId && <PaymentDetailModal paymentId={selectedId} onClose={() => setSelectedId(null)} />}
