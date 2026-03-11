@@ -40,8 +40,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **inquiries** 테이블: customerId(고객사)와 companyId(담당자) 모두 참조 + 스냅샷 필드로 연결 시점 정보 보존; 고객정보 카드에서 담당자 Select 드롭다운으로 해당 고객의 담당자 목록에서 선택/전환 가능, 새 담당자 인라인 추가 가능
 - **sales_invoices** 테이블: 매출계산서 (customerId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
-- **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보, category(카드사용/정기결제/세금납부/관리비/임대료/대출상환/기타))
-- **recurring_expenses** 테이블: 정기지출 (category, description, companyName, amount, frequency(weekly/monthly/yearly), paymentDay(결제일), weekday(주간용 0-6), paymentMonth(연간용 1-12), isActive) — "자금현황" 모달에서 관리, 주간/월간/연간 주기별 payments 일괄 생성, 인라인 수정 가능
+- **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보(splitIndex/splitTotal), category, recurringExpenseId(정기지출 원본 ID))
+- **recurring_expenses** 테이블: 정기지출 (category, description, companyName, amount, frequency(weekly/monthly/yearly), paymentDay(결제일), weekday(주간용 0-6), paymentMonth(연간용 1-12), isActive, totalInstallments(총횟수), startInstallment(시작회차 default 1)) — "자금현황" 모달에서 관리, 주간/월간/연간 주기별 payments 일괄 생성, 인라인 수정 가능, 기간/횟수 방식 선택 가능
 - **projects** 테이블: 프로젝트 (프로젝트번호, 고객사명, 내용, 연도, OneDrive 폴더 정보, 상태, inquiryId 원본인콰이어리, warrantyTerms 보증조건, contractClauses 계약특약)
 - **project_items** 테이블: 프로젝트 품목 (projectId FK→projects, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder) — 인콰이어리→프로젝트 전환 시 견적 품목 복사, 독립적 수정 가능
 - **item_master** 테이블: 판매제품 마스터 (카테고리, 품목코드(unique), 품목명, 사양, 원가, 판매가, 활성여부, 제품유형, isFavorite 즐겨찾기)

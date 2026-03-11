@@ -203,6 +203,7 @@ export const payments = pgTable("payments", {
   splitIndex: integer("split_index").default(1),
   splitTotal: integer("split_total").default(1),
   category: text("category"),
+  recurringExpenseId: varchar("recurring_expense_id"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({
@@ -637,6 +638,8 @@ export const recurringExpenses = pgTable("recurring_expenses", {
   isActive: text("is_active").default("true"),
   startDate: text("start_date"),
   endDate: text("end_date"),
+  totalInstallments: integer("total_installments"),
+  startInstallment: integer("start_installment").default(1),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

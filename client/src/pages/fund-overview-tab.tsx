@@ -421,7 +421,20 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
     paymentMonth: "1",
     startDate: "",
     endDate: "",
+    mode: "period" as "period" | "installment",
+    totalInstallments: "",
+    startInstallment: "1",
   });
+
+  const computeEndDate = (startDate: string, totalInstallments: number, startInstallment: number) => {
+    if (!startDate) return "";
+    const [sy, sm] = startDate.split("-").map(Number);
+    const remainingMonths = totalInstallments - startInstallment;
+    const endMonth = sm + remainingMonths;
+    const ey = sy + Math.floor((endMonth - 1) / 12);
+    const em = ((endMonth - 1) % 12) + 1;
+    return `${ey}-${String(em).padStart(2, "0")}`;
+  };
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -429,6 +442,13 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
       if (!amt || amt <= 0) throw new Error("금액을 입력해주세요");
       const dayVal = form.paymentDay === "0" ? 0 : parseInt(form.paymentDay);
       if (form.frequency !== "weekly" && dayVal !== 0 && (!dayVal || dayVal < 1 || dayVal > 31)) throw new Error("결제일을 1~31 사이로 입력해주세요");
+      if (form.mode === "installment") {
+        const ti = parseInt(form.totalInstallments);
+        if (!ti || ti < 1) throw new Error("총 횟수를 입력해주세요");
+        if (!form.startDate) throw new Error("시작일을 입력해주세요");
+        const si = parseInt(form.startInstallment) || 1;
+        if (si > ti) throw new Error("시작 회차는 총 횟수보다 클 수 없습니다");
+      }
       const payload: any = {
         category: form.category,
         companyName: form.companyName || null,
@@ -438,7 +458,11 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
         paymentDay: form.frequency === "weekly" ? 1 : dayVal,
         isActive: "true",
         startDate: form.startDate || null,
-        endDate: form.endDate || null,
+        endDate: form.mode === "installment"
+          ? computeEndDate(form.startDate, parseInt(form.totalInstallments) || 1, parseInt(form.startInstallment) || 1)
+          : (form.endDate || null),
+        totalInstallments: form.mode === "installment" ? (parseInt(form.totalInstallments) || null) : null,
+        startInstallment: form.mode === "installment" ? (parseInt(form.startInstallment) || 1) : 1,
       };
       if (form.frequency === "weekly") {
         payload.weekday = parseInt(form.weekday) || 1;
@@ -451,7 +475,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/recurring-expenses"] });
-      setForm({ category: "정기결제", companyName: "", description: "", amount: "", frequency: "monthly", paymentDay: "25", weekday: "1", paymentMonth: "1", startDate: "", endDate: "" });
+      setForm({ category: "정기결제", companyName: "", description: "", amount: "", frequency: "monthly", paymentDay: "25", weekday: "1", paymentMonth: "1", startDate: "", endDate: "", mode: "period", totalInstallments: "", startInstallment: "1" });
       setShowAdd(false);
       toast({ title: "정기지출이 등록되었습니다" });
     },
@@ -526,6 +550,9 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
       paymentMonth: String((r as any).paymentMonth ?? 1),
       startDate: r.startDate || "",
       endDate: r.endDate || "",
+      mode: (r as any).totalInstallments ? "installment" : "period",
+      totalInstallments: (r as any).totalInstallments ? String((r as any).totalInstallments) : "",
+      startInstallment: String((r as any).startInstallment ?? 1),
     });
   };
 
@@ -533,6 +560,13 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
     if (!editingId) return;
     const amt = parseInt(editForm.amount);
     if (!amt || amt <= 0) { toast({ title: "금액을 입력해주세요", variant: "destructive" }); return; }
+    if (editForm.mode === "installment") {
+      const ti = parseInt(editForm.totalInstallments);
+      if (!ti || ti < 1) { toast({ title: "총 횟수를 입력해주세요", variant: "destructive" }); return; }
+      if (!editForm.startDate) { toast({ title: "시작일을 입력해주세요", variant: "destructive" }); return; }
+      const si = parseInt(editForm.startInstallment) || 1;
+      if (si > ti) { toast({ title: "시작 회차는 총 횟수보다 클 수 없습니다", variant: "destructive" }); return; }
+    }
     const data: any = {
       category: editForm.category,
       companyName: editForm.companyName || null,
@@ -540,7 +574,11 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
       amount: amt,
       frequency: editForm.frequency,
       startDate: editForm.startDate || null,
-      endDate: editForm.endDate || null,
+      endDate: editForm.mode === "installment"
+        ? computeEndDate(editForm.startDate, parseInt(editForm.totalInstallments) || 1, parseInt(editForm.startInstallment) || 1)
+        : (editForm.endDate || null),
+      totalInstallments: editForm.mode === "installment" ? (parseInt(editForm.totalInstallments) || null) : null,
+      startInstallment: editForm.mode === "installment" ? (parseInt(editForm.startInstallment) || 1) : 1,
     };
     if (editForm.frequency === "weekly") {
       data.weekday = parseInt(editForm.weekday) || 1;
@@ -666,15 +704,67 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
               )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">시작기간</Label>
-              <Input className="h-8 text-xs" type="month" value={form.startDate} onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))} data-testid="input-recurring-start" />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label className="text-xs">방식</Label>
+              <div className="flex items-center gap-0.5 border rounded-md p-0.5">
+                <Button
+                  variant={form.mode === "period" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-6 text-[11px] px-2"
+                  onClick={() => setForm(p => ({ ...p, mode: "period" }))}
+                  data-testid="button-mode-period"
+                >
+                  기간 지정
+                </Button>
+                <Button
+                  variant={form.mode === "installment" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-6 text-[11px] px-2"
+                  onClick={() => setForm(p => ({ ...p, mode: "installment" }))}
+                  data-testid="button-mode-installment"
+                >
+                  횟수 지정
+                </Button>
+              </div>
             </div>
-            <div>
-              <Label className="text-xs">완료기간</Label>
-              <Input className="h-8 text-xs" type="month" value={form.endDate} onChange={e => setForm(p => ({ ...p, endDate: e.target.value }))} data-testid="input-recurring-end" />
-            </div>
+            {form.mode === "period" ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">시작기간</Label>
+                  <Input className="h-8 text-xs" type="month" value={form.startDate} onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))} data-testid="input-recurring-start" />
+                </div>
+                <div>
+                  <Label className="text-xs">완료기간</Label>
+                  <Input className="h-8 text-xs" type="month" value={form.endDate} onChange={e => setForm(p => ({ ...p, endDate: e.target.value }))} data-testid="input-recurring-end" />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <Label className="text-xs">시작기간 <span className="text-red-500">*</span></Label>
+                  <Input className="h-8 text-xs" type="month" value={form.startDate} onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))} data-testid="input-recurring-start-installment" />
+                </div>
+                <div>
+                  <Label className="text-xs">총 횟수 <span className="text-red-500">*</span></Label>
+                  <Input className="h-8 text-xs" type="number" min="1" value={form.totalInstallments} onChange={e => setForm(p => ({ ...p, totalInstallments: e.target.value }))} placeholder="예: 12" data-testid="input-recurring-total-installments" />
+                </div>
+                <div>
+                  <Label className="text-xs">시작 회차</Label>
+                  <Input className="h-8 text-xs" type="number" min="1" value={form.startInstallment} onChange={e => setForm(p => ({ ...p, startInstallment: e.target.value }))} data-testid="input-recurring-start-installment-num" />
+                </div>
+                <div>
+                  <Label className="text-xs">완료기간 (자동)</Label>
+                  <Input
+                    className="h-8 text-xs bg-muted/50"
+                    type="month"
+                    readOnly
+                    value={form.startDate && form.totalInstallments ? computeEndDate(form.startDate, parseInt(form.totalInstallments) || 1, parseInt(form.startInstallment) || 1) : ""}
+                    data-testid="input-recurring-end-auto"
+                  />
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex justify-end">
             <Button size="sm" onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !form.amount} data-testid="button-save-recurring">
@@ -788,15 +878,66 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                               </>
                             )}
                           </div>
-                          <div className="col-span-2 md:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
-                            <div>
-                              <Label className="text-[10px]">시작기간</Label>
-                              <Input className="h-7 text-xs" type="month" value={editForm.startDate} onChange={e => setEditForm((p: any) => ({ ...p, startDate: e.target.value }))} />
+                          <div className="col-span-2 md:col-span-7 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Label className="text-[10px]">방식</Label>
+                              <div className="flex items-center gap-0.5 border rounded-md p-0.5">
+                                <Button
+                                  variant={editForm.mode === "period" ? "default" : "ghost"}
+                                  size="sm"
+                                  className="h-5 text-[10px] px-1.5"
+                                  onClick={() => setEditForm((p: any) => ({ ...p, mode: "period" }))}
+                                  data-testid="button-edit-mode-period"
+                                >
+                                  기간 지정
+                                </Button>
+                                <Button
+                                  variant={editForm.mode === "installment" ? "default" : "ghost"}
+                                  size="sm"
+                                  className="h-5 text-[10px] px-1.5"
+                                  onClick={() => setEditForm((p: any) => ({ ...p, mode: "installment" }))}
+                                  data-testid="button-edit-mode-installment"
+                                >
+                                  횟수 지정
+                                </Button>
+                              </div>
                             </div>
-                            <div>
-                              <Label className="text-[10px]">완료기간</Label>
-                              <Input className="h-7 text-xs" type="month" value={editForm.endDate} onChange={e => setEditForm((p: any) => ({ ...p, endDate: e.target.value }))} />
-                            </div>
+                            {editForm.mode === "period" ? (
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+                                <div>
+                                  <Label className="text-[10px]">시작기간</Label>
+                                  <Input className="h-7 text-xs" type="month" value={editForm.startDate} onChange={e => setEditForm((p: any) => ({ ...p, startDate: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px]">완료기간</Label>
+                                  <Input className="h-7 text-xs" type="month" value={editForm.endDate} onChange={e => setEditForm((p: any) => ({ ...p, endDate: e.target.value }))} />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+                                <div>
+                                  <Label className="text-[10px]">시작기간 <span className="text-red-500">*</span></Label>
+                                  <Input className="h-7 text-xs" type="month" value={editForm.startDate} onChange={e => setEditForm((p: any) => ({ ...p, startDate: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px]">총 횟수 <span className="text-red-500">*</span></Label>
+                                  <Input className="h-7 text-xs" type="number" min="1" value={editForm.totalInstallments} onChange={e => setEditForm((p: any) => ({ ...p, totalInstallments: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px]">시작 회차</Label>
+                                  <Input className="h-7 text-xs" type="number" min="1" value={editForm.startInstallment} onChange={e => setEditForm((p: any) => ({ ...p, startInstallment: e.target.value }))} />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px]">완료기간 (자동)</Label>
+                                  <Input
+                                    className="h-7 text-xs bg-muted/50"
+                                    type="month"
+                                    readOnly
+                                    value={editForm.startDate && editForm.totalInstallments ? computeEndDate(editForm.startDate, parseInt(editForm.totalInstallments) || 1, parseInt(editForm.startInstallment) || 1) : ""}
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
                           <div className="flex gap-1">
                             <Button size="sm" className="h-7 px-2 text-xs" onClick={saveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit-recurring">
@@ -847,7 +988,12 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                     </td>
                     <td className="py-1.5 px-2 text-center text-xs">{getScheduleLabel(r)}</td>
                     <td className="py-1.5 px-2 text-center text-[10px] text-muted-foreground">
-                      {r.startDate || r.endDate ? (
+                      {(r as any).totalInstallments ? (
+                        <span>
+                          {(r as any).totalInstallments}회
+                          {(r as any).startInstallment > 1 && ` (${(r as any).startInstallment}회차부터)`}
+                        </span>
+                      ) : r.startDate || r.endDate ? (
                         <span>{r.startDate || "~"} ~ {r.endDate || ""}</span>
                       ) : "-"}
                     </td>
