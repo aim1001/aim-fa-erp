@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays } from "lucide-react";
+import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays, Send, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import type { CompanySettings, Staff } from "@shared/schema";
 import StaffSearchPopover from "@/components/staff-search-popover";
 
@@ -208,7 +208,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="company" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="company" data-testid="tab-company-info">
               <Building2 className="h-4 w-4 mr-2" />
               회사 정보
@@ -220,6 +220,10 @@ export default function SettingsPage() {
             <TabsTrigger value="purchaseOrder" data-testid="tab-purchase-order-settings">
               <ShoppingCart className="h-4 w-4 mr-2" />
               발주서
+            </TabsTrigger>
+            <TabsTrigger value="telegram" data-testid="tab-telegram-settings">
+              <Send className="h-4 w-4 mr-2" />
+              텔레그램
             </TabsTrigger>
           </TabsList>
 
@@ -602,8 +606,178 @@ export default function SettingsPage() {
               </Button>
             </div>
           </TabsContent>
+          <TabsContent value="telegram" className="space-y-6 mt-6">
+            <TelegramSettings />
+          </TabsContent>
         </Tabs>
       </div>
+    </div>
+  );
+}
+
+function TelegramSettings() {
+  const { toast } = useToast();
+
+  const { data: status, isLoading, refetch } = useQuery<{
+    configured: boolean;
+    hasChatId: boolean;
+    botName: string | null;
+    botOk: boolean;
+  }>({
+    queryKey: ["/api/telegram/status"],
+  });
+
+  const detectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/telegram/detect-chat");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.found) {
+        toast({ title: "Chat ID 감지 완료", description: `그룹: ${data.title} (${data.chatId})` });
+        refetch();
+      } else {
+        toast({ title: "감지 실패", description: data.message, variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "감지 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/telegram/test");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.ok) {
+        toast({ title: "전송 성공", description: "텔레그램으로 테스트 메시지가 전송되었습니다." });
+      } else {
+        toast({ title: "전송 실패", description: "메시지 전송에 실패했습니다.", variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "전송 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return <Skeleton className="h-64 w-full" />;
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Send className="h-4 w-4" />
+            텔레그램 알림 설정
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+            {status?.configured ? (
+              status?.botOk ? (
+                <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
+              ) : (
+                <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+              )
+            ) : (
+              <XCircle className="h-5 w-5 text-muted-foreground shrink-0" />
+            )}
+            <div>
+              <p className="text-sm font-medium" data-testid="text-telegram-status">
+                {!status?.configured
+                  ? "봇 토큰이 설정되지 않았습니다"
+                  : status.botOk
+                    ? `봇 연결됨: @${status.botName}`
+                    : "봇 연결 실패"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {!status?.configured
+                  ? "환경변수 TELEGRAM_BOT_TOKEN을 설정해주세요"
+                  : status.hasChatId
+                    ? "Chat ID가 설정되어 알림이 활성화되어 있습니다"
+                    : "Chat ID를 감지하여 알림을 활성화하세요"}
+              </p>
+            </div>
+          </div>
+
+          {status?.configured && !status?.hasChatId && (
+            <div className="space-y-3 p-4 border rounded-lg">
+              <p className="text-sm font-medium">Chat ID 자동 감지</p>
+              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                <li>텔레그램에서 봇을 그룹 채팅에 추가하세요</li>
+                <li>그룹에서 아무 메시지나 보내세요</li>
+                <li>아래 버튼을 눌러 Chat ID를 자동 감지하세요</li>
+              </ol>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => detectMutation.mutate()}
+                disabled={detectMutation.isPending}
+                data-testid="button-detect-chat-id"
+              >
+                {detectMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 mr-1" />
+                )}
+                Chat ID 감지
+              </Button>
+            </div>
+          )}
+
+          {status?.configured && status?.hasChatId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => testMutation.mutate()}
+              disabled={testMutation.isPending}
+              data-testid="button-test-telegram"
+            >
+              {testMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-1" />
+              )}
+              테스트 메시지 전송
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">알림 대상 이벤트</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="text-sm space-y-1.5 text-muted-foreground">
+            <li>📋 인콰이어리 등록 / 상태 변경</li>
+            <li>🏗 프로젝트 전환 / 상태 변경</li>
+            <li>💰 결제 완료</li>
+            <li>✅ 할일 추가 / 완료 (영업·프로젝트·구매발주·경영지원)</li>
+            <li>📅 일정 추가 / 완료 (영업·프로젝트·구매발주·경영지원)</li>
+          </ul>
+        </CardContent>
+      </Card>
+
+      {!status?.configured && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">설정 방법</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="text-sm space-y-2 text-muted-foreground list-decimal list-inside">
+              <li>텔레그램에서 <span className="font-mono text-xs">@BotFather</span>에게 <span className="font-mono text-xs">/newbot</span> 명령을 보내 봇을 생성하세요</li>
+              <li>받은 봇 토큰을 환경변수 <span className="font-mono text-xs">TELEGRAM_BOT_TOKEN</span>에 설정하세요</li>
+              <li>봇을 팀 그룹 채팅에 추가하세요</li>
+              <li>그룹에서 메시지를 보낸 후 이 페이지에서 Chat ID를 감지하세요</li>
+            </ol>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -292,6 +292,7 @@ export async function registerRoutes(
       }
 
       const inquiry = await storage.createInquiry(data);
+      import("./telegram").then(t => t.notifyInquiry("등록", inquiry)).catch(() => {});
       res.status(201).json(inquiry);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -319,8 +320,12 @@ export async function registerRoutes(
       if (data.status === "won") {
         data.isFavorite = false;
       }
+      const oldInquiry = await storage.getInquiry(req.params.id);
       const inquiry = await storage.updateInquiry(req.params.id, data);
       if (!inquiry) return res.status(404).json({ message: "Not found" });
+      if (data.status && oldInquiry && data.status !== oldInquiry.status) {
+        import("./telegram").then(t => t.notifyInquiry("상태변경", inquiry)).catch(() => {});
+      }
 
       if (inquiry.onedriveFolderId) {
         try {
@@ -593,6 +598,28 @@ export async function registerRoutes(
       console.error("Share link error:", err.message);
       res.status(500).json({ message: err.message || "공유 링크 생성 실패" });
     }
+  });
+
+  app.get("/api/telegram/status", async (_req, res) => {
+    const { isConfigured, hasChatId, testConnection } = await import("./telegram");
+    if (!isConfigured()) return res.json({ configured: false, hasChatId: false, botName: null });
+    const conn = await testConnection();
+    res.json({ configured: true, hasChatId: hasChatId(), botName: conn.botName || null, botOk: conn.ok });
+  });
+
+  app.post("/api/telegram/detect-chat", async (_req, res) => {
+    const { isConfigured, detectChatId } = await import("./telegram");
+    if (!isConfigured()) return res.status(400).json({ message: "봇 토큰이 설정되지 않았습니다" });
+    const result = await detectChatId();
+    if (!result) return res.json({ found: false, message: "채팅을 찾을 수 없습니다. 그룹에 봇을 추가하고 메시지를 보낸 후 다시 시도하세요." });
+    process.env.TELEGRAM_CHAT_ID = result.chatId;
+    res.json({ found: true, chatId: result.chatId, title: result.title });
+  });
+
+  app.post("/api/telegram/test", async (_req, res) => {
+    const { sendTelegramMessage } = await import("./telegram");
+    const ok = await sendTelegramMessage("🔔 <b>테스트 알림</b>\n영업 관리 시스템에서 보내는 알림이 정상적으로 연결되었습니다.");
+    res.json({ ok });
   });
 
   app.post("/api/onedrive/refresh", async (req, res) => {
@@ -1271,6 +1298,7 @@ export async function registerRoutes(
         taskType: resolvedTaskType,
         createdAt: new Date().toISOString().slice(0, 10),
       });
+      import("./telegram").then(t => t.notifyTask("추가", task, "영업")).catch(() => {});
       res.status(201).json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1334,6 +1362,9 @@ export async function registerRoutes(
 
       const task = await storage.updateTask(req.params.id, allowed);
       if (!task) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
+      if (allowed.completed === true) {
+        import("./telegram").then(t => t.notifyTask("완료", task, "영업")).catch(() => {});
+      }
       res.json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1408,6 +1439,7 @@ export async function registerRoutes(
         taskType: resolvedTaskType,
         createdAt: new Date().toISOString().slice(0, 10),
       });
+      import("./telegram").then(t => t.notifyTask("추가", task, "프로젝트")).catch(() => {});
       res.status(201).json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1471,6 +1503,9 @@ export async function registerRoutes(
 
       const task = await storage.updateProjectTask(req.params.id, allowed);
       if (!task) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
+      if (allowed.completed === true) {
+        import("./telegram").then(t => t.notifyTask("완료", task, "프로젝트")).catch(() => {});
+      }
       res.json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1653,6 +1688,7 @@ export async function registerRoutes(
         taskType: resolvedTaskType,
         createdAt: new Date().toISOString(),
       });
+      import("./telegram").then(t => t.notifyTask("추가", task, "구매발주")).catch(() => {});
       res.status(201).json(task);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1706,6 +1742,9 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updatePurchaseOrderTask(req.params.id, allowed);
+      if (allowed.completed === true) {
+        import("./telegram").then(t => t.notifyTask("완료", updated, "구매발주")).catch(() => {});
+      }
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1770,6 +1809,7 @@ export async function registerRoutes(
         taskType: resolvedTaskType,
         createdAt: new Date().toISOString(),
       });
+      import("./telegram").then(t => t.notifyTask("추가", task, "경영지원")).catch(() => {});
       res.status(201).json(task);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1824,6 +1864,9 @@ export async function registerRoutes(
       }
 
       const updated = await storage.updateFinanceTask(req.params.id, allowed);
+      if (allowed.completed === true) {
+        import("./telegram").then(t => t.notifyTask("완료", updated, "경영지원")).catch(() => {});
+      }
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3400,6 +3443,7 @@ export async function registerRoutes(
         remainderResult = { action: "new", paymentId: newPayment.id, amount: remainder };
       }
 
+      import("./telegram").then(t => t.notifyPayment("결제완료", updated)).catch(() => {});
       res.json({ message: "입금 처리 완료", payment: updated, remainder: remainderResult });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3691,8 +3735,12 @@ export async function registerRoutes(
 
   app.patch("/api/projects/:id", async (req, res) => {
     try {
+      const oldProject = req.body.status ? await storage.getProject(req.params.id) : null;
       const result = await storage.updateProject(req.params.id, req.body);
       if (!result) return res.status(404).json({ message: "Not found" });
+      if (req.body.status && oldProject && req.body.status !== oldProject.status) {
+        import("./telegram").then(t => t.notifyProject("상태변경", result)).catch(() => {});
+      }
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3854,6 +3902,7 @@ export async function registerRoutes(
       }
 
       await storage.updateInquiry(inquiry.id, { status: "won" });
+      import("./telegram").then(t => t.notifyProject("프로젝트 전환", project)).catch(() => {});
 
       res.status(201).json({ project, message: "프로젝트로 전환되었습니다" });
     } catch (err: any) {
