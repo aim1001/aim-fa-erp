@@ -94,7 +94,11 @@ export async function fetchNewMessages(
   if (!token) return;
   const url = `${TELEGRAM_API}/bot${token}/getUpdates?offset=${lastUpdateOffset}&limit=50&timeout=0`;
   const res = await fetch(url);
-  if (!res.ok) return;
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[Telegram] getUpdates failed: ${res.status} ${res.statusText} - ${body}`);
+    return;
+  }
   const data = await res.json();
   const updates = data.result || [];
 
@@ -119,22 +123,32 @@ export async function fetchNewMessages(
 }
 
 let pollingActive = false;
+let pollingTimeout: ReturnType<typeof setTimeout> | null = null;
+
+export function stopPolling() {
+  pollingActive = false;
+  if (pollingTimeout) {
+    clearTimeout(pollingTimeout);
+    pollingTimeout = null;
+  }
+}
 
 export function startPolling(saveFn: (msg: { messageId: number; text: string; fromName: string; chatId: string }) => Promise<void>) {
-  if (pollingActive) return;
+  stopPolling();
   pollingActive = true;
 
   async function poll() {
+    if (!pollingActive) return;
     try {
       await fetchNewMessages(saveFn);
     } catch (err) {
       console.error("[Telegram] Polling error:", err);
     }
     if (pollingActive) {
-      setTimeout(poll, 30000);
+      pollingTimeout = setTimeout(poll, 30000);
     }
   }
-  poll();
+  pollingTimeout = setTimeout(poll, 3000);
 }
 
 export function notifyInquiry(action: string, inquiry: any): void {
