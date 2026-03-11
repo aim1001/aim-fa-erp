@@ -5863,23 +5863,41 @@ export async function registerRoutes(
     }
   });
 
-  import("./telegram").then(({ startPolling, isConfigured }) => {
-    if (isConfigured()) {
-      startPolling(async (msg) => {
-        const existing = await storage.getTelegramMemoByMessageId(msg.messageId, msg.chatId);
-        if (!existing) {
-          await storage.createTelegramMemo({
-            messageId: msg.messageId,
-            text: msg.text,
-            fromName: msg.fromName,
-            chatId: msg.chatId,
-            isRead: false,
-          });
-        }
+  const memoSaveFn = async (msg: { messageId: number; text: string; fromName: string; chatId: string }) => {
+    const existing = await storage.getTelegramMemoByMessageId(msg.messageId, msg.chatId);
+    if (!existing) {
+      await storage.createTelegramMemo({
+        messageId: msg.messageId,
+        text: msg.text,
+        fromName: msg.fromName,
+        chatId: msg.chatId,
+        isRead: false,
       });
-      console.log("[Telegram] Memo polling started (30s interval)");
     }
-  }).catch(() => {});
+  };
+
+  app.post("/api/telegram/memos/poll-now", async (_req, res) => {
+    try {
+      const { fetchNewMessages, isConfigured } = await import("./telegram");
+      if (!isConfigured()) return res.status(400).json({ message: "Telegram not configured" });
+      await fetchNewMessages(memoSaveFn);
+      const count = await storage.getUnreadMemoCount();
+      res.json({ success: true, unreadCount: count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  if (process.env.NODE_ENV !== "development") {
+    import("./telegram").then(({ startPolling, isConfigured }) => {
+      if (isConfigured()) {
+        startPolling(memoSaveFn);
+        console.log("[Telegram] Memo polling started (30s interval, production)");
+      }
+    }).catch(() => {});
+  } else {
+    console.log("[Telegram] Memo polling disabled in development (use POST /api/telegram/memos/poll-now)");
+  }
 
   return httpServer;
 }
