@@ -522,7 +522,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
   const [showDropdown, setShowDropdown] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const [contactForm, setContactForm] = useState({ contactName: "", email: "", phone: "" });
+  const [contactForm, setContactForm] = useState({ contactName: "", email: "", phone: "", address: "" });
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [editContactId, setEditContactId] = useState<string | null>(null);
 
@@ -604,7 +604,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
         return;
       }
       toast({ title: "고객 정보 저장 완료" });
-      setContactForm({ contactName: "", email: "", phone: "" });
+      setContactForm({ contactName: "", email: "", phone: "", address: "" });
       invalidateAll();
     },
     onError: (err: Error) => {
@@ -613,12 +613,13 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
   });
 
   const createContactMutation = useMutation({
-    mutationFn: async (data: { contactName: string; email: string; phone: string }) => {
+    mutationFn: async (data: { contactName: string; email: string; phone: string; address?: string }) => {
       const res = await apiRequest("POST", "/api/companies", {
         companyName: data.contactName,
         contactName: data.contactName,
         email: data.email,
         phone: data.phone,
+        address: data.address || "",
         customerId: inquiry.customerId,
         isTemporary: false,
       });
@@ -626,7 +627,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
     },
     onSuccess: async (newCompany: any) => {
       toast({ title: "담당자 등록 완료" });
-      setContactForm({ contactName: "", email: "", phone: "" });
+      setContactForm({ contactName: "", email: "", phone: "", address: "" });
       setIsAddingNewContact(false);
       if (newCompany?.id && isLinked) {
         linkContactMutation.mutate(newCompany.id);
@@ -648,7 +649,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
       toast({ title: "수정 완료" });
       setIsEditingContact(false);
       setEditContactId(null);
-      setContactForm({ contactName: "", email: "", phone: "" });
+      setContactForm({ contactName: "", email: "", phone: "", address: "" });
       invalidateAll();
     },
     onError: (err: Error) => {
@@ -664,7 +665,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
     onSuccess: (data) => {
       if (data.scanned.length > 0) {
         const info = data.scanned[0];
-        setContactForm({ contactName: info.contactName || "", email: info.email || "", phone: info.phone || "" });
+        setContactForm({ contactName: info.contactName || "", email: info.email || "", phone: info.phone || "", address: info.address || "" });
         setScanResult(data);
         toast({ title: "엑셀 스캔 완료", description: `${data.scanned.length}건의 정보를 찾았습니다` });
       } else {
@@ -691,6 +692,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
         contactName: contactForm.contactName,
         email: contactForm.email,
         phone: contactForm.phone,
+        address: contactForm.address || undefined,
       });
     }
   };
@@ -702,13 +704,14 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
       contactName: contact.contactName || "",
       email: contact.email || "",
       phone: contact.phone || "",
+      address: contact.address || "",
     });
   };
 
   const cancelEditContact = () => {
     setIsEditingContact(false);
     setEditContactId(null);
-    setContactForm({ contactName: "", email: "", phone: "" });
+    setContactForm({ contactName: "", email: "", phone: "", address: "" });
   };
 
   const [isAddingNewContact, setIsAddingNewContact] = useState(false);
@@ -830,7 +833,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
                   onValueChange={(val) => {
                     if (val === "__new__") {
                       setIsAddingNewContact(true);
-                      setContactForm({ contactName: "", email: "", phone: "" });
+                      setContactForm({ contactName: "", email: "", phone: "", address: "" });
                     } else {
                       linkContactMutation.mutate(val);
                     }
@@ -889,6 +892,14 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
                 onChange={(e) => setContactForm(f => ({ ...f, phone: e.target.value }))}
                 className="h-7 text-xs"
                 data-testid="input-contact-phone"
+              />
+              <span className="text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />주소</span>
+              <Input
+                placeholder="주소"
+                value={contactForm.address}
+                onChange={(e) => setContactForm(f => ({ ...f, address: e.target.value }))}
+                className="h-7 text-xs"
+                data-testid="input-contact-address"
               />
               <span />
               <div className="flex gap-2">
@@ -953,6 +964,14 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
                 className="h-7 text-xs"
                 data-testid="input-contact-phone"
               />
+              <span className="text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />주소</span>
+              <Input
+                placeholder="주소"
+                value={contactForm.address}
+                onChange={(e) => setContactForm(f => ({ ...f, address: e.target.value }))}
+                className="h-7 text-xs"
+                data-testid="input-contact-address-inline"
+              />
               <span />
               <div className="flex gap-2">
                 <Button
@@ -998,7 +1017,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
                   variant="outline"
                   size="sm"
                   className="text-xs h-6"
-                  onClick={() => setContactForm({ contactName: info.contactName || "", email: info.email || "", phone: info.phone || "" })}
+                  onClick={() => setContactForm({ contactName: info.contactName || "", email: info.email || "", phone: info.phone || "", address: info.address || "" })}
                   data-testid={`button-scan-result-${idx}`}
                 >
                   {info.companyName} ({info.sheetName})
