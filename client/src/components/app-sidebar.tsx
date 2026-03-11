@@ -1,8 +1,9 @@
 import {
-  LayoutDashboard, FileText, RefreshCw, Building2, Target, Trophy, XCircle, LogOut,
-  Truck, Receipt, ReceiptText, Calendar, Clock, Wallet, FolderKanban, ClipboardList,
+  LayoutDashboard, FileText, RefreshCw, Building2, Target, LogOut,
+  Truck, Receipt, ReceiptText, Wallet, FolderKanban, ClipboardList,
   CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart,
-  Package, ClipboardCheck, FolderCheck, FolderOpen, Settings, Users, TrendingUp
+  Package, ClipboardCheck, FolderCheck, FolderOpen, Settings, Users, TrendingUp,
+  Cloud
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -10,12 +11,10 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -42,7 +41,6 @@ export function AppSidebar() {
 
   const [salesOpen, setSalesOpen] = useState(isSalesSection);
   const [projectOpen, setProjectOpen] = useState(isProjectSection);
-  const [projectSubOpen, setProjectSubOpen] = useState(isProjectPage);
   const [financeOpen, setFinanceOpen] = useState(isFinanceSection);
   const [tradeOpen, setTradeOpen] = useState(isTradeSection);
   const [companyOpen, setCompanyOpen] = useState(isCompanySection);
@@ -64,7 +62,6 @@ export function AppSidebar() {
   useEffect(() => {
     if (isSalesSection) setSalesOpen(true);
     if (isProjectSection) setProjectOpen(true);
-    if (isProjectPage) setProjectSubOpen(true);
     if (isFinanceSection) setFinanceOpen(true);
     if (isTradeSection) setTradeOpen(true);
     if (isCompanySection) setCompanyOpen(true);
@@ -167,26 +164,24 @@ export function AppSidebar() {
         {/* 영업 */}
         <SidebarGroup>
           <Collapsible open={salesOpen} onOpenChange={setSalesOpen} className="group/sales">
-            <CollapsibleTrigger asChild>
-              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-sales">
+            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+              <CollapsibleTrigger data-testid="nav-section-sales">
+                <TrendingUp className="h-4 w-4" />
                 <span>영업</span>
-                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/sales:rotate-90" />
-              </button>
-            </CollapsibleTrigger>
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/sales:rotate-90" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
             <CollapsibleContent>
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild data-active={isSalesDashboard} data-testid="nav-sales-dashboard">
-                      <Link href="/sales-dashboard"><TrendingUp className="h-4 w-4" /><span>대시보드</span></Link>
+                      <Link href="/sales-dashboard"><ClipboardList className="h-4 w-4" /><span>영업 대시보드</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild data-active={isInquiryPage} data-testid="nav-inquiries">
-                      <Link href="/inquiries">
-                        <FileText className="h-4 w-4" />
-                        <span>인콰이어리</span>
-                      </Link>
+                      <Link href="/inquiries"><FileText className="h-4 w-4" /><span>인콰이어리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -198,52 +193,31 @@ export function AppSidebar() {
         {/* 프로젝트 */}
         <SidebarGroup>
           <Collapsible open={projectOpen} onOpenChange={setProjectOpen} className="group/project">
-            <CollapsibleTrigger asChild>
-              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-project">
+            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+              <CollapsibleTrigger data-testid="nav-section-project">
+                <FolderKanban className="h-4 w-4" />
                 <span>프로젝트</span>
-                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/project:rotate-90" />
-              </button>
-            </CollapsibleTrigger>
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/project:rotate-90" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
             <CollapsibleContent>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  <Collapsible open={projectSubOpen} onOpenChange={setProjectSubOpen} className="group/collapsible">
-                    <SidebarMenuItem>
-                      <SidebarMenuButton asChild data-active={isProjectPage} data-testid="nav-projects">
-                        <Link href="/projects">
-                          <FolderKanban className="h-4 w-4" />
-                          <span>프로젝트</span>
-                        </Link>
-                      </SidebarMenuButton>
-                      <CollapsibleTrigger asChild>
-                        <button
-                          className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-sidebar-accent"
-                          data-testid="nav-projects-toggle"
-                        >
-                          <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                        </button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <SidebarMenuSub>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isProjectPage && !params.get("status")} data-testid="nav-projects-all">
-                              <Link href="/projects"><FolderOpen className="h-3.5 w-3.5" /><span>전체보기</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isProjectPage && params.get("status") === "active"} data-testid="nav-projects-active">
-                              <Link href="/projects?status=active"><Target className="h-3.5 w-3.5" /><span>진행중</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild isActive={isProjectPage && params.get("status") === "completed"} data-testid="nav-projects-completed">
-                              <Link href="/projects?status=completed"><FolderCheck className="h-3.5 w-3.5" /><span>완료</span></Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        </SidebarMenuSub>
-                      </CollapsibleContent>
-                    </SidebarMenuItem>
-                  </Collapsible>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={isProjectPage && !params.get("status")} data-testid="nav-projects-all">
+                      <Link href="/projects"><FolderOpen className="h-4 w-4" /><span>전체보기</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={isProjectPage && params.get("status") === "active"} data-testid="nav-projects-active">
+                      <Link href="/projects?status=active"><Target className="h-4 w-4" /><span>진행중</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={isProjectPage && params.get("status") === "completed"} data-testid="nav-projects-completed">
+                      <Link href="/projects?status=completed"><FolderCheck className="h-4 w-4" /><span>완료</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </CollapsibleContent>
@@ -253,18 +227,19 @@ export function AppSidebar() {
         {/* 경영지원 */}
         <SidebarGroup>
           <Collapsible open={financeOpen} onOpenChange={setFinanceOpen} className="group/finance">
-            <CollapsibleTrigger asChild>
-              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-finance">
+            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+              <CollapsibleTrigger data-testid="nav-section-finance">
+                <Wallet className="h-4 w-4" />
                 <span>경영지원</span>
-                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/finance:rotate-90" />
-              </button>
-            </CollapsibleTrigger>
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/finance:rotate-90" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
             <CollapsibleContent>
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild data-active={location === "/management"} data-testid="nav-management">
-                      <Link href="/management"><ClipboardList className="h-4 w-4" /><span>대시보드</span></Link>
+                      <Link href="/management"><ClipboardList className="h-4 w-4" /><span>경영 대시보드</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
@@ -291,12 +266,13 @@ export function AppSidebar() {
         {/* 구매/판매 */}
         <SidebarGroup>
           <Collapsible open={tradeOpen} onOpenChange={setTradeOpen} className="group/trade">
-            <CollapsibleTrigger asChild>
-              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-trade">
+            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+              <CollapsibleTrigger data-testid="nav-section-trade">
+                <ShoppingCart className="h-4 w-4" />
                 <span>구매/판매</span>
-                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/trade:rotate-90" />
-              </button>
-            </CollapsibleTrigger>
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/trade:rotate-90" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
             <CollapsibleContent>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -324,12 +300,13 @@ export function AppSidebar() {
         {/* 업체관리 */}
         <SidebarGroup>
           <Collapsible open={companyOpen} onOpenChange={setCompanyOpen} className="group/company">
-            <CollapsibleTrigger asChild>
-              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-company">
+            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+              <CollapsibleTrigger data-testid="nav-section-company">
+                <Building2 className="h-4 w-4" />
                 <span>업체관리</span>
-                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/company:rotate-90" />
-              </button>
-            </CollapsibleTrigger>
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/company:rotate-90" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
             <CollapsibleContent>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -357,20 +334,19 @@ export function AppSidebar() {
         {/* OneDrive */}
         <SidebarGroup>
           <Collapsible className="group/onedrive">
-            <CollapsibleTrigger asChild>
-              <button className="flex w-full items-center justify-between px-2 py-1.5 text-xs font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors" data-testid="nav-section-onedrive">
-                <div className="flex items-center gap-1.5">
-                  <span>OneDrive</span>
-                  {!statusLoading && onedriveStatus?.connected && (
-                    <CheckCircle2 className="h-3 w-3 text-green-500" />
-                  )}
-                  {!statusLoading && onedriveStatus && !onedriveStatus.connected && (
-                    <WifiOff className="h-3 w-3 text-destructive" />
-                  )}
-                </div>
-                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/onedrive:rotate-90" />
-              </button>
-            </CollapsibleTrigger>
+            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+              <CollapsibleTrigger data-testid="nav-section-onedrive">
+                <Cloud className="h-4 w-4" />
+                <span>OneDrive</span>
+                {!statusLoading && onedriveStatus?.connected && (
+                  <CheckCircle2 className="h-3 w-3 text-green-500" />
+                )}
+                {!statusLoading && onedriveStatus && !onedriveStatus.connected && (
+                  <WifiOff className="h-3 w-3 text-destructive" />
+                )}
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/onedrive:rotate-90" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
             <CollapsibleContent>
               <SidebarGroupContent>
                 <div className="px-2 space-y-2">
