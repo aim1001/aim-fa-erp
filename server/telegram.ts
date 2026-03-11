@@ -176,10 +176,11 @@ export function notifyPayment(action: string, payment: any): void {
   sendTelegramMessage(lines.join("\n"));
 }
 
-export function notifyTask(action: string, task: any, category: string): void {
+export function notifyTask(action: string, task: any, category: string, parentInfo?: string): void {
   const typeLabel = task.taskType === "schedule" ? "일정" : "할일";
   const lines = [
     `${task.taskType === "schedule" ? "📅" : "✅"} <b>[${esc(category)} ${esc(typeLabel)} ${esc(action)}]</b>`,
+    parentInfo && parentInfo !== "_" ? esc(parentInfo) : "",
     `내용: ${esc(task.content || "")}`,
     task.dueDate ? `기한: ${task.dueDate}${task.dueTime ? ` ${task.dueTime}` : ""}` : "",
   ].filter(Boolean);

@@ -1335,7 +1335,10 @@ export async function registerRoutes(
         taskType: resolvedTaskType,
         createdAt: new Date().toISOString().slice(0, 10),
       });
-      import("./telegram").then(t => t.notifyTask("추가", task, "영업")).catch(() => {});
+      storage.getInquiry(req.params.id).then(inq => {
+        const info = inq ? `${inq.inquiryNumber || ""}_${inq.customerName || ""}` : undefined;
+        import("./telegram").then(t => t.notifyTask("추가", task, "영업", info)).catch(() => {});
+      }).catch(() => {});
       res.status(201).json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1400,7 +1403,10 @@ export async function registerRoutes(
       const task = await storage.updateTask(req.params.id, allowed);
       if (!task) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
       if (allowed.completed === true && !existing.completed) {
-        import("./telegram").then(t => t.notifyTask("완료", task, "영업")).catch(() => {});
+        storage.getInquiry(existing.inquiryId).then(inq => {
+          const info = inq ? `${inq.inquiryNumber || ""}_${inq.customerName || ""}` : undefined;
+          import("./telegram").then(t => t.notifyTask("완료", task, "영업", info)).catch(() => {});
+        }).catch(() => {});
       }
       res.json(task);
     } catch (err: any) {
@@ -1476,7 +1482,10 @@ export async function registerRoutes(
         taskType: resolvedTaskType,
         createdAt: new Date().toISOString().slice(0, 10),
       });
-      import("./telegram").then(t => t.notifyTask("추가", task, "프로젝트")).catch(() => {});
+      storage.getProject(req.params.id).then(proj => {
+        const info = proj ? `${proj.projectNumber || ""}_${proj.customerName || ""}` : undefined;
+        import("./telegram").then(t => t.notifyTask("추가", task, "프로젝트", info)).catch(() => {});
+      }).catch(() => {});
       res.status(201).json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1541,7 +1550,10 @@ export async function registerRoutes(
       const task = await storage.updateProjectTask(req.params.id, allowed);
       if (!task) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
       if (allowed.completed === true && !existing.completed) {
-        import("./telegram").then(t => t.notifyTask("완료", task, "프로젝트")).catch(() => {});
+        storage.getProject(existing.projectId).then(proj => {
+          const info = proj ? `${proj.projectNumber || ""}_${proj.customerName || ""}` : undefined;
+          import("./telegram").then(t => t.notifyTask("완료", task, "프로젝트", info)).catch(() => {});
+        }).catch(() => {});
       }
       res.json(task);
     } catch (err: any) {
@@ -1725,7 +1737,11 @@ export async function registerRoutes(
         taskType: resolvedTaskType,
         createdAt: new Date().toISOString(),
       });
-      import("./telegram").then(t => t.notifyTask("추가", task, "구매발주")).catch(() => {});
+      (async () => {
+        const po = purchaseOrderId ? await storage.getPurchaseOrder(purchaseOrderId) : null;
+        const info = po ? `${po.orderNumber || ""}_${po.vendor || ""}` : undefined;
+        import("./telegram").then(t => t.notifyTask("추가", task, "구매발주", info)).catch(() => {});
+      })().catch(() => {});
       res.status(201).json(task);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1780,7 +1796,11 @@ export async function registerRoutes(
 
       const updated = await storage.updatePurchaseOrderTask(req.params.id, allowed);
       if (allowed.completed === true && !existing.completed) {
-        import("./telegram").then(t => t.notifyTask("완료", updated, "구매발주")).catch(() => {});
+        (async () => {
+          const po = existing.purchaseOrderId ? await storage.getPurchaseOrder(existing.purchaseOrderId) : null;
+          const info = po ? `${po.orderNumber || ""}_${po.vendor || ""}` : undefined;
+          import("./telegram").then(t => t.notifyTask("완료", updated, "구매발주", info)).catch(() => {});
+        })().catch(() => {});
       }
       res.json(updated);
     } catch (err: any) {
