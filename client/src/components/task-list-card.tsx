@@ -16,6 +16,7 @@ type InquiryTask = {
   dueDate: string | null;
   dueTime: string | null;
   calendarEventId: string | null;
+  taskType: string | null;
   createdAt: string;
   inquiryNumber: string;
   customerName: string;
@@ -29,6 +30,7 @@ type ProjectPendingTask = {
   dueDate: string | null;
   dueTime: string | null;
   calendarEventId: string | null;
+  taskType: string | null;
   createdAt: string;
   projectNumber: string;
   customerName: string;
@@ -42,6 +44,7 @@ type POTask = {
   dueDate: string | null;
   dueTime: string | null;
   calendarEventId: string | null;
+  taskType: string | null;
   createdAt: string;
   orderNumber: string;
   vendor: string;
@@ -55,12 +58,27 @@ type FinTask = {
   dueDate: string | null;
   dueTime: string | null;
   calendarEventId: string | null;
+  taskType: string | null;
   createdAt: string;
 };
 
-type TabKey = "all" | "sales" | "project" | "purchase" | "finance";
+type MainTab = "todo" | "schedule";
+type SubTabKey = "all" | "sales" | "project" | "purchase" | "finance";
 
-const TABS: { key: TabKey; label: string; icon: typeof ListTodo; activeClass: string }[] = [
+type TaskItem = {
+  id: string;
+  parentId: string;
+  type: "inquiry" | "project" | "purchase" | "finance";
+  taskType: string;
+  content: string;
+  dueDate: string | null;
+  dueTime: string | null;
+  label: string;
+  subLabel: string;
+  calendarEventId: string | null;
+};
+
+const SUB_TABS: { key: SubTabKey; label: string; icon: typeof ListTodo; activeClass: string }[] = [
   { key: "all", label: "전체", icon: ListTodo, activeClass: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 font-medium" },
   { key: "sales", label: "영업", icon: FileText, activeClass: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium" },
   { key: "project", label: "프로젝트", icon: FolderKanban, activeClass: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 font-medium" },
@@ -70,7 +88,8 @@ const TABS: { key: TabKey; label: string; icon: typeof ListTodo; activeClass: st
 
 export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClick?: (inquiryId: string) => void; onProjectClick?: (projectId: string) => void } = {}) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<TabKey>("all");
+  const [mainTab, setMainTab] = useState<MainTab>("todo");
+  const [subTab, setSubTab] = useState<SubTabKey>("all");
   const [newContent, setNewContent] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
 
@@ -170,7 +189,7 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
   });
 
   const createPOMutation = useMutation({
-    mutationFn: async (data: { content: string; dueDate?: string }) => {
+    mutationFn: async (data: { content: string; dueDate?: string; taskType: string }) => {
       const res = await apiRequest("POST", "/api/purchase-order-tasks", data);
       return res.json();
     },
@@ -180,12 +199,12 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
       setNewDueDate("");
     },
     onError: (err: Error) => {
-      toast({ title: "할일 추가 실패", description: err.message, variant: "destructive" });
+      toast({ title: "추가 실패", description: err.message, variant: "destructive" });
     },
   });
 
   const createFinMutation = useMutation({
-    mutationFn: async (data: { content: string; dueDate?: string }) => {
+    mutationFn: async (data: { content: string; dueDate?: string; taskType: string }) => {
       const res = await apiRequest("POST", "/api/finance-tasks", data);
       return res.json();
     },
@@ -195,7 +214,7 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
       setNewDueDate("");
     },
     onError: (err: Error) => {
-      toast({ title: "할일 추가 실패", description: err.message, variant: "destructive" });
+      toast({ title: "추가 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -214,63 +233,43 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
     ...finTasks.filter(t => t.dueDate && !t.calendarEventId),
   ].length;
 
-  type TaskItem = {
-    id: string;
-    parentId: string;
-    type: "inquiry" | "project" | "purchase" | "finance";
-    content: string;
-    dueDate: string | null;
-    dueTime: string | null;
-    label: string;
-    subLabel: string;
-    calendarEventId: string | null;
+  const toTaskItem = (t: any, type: "inquiry" | "project" | "purchase" | "finance", label: string, subLabel: string, parentId: string): TaskItem => ({
+    id: t.id, parentId, type,
+    taskType: t.taskType || (type === "inquiry" || type === "project" ? "todo" : "schedule"),
+    content: t.content, dueDate: t.dueDate, dueTime: t.dueTime,
+    label, subLabel, calendarEventId: t.calendarEventId,
+  });
+
+  const allItems: TaskItem[] = [
+    ...inquiryTasks.map(t => toTaskItem(t, "inquiry", t.inquiryNumber, t.customerName, t.inquiryId)),
+    ...projectTasks.map(t => toTaskItem(t, "project", `P:${t.projectNumber}`, t.customerName, t.projectId)),
+    ...poTasks.map(t => toTaskItem(t, "purchase", t.orderNumber || "발주", t.vendor, t.purchaseOrderId || "")),
+    ...finTasks.map(t => toTaskItem(t, "finance", t.category || "경영", "", "")),
+  ].sort((a, b) => {
+    if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+    if (a.dueDate) return -1;
+    if (b.dueDate) return 1;
+    return 0;
+  });
+
+  const mainFiltered = allItems.filter(item => item.taskType === mainTab);
+
+  const subFiltered = subTab === "all" ? mainFiltered
+    : subTab === "sales" ? mainFiltered.filter(i => i.type === "inquiry")
+    : subTab === "project" ? mainFiltered.filter(i => i.type === "project")
+    : subTab === "purchase" ? mainFiltered.filter(i => i.type === "purchase")
+    : mainFiltered.filter(i => i.type === "finance");
+
+  const subCounts: Record<SubTabKey, number> = {
+    all: mainFiltered.length,
+    sales: mainFiltered.filter(i => i.type === "inquiry").length,
+    project: mainFiltered.filter(i => i.type === "project").length,
+    purchase: mainFiltered.filter(i => i.type === "purchase").length,
+    finance: mainFiltered.filter(i => i.type === "finance").length,
   };
 
-  const salesItems: TaskItem[] = inquiryTasks.map(t => ({
-    id: t.id, parentId: t.inquiryId, type: "inquiry" as const,
-    content: t.content, dueDate: t.dueDate, dueTime: t.dueTime,
-    label: t.inquiryNumber, subLabel: t.customerName, calendarEventId: t.calendarEventId,
-  }));
-
-  const projectItems: TaskItem[] = projectTasks.map(t => ({
-    id: t.id, parentId: t.projectId, type: "project" as const,
-    content: t.content, dueDate: t.dueDate, dueTime: t.dueTime,
-    label: `P:${t.projectNumber}`, subLabel: t.customerName, calendarEventId: t.calendarEventId,
-  }));
-
-  const purchaseItems: TaskItem[] = poTasks.map(t => ({
-    id: t.id, parentId: t.purchaseOrderId || "", type: "purchase" as const,
-    content: t.content, dueDate: t.dueDate, dueTime: t.dueTime,
-    label: t.orderNumber || "발주", subLabel: t.vendor, calendarEventId: t.calendarEventId,
-  }));
-
-  const financeItems: TaskItem[] = finTasks.map(t => ({
-    id: t.id, parentId: "", type: "finance" as const,
-    content: t.content, dueDate: t.dueDate, dueTime: t.dueTime,
-    label: t.category || "경영", subLabel: "", calendarEventId: t.calendarEventId,
-  }));
-
-  const allItems = [...salesItems, ...projectItems, ...purchaseItems, ...financeItems]
-    .sort((a, b) => {
-      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
-      if (a.dueDate) return -1;
-      if (b.dueDate) return 1;
-      return 0;
-    });
-
-  const filteredItems = activeTab === "all" ? allItems
-    : activeTab === "sales" ? salesItems
-    : activeTab === "project" ? projectItems
-    : activeTab === "purchase" ? purchaseItems
-    : financeItems;
-
-  const tabCounts: Record<TabKey, number> = {
-    all: allItems.length,
-    sales: salesItems.length,
-    project: projectItems.length,
-    purchase: purchaseItems.length,
-    finance: financeItems.length,
-  };
+  const todoCount = allItems.filter(i => i.taskType === "todo").length;
+  const scheduleCount = allItems.filter(i => i.taskType === "schedule").length;
 
   const handleToggle = (item: TaskItem) => {
     if (item.type === "inquiry") toggleInquiryMutation.mutate({ id: item.id });
@@ -289,14 +288,14 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
     else if (item.type === "project") onProjectClick?.(item.parentId);
   };
 
-  const canAddInline = activeTab === "purchase" || activeTab === "finance";
+  const canAddInline = subTab === "purchase" || subTab === "finance";
 
   const handleAddTask = () => {
     if (!newContent.trim()) return;
-    const data: { content: string; dueDate?: string } = { content: newContent.trim() };
+    const data: { content: string; dueDate?: string; taskType: string } = { content: newContent.trim(), taskType: mainTab };
     if (newDueDate) data.dueDate = newDueDate;
-    if (activeTab === "purchase") createPOMutation.mutate(data);
-    else if (activeTab === "finance") createFinMutation.mutate(data);
+    if (subTab === "purchase") createPOMutation.mutate(data);
+    else if (subTab === "finance") createFinMutation.mutate(data);
   };
 
   const typeColorMap: Record<string, string> = {
@@ -314,14 +313,29 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
   };
 
   return (
-    <Card className="border-l-4 border-l-cyan-500" data-testid="card-pending-tasks">
+    <Card className={`border-l-4 ${mainTab === "todo" ? "border-l-cyan-500" : "border-l-indigo-500"}`} data-testid="card-pending-tasks">
       <CardContent className="pt-4 pb-3">
         <div className="flex items-center gap-2 mb-3">
-          <div className="p-2 rounded-lg bg-cyan-50 dark:bg-cyan-900/20">
-            <ListTodo className="h-5 w-5 text-cyan-600" />
+          <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+            <button
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${mainTab === "todo" ? "bg-background shadow-sm font-medium text-cyan-700 dark:text-cyan-400" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => { setMainTab("todo"); setSubTab("all"); setNewContent(""); setNewDueDate(""); }}
+              data-testid="main-tab-todo"
+            >
+              <ListTodo className="h-3.5 w-3.5" />
+              할일
+              {todoCount > 0 && <span className="text-[10px] bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400 px-1.5 rounded-full">{todoCount}</span>}
+            </button>
+            <button
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-md transition-colors ${mainTab === "schedule" ? "bg-background shadow-sm font-medium text-indigo-700 dark:text-indigo-400" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => { setMainTab("schedule"); setSubTab("all"); setNewContent(""); setNewDueDate(""); }}
+              data-testid="main-tab-schedule"
+            >
+              <CalendarDays className="h-3.5 w-3.5" />
+              일정
+              {scheduleCount > 0 && <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-1.5 rounded-full">{scheduleCount}</span>}
+            </button>
           </div>
-          <h2 className="font-semibold text-base">할일</h2>
-          <span className="text-xs text-muted-foreground">{allItems.length}건</span>
           <div className="ml-auto">
             <Button
               variant="ghost"
@@ -339,16 +353,16 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
         </div>
 
         <div className="flex gap-1 mb-3 border-b pb-2 overflow-x-auto">
-          {TABS.map(tab => {
+          {SUB_TABS.map(tab => {
             const Icon = tab.icon;
-            const count = tabCounts[tab.key];
+            const count = subCounts[tab.key];
             return (
               <button
                 key={tab.key}
                 className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
-                  activeTab === tab.key ? tab.activeClass : "text-muted-foreground hover:bg-muted"
+                  subTab === tab.key ? tab.activeClass : "text-muted-foreground hover:bg-muted"
                 }`}
-                onClick={() => { setActiveTab(tab.key); setNewContent(""); setNewDueDate(""); }}
+                onClick={() => { setSubTab(tab.key); setNewContent(""); setNewDueDate(""); }}
                 data-testid={`tab-task-${tab.key}`}
               >
                 <Icon className="h-3 w-3" />
@@ -362,7 +376,7 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
         {canAddInline && (
           <div className="flex items-center gap-2 mb-2" data-testid="inline-add-task">
             <Input
-              placeholder="새 할일 입력..."
+              placeholder={mainTab === "todo" ? "새 할일 입력..." : "새 일정 입력..."}
               value={newContent}
               onChange={e => setNewContent(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") handleAddTask(); }}
@@ -390,17 +404,19 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
         )}
 
         <div className="space-y-1 max-h-[280px] overflow-y-auto">
-          {filteredItems.length === 0 && (
-            <div className="text-xs text-muted-foreground text-center py-4">할일이 없습니다</div>
+          {subFiltered.length === 0 && (
+            <div className="text-xs text-muted-foreground text-center py-4">
+              {mainTab === "todo" ? "할일이 없습니다" : "일정이 없습니다"}
+            </div>
           )}
-          {filteredItems.map(task => (
+          {subFiltered.map(task => (
             <div key={`${task.type}-${task.id}`} className="flex items-center gap-2 py-1 group" data-testid={`dashboard-task-${task.id}`}>
               <button
-                className="shrink-0 w-4 h-4 rounded border border-muted-foreground/40 hover:border-cyan-500 flex items-center justify-center"
+                className={`shrink-0 w-4 h-4 rounded border ${mainTab === "todo" ? "border-muted-foreground/40 hover:border-cyan-500" : "border-muted-foreground/40 hover:border-indigo-500"} flex items-center justify-center`}
                 onClick={() => handleToggle(task)}
                 data-testid={`button-complete-task-${task.id}`}
               />
-              {activeTab === "all" && (
+              {subTab === "all" && (
                 <span className={`text-[9px] font-medium shrink-0 px-1 py-0.5 rounded ${typeColorMap[task.type]} bg-opacity-10`}>
                   {typeBadge[task.type]}
                 </span>
@@ -418,7 +434,7 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
                 <span className="text-xs text-muted-foreground shrink-0 max-w-[80px] truncate">{task.subLabel}</span>
               )}
               <span
-                className="text-sm flex-1 min-w-0 truncate cursor-pointer hover:text-cyan-600"
+                className={`text-sm flex-1 min-w-0 truncate cursor-pointer ${mainTab === "todo" ? "hover:text-cyan-600" : "hover:text-indigo-600"}`}
                 onClick={() => handleClick(task)}
               >
                 {task.content}

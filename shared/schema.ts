@@ -470,6 +470,7 @@ export const inquiryTasks = pgTable("inquiry_tasks", {
   dueDate: text("due_date"),
   dueTime: text("due_time"),
   calendarEventId: text("calendar_event_id"),
+  taskType: text("task_type").default("todo"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -485,6 +486,7 @@ export const projectTasks = pgTable("project_tasks", {
   dueDate: text("due_date"),
   dueTime: text("due_time"),
   calendarEventId: text("calendar_event_id"),
+  taskType: text("task_type").default("todo"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -500,6 +502,7 @@ export const purchaseOrderTasks = pgTable("purchase_order_tasks", {
   dueDate: text("due_date"),
   dueTime: text("due_time"),
   calendarEventId: text("calendar_event_id"),
+  taskType: text("task_type").default("schedule"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -515,6 +518,7 @@ export const financeTasks = pgTable("finance_tasks", {
   dueDate: text("due_date"),
   dueTime: text("due_time"),
   calendarEventId: text("calendar_event_id"),
+  taskType: text("task_type").default("schedule"),
   createdAt: text("created_at").notNull(),
 });
 

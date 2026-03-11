@@ -1230,16 +1230,18 @@ export async function registerRoutes(
 
   app.post("/api/inquiries/:id/tasks", async (req, res) => {
     try {
-      const { content, dueDate, dueTime } = req.body;
+      const { content, dueDate, dueTime, taskType } = req.body;
+      const resolvedTaskType = taskType === "schedule" ? "schedule" : "todo";
       if (!content?.trim()) return res.status(400).json({ message: "내용을 입력하세요" });
       const normalizedDueDate = typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(dueDate) ? dueDate.slice(0, 10) : null;
       const normalizedDueTime = typeof dueTime === "string" && /^\d{2}:\d{2}/.test(dueTime) ? dueTime.slice(0, 5) : null;
+      const prefix = resolvedTaskType === "schedule" ? "[일정]" : "[할일]";
 
       let calendarEventId: string | null = null;
       if (normalizedDueDate) {
         try {
           const inquiry = await storage.getInquiry(req.params.id);
-          const title = `[할일] ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${content.trim()}`;
+          const title = `${prefix} ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${content.trim()}`;
           const { createTaskEvent } = await import("./google-calendar");
           calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
         } catch (calErr: any) {
@@ -1254,6 +1256,7 @@ export async function registerRoutes(
         dueDate: normalizedDueDate,
         dueTime: normalizedDueTime,
         calendarEventId,
+        taskType: resolvedTaskType,
         createdAt: new Date().toISOString().slice(0, 10),
       });
       res.status(201).json(task);
@@ -1306,7 +1309,8 @@ export async function registerRoutes(
           try {
             const inquiry = await storage.getInquiry(existing.inquiryId);
             const content = allowed.content || existing.content;
-            const title = `[할일] ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${content}`;
+            const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
+            const title = `${prefix} ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${content}`;
             const { createTaskEvent } = await import("./google-calendar");
             const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
             allowed.calendarEventId = newEventId;
@@ -1363,16 +1367,18 @@ export async function registerRoutes(
 
   app.post("/api/projects/:id/tasks", async (req, res) => {
     try {
-      const { content, dueDate, dueTime } = req.body;
+      const { content, dueDate, dueTime, taskType } = req.body;
+      const resolvedTaskType = taskType === "schedule" ? "schedule" : "todo";
       if (!content?.trim()) return res.status(400).json({ message: "내용을 입력하세요" });
       const normalizedDueDate = typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(dueDate) ? dueDate.slice(0, 10) : null;
       const normalizedDueTime = typeof dueTime === "string" && /^\d{2}:\d{2}/.test(dueTime) ? dueTime.slice(0, 5) : null;
+      const prefix = resolvedTaskType === "schedule" ? "[일정]" : "[할일]";
 
       let calendarEventId: string | null = null;
       if (normalizedDueDate) {
         try {
           const project = await storage.getProject(req.params.id);
-          const title = `[할일] ${project?.projectNumber || ""}_${project?.customerName || ""}: ${content.trim()}`;
+          const title = `${prefix} ${project?.projectNumber || ""}_${project?.customerName || ""}: ${content.trim()}`;
           const { createTaskEvent } = await import("./google-calendar");
           calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
         } catch (calErr: any) {
@@ -1387,6 +1393,7 @@ export async function registerRoutes(
         dueDate: normalizedDueDate,
         dueTime: normalizedDueTime,
         calendarEventId,
+        taskType: resolvedTaskType,
         createdAt: new Date().toISOString().slice(0, 10),
       });
       res.status(201).json(task);
@@ -1439,7 +1446,8 @@ export async function registerRoutes(
           try {
             const project = await storage.getProject(existing.projectId);
             const content = allowed.content || existing.content;
-            const title = `[할일] ${project?.projectNumber || ""}_${project?.customerName || ""}: ${content}`;
+            const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
+            const title = `${prefix} ${project?.projectNumber || ""}_${project?.customerName || ""}: ${content}`;
             const { createTaskEvent } = await import("./google-calendar");
             const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
             allowed.calendarEventId = newEventId;
@@ -1486,7 +1494,8 @@ export async function registerRoutes(
       for (const task of inquiryTasksList) {
         if (task.calendarEventId || !task.dueDate) continue;
         try {
-          const title = `[할일] ${task.inquiryNumber || ""}_${task.customerName || ""}: ${task.content}`;
+          const prefix = task.taskType === "schedule" ? "[일정]" : "[할일]";
+          const title = `${prefix} ${task.inquiryNumber || ""}_${task.customerName || ""}: ${task.content}`;
           const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
           if (eventId) {
             await storage.updateTask(task.id, { calendarEventId: eventId });
@@ -1498,7 +1507,8 @@ export async function registerRoutes(
       for (const task of projectTasksList) {
         if (task.calendarEventId || !task.dueDate) continue;
         try {
-          const title = `[할일] P:${task.projectNumber || ""}_${task.customerName || ""}: ${task.content}`;
+          const prefix = task.taskType === "schedule" ? "[일정]" : "[할일]";
+          const title = `${prefix} P:${task.projectNumber || ""}_${task.customerName || ""}: ${task.content}`;
           const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
           if (eventId) {
             await storage.updateProjectTask(task.id, { calendarEventId: eventId });
@@ -1511,7 +1521,8 @@ export async function registerRoutes(
       for (const task of poTasksList) {
         if (task.calendarEventId || !task.dueDate) continue;
         try {
-          const title = `[구매발주] ${task.content}`;
+          const poPrefix = task.taskType === "todo" ? "[할일]" : "[일정]";
+          const title = `${poPrefix} ${task.content}`;
           const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
           if (eventId) {
             await storage.updatePurchaseOrderTask(task.id, { calendarEventId: eventId });
@@ -1524,7 +1535,8 @@ export async function registerRoutes(
       for (const task of finTasksList) {
         if (task.calendarEventId || !task.dueDate) continue;
         try {
-          const title = `[경영지원] ${task.content}`;
+          const finPrefix = task.taskType === "todo" ? "[할일]" : "[일정]";
+          const title = `${finPrefix} ${task.content}`;
           const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
           if (eventId) {
             await storage.updateFinanceTask(task.id, { calendarEventId: eventId });
@@ -1555,7 +1567,8 @@ export async function registerRoutes(
       }
 
       const inquiry = await storage.getInquiry(existing.inquiryId);
-      const title = `[할일] ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${existing.content}`;
+      const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
+      const title = `${prefix} ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${existing.content}`;
       const eventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
       await storage.updateTask(existing.id, { calendarEventId: eventId });
       const updated = await storage.getTask(existing.id);
@@ -1577,7 +1590,8 @@ export async function registerRoutes(
       }
 
       const project = await storage.getProject(existing.projectId);
-      const title = `[할일] P:${project?.projectNumber || ""}_${project?.customerName || ""}: ${existing.content}`;
+      const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
+      const title = `${prefix} P:${project?.projectNumber || ""}_${project?.customerName || ""}: ${existing.content}`;
       const eventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
       await storage.updateProjectTask(existing.id, { calendarEventId: eventId });
       const updated = await storage.getProjectTask(existing.id);
@@ -1599,15 +1613,17 @@ export async function registerRoutes(
 
   app.post("/api/purchase-order-tasks", async (req, res) => {
     try {
-      const { content, dueDate, dueTime, purchaseOrderId } = req.body;
+      const { content, dueDate, dueTime, purchaseOrderId, taskType } = req.body;
+      const resolvedTaskType = taskType === "todo" ? "todo" : "schedule";
       if (!content) return res.status(400).json({ message: "내용은 필수입니다" });
       const normalizedDueDate = dueDate || null;
       const normalizedDueTime = dueTime || null;
+      const prefix = resolvedTaskType === "todo" ? "[할일]" : "[일정]";
 
       let calendarEventId: string | null = null;
       if (normalizedDueDate) {
         try {
-          const title = `[구매발주] ${content}`;
+          const title = `${prefix} ${content}`;
           const { createTaskEvent } = await import("./google-calendar");
           calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
         } catch (calErr: any) {
@@ -1622,6 +1638,7 @@ export async function registerRoutes(
         dueDate: normalizedDueDate,
         dueTime: normalizedDueTime,
         calendarEventId,
+        taskType: resolvedTaskType,
         createdAt: new Date().toISOString(),
       });
       res.status(201).json(task);
@@ -1665,7 +1682,8 @@ export async function registerRoutes(
         const isCompleted = "completed" in req.body ? req.body.completed : existing.completed;
         if (newDueDate && !isCompleted) {
           try {
-            const title = `[구매발주] ${req.body.content || existing.content}`;
+            const poPrefix = existing.taskType === "todo" ? "[할일]" : "[일정]";
+            const title = `${poPrefix} ${req.body.content || existing.content}`;
             const { createTaskEvent } = await import("./google-calendar");
             const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
             allowed.calendarEventId = newEventId;
@@ -1712,15 +1730,17 @@ export async function registerRoutes(
 
   app.post("/api/finance-tasks", async (req, res) => {
     try {
-      const { content, dueDate, dueTime, category } = req.body;
+      const { content, dueDate, dueTime, category, taskType } = req.body;
+      const resolvedTaskType = taskType === "todo" ? "todo" : "schedule";
       if (!content) return res.status(400).json({ message: "내용은 필수입니다" });
       const normalizedDueDate = dueDate || null;
       const normalizedDueTime = dueTime || null;
+      const prefix = resolvedTaskType === "todo" ? "[할일]" : "[일정]";
 
       let calendarEventId: string | null = null;
       if (normalizedDueDate) {
         try {
-          const title = `[경영지원] ${content}`;
+          const title = `${prefix} ${content}`;
           const { createTaskEvent } = await import("./google-calendar");
           calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
         } catch (calErr: any) {
@@ -1735,6 +1755,7 @@ export async function registerRoutes(
         dueDate: normalizedDueDate,
         dueTime: normalizedDueTime,
         calendarEventId,
+        taskType: resolvedTaskType,
         createdAt: new Date().toISOString(),
       });
       res.status(201).json(task);
@@ -1779,7 +1800,8 @@ export async function registerRoutes(
         const isCompleted = "completed" in req.body ? req.body.completed : existing.completed;
         if (newDueDate && !isCompleted) {
           try {
-            const title = `[경영지원] ${req.body.content || existing.content}`;
+            const finPrefix = existing.taskType === "todo" ? "[할일]" : "[일정]";
+            const title = `${finPrefix} ${req.body.content || existing.content}`;
             const { createTaskEvent } = await import("./google-calendar");
             const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
             allowed.calendarEventId = newEventId;

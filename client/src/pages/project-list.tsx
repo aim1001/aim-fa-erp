@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, CalendarDays, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users, Package, Loader2 } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, CalendarDays, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users, Package, Loader2, ListTodo } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useSearch, useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -1468,13 +1468,14 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
   const [newContent, setNewContent] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
+  const [taskType, setTaskType] = useState<"todo" | "schedule">("todo");
 
   const { data: tasks = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/projects/${projectId}/tasks`],
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { content: string; dueDate?: string; dueTime?: string }) =>
+    mutationFn: (data: { content: string; dueDate?: string; dueTime?: string; taskType?: string }) =>
       apiRequest("POST", `/api/projects/${projectId}/tasks`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/tasks`] });
@@ -1574,13 +1575,35 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
         </div>
       </div>
       <div className="flex gap-1.5 mb-2">
+        <div className="flex shrink-0">
+          <Button
+            size="sm"
+            variant={taskType === "todo" ? "default" : "outline"}
+            className="h-7 px-1.5 rounded-r-none text-[10px] gap-0.5"
+            onClick={() => setTaskType("todo")}
+            data-testid="button-project-task-type-todo"
+          >
+            <ListTodo className="h-3 w-3" />
+            할일
+          </Button>
+          <Button
+            size="sm"
+            variant={taskType === "schedule" ? "default" : "outline"}
+            className="h-7 px-1.5 rounded-l-none text-[10px] gap-0.5 border-l-0"
+            onClick={() => setTaskType("schedule")}
+            data-testid="button-project-task-type-schedule"
+          >
+            <CalendarDays className="h-3 w-3" />
+            일정
+          </Button>
+        </div>
         <Input
-          placeholder="할일 입력..."
+          placeholder={taskType === "todo" ? "할일 입력..." : "일정 입력..."}
           value={newContent}
           onChange={e => setNewContent(e.target.value)}
           onKeyDown={e => {
             if (e.key === "Enter" && newContent.trim()) {
-              createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined });
+              createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType });
             }
           }}
           className="h-7 text-xs"
@@ -1605,7 +1628,7 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
           variant="outline"
           className="h-7 px-2 shrink-0"
           disabled={!newContent.trim() || createMutation.isPending}
-          onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined })}
+          onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType })}
           data-testid="button-add-project-task"
         >
           <Plus className="h-3 w-3" />
@@ -1623,6 +1646,11 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
                 onClick={() => toggleMutation.mutate({ id: task.id, completed: true })}
                 data-testid={`button-toggle-project-task-${task.id}`}
               />
+              {task.taskType === "schedule" ? (
+                <CalendarDays className="h-3 w-3 shrink-0 text-blue-500" />
+              ) : (
+                <ListTodo className="h-3 w-3 shrink-0 text-muted-foreground" />
+              )}
               <span className="text-xs flex-1 min-w-0 truncate">{task.content}</span>
               {task.dueDate && (
                 <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
@@ -1655,6 +1683,11 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
               >
                 <Check className="h-2.5 w-2.5 text-white" />
               </button>
+              {task.taskType === "schedule" ? (
+                <CalendarDays className="h-3 w-3 shrink-0 text-blue-500" />
+              ) : (
+                <ListTodo className="h-3 w-3 shrink-0 text-muted-foreground" />
+              )}
               <span className="text-xs flex-1 min-w-0 truncate line-through">{task.content}</span>
               {task.dueDate && (
                 <span className="text-[10px] shrink-0 text-muted-foreground">{task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}</span>
