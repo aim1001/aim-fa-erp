@@ -101,6 +101,9 @@ export async function fetchNewMessages(
   }
   const data = await res.json();
   const updates = data.result || [];
+  if (updates.length > 0) {
+    console.log(`[Telegram] Received ${updates.length} updates (offset=${lastUpdateOffset})`);
+  }
 
   for (const update of updates) {
     const msg = update.message;
