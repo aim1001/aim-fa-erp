@@ -2871,7 +2871,27 @@ export async function registerRoutes(
 
   app.delete("/api/purchase-invoices/:id", async (req, res) => {
     try {
-      await storage.deletePurchaseInvoice(req.params.id);
+      const invoiceId = req.params.id;
+
+      const allOrders = await storage.getPurchaseOrders();
+      const linkedOrders = allOrders.filter(o => o.purchaseInvoiceId === invoiceId);
+      const orderPaymentIds = new Set(linkedOrders.map(o => o.paymentId).filter(Boolean));
+
+      for (const order of linkedOrders) {
+        await storage.updatePurchaseOrder(order.id, { purchaseInvoiceId: null });
+      }
+
+      const allPayments = await storage.getPayments();
+      const invoicePayments = allPayments.filter(p => p.purchaseInvoiceId === invoiceId);
+      for (const payment of invoicePayments) {
+        if (orderPaymentIds.has(payment.id)) {
+          await storage.updatePayment(payment.id, { purchaseInvoiceId: null });
+        } else {
+          await storage.deletePayment(payment.id);
+        }
+      }
+
+      await storage.deletePurchaseInvoice(invoiceId);
       res.json({ message: "삭제 완료" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -3385,6 +3405,18 @@ export async function registerRoutes(
       );
       if (existingProjectPayments.length > 0) {
         return res.json({ created: 0, payments: existingProjectPayments, message: "프로젝트 수금계획에 이미 연결된 항목이 있습니다." });
+      }
+
+      if (type === "expense") {
+        const linkedPayments = allPayments.filter(p => p.purchaseInvoiceId === invoiceId);
+        if (linkedPayments.length > 0) {
+          const allOrders = await storage.getPurchaseOrders();
+          const paymentIds = new Set(linkedPayments.map(p => p.id));
+          const affectedOrders = allOrders.filter(o => o.paymentId && paymentIds.has(o.paymentId));
+          for (const order of affectedOrders) {
+            await storage.updatePurchaseOrder(order.id, { paymentId: null });
+          }
+        }
       }
 
       await storage.deletePaymentsByInvoice(type, invoiceId);
@@ -4855,6 +4887,16 @@ export async function registerRoutes(
           const oldInvoiceId = existing.purchaseInvoiceId;
           if (newInvoiceId && newInvoiceId !== oldInvoiceId) {
             paymentUpdates.purchaseInvoiceId = newInvoiceId;
+            try {
+              const linkedInvoice = await storage.getPurchaseInvoice(newInvoiceId);
+              if (linkedInvoice) {
+                paymentUpdates.amount = linkedInvoice.totalAmount || 0;
+                paymentUpdates.companyName = linkedInvoice.companyName || "";
+                paymentUpdates.description = linkedInvoice.item || "";
+              }
+            } catch (invErr: any) {
+              console.log(`계산서 조회 실패 (payment 업데이트 계속): ${invErr.message}`);
+            }
           } else if (!newInvoiceId && oldInvoiceId) {
             paymentUpdates.purchaseInvoiceId = null;
           }
@@ -4929,9 +4971,14 @@ export async function registerRoutes(
       }
       if (existing?.paymentId) {
         try {
-          await storage.deletePayment(existing.paymentId);
+          const linkedPayment = await storage.getPayment(existing.paymentId);
+          if (linkedPayment?.purchaseInvoiceId) {
+            console.log(`발주 삭제: payment ${existing.paymentId}는 계산서 ${linkedPayment.purchaseInvoiceId}에 연결되어 있으므로 유지`);
+          } else {
+            await storage.deletePayment(existing.paymentId);
+          }
         } catch (payErr: any) {
-          console.log(`연결된 결제 삭제 실패: ${payErr.message}`);
+          console.log(`연결된 결제 처리 실패: ${payErr.message}`);
         }
       }
       await storage.deletePurchaseOrder(req.params.id);
