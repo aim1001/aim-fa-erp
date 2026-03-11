@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { Company, Customer, Inquiry } from "@shared/schema";
 import { InquiryDetailDialog } from "@/pages/inquiry-detail";
+import { DocumentUploadSection } from "@/components/document-upload-section";
 
 function useCompanyUpdate(companyId: string) {
   const { toast } = useToast();
@@ -336,6 +337,15 @@ export default function CompanyDetail() {
           </div>
         </CardContent>
       </Card>
+
+      <DocumentUploadSection
+        entityId={id!}
+        apiBase="/api/companies"
+        docTypes={[
+          { type: "사업자등록증", label: "사업자등록증 (PDF/이미지)" },
+          { type: "통장사본", label: "통장사본 (PDF/이미지)" },
+        ]}
+      />
 
       <Card>
         <CardHeader>

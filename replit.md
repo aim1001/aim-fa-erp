@@ -21,6 +21,14 @@
   └── {year} (e.g., 2026, 2025...)
       └── {projectNumber}_{customerName}_{description}/
           └── 프로젝트 관련 파일
+4.경영지원/
+  └── database/
+      ├── 거래처 정보/
+      │   └── {업체명}/
+      │       ├── company_info.json (업체 기본정보 + 담당자 목록)
+      │       ├── 사업자등록증.pdf/.jpg (사업자등록증)
+      │       └── 통장사본.pdf/.jpg (통장사본, 구매처만)
+      └── {year}/ (은행 거래내역 엑셀 파일)
 ```
 Example inquiries: `1.영업/2026/26-2_대동도어_UNI5.0_현대/`
 Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1set`
@@ -33,7 +41,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **sales_invoices** 테이블: 매출계산서 (customerId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보, category(카드사용/정기결제/세금납부/관리비/임대료/대출상환/기타))
-- **recurring_expenses** 테이블: 월 정기지출 (category, description, companyName, amount, paymentDay(매월 결제일), isActive) — "자금현황" 모달에서 관리, 월별 payments 일괄 생성 기능
+- **recurring_expenses** 테이블: 정기지출 (category, description, companyName, amount, frequency(weekly/monthly/yearly), paymentDay(결제일), weekday(주간용 0-6), paymentMonth(연간용 1-12), isActive) — "자금현황" 모달에서 관리, 주간/월간/연간 주기별 payments 일괄 생성, 인라인 수정 가능
 - **projects** 테이블: 프로젝트 (프로젝트번호, 고객사명, 내용, 연도, OneDrive 폴더 정보, 상태)
 - **item_master** 테이블: 판매제품 마스터 (카테고리, 품목코드(unique), 품목명, 사양, 원가, 판매가, 활성여부, 제품유형, isFavorite 즐겨찾기)
 - **item_inventory** 테이블: 재고 관리 (품목코드, 재고유형(AVAILABLE/TEST/DEMO), 수량, 업데이트일)

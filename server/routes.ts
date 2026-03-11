@@ -5204,5 +5204,231 @@ export async function registerRoutes(
     }
   });
 
+  const docUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = [".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"];
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (!allowed.includes(ext)) {
+        return cb(new Error("PDF 또는 이미지 파일만 업로드 가능합니다."));
+      }
+      cb(null, true);
+    },
+  });
+
+  const VENDOR_INFO_BASE = "4.경영지원/database/거래처 정보";
+
+  app.post("/api/customers/:id/documents", docUpload.single("file"), async (req: Request, res: Response) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) return res.status(404).json({ message: "고객을 찾을 수 없습니다" });
+      const docType = req.body.type;
+      if (!docType || !["사업자등록증", "통장사본"].includes(docType)) {
+        return res.status(400).json({ message: "type은 사업자등록증 또는 통장사본이어야 합니다" });
+      }
+      if (!req.file) return res.status(400).json({ message: "파일을 선택해주세요" });
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      const fileName = `${docType}${ext}`;
+      const safeName = customer.companyName.replace(/[<>:"/\\|?*]/g, "_");
+      const folderPath = `${VENDOR_INFO_BASE}/${safeName}`;
+      const { uploadFileToFolderByPath } = await import("./onedrive");
+      await uploadFileToFolderByPath(folderPath, fileName, req.file.buffer);
+      res.json({ ok: true, fileName });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  function getCustomerFolderPath(companyName: string) {
+    const safeName = companyName.replace(/[<>:"/\\|?*]/g, "_");
+    return `${VENDOR_INFO_BASE}/${safeName}`;
+  }
+
+  app.get("/api/customers/:id/documents", async (req: Request, res: Response) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) return res.status(404).json({ message: "고객을 찾을 수 없습니다" });
+      const folderPath = getCustomerFolderPath(customer.companyName);
+      const { listFilesByPath } = await import("./onedrive");
+      try {
+        const files = await listFilesByPath(folderPath);
+        res.json(files);
+      } catch (e: any) {
+        if (e.statusCode === 404) return res.json([]);
+        throw e;
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/customers/:id/documents/:fileId/preview", async (req: Request, res: Response) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) return res.status(404).json({ message: "고객을 찾을 수 없습니다" });
+      const folderPath = getCustomerFolderPath(customer.companyName);
+      const { listFilesByPath, downloadFile } = await import("./onedrive");
+      try {
+        const files = await listFilesByPath(folderPath);
+        if (!files.some((f: any) => f.id === req.params.fileId)) {
+          return res.status(403).json({ message: "이 고객의 문서가 아닙니다" });
+        }
+      } catch (e: any) {
+        return res.status(404).json({ message: "폴더를 찾을 수 없습니다" });
+      }
+      const buffer = await downloadFile(req.params.fileId);
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/customers/:id/sync-info", async (req: Request, res: Response) => {
+    try {
+      const customer = await storage.getCustomer(req.params.id);
+      if (!customer) return res.status(404).json({ message: "고객을 찾을 수 없습니다" });
+      const contacts = await storage.getCompaniesByCustomerId(req.params.id);
+      const info = {
+        companyName: customer.companyName,
+        businessNumber: customer.businessNumber,
+        representative: customer.representative,
+        address: customer.address,
+        businessType: customer.businessType,
+        businessCategory: customer.businessCategory,
+        phone: customer.phone,
+        fax: customer.fax,
+        mgmtDepartment: customer.mgmtDepartment,
+        mgmtContactName: customer.mgmtContactName,
+        mgmtPhone: customer.mgmtPhone,
+        mgmtEmail: customer.mgmtEmail,
+        contacts: contacts.map(c => ({
+          contactName: c.contactName,
+          department: c.department,
+          position: c.position,
+          email: c.email,
+          phone: c.phone,
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+      const folderPath = getCustomerFolderPath(customer.companyName);
+      const { uploadFileToFolderByPath } = await import("./onedrive");
+      await uploadFileToFolderByPath(folderPath, "company_info.json", Buffer.from(JSON.stringify(info, null, 2), "utf-8"));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  function getCompanyFolderPath(companyName: string) {
+    const safeName = companyName.replace(/[<>:"/\\|?*]/g, "_");
+    return `${VENDOR_INFO_BASE}/${safeName}`;
+  }
+
+  app.post("/api/companies/:id/documents", docUpload.single("file"), async (req: Request, res: Response) => {
+    try {
+      const company = await storage.getCompany(req.params.id);
+      if (!company) return res.status(404).json({ message: "거래처를 찾을 수 없습니다" });
+      const companyName = company.companyName;
+      if (!companyName) return res.status(400).json({ message: "거래처명이 없습니다" });
+      const docType = req.body.type;
+      if (!docType || !["사업자등록증", "통장사본"].includes(docType)) {
+        return res.status(400).json({ message: "type은 사업자등록증 또는 통장사본이어야 합니다" });
+      }
+      if (!req.file) return res.status(400).json({ message: "파일을 선택해주세요" });
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      const fileName = `${docType}${ext}`;
+      const folderPath = getCompanyFolderPath(companyName);
+      const { uploadFileToFolderByPath } = await import("./onedrive");
+      await uploadFileToFolderByPath(folderPath, fileName, req.file.buffer);
+      res.json({ ok: true, fileName });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/companies/:id/documents", async (req: Request, res: Response) => {
+    try {
+      const company = await storage.getCompany(req.params.id);
+      if (!company) return res.status(404).json({ message: "거래처를 찾을 수 없습니다" });
+      const companyName = company.companyName;
+      if (!companyName) return res.json([]);
+      const folderPath = getCompanyFolderPath(companyName);
+      const { listFilesByPath } = await import("./onedrive");
+      try {
+        const files = await listFilesByPath(folderPath);
+        res.json(files);
+      } catch (e: any) {
+        if (e.statusCode === 404) return res.json([]);
+        throw e;
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/companies/:id/documents/:fileId/preview", async (req: Request, res: Response) => {
+    try {
+      const company = await storage.getCompany(req.params.id);
+      if (!company) return res.status(404).json({ message: "거래처를 찾을 수 없습니다" });
+      if (!company.companyName) return res.status(400).json({ message: "거래처명이 없습니다" });
+      const folderPath = getCompanyFolderPath(company.companyName);
+      const { listFilesByPath, downloadFile } = await import("./onedrive");
+      try {
+        const files = await listFilesByPath(folderPath);
+        if (!files.some((f: any) => f.id === req.params.fileId)) {
+          return res.status(403).json({ message: "이 거래처의 문서가 아닙니다" });
+        }
+      } catch (e: any) {
+        return res.status(404).json({ message: "폴더를 찾을 수 없습니다" });
+      }
+      const buffer = await downloadFile(req.params.fileId);
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/companies/:id/sync-info", async (req: Request, res: Response) => {
+    try {
+      const company = await storage.getCompany(req.params.id);
+      if (!company) return res.status(404).json({ message: "거래처를 찾을 수 없습니다" });
+      const companyName = company.companyName;
+      if (!companyName) return res.status(400).json({ message: "거래처명이 없습니다" });
+      let customerInfo: any = null;
+      if (company.customerId) {
+        const customer = await storage.getCustomer(company.customerId);
+        if (customer) {
+          customerInfo = {
+            companyName: customer.companyName,
+            businessNumber: customer.businessNumber,
+            representative: customer.representative,
+            address: customer.address,
+            phone: customer.phone,
+          };
+        }
+      }
+      const info = {
+        companyName,
+        contactName: company.contactName,
+        department: company.department,
+        position: company.position,
+        email: company.email,
+        phone: company.phone,
+        fax: company.fax,
+        customer: customerInfo,
+        updatedAt: new Date().toISOString(),
+      };
+      const folderPath = getCompanyFolderPath(companyName);
+      const { uploadFileToFolderByPath } = await import("./onedrive");
+      await uploadFileToFolderByPath(folderPath, "company_info.json", Buffer.from(JSON.stringify(info, null, 2), "utf-8"));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

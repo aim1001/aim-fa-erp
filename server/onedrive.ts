@@ -640,3 +640,63 @@ export function parseInquiryFolderName(folderName: string, year: number): {
 
   return null;
 }
+
+export async function ensureFolderByPath(folderPath: string): Promise<string> {
+  const segments = folderPath.split('/').filter(Boolean);
+  let parentPath = '';
+  let folderId = '';
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const currentPath = parentPath ? `${parentPath}/${segment}` : segment;
+    const encodedPath = encodeURIComponent(currentPath).replace(/%2F/g, '/');
+
+    try {
+      const item = await graphCallWithRetry(
+        (token) => graphFetchDirect(`/me/drive/root:/${encodedPath}`, token, { select: 'id,name' }),
+        'ensureFolderByPath.check'
+      );
+      folderId = item.id;
+    } catch (err: any) {
+      if (err.statusCode === 404) {
+        const parentEnc = parentPath
+          ? encodeURIComponent(parentPath).replace(/%2F/g, '/')
+          : '';
+        const parentApiPath = parentEnc
+          ? `/me/drive/root:/${parentEnc}:/children`
+          : '/me/drive/root/children';
+        let created: any;
+        try {
+          created = await graphCallWithRetry(
+            (token) => graphFetchDirect(parentApiPath, token, {
+              method: 'POST',
+              body: { name: segment, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' },
+            }),
+            'ensureFolderByPath.create'
+          );
+        } catch (createErr: any) {
+          if (createErr.statusCode === 409) {
+            const retryItem = await graphCallWithRetry(
+              (token) => graphFetchDirect(`/me/drive/root:/${encodedPath}`, token, { select: 'id,name' }),
+              'ensureFolderByPath.retryCheck'
+            );
+            created = retryItem;
+          } else {
+            throw createErr;
+          }
+        }
+        folderId = created.id;
+      } else {
+        throw err;
+      }
+    }
+    parentPath = currentPath;
+  }
+
+  return folderId;
+}
+
+export async function uploadFileToFolderByPath(folderPath: string, fileName: string, content: Buffer): Promise<void> {
+  const folderId = await ensureFolderByPath(folderPath);
+  await uploadFileToFolder(folderId, fileName, content);
+}

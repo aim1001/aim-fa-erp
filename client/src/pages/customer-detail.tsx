@@ -19,6 +19,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { InquiryDetailDialog } from "@/pages/inquiry-detail";
+import { DocumentUploadSection } from "@/components/document-upload-section";
 
 function useCustomerUpdate(customerId: string) {
   const { toast } = useToast();
@@ -390,6 +391,12 @@ export default function CustomerDetail() {
           )}
         </CardContent>
       </Card>
+
+      <DocumentUploadSection
+        entityId={id!}
+        apiBase="/api/customers"
+        docTypes={[{ type: "사업자등록증", label: "사업자등록증 (PDF/이미지)" }]}
+      />
 
       <Card>
         <CardHeader>
