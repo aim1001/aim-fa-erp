@@ -154,6 +154,20 @@ export function startPolling(saveFn: (msg: { messageId: number; text: string; fr
   pollingTimeout = setTimeout(poll, 3000);
 }
 
+export function notifyWebInquiry(data: { companyName: string; contactName?: string; email?: string; phone?: string; productInfo?: string; message?: string; inquiryNumber?: string }): void {
+  const lines = [
+    `🌐 <b>[홈페이지 문의]</b>`,
+    data.inquiryNumber ? `번호: ${esc(data.inquiryNumber)}` : "",
+    `고객: ${esc(data.companyName)}`,
+    data.contactName ? `담당자: ${esc(data.contactName)}` : "",
+    data.phone ? `연락처: ${esc(data.phone)}` : "",
+    data.email ? `이메일: ${esc(data.email)}` : "",
+    data.productInfo ? `제품: ${esc(data.productInfo)}` : "",
+    data.message ? `내용: ${esc(data.message)}` : "",
+  ].filter(Boolean);
+  sendTelegramMessage(lines.join("\n"));
+}
+
 export function notifyInquiry(action: string, inquiry: any): void {
   const status = inquiry.status === "won" ? "수주" : inquiry.status === "lost" ? "실주" : inquiry.status === "active" ? "진행" : inquiry.status || "";
   const lines = [

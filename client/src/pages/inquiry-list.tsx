@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown, Check, Building2, CalendarClock } from "lucide-react";
+import { Search, Plus, ExternalLink, RefreshCw, Loader2, CalendarIcon, X, Star, ArrowUpDown, ArrowUp, ArrowDown, Check, Building2, CalendarClock, Globe } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -54,28 +54,47 @@ type InquiryRowProps = {
   inq: InquiryWithTradeStatus;
   onInlineUpdate: (id: string, data: Partial<Inquiry>) => void;
   onFavorite: (id: string) => void;
+  onAcknowledge: (id: string) => void;
   onSelect: (id: string) => void;
   onScan: (id: string) => void;
   scanningId: string | null;
 };
 
-const InquiryRow = memo(function InquiryRow({ inq, onInlineUpdate, onFavorite, onSelect, onScan, scanningId }: InquiryRowProps) {
+const InquiryRow = memo(function InquiryRow({ inq, onInlineUpdate, onFavorite, onAcknowledge, onSelect, onScan, scanningId }: InquiryRowProps) {
   return (
     <TableRow
-      className={`cursor-pointer hover-elevate ${statusRowClass[inq.status || "none"] || ""}`}
+      className={`cursor-pointer hover-elevate ${inq.isWebInquiry ? "bg-orange-50 dark:bg-orange-950/30" : statusRowClass[inq.status || "none"] || ""}`}
       onClick={() => onSelect(inq.id)}
       data-testid={`row-inquiry-${inq.id}`}
     >
       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => onFavorite(inq.id)}
-          className="hover:scale-110 transition-transform"
-          data-testid={`button-favorite-${inq.id}`}
-        >
-          <Star
-            className={`h-4 w-4 ${inq.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`}
-          />
-        </button>
+        <div className="flex items-center gap-1 justify-center">
+          {inq.isWebInquiry && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onAcknowledge(inq.id); }}
+                  className="hover:scale-110 transition-transform"
+                  data-testid={`button-acknowledge-${inq.id}`}
+                >
+                  <Globe className="h-4 w-4 text-orange-500 animate-pulse" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>홈페이지 신규 문의 (클릭하여 확인)</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <button
+            onClick={() => onFavorite(inq.id)}
+            className="hover:scale-110 transition-transform"
+            data-testid={`button-favorite-${inq.id}`}
+          >
+            <Star
+              className={`h-4 w-4 ${inq.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`}
+            />
+          </button>
+        </div>
       </TableCell>
       <TableCell className="font-mono text-sm">{inq.inquiryNumber}</TableCell>
       <TableCell className="font-medium">
@@ -404,6 +423,8 @@ export default function InquiryList() {
       navigate("/inquiries?view=6m");
     } else if (view === "1y") {
       navigate("/inquiries?view=1y");
+    } else if (view === "webInquiry") {
+      navigate("/inquiries?customer=webInquiry");
     } else if (view === "bookmarked") {
       navigate("/inquiries?customer=bookmarked");
     } else {
@@ -412,6 +433,7 @@ export default function InquiryList() {
   };
 
   const activeQuickView = useMemo(() => {
+    if (customerFilter === "webInquiry") return "webInquiry";
     if (customerFilter === "bookmarked") return "bookmarked";
     if (viewFilter === "6m") return "6m";
     if (viewFilter === "1y") return "1y";
@@ -591,6 +613,20 @@ export default function InquiryList() {
     favoriteMutation.mutate(id);
   }, [favoriteMutation]);
 
+  const acknowledgeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("PATCH", `/api/inquiries/${id}/acknowledge`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+      toast({ title: "확인 완료", description: "웹 문의가 확인 처리되었습니다." });
+    },
+  });
+
+  const handleAcknowledge = useCallback((id: string) => {
+    acknowledgeMutation.mutate(id);
+  }, [acknowledgeMutation]);
+
   const filtered = useMemo(() => {
     if (!inquiries) return [];
     let list = inquiries;
@@ -615,6 +651,8 @@ export default function InquiryList() {
       list = list.filter(i => i.isExistingCustomer);
     } else if (customerFilter === "new") {
       list = list.filter(i => !i.isExistingCustomer);
+    } else if (customerFilter === "webInquiry") {
+      list = list.filter(i => i.isWebInquiry);
     } else if (customerFilter === "bookmarked") {
       list = list.filter(i => i.isFavorite);
     }
@@ -637,6 +675,8 @@ export default function InquiryList() {
     }
 
     return list.sort((a, b) => {
+      if (a.isWebInquiry && !b.isWebInquiry) return -1;
+      if (!a.isWebInquiry && b.isWebInquiry) return 1;
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
 
@@ -750,6 +790,7 @@ export default function InquiryList() {
           { key: "quoted", label: "견적발송" },
           { key: "won", label: "수주" },
           { key: "lost", label: "실주" },
+          { key: "webInquiry", label: "웹 문의" },
           { key: "bookmarked", label: "북마크" },
           { key: "1y", label: "최근 1년" },
         ].map(({ key, label }) => (
@@ -813,6 +854,7 @@ export default function InquiryList() {
                 <SelectItem value="all">전체 고객</SelectItem>
                 <SelectItem value="existing">연결됨</SelectItem>
                 <SelectItem value="new">미연결</SelectItem>
+                <SelectItem value="webInquiry">웹 문의</SelectItem>
                 <SelectItem value="bookmarked">북마크</SelectItem>
               </SelectContent>
             </Select>
@@ -916,6 +958,7 @@ export default function InquiryList() {
                       inq={inq}
                       onInlineUpdate={handleInlineUpdate}
                       onFavorite={handleFavorite}
+                      onAcknowledge={handleAcknowledge}
                       onSelect={handleSelectInquiry}
                       onScan={handleScan}
                       scanningId={scanningId}

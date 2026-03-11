@@ -75,7 +75,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 
 ## Key Features
 - OneDrive 폴더 자동 스캔 및 인콰이어리 동기화
-- 인콰이어리 CRUD (수동 추가 가능, 영업번호 자동생성)
+- 인콰이어리 CRUD (수동 추가 가능, 영업번호 자동생성, 홈페이지 웹 문의 자동 등록)
 - 새 인콰이어리 추가 시 OneDrive 폴더 자동 생성
 - 전체 대시보드 (`/`) - 영업/프로젝트/경영지원/구매판매 핵심 요약 + 해당 페이지 이동
 - 영업 대시보드 (`/sales-dashboard`) - 확률별, 상태별, 연도별 차트, 예정 인콰이어리
@@ -136,9 +136,9 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `server/google-calendar.ts` - Google Calendar integration (견적 발송 시 이벤트 생성, 할일 캘린더 등록)
 
 ## Telegram 알림
-- `server/telegram.ts` - 텔레그램 봇 API 연동 (sendTelegramMessage, notifyInquiry, notifyProject, notifyPayment, notifyTask)
+- `server/telegram.ts` - 텔레그램 봇 API 연동 (sendTelegramMessage, notifyInquiry, notifyWebInquiry, notifyProject, notifyPayment, notifyTask)
 - 환경변수: TELEGRAM_BOT_TOKEN (봇 토큰), TELEGRAM_CHAT_ID (그룹 채팅 ID)
-- 알림 대상 이벤트: 인콰이어리 등록/상태변경, 프로젝트 전환/상태변경, 결제 완료, 할일·일정 추가/완료 (영업·프로젝트·구매발주·경영지원 4카테고리)
+- 알림 대상 이벤트: 인콰이어리 등록/상태변경, 홈페이지 웹 문의 접수, 프로젝트 전환/상태변경, 결제 완료, 할일·일정 추가/완료 (영업·프로젝트·구매발주·경영지원 4카테고리)
 - fire-and-forget 패턴: 알림 실패해도 본 요청에 영향 없음
 - 설정 페이지 텔레그램 탭: 연결 상태 확인, Chat ID 자동 감지, 테스트 메시지 전송
 - API: GET /api/telegram/status, POST /api/telegram/detect-chat, POST /api/telegram/test
@@ -147,6 +147,11 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
   - API: GET /api/telegram/memos, GET /api/telegram/memos/unread-count, PATCH /api/telegram/memos/:id/read, DELETE /api/telegram/memos/:id
   - polling: `fetchNewMessages()` → offset 기반 getUpdates, 저장 성공 후에만 offset 진행 (at-least-once safety), `setTimeout` 기반 직렬 실행 (overlap 방지)
   - 중복 방지: chatId + messageId 복합키로 dedup
+- **홈페이지 웹 문의 자동 등록**: `POST /api/web-inquiry` (인증 불필요, CORS 허용, rate limit 분당 5회)
+  - 입력: companyName(필수), contactName, email, phone, productInfo, message
+  - 처리: 인콰이어리 자동 생성 (source="website", isWebInquiry=true) + 고객 자동 생성/연결 + 텔레그램 알림
+  - 인콰이어리 목록에서 isWebInquiry=true인 항목은 주황색 Globe 아이콘 + 최상단 정렬 (즐겨찾기보다 상위)
+  - `PATCH /api/inquiries/:id/acknowledge` — isWebInquiry를 false로 변경 (확인 처리)
 
 ## Google Calendar 수동 동기화
 - POST /api/tasks/sync-calendar: 모든 미등록 할일(inquiry_tasks + project_tasks 중 dueDate 있고 calendarEventId 없는 항목) 일괄 캘린더 등록

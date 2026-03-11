@@ -64,10 +64,143 @@ export async function registerRoutes(
   });
 
   app.use("/api", (req, res, next) => {
-    if (req.path === "/login" || req.path === "/logout" || req.path === "/auth/status" || req.path === "/onedrive/callback") {
+    if (req.path === "/login" || req.path === "/logout" || req.path === "/auth/status" || req.path === "/onedrive/callback" || req.path === "/web-inquiry") {
       return next();
     }
     return requireAuth(req, res, next);
+  });
+
+  const webInquirySchema = z.object({
+    companyName: z.string().min(1, "회사명은 필수입니다").max(200),
+    contactName: z.string().max(100).optional(),
+    email: z.string().email().max(200).optional().or(z.literal("")),
+    phone: z.string().max(50).optional(),
+    productInfo: z.string().max(500).optional(),
+    message: z.string().max(2000).optional(),
+  });
+
+  const webInquiryRateLimit = new Map<string, number[]>();
+
+  app.options("/api/web-inquiry", (_req, res) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+
+  app.post("/api/web-inquiry", async (req, res) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    try {
+      const ip = req.ip || req.socket.remoteAddress || "unknown";
+      const now = Date.now();
+      const timestamps = (webInquiryRateLimit.get(ip) || []).filter(t => now - t < 60000);
+      if (timestamps.length >= 5) {
+        return res.status(429).json({ message: "Too many requests" });
+      }
+      timestamps.push(now);
+      webInquiryRateLimit.set(ip, timestamps);
+
+      const data = webInquirySchema.parse(req.body);
+      const year = new Date().getFullYear();
+      const nextNumber = await storage.getNextInquiryNumber(year);
+
+      const memoLines = [
+        data.message || "",
+        "",
+        data.contactName ? `담당자: ${data.contactName}` : "",
+        data.phone ? `연락처: ${data.phone}` : "",
+        data.email ? `이메일: ${data.email}` : "",
+      ].filter(Boolean).join("\n");
+
+      const inquiryData: any = {
+        inquiryNumber: nextNumber,
+        customerName: data.companyName,
+        productInfo: data.productInfo || null,
+        year,
+        status: "none",
+        probability: 0,
+        source: "website",
+        isWebInquiry: true,
+        memo: memoLines || null,
+      };
+
+      if (data.companyName) {
+        try {
+          const allCustomers = await storage.getCustomers();
+          const nameKey = data.companyName.trim().toLowerCase();
+          let matched = allCustomers.find(c => c.companyName.trim().toLowerCase() === nameKey);
+          if (!matched) {
+            matched = allCustomers.find(c => {
+              const key = c.companyName.trim().toLowerCase();
+              return key.includes(nameKey) || nameKey.includes(key);
+            });
+          }
+          if (!matched) {
+            matched = await storage.createCustomer({ companyName: data.companyName });
+          }
+          inquiryData.customerId = matched.id;
+
+          if (data.contactName) {
+            try {
+              const newCompany = await storage.createCompany({
+                customerId: matched.id,
+                contactName: data.contactName,
+                phone: data.phone || null,
+                email: data.email || null,
+                companyName: data.companyName,
+                isTemporary: false,
+              });
+              inquiryData.companyId = newCompany.id;
+              inquiryData.snapshotContactName = data.contactName;
+              inquiryData.snapshotEmail = data.email || null;
+              inquiryData.snapshotPhone = data.phone || null;
+            } catch (e: any) {
+              console.warn("Web inquiry: create contact error:", e.message);
+            }
+          }
+
+          const customer = await storage.getCustomer(matched.id);
+          if (customer) {
+            inquiryData.snapshotCompanyName = customer.companyName || null;
+            inquiryData.snapshotAddress = customer.address || null;
+          }
+        } catch (e: any) {
+          console.warn("Web inquiry: customer link error:", e.message);
+        }
+      }
+
+      const inquiry = await storage.createInquiry(inquiryData);
+
+      import("./telegram").then(t => t.notifyWebInquiry({
+        companyName: data.companyName,
+        contactName: data.contactName,
+        email: data.email,
+        phone: data.phone,
+        productInfo: data.productInfo,
+        message: data.message,
+        inquiryNumber: nextNumber,
+      })).catch(() => {});
+
+      res.status(201).json({ success: true, inquiryNumber: nextNumber });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/inquiries/:id/acknowledge", async (req, res) => {
+    try {
+      const existing = await storage.getInquiry(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      }
+      if (!existing.isWebInquiry) {
+        return res.json(existing);
+      }
+      const inquiry = await storage.updateInquiry(req.params.id, { isWebInquiry: false });
+      res.json(inquiry);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
   });
 
   app.get("/api/inquiries", async (req, res) => {
