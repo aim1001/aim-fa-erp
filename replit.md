@@ -142,6 +142,11 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - fire-and-forget 패턴: 알림 실패해도 본 요청에 영향 없음
 - 설정 페이지 텔레그램 탭: 연결 상태 확인, Chat ID 자동 감지, 테스트 메시지 전송
 - API: GET /api/telegram/status, POST /api/telegram/detect-chat, POST /api/telegram/test
+- **텔레그램 메모 기능**: 봇 1:1 private 채팅 메시지를 30초 간격 polling으로 수집 → `telegram_memos` 테이블 저장 → 헤더 아이콘(뱃지) + Popover로 확인/읽음처리/삭제
+  - `telegram_memos` 테이블: id(uuid PK), messageId(int), text, fromName, chatId, isRead(boolean), createdAt
+  - API: GET /api/telegram/memos, GET /api/telegram/memos/unread-count, PATCH /api/telegram/memos/:id/read, DELETE /api/telegram/memos/:id
+  - polling: `fetchNewMessages()` → offset 기반 getUpdates, 저장 성공 후에만 offset 진행 (at-least-once safety), `setTimeout` 기반 직렬 실행 (overlap 방지)
+  - 중복 방지: chatId + messageId 복합키로 dedup
 
 ## Google Calendar 수동 동기화
 - POST /api/tasks/sync-calendar: 모든 미등록 할일(inquiry_tasks + project_tasks 중 dueDate 있고 calendarEventId 없는 항목) 일괄 캘린더 등록

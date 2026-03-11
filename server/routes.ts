@@ -622,6 +622,43 @@ export async function registerRoutes(
     res.json({ ok });
   });
 
+  app.get("/api/telegram/memos", async (_req, res) => {
+    try {
+      const memos = await storage.getTelegramMemos();
+      res.json(memos);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/telegram/memos/unread-count", async (_req, res) => {
+    try {
+      const count = await storage.getUnreadMemoCount();
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/telegram/memos/:id/read", async (req, res) => {
+    try {
+      const memo = await storage.markMemoRead(req.params.id);
+      if (!memo) return res.status(404).json({ message: "Not found" });
+      res.json(memo);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/telegram/memos/:id", async (req, res) => {
+    try {
+      await storage.deleteTelegramMemo(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/onedrive/refresh", async (req, res) => {
     try {
       resetTokenCache();
@@ -5805,6 +5842,24 @@ export async function registerRoutes(
       res.status(500).json({ message: err.message });
     }
   });
+
+  import("./telegram").then(({ startPolling, isConfigured }) => {
+    if (isConfigured()) {
+      startPolling(async (msg) => {
+        const existing = await storage.getTelegramMemoByMessageId(msg.messageId, msg.chatId);
+        if (!existing) {
+          await storage.createTelegramMemo({
+            messageId: msg.messageId,
+            text: msg.text,
+            fromName: msg.fromName,
+            chatId: msg.chatId,
+            isRead: false,
+          });
+        }
+      });
+      console.log("[Telegram] Memo polling started (30s interval)");
+    }
+  }).catch(() => {});
 
   return httpServer;
 }

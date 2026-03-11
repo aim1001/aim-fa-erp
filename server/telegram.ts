@@ -85,6 +85,58 @@ export async function testConnection(): Promise<{ ok: boolean; botName?: string 
   }
 }
 
+let lastUpdateOffset = 0;
+
+export async function fetchNewMessages(
+  saveFn: (msg: { messageId: number; text: string; fromName: string; chatId: string }) => Promise<void>
+): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  const url = `${TELEGRAM_API}/bot${token}/getUpdates?offset=${lastUpdateOffset}&limit=50&timeout=0`;
+  const res = await fetch(url);
+  if (!res.ok) return;
+  const data = await res.json();
+  const updates = data.result || [];
+
+  for (const update of updates) {
+    const msg = update.message;
+    if (msg && msg.text && msg.chat.type === "private") {
+      const fromName = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ") || "Unknown";
+      try {
+        await saveFn({
+          messageId: msg.message_id,
+          text: msg.text,
+          fromName,
+          chatId: String(msg.chat.id),
+        });
+      } catch (err) {
+        console.error("[Telegram] Failed to save memo, will retry:", err);
+        return;
+      }
+    }
+    lastUpdateOffset = update.update_id + 1;
+  }
+}
+
+let pollingActive = false;
+
+export function startPolling(saveFn: (msg: { messageId: number; text: string; fromName: string; chatId: string }) => Promise<void>) {
+  if (pollingActive) return;
+  pollingActive = true;
+
+  async function poll() {
+    try {
+      await fetchNewMessages(saveFn);
+    } catch (err) {
+      console.error("[Telegram] Polling error:", err);
+    }
+    if (pollingActive) {
+      setTimeout(poll, 30000);
+    }
+  }
+  poll();
+}
+
 export function notifyInquiry(action: string, inquiry: any): void {
   const status = inquiry.status === "won" ? "수주" : inquiry.status === "lost" ? "실주" : inquiry.status === "active" ? "진행" : inquiry.status || "";
   const lines = [

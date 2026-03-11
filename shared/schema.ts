@@ -646,3 +646,17 @@ export const recurringExpenses = pgTable("recurring_expenses", {
 export const insertRecurringExpenseSchema = createInsertSchema(recurringExpenses).omit({ id: true, createdAt: true });
 export type InsertRecurringExpense = z.infer<typeof insertRecurringExpenseSchema>;
 export type RecurringExpense = typeof recurringExpenses.$inferSelect;
+
+export const telegramMemos = pgTable("telegram_memos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: integer("message_id").notNull(),
+  text: text("text").notNull(),
+  fromName: text("from_name"),
+  chatId: text("chat_id"),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTelegramMemoSchema = createInsertSchema(telegramMemos).omit({ id: true, createdAt: true });
+export type InsertTelegramMemo = z.infer<typeof insertTelegramMemoSchema>;
+export type TelegramMemo = typeof telegramMemos.$inferSelect;

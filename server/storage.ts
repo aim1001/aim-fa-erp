@@ -29,12 +29,13 @@ import {
   type PurchaseOrderTask, type InsertPurchaseOrderTask,
   type FinanceTask, type InsertFinanceTask,
   type ProjectItem, type InsertProjectItem,
+  type TelegramMemo, type InsertTelegramMemo,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
   purchaseOrders, purchaseOrderItems, vendorContacts, recurringExpenses,
-  purchaseOrderTasks, financeTasks, projectItems,
+  purchaseOrderTasks, financeTasks, projectItems, telegramMemos,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -262,6 +263,13 @@ export interface IStorage {
   createRecurringExpense(data: InsertRecurringExpense): Promise<RecurringExpense>;
   updateRecurringExpense(id: string, data: Partial<InsertRecurringExpense>): Promise<RecurringExpense | undefined>;
   deleteRecurringExpense(id: string): Promise<void>;
+
+  getTelegramMemos(): Promise<TelegramMemo[]>;
+  createTelegramMemo(data: InsertTelegramMemo): Promise<TelegramMemo>;
+  markMemoRead(id: string): Promise<TelegramMemo | undefined>;
+  deleteTelegramMemo(id: string): Promise<void>;
+  getUnreadMemoCount(): Promise<number>;
+  getTelegramMemoByMessageId(messageId: number, chatId?: string): Promise<TelegramMemo | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1382,6 +1390,36 @@ export class DatabaseStorage implements IStorage {
 
   async deleteRecurringExpense(id: string): Promise<void> {
     await db.delete(recurringExpenses).where(eq(recurringExpenses.id, id));
+  }
+
+  async getTelegramMemos(): Promise<TelegramMemo[]> {
+    return db.select().from(telegramMemos).orderBy(desc(telegramMemos.createdAt));
+  }
+
+  async createTelegramMemo(data: InsertTelegramMemo): Promise<TelegramMemo> {
+    const [row] = await db.insert(telegramMemos).values(data).returning();
+    return row;
+  }
+
+  async markMemoRead(id: string): Promise<TelegramMemo | undefined> {
+    const [row] = await db.update(telegramMemos).set({ isRead: true }).where(eq(telegramMemos.id, id)).returning();
+    return row;
+  }
+
+  async deleteTelegramMemo(id: string): Promise<void> {
+    await db.delete(telegramMemos).where(eq(telegramMemos.id, id));
+  }
+
+  async getUnreadMemoCount(): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` }).from(telegramMemos).where(eq(telegramMemos.isRead, false));
+    return Number(result[0]?.count || 0);
+  }
+
+  async getTelegramMemoByMessageId(messageId: number, chatId?: string): Promise<TelegramMemo | undefined> {
+    const conditions = [eq(telegramMemos.messageId, messageId)];
+    if (chatId) conditions.push(eq(telegramMemos.chatId, chatId));
+    const [row] = await db.select().from(telegramMemos).where(and(...conditions));
+    return row;
   }
 }
 
