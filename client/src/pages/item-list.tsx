@@ -3,6 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Package, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Upload } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback, useRef, useEffect } from "react";
+import { useDialogContainer } from "@/hooks/use-dialog-container";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -145,12 +146,14 @@ function ComboboxInput({
   onChange,
   placeholder,
   testId,
+  container,
 }: {
   value: string;
   options: string[];
   onChange: (val: string) => void;
   placeholder?: string;
   testId: string;
+  container?: HTMLElement | null;
 }) {
   const [open, setOpen] = useState(false);
   const filteredOptions = useMemo(() => {
@@ -171,7 +174,7 @@ function ComboboxInput({
         />
       </PopoverTrigger>
       {open && filteredOptions.length > 0 && (
-        <PopoverContent className="w-[200px] p-1" align="start" onOpenAutoFocus={e => e.preventDefault()}>
+        <PopoverContent className="w-[200px] p-1" align="start" onOpenAutoFocus={e => e.preventDefault()} {...(container ? { container } : {})}>
           <div className="max-h-[150px] overflow-auto">
             {filteredOptions.map(opt => (
               <div
@@ -431,6 +434,7 @@ function AddItemDialog({
   itemTypes: string[];
 }) {
   const { toast } = useToast();
+  const { ref: dialogRef, container } = useDialogContainer();
   const [form, setForm] = useState({
     category1: "",
     category2: "",
@@ -494,7 +498,7 @@ function AddItemDialog({
           <DialogTitle data-testid="text-dialog-title">제품 추가</DialogTitle>
           <DialogDescription>새 판매제품을 수동으로 등록합니다.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-3" ref={dialogRef}>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">대분류 *</Label>
@@ -504,6 +508,7 @@ function AddItemDialog({
                 onChange={val => setForm(f => ({ ...f, category1: val }))}
                 placeholder="대분류 입력/선택"
                 testId="input-add-category1"
+                container={container}
               />
             </div>
             <div className="space-y-1">
@@ -514,6 +519,7 @@ function AddItemDialog({
                 onChange={val => setForm(f => ({ ...f, category2: val }))}
                 placeholder="소분류 입력/선택"
                 testId="input-add-category2"
+                container={container}
               />
             </div>
           </div>
