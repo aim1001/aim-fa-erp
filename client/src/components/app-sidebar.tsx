@@ -1,9 +1,8 @@
 import {
-  LayoutDashboard, FileText, RefreshCw, Building2, Target, LogOut,
-  Truck, Receipt, ReceiptText, Wallet, FolderKanban, ClipboardList,
+  LayoutDashboard, RefreshCw, Building2, LogOut,
+  Truck, Wallet, FolderKanban, ClipboardList,
   CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart,
-  Package, ClipboardCheck, FolderCheck, FolderOpen, Settings, Users, TrendingUp,
-  Cloud
+  Settings, Users, TrendingUp, Cloud
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -23,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -36,7 +36,7 @@ export function AppSidebar() {
   const isSalesSection = isSalesDashboard || isInquiryPage;
   const isProjectSection = isProjectPage;
   const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan"].includes(location);
-  const isTradeSection = ["/purchase-items", "/items"].includes(location);
+  const isTradeSection = ["/purchase-items", "/items", "/purchase-orders"].includes(location);
   const isCompanySection = ["/customers", "/vendors", "/staff"].includes(location);
 
   const [salesOpen, setSalesOpen] = useState(isSalesSection);
@@ -145,6 +145,9 @@ export function AppSidebar() {
     },
   });
 
+  const sectionLabelClass = "cursor-pointer hover:text-sidebar-foreground transition-colors";
+  const activeSectionLabelClass = "text-sidebar-primary";
+
   return (
     <Sidebar>
       <SidebarContent>
@@ -153,7 +156,12 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/"} data-testid="nav-main-dashboard">
+                <SidebarMenuButton
+                  asChild
+                  data-active={location === "/"}
+                  className="data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground"
+                  data-testid="nav-main-dashboard"
+                >
                   <Link href="/"><LayoutDashboard className="h-4 w-4" /><span>대시보드</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -162,9 +170,9 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* 영업 */}
-        <SidebarGroup>
+        <SidebarGroup className="py-1">
           <Collapsible open={salesOpen} onOpenChange={setSalesOpen} className="group/sales">
-            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isSalesSection && activeSectionLabelClass)}>
               <CollapsibleTrigger data-testid="nav-section-sales">
                 <TrendingUp className="h-4 w-4" />
                 <span>영업</span>
@@ -175,13 +183,25 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={isSalesDashboard} data-testid="nav-sales-dashboard">
-                      <Link href="/sales-dashboard"><ClipboardList className="h-4 w-4" /><span>영업 대시보드</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={isSalesDashboard}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-sales-dashboard"
+                    >
+                      <Link href="/sales-dashboard"><span>영업 대시보드</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={isInquiryPage} data-testid="nav-inquiries">
-                      <Link href="/inquiries"><FileText className="h-4 w-4" /><span>인콰이어리</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={isInquiryPage}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-inquiries"
+                    >
+                      <Link href="/inquiries"><span>인콰이어리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -191,9 +211,9 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* 프로젝트 */}
-        <SidebarGroup>
+        <SidebarGroup className="py-1">
           <Collapsible open={projectOpen} onOpenChange={setProjectOpen} className="group/project">
-            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isProjectSection && activeSectionLabelClass)}>
               <CollapsibleTrigger data-testid="nav-section-project">
                 <FolderKanban className="h-4 w-4" />
                 <span>프로젝트</span>
@@ -204,18 +224,36 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={isProjectPage && !params.get("status")} data-testid="nav-projects-all">
-                      <Link href="/projects"><FolderOpen className="h-4 w-4" /><span>전체보기</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={isProjectPage && !params.get("status")}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-projects-all"
+                    >
+                      <Link href="/projects"><span>전체보기</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={isProjectPage && params.get("status") === "active"} data-testid="nav-projects-active">
-                      <Link href="/projects?status=active"><Target className="h-4 w-4" /><span>진행중</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={isProjectPage && params.get("status") === "active"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-projects-active"
+                    >
+                      <Link href="/projects?status=active"><span>진행중</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={isProjectPage && params.get("status") === "completed"} data-testid="nav-projects-completed">
-                      <Link href="/projects?status=completed"><FolderCheck className="h-4 w-4" /><span>완료</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={isProjectPage && params.get("status") === "completed"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-projects-completed"
+                    >
+                      <Link href="/projects?status=completed"><span>완료</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -225,9 +263,9 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* 경영지원 */}
-        <SidebarGroup>
+        <SidebarGroup className="py-1">
           <Collapsible open={financeOpen} onOpenChange={setFinanceOpen} className="group/finance">
-            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isFinanceSection && activeSectionLabelClass)}>
               <CollapsibleTrigger data-testid="nav-section-finance">
                 <Wallet className="h-4 w-4" />
                 <span>경영지원</span>
@@ -238,23 +276,47 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/management"} data-testid="nav-management">
-                      <Link href="/management"><ClipboardList className="h-4 w-4" /><span>경영 대시보드</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/management"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-management"
+                    >
+                      <Link href="/management"><span>경영 대시보드</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/sales-invoices"} data-testid="nav-sales-invoices">
-                      <Link href="/sales-invoices"><Receipt className="h-4 w-4" /><span>매출계산서</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/sales-invoices"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-sales-invoices"
+                    >
+                      <Link href="/sales-invoices"><span>매출계산서</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/purchase-invoices"} data-testid="nav-purchase-invoices">
-                      <Link href="/purchase-invoices"><ReceiptText className="h-4 w-4" /><span>매입계산서</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/purchase-invoices"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-purchase-invoices"
+                    >
+                      <Link href="/purchase-invoices"><span>매입계산서</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/payment-plan"} data-testid="nav-payment-plan">
-                      <Link href="/payment-plan"><Wallet className="h-4 w-4" /><span>자금계획</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/payment-plan"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-payment-plan"
+                    >
+                      <Link href="/payment-plan"><span>자금계획</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -264,9 +326,9 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* 구매/판매 */}
-        <SidebarGroup>
+        <SidebarGroup className="py-1">
           <Collapsible open={tradeOpen} onOpenChange={setTradeOpen} className="group/trade">
-            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isTradeSection && activeSectionLabelClass)}>
               <CollapsibleTrigger data-testid="nav-section-trade">
                 <ShoppingCart className="h-4 w-4" />
                 <span>구매/판매</span>
@@ -277,18 +339,36 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/purchase-items"} data-testid="nav-purchasing">
-                      <Link href="/purchase-items"><ShoppingCart className="h-4 w-4" /><span>구매품관리</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/purchase-items"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-purchasing"
+                    >
+                      <Link href="/purchase-items"><span>구매품관리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/items"} data-testid="nav-products">
-                      <Link href="/items"><Package className="h-4 w-4" /><span>판매제품관리</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/items"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-products"
+                    >
+                      <Link href="/items"><span>판매제품관리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/purchase-orders"} data-testid="nav-orders">
-                      <Link href="/purchase-orders"><ClipboardCheck className="h-4 w-4" /><span>발주관리</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/purchase-orders"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-orders"
+                    >
+                      <Link href="/purchase-orders"><span>발주관리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -298,9 +378,9 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* 업체관리 */}
-        <SidebarGroup>
+        <SidebarGroup className="py-1">
           <Collapsible open={companyOpen} onOpenChange={setCompanyOpen} className="group/company">
-            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isCompanySection && activeSectionLabelClass)}>
               <CollapsibleTrigger data-testid="nav-section-company">
                 <Building2 className="h-4 w-4" />
                 <span>업체관리</span>
@@ -311,18 +391,36 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/customers"} data-testid="nav-customers">
-                      <Link href="/customers"><Building2 className="h-4 w-4" /><span>고객사</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/customers"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-customers"
+                    >
+                      <Link href="/customers"><span>고객사</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/vendors"} data-testid="nav-vendors">
-                      <Link href="/vendors"><Truck className="h-4 w-4" /><span>공급업체</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/vendors"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-vendors"
+                    >
+                      <Link href="/vendors"><span>공급업체</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/staff"} data-testid="nav-staff">
-                      <Link href="/staff"><Users className="h-4 w-4" /><span>인력풀</span></Link>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/staff"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-staff"
+                    >
+                      <Link href="/staff"><span>인력풀</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -332,9 +430,9 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* OneDrive */}
-        <SidebarGroup>
+        <SidebarGroup className="py-1">
           <Collapsible className="group/onedrive">
-            <SidebarGroupLabel asChild className="cursor-pointer hover:text-sidebar-foreground transition-colors">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass)}>
               <CollapsibleTrigger data-testid="nav-section-onedrive">
                 <Cloud className="h-4 w-4" />
                 <span>OneDrive</span>
@@ -349,8 +447,8 @@ export function AppSidebar() {
             </SidebarGroupLabel>
             <CollapsibleContent>
               <SidebarGroupContent>
-                <div className="px-2 space-y-2">
-                  <div className="flex items-center gap-2 px-1 py-1.5 text-xs" data-testid="status-onedrive-connection">
+                <div className="pl-8 pr-2 space-y-2">
+                  <div className="flex items-center gap-2 py-1 text-xs" data-testid="status-onedrive-connection">
                     {statusLoading ? (
                       <>
                         <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
@@ -366,7 +464,7 @@ export function AppSidebar() {
                         <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="text-green-600 dark:text-green-400 truncate cursor-default">
+                            <span className="text-green-600 dark:text-green-400 truncate cursor-default text-xs">
                               {onedriveStatus.accountInfo || "연결됨"}
                             </span>
                           </TooltipTrigger>
@@ -378,7 +476,7 @@ export function AppSidebar() {
                     ) : (
                       <>
                         <WifiOff className="h-3.5 w-3.5 text-destructive shrink-0" />
-                        <span className="text-destructive truncate">연결 안 됨</span>
+                        <span className="text-destructive truncate text-xs">연결 안 됨</span>
                       </>
                     )}
                     {onedriveStatus?.connected && (
@@ -389,10 +487,10 @@ export function AppSidebar() {
                             variant="ghost"
                             onClick={() => refreshMutation.mutate()}
                             disabled={refreshMutation.isPending}
-                            className="ml-auto shrink-0"
+                            className="ml-auto shrink-0 h-6 w-6"
                             data-testid="button-refresh-onedrive"
                           >
-                            <RefreshCw className={`text-muted-foreground ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                            <RefreshCw className={`h-3 w-3 text-muted-foreground ${refreshMutation.isPending ? "animate-spin" : ""}`} />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="right">
@@ -406,34 +504,37 @@ export function AppSidebar() {
                     <>
                       <Button
                         variant="secondary"
-                        className="w-full"
+                        size="sm"
+                        className="w-full text-xs"
                         onClick={() => syncMutation.mutate()}
                         disabled={syncMutation.isPending}
                         data-testid="button-sync-onedrive"
                       >
-                        <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
+                        <RefreshCw className={`h-3.5 w-3.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
                         <span>{syncMutation.isPending ? "동기화 중..." : "OneDrive 동기화"}</span>
                       </Button>
                       <Button
                         variant="ghost"
-                        className="w-full text-muted-foreground"
+                        size="sm"
+                        className="w-full text-muted-foreground text-xs"
                         onClick={() => disconnectMutation.mutate()}
                         disabled={disconnectMutation.isPending}
                         data-testid="button-disconnect-onedrive"
                       >
-                        <Unlink className="h-4 w-4" />
+                        <Unlink className="h-3.5 w-3.5" />
                         <span>연결 해제</span>
                       </Button>
                     </>
                   ) : !statusLoading && (
                     <Button
                       variant="default"
-                      className="w-full"
+                      size="sm"
+                      className="w-full text-xs"
                       onClick={() => connectMutation.mutate()}
                       disabled={connectMutation.isPending}
                       data-testid="button-connect-onedrive"
                     >
-                      <Link2 className="h-4 w-4" />
+                      <Link2 className="h-3.5 w-3.5" />
                       <span>{connectMutation.isPending ? "연결 중..." : "OneDrive 연결"}</span>
                     </Button>
                   )}
@@ -444,11 +545,16 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {/* 설정 & 로그아웃 */}
-        <SidebarGroup>
+        <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={location === "/settings"}>
+                <SidebarMenuButton
+                  asChild
+                  size="sm"
+                  isActive={location === "/settings"}
+                  className="data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                >
                   <Link href="/settings" data-testid="link-settings">
                     <Settings className="h-4 w-4" />
                     <span>설정</span>
@@ -459,7 +565,8 @@ export function AppSidebar() {
             <div className="px-2 mt-1">
               <Button
                 variant="ghost"
-                className="w-full text-muted-foreground"
+                size="sm"
+                className="w-full text-muted-foreground text-xs"
                 onClick={async () => {
                   await fetch("/api/logout", { method: "POST", credentials: "include" });
                   queryClient.setQueryData(["/api/auth/status"], { authenticated: false });
