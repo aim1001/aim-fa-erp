@@ -624,6 +624,7 @@ export const companySettings = pgTable("company_settings", {
   poEmailTemplate: text("po_email_template"),
   poCalendarId: text("po_calendar_id"),
   website: text("website"),
+  calibrationAppUrl: text("calibration_app_url"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

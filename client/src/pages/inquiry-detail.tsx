@@ -15,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { DialogFooter } from "@/components/ui/dialog";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2, FlaskConical, FileDown } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2, FlaskConical, FileDown, Calculator } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -2027,6 +2027,129 @@ function DemoReportDialog({
   );
 }
 
+function CalibrationDialog({
+  open,
+  onOpenChange,
+  inquiry,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  inquiry: Inquiry;
+}) {
+  const { toast } = useToast();
+  const [isUploading, setIsUploading] = useState(false);
+
+  const { data: settings } = useQuery<any>({
+    queryKey: ["/api/company-settings"],
+  });
+
+  const calibrationUrl = settings?.calibrationAppUrl;
+
+  const iframeSrc = calibrationUrl
+    ? `${calibrationUrl}${calibrationUrl.includes("?") ? "&" : "?"}company=${encodeURIComponent(inquiry.snapshotCompanyName || inquiry.customerName || "")}&customerId=${encodeURIComponent(inquiry.customerId || "")}&contactName=${encodeURIComponent(inquiry.snapshotContactName || "")}&inquiryId=${encodeURIComponent(inquiry.inquiryNumber)}`
+    : "";
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleMessage = async (event: MessageEvent) => {
+      if (!event.data || event.data.type !== "calibration-pdf") return;
+
+      if (calibrationUrl) {
+        try {
+          const allowedOrigin = new URL(calibrationUrl).origin;
+          if (event.origin !== allowedOrigin) return;
+        } catch { return; }
+      }
+      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
+
+      setIsUploading(true);
+      try {
+        let blob: Blob;
+        if (event.data.pdf instanceof Blob) {
+          blob = event.data.pdf;
+        } else if (typeof event.data.pdf === "string") {
+          const byteString = atob(event.data.pdf.replace(/^data:.*?;base64,/, ""));
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+          blob = new Blob([ab], { type: "application/pdf" });
+        } else {
+          throw new Error("알 수 없는 PDF 데이터 형식");
+        }
+
+        const formData = new FormData();
+        formData.append("pdf", blob, "calibration.pdf");
+
+        const res = await fetch(`/api/inquiries/${inquiry.id}/calibration-pdf`, {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          let errMsg = "PDF 업로드 실패";
+          try { const err = await res.json(); errMsg = err.message || errMsg; } catch {}
+          throw new Error(errMsg);
+        }
+
+        const result = await res.json();
+        try {
+          await fetch(`/api/sync-onedrive/${inquiry.id}/files`, { method: "POST", credentials: "include" });
+        } catch {}
+        queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiry.id, "files"] });
+        toast({ title: "캘리브레이션 PDF 저장 완료", description: result.fileName });
+        onOpenChange(false);
+      } catch (err: any) {
+        toast({ title: "PDF 저장 실패", description: err.message, variant: "destructive" });
+      } finally {
+        setIsUploading(false);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [open, inquiry.id]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl h-[85vh] flex flex-col" data-testid="dialog-calibration">
+        <DialogHeader>
+          <DialogTitle data-testid="text-calibration-title">캘리브레이션 계산</DialogTitle>
+          <DialogDescription>
+            계산 완료 후 결과 PDF가 자동으로 인콰이어리에 첨부됩니다.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 min-h-0 relative">
+          {isUploading && (
+            <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-10 rounded-lg">
+              <div className="flex items-center gap-2 text-sm">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                PDF 저장 중...
+              </div>
+            </div>
+          )}
+          {calibrationUrl ? (
+            <iframe
+              ref={iframeRef}
+              src={iframeSrc}
+              className="w-full h-full border rounded-lg"
+              title="캘리브레이션 계산"
+              data-testid="iframe-calibration"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center border rounded-lg bg-muted/30">
+              <p className="text-muted-foreground text-sm">캘리브레이션 앱 URL이 설정되지 않았습니다. 설정 페이지에서 URL을 입력하세요.</p>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   inquiryId: string;
   onClose?: () => void;
@@ -2097,6 +2220,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   const linkedProject = allProjects?.find(p => p.inquiryId === id);
 
   const [demoReportOpen, setDemoReportOpen] = useState(false);
+  const [calibrationOpen, setCalibrationOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -2151,6 +2275,15 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setCalibrationOpen(true)}
+            data-testid="button-calibration"
+          >
+            <Calculator className="h-4 w-4 mr-1" />
+            캘리브레이션
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setDemoReportOpen(true)}
             data-testid="button-demo-report"
           >
@@ -2171,6 +2304,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
           </Button>
         </div>
       </div>
+      <CalibrationDialog open={calibrationOpen} onOpenChange={setCalibrationOpen} inquiry={inquiry} />
       <DemoReportDialog open={demoReportOpen} onOpenChange={setDemoReportOpen} inquiry={inquiry} />
 
       <Tabs defaultValue="customer" className="flex-1 flex flex-col min-h-0 [&>[data-state=active]]:flex-1 [&>[data-state=active]]:min-h-0">

@@ -548,6 +548,36 @@ export async function registerRoutes(
     }
   });
 
+  const calibrationUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+  app.post("/api/inquiries/:id/calibration-pdf", requireAuth, calibrationUpload.single("pdf"), async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+      if (!req.file) return res.status(400).json({ message: "PDF 파일이 필요합니다" });
+
+      if (!inquiry.onedriveFolderId) {
+        return res.status(400).json({ message: "OneDrive 폴더가 연결되지 않은 인콰이어리입니다" });
+      }
+
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+      const safeNumber = inquiry.inquiryNumber.replace(/[/\\:*?"<>|]/g, "_");
+      const pdfFilename = `캘리브레이션_결과_${safeNumber}_${dateStr}.pdf`;
+
+      try {
+        const { uploadFileToFolder } = await import("./onedrive");
+        await uploadFileToFolder(inquiry.onedriveFolderId, pdfFilename, req.file.buffer);
+      } catch (e: any) {
+        console.log(`OneDrive 캘리브레이션 PDF 저장 실패: ${e.message}`);
+        return res.status(500).json({ message: `OneDrive 저장 실패: ${e.message}` });
+      }
+
+      res.json({ success: true, fileName: pdfFilename });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/inquiries/:id/files", async (req, res) => {
     try {
       const files = await storage.getInquiryFiles(req.params.id);
@@ -4995,7 +5025,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, website, calibrationAppUrl, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -5019,6 +5049,7 @@ export async function registerRoutes(
         fax: fax || null,
         email: email || null,
         website: website || null,
+        calibrationAppUrl: calibrationAppUrl || null,
         logoUrl: logoUrl === undefined ? undefined : (logoUrl || null),
         signatureUrl: signatureUrl === undefined ? undefined : (signatureUrl || null),
         logoData: logoData === undefined ? undefined : (logoData || null),
