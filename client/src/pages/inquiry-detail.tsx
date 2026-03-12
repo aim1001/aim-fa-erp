@@ -2027,6 +2027,31 @@ function DemoReportDialog({
   );
 }
 
+function CalibrationButton({ onOpen }: { onOpen: () => void }) {
+  const { toast } = useToast();
+  const { data: settings } = useQuery<any>({
+    queryKey: ["/api/company-settings"],
+  });
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        if (!settings?.calibrationAppUrl) {
+          toast({ title: "캘리브레이션 앱 URL이 설정되지 않았습니다", description: "설정 > 회사 정보에서 URL을 입력하세요.", variant: "destructive" });
+          return;
+        }
+        onOpen();
+      }}
+      data-testid="button-calibration"
+    >
+      <Calculator className="h-4 w-4 mr-1" />
+      캘리브레이션
+    </Button>
+  );
+}
+
 function CalibrationDialog({
   open,
   onOpenChange,
@@ -2057,13 +2082,13 @@ function CalibrationDialog({
     const handleMessage = async (event: MessageEvent) => {
       if (!event.data || event.data.type !== "calibration-pdf") return;
 
-      if (calibrationUrl) {
-        try {
-          const allowedOrigin = new URL(calibrationUrl).origin;
-          if (event.origin !== allowedOrigin) return;
-        } catch { return; }
-      }
-      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
+      if (!calibrationUrl || !iframeRef.current) return;
+
+      try {
+        const allowedOrigin = new URL(calibrationUrl).origin;
+        if (event.origin !== allowedOrigin) return;
+      } catch { return; }
+      if (event.source !== iframeRef.current.contentWindow) return;
 
       setIsUploading(true);
       try {
@@ -2272,15 +2297,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
               프로젝트 전환
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCalibrationOpen(true)}
-            data-testid="button-calibration"
-          >
-            <Calculator className="h-4 w-4 mr-1" />
-            캘리브레이션
-          </Button>
+          <CalibrationButton onOpen={() => setCalibrationOpen(true)} />
           <Button
             variant="outline"
             size="sm"
