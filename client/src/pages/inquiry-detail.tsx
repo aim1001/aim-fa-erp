@@ -1827,7 +1827,7 @@ function DemoReportDialog({
     queryKey: ["/api/staff"],
   });
 
-  const assignedStaff = staffList?.find((s: any) => s.id === (inquiry as any).staffId);
+  const assignedStaff = staffList?.find((s: any) => s.id === inquiry.staffId);
 
   const [staffForm, setStaffForm] = useState({
     name: "",

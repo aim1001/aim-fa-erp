@@ -84,6 +84,7 @@ export const inquiries = pgTable("inquiries", {
   snapshotPhone: text("snapshot_phone"),
   contractClauses: text("contract_clauses"),
   warrantyTerms: text("warranty_terms"),
+  staffId: varchar("staff_id"),
   isFavorite: boolean("is_favorite").default(false),
   isWebInquiry: boolean("is_web_inquiry").default(false),
   lastQuoteSales: integer("last_quote_sales"),
