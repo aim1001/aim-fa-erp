@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { PhoneLink, EmailLink } from "@/components/contact-links";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -178,13 +179,13 @@ export default function CompanyList() {
                 {company.email && (
                   <div className="flex items-center gap-2">
                     <Mail className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{company.email}</span>
+                    <EmailLink value={company.email} className="truncate" />
                   </div>
                 )}
                 {company.phone && (
                   <div className="flex items-center gap-2">
                     <Phone className="h-3.5 w-3.5 shrink-0" />
-                    <span>{company.phone}</span>
+                    <PhoneLink value={company.phone} />
                   </div>
                 )}
                 {(!company.customerId || company.isTemporary) && (

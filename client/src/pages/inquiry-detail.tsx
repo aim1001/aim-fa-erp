@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { PhoneLink, EmailLink } from "@/components/contact-links";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -900,9 +901,9 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
                 )}
               </div>
               <span className="text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" />이메일</span>
-              <span>{selectedContact?.email || "-"}</span>
+              <EmailLink value={selectedContact?.email} />
               <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
-              <span>{selectedContact?.phone || "-"}</span>
+              <PhoneLink value={selectedContact?.phone} />
             </>
           ) : isLinked && (isEditingContact || isAddingNewContact) ? (
             <>
@@ -1338,7 +1339,7 @@ function CustomerPreviewDialog({ customerId, inquiryId, open, onOpenChange }: { 
                   <span className="text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />주소</span>
                   <span data-testid="text-preview-address">{customer.address || "-"}</span>
                   <span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />전화</span>
-                  <span data-testid="text-preview-phone">{customer.phone || "-"}</span>
+                  <PhoneLink value={customer.phone} data-testid="text-preview-phone" />
                 </div>
               )}
             </div>
@@ -1366,13 +1367,13 @@ function CustomerPreviewDialog({ customerId, inquiryId, open, onOpenChange }: { 
                         {contact.email && (
                           <span className="flex items-center gap-1">
                             <Mail className="h-3 w-3" />
-                            {contact.email}
+                            <EmailLink value={contact.email} />
                           </span>
                         )}
                         {contact.phone && (
                           <span className="flex items-center gap-1">
                             <Phone className="h-3 w-3" />
-                            {contact.phone}
+                            <PhoneLink value={contact.phone} />
                           </span>
                         )}
                       </div>

@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { PhoneLink, EmailLink } from "@/components/contact-links";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus } from "lucide-react";
@@ -1228,7 +1229,7 @@ function CreateOrderDialog({
                 {selectedVendor.phone && (
                   <div>
                     <span className="text-muted-foreground">전화: </span>
-                    <span>{selectedVendor.phone}</span>
+                    <PhoneLink value={selectedVendor.phone} />
                   </div>
                 )}
                 {selectedVendor.address && (
@@ -2128,7 +2129,7 @@ function OrderDetailModal({
                       <div><span className="text-muted-foreground">사업자번호: </span><span>{vendorRecord.businessNumber}</span></div>
                     )}
                     {vendorRecord.phone && (
-                      <div><span className="text-muted-foreground">전화: </span><span>{vendorRecord.phone}</span></div>
+                      <div><span className="text-muted-foreground">전화: </span><PhoneLink value={vendorRecord.phone} /></div>
                     )}
                     {vendorRecord.address && (
                       <div className="col-span-3"><span className="text-muted-foreground">주소: </span><span>{vendorRecord.address}</span></div>
@@ -2147,10 +2148,10 @@ function OrderDetailModal({
                 {selectedVendorContact && (
                   <div className="mt-1 rounded border bg-muted/30 p-1.5 text-[10px] grid grid-cols-2 gap-x-3 gap-y-0.5" data-testid="panel-vendor-contact-info">
                     {selectedVendorContact.email && (
-                      <div><span className="text-muted-foreground">이메일: </span><span>{selectedVendorContact.email}</span></div>
+                      <div><span className="text-muted-foreground">이메일: </span><EmailLink value={selectedVendorContact.email} /></div>
                     )}
                     {selectedVendorContact.phone && (
-                      <div><span className="text-muted-foreground">전화: </span><span>{selectedVendorContact.phone}</span></div>
+                      <div><span className="text-muted-foreground">전화: </span><PhoneLink value={selectedVendorContact.phone} /></div>
                     )}
                     {!selectedVendorContact.email && !selectedVendorContact.phone && (
                       <div className="text-muted-foreground col-span-2">연락처 정보 없음</div>

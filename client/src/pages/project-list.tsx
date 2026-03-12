@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { PhoneLink } from "@/components/contact-links";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -720,7 +721,7 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
               <div><span className="text-muted-foreground">거래처명:</span> <span className="font-medium">{project.customer.companyName}</span></div>
               <div><span className="text-muted-foreground">사업자번호:</span> <span className="font-medium">{project.customer.businessNumber || "-"}</span></div>
               <div><span className="text-muted-foreground">대표자:</span> <span className="font-medium">{project.customer.representative || "-"}</span></div>
-              <div><span className="text-muted-foreground">전화:</span> <span className="font-medium">{project.customer.phone || "-"}</span></div>
+              <div><span className="text-muted-foreground">전화:</span> <PhoneLink value={project.customer.phone} className="font-medium" /></div>
               {project.customer.address && (
                 <div className="col-span-2"><span className="text-muted-foreground">주소:</span> <span className="font-medium">{project.customer.address}</span></div>
               )}
