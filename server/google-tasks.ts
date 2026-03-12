@@ -62,6 +62,21 @@ export async function createGoogleTask(title: string, dueDate?: string | null): 
   }
 }
 
+export async function updateGoogleTask(taskId: string, title: string): Promise<boolean> {
+  try {
+    const tasksClient = await getTasksClient();
+    await tasksClient.tasks.patch({
+      tasklist: '@default',
+      task: taskId,
+      requestBody: { title },
+    });
+    return true;
+  } catch (err) {
+    console.error('Google Tasks 제목 업데이트 실패:', err);
+    return false;
+  }
+}
+
 export async function completeGoogleTask(taskId: string): Promise<boolean> {
   try {
     const tasksClient = await getTasksClient();

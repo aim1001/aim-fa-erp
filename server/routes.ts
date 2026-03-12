@@ -1604,6 +1604,24 @@ export async function registerRoutes(
             console.log(`Google 재등록 실패: ${calErr.message}`);
           }
         }
+      } else if (allowed.content && existing.calendarEventId) {
+        try {
+          const inquiry = await storage.getInquiry(existing.inquiryId);
+          const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
+          const title = `${prefix} ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${allowed.content}`;
+          if (existing.taskType === "todo") {
+            const { updateGoogleTask } = await import("./google-tasks");
+            await updateGoogleTask(existing.calendarEventId, title);
+          } else if (existing.dueDate) {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+            const { createTaskEvent } = await import("./google-calendar");
+            const newEventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+            allowed.calendarEventId = newEventId;
+          }
+        } catch (calErr: any) {
+          console.log(`Google 제목 업데이트 실패: ${calErr.message}`);
+        }
       }
 
       const task = await storage.updateTask(req.params.id, allowed);
@@ -1776,6 +1794,24 @@ export async function registerRoutes(
           } catch (calErr: any) {
             console.log(`Google 재등록 실패: ${calErr.message}`);
           }
+        }
+      } else if (allowed.content && existing.calendarEventId) {
+        try {
+          const project = await storage.getProject(existing.projectId);
+          const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
+          const title = `${prefix} ${project?.projectNumber || ""}_${project?.customerName || ""}: ${allowed.content}`;
+          if (existing.taskType === "todo") {
+            const { updateGoogleTask } = await import("./google-tasks");
+            await updateGoogleTask(existing.calendarEventId, title);
+          } else if (existing.dueDate) {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+            const { createTaskEvent } = await import("./google-calendar");
+            const newEventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+            allowed.calendarEventId = newEventId;
+          }
+        } catch (calErr: any) {
+          console.log(`Google 제목 업데이트 실패: ${calErr.message}`);
         }
       }
 
@@ -2089,6 +2125,25 @@ export async function registerRoutes(
         }
       }
 
+      if (allowed.content && !("dueDate" in req.body) && !("dueTime" in req.body) && !("completed" in req.body) && existing.calendarEventId) {
+        try {
+          const poPrefix = existing.taskType === "todo" ? "[할일]" : "[일정]";
+          const title = `${poPrefix} ${allowed.content}`;
+          if (existing.taskType === "todo") {
+            const { updateGoogleTask } = await import("./google-tasks");
+            await updateGoogleTask(existing.calendarEventId, title);
+          } else if (existing.dueDate) {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+            const { createTaskEvent } = await import("./google-calendar");
+            const newEventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+            allowed.calendarEventId = newEventId;
+          }
+        } catch (calErr: any) {
+          console.log(`Google 제목 업데이트 실패: ${calErr.message}`);
+        }
+      }
+
       const updated = await storage.updatePurchaseOrderTask(req.params.id, allowed);
       if (allowed.completed === true && !existing.completed) {
         (async () => {
@@ -2238,6 +2293,25 @@ export async function registerRoutes(
           } catch (calErr: any) {
             console.log(`Google 재등록 실패: ${calErr.message}`);
           }
+        }
+      }
+
+      if (allowed.content && !("dueDate" in req.body) && !("dueTime" in req.body) && !("completed" in req.body) && existing.calendarEventId) {
+        try {
+          const finPrefix = existing.taskType === "todo" ? "[할일]" : "[일정]";
+          const title = `${finPrefix} ${allowed.content}`;
+          if (existing.taskType === "todo") {
+            const { updateGoogleTask } = await import("./google-tasks");
+            await updateGoogleTask(existing.calendarEventId, title);
+          } else if (existing.dueDate) {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+            const { createTaskEvent } = await import("./google-calendar");
+            const newEventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+            allowed.calendarEventId = newEventId;
+          }
+        } catch (calErr: any) {
+          console.log(`Google 제목 업데이트 실패: ${calErr.message}`);
         }
       }
 

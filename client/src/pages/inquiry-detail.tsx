@@ -1411,6 +1411,10 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
   const [taskType, setTaskType] = useState<"todo" | "schedule">("todo");
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editDueTime, setEditDueTime] = useState("");
 
   const { data: tasks = [], isLoading } = useQuery<InquiryTask[]>({
     queryKey: [`/api/inquiries/${inquiryId}/tasks`],
@@ -1436,6 +1440,17 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
       queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/tasks`] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
     },
+  });
+
+  const editMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; content?: string; dueDate?: string | null; dueTime?: string | null }) =>
+      apiRequest("PATCH", `/api/tasks/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/tasks`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
+      setEditingTaskId(null);
+    },
+    onError: () => toast({ title: "할일 수정 실패", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -1585,38 +1600,115 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
         ) : (
           <div className="space-y-0.5">
             {pendingTasks.map(task => (
-              <div key={task.id} className="flex items-center gap-1.5 group py-0.5" data-testid={`task-item-${task.id}`}>
-                <button
-                  className="shrink-0 w-4 h-4 rounded border border-muted-foreground/40 hover:border-primary flex items-center justify-center"
-                  onClick={() => toggleMutation.mutate({ id: task.id, completed: true })}
-                  data-testid={`button-toggle-task-${task.id}`}
-                />
-                {task.taskType === "schedule" ? (
-                  <CalendarDays className="h-3.5 w-3.5 shrink-0 text-blue-500" />
-                ) : (
-                  <ListTodo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                )}
-                <span className="text-sm flex-1 min-w-0 truncate">{task.content}</span>
-                {task.dueDate && (
-                  <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
-                    <button
-                      onClick={() => syncTaskMutation.mutate(task.id)}
-                      disabled={syncTaskMutation.isPending}
-                      title={task.calendarEventId ? "캘린더 등록됨 (클릭 시 갱신)" : "캘린더 미등록 (클릭 시 등록)"}
-                      data-testid={`button-sync-task-${task.id}`}
+              <div key={task.id} data-testid={`task-item-${task.id}`}>
+                {editingTaskId === task.id ? (
+                  <div className="flex items-center gap-1.5 py-0.5">
+                    <Input
+                      value={editContent}
+                      onChange={e => setEditContent(e.target.value)}
+                      className="h-7 text-sm flex-1 min-w-0"
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && editContent.trim()) {
+                          const updates: any = { id: task.id };
+                          if (editContent.trim() !== task.content) updates.content = editContent.trim();
+                          if (editDueDate !== (task.dueDate || "")) updates.dueDate = editDueDate || null;
+                          if (editDueTime !== (task.dueTime || "")) updates.dueTime = editDueTime || null;
+                          if (Object.keys(updates).length > 1) editMutation.mutate(updates);
+                          else setEditingTaskId(null);
+                        }
+                        if (e.key === "Escape") setEditingTaskId(null);
+                      }}
+                      data-testid={`input-edit-task-content-${task.id}`}
+                    />
+                    <Input
+                      type="date"
+                      value={editDueDate}
+                      onChange={e => setEditDueDate(e.target.value)}
+                      className="h-7 text-xs w-[130px] shrink-0"
+                      data-testid={`input-edit-task-date-${task.id}`}
+                    />
+                    <Input
+                      type="time"
+                      value={editDueTime}
+                      onChange={e => setEditDueTime(e.target.value)}
+                      className="h-7 text-xs w-[100px] shrink-0"
+                      data-testid={`input-edit-task-time-${task.id}`}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-1.5 shrink-0"
+                      disabled={!editContent.trim() || editMutation.isPending}
+                      onClick={() => {
+                        const updates: any = { id: task.id };
+                        if (editContent.trim() !== task.content) updates.content = editContent.trim();
+                        if (editDueDate !== (task.dueDate || "")) updates.dueDate = editDueDate || null;
+                        if (editDueTime !== (task.dueTime || "")) updates.dueTime = editDueTime || null;
+                        if (Object.keys(updates).length > 1) editMutation.mutate(updates);
+                        else setEditingTaskId(null);
+                      }}
+                      data-testid={`button-save-task-${task.id}`}
                     >
-                      <CalendarDays className={`h-3 w-3 ${task.calendarEventId ? "text-green-500" : "text-muted-foreground/40 hover:text-orange-500"}`} />
+                      <Check className="h-3.5 w-3.5 text-green-600" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-1.5 shrink-0"
+                      onClick={() => setEditingTaskId(null)}
+                      data-testid={`button-cancel-edit-${task.id}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 group py-0.5">
+                    <button
+                      className="shrink-0 w-4 h-4 rounded border border-muted-foreground/40 hover:border-primary flex items-center justify-center"
+                      onClick={() => toggleMutation.mutate({ id: task.id, completed: true })}
+                      data-testid={`button-toggle-task-${task.id}`}
+                    />
+                    {task.taskType === "schedule" ? (
+                      <CalendarDays className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                    ) : (
+                      <ListTodo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="text-sm flex-1 min-w-0 truncate">{task.content}</span>
+                    {task.dueDate && (
+                      <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                        <button
+                          onClick={() => syncTaskMutation.mutate(task.id)}
+                          disabled={syncTaskMutation.isPending}
+                          title={task.calendarEventId ? "캘린더 등록됨 (클릭 시 갱신)" : "캘린더 미등록 (클릭 시 등록)"}
+                          data-testid={`button-sync-task-${task.id}`}
+                        >
+                          <CalendarDays className={`h-3 w-3 ${task.calendarEventId ? "text-green-500" : "text-muted-foreground/40 hover:text-orange-500"}`} />
+                        </button>
+                        {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
+                      </span>
+                    )}
+                    <button
+                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => {
+                        setEditingTaskId(task.id);
+                        setEditContent(task.content);
+                        setEditDueDate(task.dueDate || "");
+                        setEditDueTime(task.dueTime || "");
+                      }}
+                      data-testid={`button-edit-task-${task.id}`}
+                    >
+                      <Pencil className="h-3 w-3 text-muted-foreground hover:text-blue-500" />
                     </button>
-                    {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
-                  </span>
+                    <button
+                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => deleteMutation.mutate(task.id)}
+                      data-testid={`button-delete-task-${task.id}`}
+                    >
+                      <X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" />
+                    </button>
+                  </div>
                 )}
-                <button
-                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => deleteMutation.mutate(task.id)}
-                  data-testid={`button-delete-task-${task.id}`}
-                >
-                  <X className="h-3.5 w-3.5 text-muted-foreground hover:text-red-500" />
-                </button>
               </div>
             ))}
             {completedTasks.map(task => (

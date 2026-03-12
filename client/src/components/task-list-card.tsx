@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ListTodo, CalendarDays, RefreshCw, Plus, Trash2, FileText, FolderKanban, ShoppingCart, Receipt } from "lucide-react";
+import { ListTodo, CalendarDays, RefreshCw, Plus, Trash2, FileText, FolderKanban, ShoppingCart, Receipt, Pencil, Check, X } from "lucide-react";
 
 type InquiryTask = {
   id: string;
@@ -92,6 +92,10 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
   const [subTab, setSubTab] = useState<SubTabKey>("all");
   const [newContent, setNewContent] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editDueTime, setEditDueTime] = useState("");
 
   const { data: inquiryTasks = [], isLoading: il } = useQuery<InquiryTask[]>({
     queryKey: ["/api/tasks/pending"],
@@ -188,6 +192,50 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
     },
   });
 
+  const editInquiryMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; content?: string; dueDate?: string | null; dueTime?: string | null }) =>
+      apiRequest("PATCH", `/api/tasks/${id}`, data),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/pending"] });
+      const task = inquiryTasks.find(t => t.id === vars.id);
+      if (task) queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${task.inquiryId}/tasks`] });
+      setEditingTaskId(null);
+    },
+    onError: () => toast({ title: "할일 수정 실패", variant: "destructive" }),
+  });
+
+  const editProjectMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; content?: string; dueDate?: string | null; dueTime?: string | null }) =>
+      apiRequest("PATCH", `/api/project-tasks/${id}`, data),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/project-tasks/pending"] });
+      const task = projectTasks.find(t => t.id === vars.id);
+      if (task) queryClient.invalidateQueries({ queryKey: [`/api/projects/${task.projectId}/tasks`] });
+      setEditingTaskId(null);
+    },
+    onError: () => toast({ title: "할일 수정 실패", variant: "destructive" }),
+  });
+
+  const editPOMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; content?: string; dueDate?: string | null; dueTime?: string | null }) =>
+      apiRequest("PATCH", `/api/purchase-order-tasks/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-order-tasks/pending"] });
+      setEditingTaskId(null);
+    },
+    onError: () => toast({ title: "할일 수정 실패", variant: "destructive" }),
+  });
+
+  const editFinMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; content?: string; dueDate?: string | null; dueTime?: string | null }) =>
+      apiRequest("PATCH", `/api/finance-tasks/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/finance-tasks/pending"] });
+      setEditingTaskId(null);
+    },
+    onError: () => toast({ title: "할일 수정 실패", variant: "destructive" }),
+  });
+
   const createPOMutation = useMutation({
     mutationFn: async (data: { content: string; dueDate?: string; taskType: string }) => {
       const res = await apiRequest("POST", "/api/purchase-order-tasks", data);
@@ -281,6 +329,25 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
   const handleDelete = (item: TaskItem) => {
     if (item.type === "purchase") deletePOMutation.mutate({ id: item.id });
     else if (item.type === "finance") deleteFinMutation.mutate({ id: item.id });
+  };
+
+  const startEdit = (item: TaskItem) => {
+    setEditingTaskId(item.id);
+    setEditContent(item.content);
+    setEditDueDate(item.dueDate || "");
+    setEditDueTime(item.dueTime || "");
+  };
+
+  const handleSaveEdit = (item: TaskItem) => {
+    const updates: any = { id: item.id };
+    if (editContent.trim() !== item.content) updates.content = editContent.trim();
+    if (editDueDate !== (item.dueDate || "")) updates.dueDate = editDueDate || null;
+    if (editDueTime !== (item.dueTime || "")) updates.dueTime = editDueTime || null;
+    if (Object.keys(updates).length <= 1) { setEditingTaskId(null); return; }
+    if (item.type === "inquiry") editInquiryMutation.mutate(updates);
+    else if (item.type === "project") editProjectMutation.mutate(updates);
+    else if (item.type === "purchase") editPOMutation.mutate(updates);
+    else editFinMutation.mutate(updates);
   };
 
   const handleClick = (item: TaskItem) => {
@@ -410,49 +477,103 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
             </div>
           )}
           {subFiltered.map(task => (
-            <div key={`${task.type}-${task.id}`} className="flex items-center gap-2 py-1 group" data-testid={`dashboard-task-${task.id}`}>
-              <button
-                className={`shrink-0 w-4 h-4 rounded border ${mainTab === "todo" ? "border-muted-foreground/40 hover:border-cyan-500" : "border-muted-foreground/40 hover:border-indigo-500"} flex items-center justify-center`}
-                onClick={() => handleToggle(task)}
-                data-testid={`button-complete-task-${task.id}`}
-              />
-              {subTab === "all" && (
-                <span className={`text-[9px] font-medium shrink-0 px-1 py-0.5 rounded ${typeColorMap[task.type]} bg-opacity-10`}>
-                  {typeBadge[task.type]}
-                </span>
-              )}
-              {task.label && (
-                <button
-                  className={`text-xs font-mono ${typeColorMap[task.type]} hover:underline shrink-0`}
-                  onClick={() => handleClick(task)}
-                  data-testid={`link-parent-${task.id}`}
-                >
-                  {task.label}
-                </button>
-              )}
-              {task.subLabel && (
-                <span className="text-xs text-muted-foreground shrink-0 max-w-[80px] truncate">{task.subLabel}</span>
-              )}
-              <span
-                className={`text-sm flex-1 min-w-0 truncate cursor-pointer ${mainTab === "todo" ? "hover:text-cyan-600" : "hover:text-indigo-600"}`}
-                onClick={() => handleClick(task)}
-              >
-                {task.content}
-              </span>
-              {task.dueDate && (
-                <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
-                  <CalendarDays className={`h-2.5 w-2.5 ${task.calendarEventId ? "text-green-500" : "text-muted-foreground/40"}`} />
-                  {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
-                </span>
-              )}
-              {(task.type === "purchase" || task.type === "finance") && (
-                <button
-                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
-                  onClick={() => handleDelete(task)}
-                  data-testid={`button-delete-task-${task.id}`}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
+            <div key={`${task.type}-${task.id}`} data-testid={`dashboard-task-${task.id}`}>
+              {editingTaskId === task.id ? (
+                <div className="flex items-center gap-1.5 py-1">
+                  <Input
+                    value={editContent}
+                    onChange={e => setEditContent(e.target.value)}
+                    className="h-7 text-sm flex-1 min-w-0"
+                    autoFocus
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && editContent.trim()) handleSaveEdit(task);
+                      if (e.key === "Escape") setEditingTaskId(null);
+                    }}
+                    data-testid={`input-edit-task-content-${task.id}`}
+                  />
+                  <Input
+                    type="date"
+                    value={editDueDate}
+                    onChange={e => setEditDueDate(e.target.value)}
+                    className="h-7 text-xs w-[120px] shrink-0"
+                    data-testid={`input-edit-task-date-${task.id}`}
+                  />
+                  <Input
+                    type="time"
+                    value={editDueTime}
+                    onChange={e => setEditDueTime(e.target.value)}
+                    className="h-7 text-xs w-[90px] shrink-0"
+                    data-testid={`input-edit-task-time-${task.id}`}
+                  />
+                  <button
+                    className="shrink-0 text-green-600 hover:text-green-700"
+                    disabled={!editContent.trim()}
+                    onClick={() => handleSaveEdit(task)}
+                    data-testid={`button-save-task-${task.id}`}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setEditingTaskId(null)}
+                    data-testid={`button-cancel-edit-${task.id}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 py-1 group">
+                  <button
+                    className={`shrink-0 w-4 h-4 rounded border ${mainTab === "todo" ? "border-muted-foreground/40 hover:border-cyan-500" : "border-muted-foreground/40 hover:border-indigo-500"} flex items-center justify-center`}
+                    onClick={() => handleToggle(task)}
+                    data-testid={`button-complete-task-${task.id}`}
+                  />
+                  {subTab === "all" && (
+                    <span className={`text-[9px] font-medium shrink-0 px-1 py-0.5 rounded ${typeColorMap[task.type]} bg-opacity-10`}>
+                      {typeBadge[task.type]}
+                    </span>
+                  )}
+                  {task.label && (
+                    <button
+                      className={`text-xs font-mono ${typeColorMap[task.type]} hover:underline shrink-0`}
+                      onClick={() => handleClick(task)}
+                      data-testid={`link-parent-${task.id}`}
+                    >
+                      {task.label}
+                    </button>
+                  )}
+                  {task.subLabel && (
+                    <span className="text-xs text-muted-foreground shrink-0 max-w-[80px] truncate">{task.subLabel}</span>
+                  )}
+                  <span
+                    className={`text-sm flex-1 min-w-0 truncate cursor-pointer ${mainTab === "todo" ? "hover:text-cyan-600" : "hover:text-indigo-600"}`}
+                    onClick={() => handleClick(task)}
+                  >
+                    {task.content}
+                  </span>
+                  {task.dueDate && (
+                    <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                      <CalendarDays className={`h-2.5 w-2.5 ${task.calendarEventId ? "text-green-500" : "text-muted-foreground/40"}`} />
+                      {task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}
+                    </span>
+                  )}
+                  <button
+                    className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-blue-500"
+                    onClick={() => startEdit(task)}
+                    data-testid={`button-edit-task-${task.id}`}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                  {(task.type === "purchase" || task.type === "finance") && (
+                    <button
+                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-500"
+                      onClick={() => handleDelete(task)}
+                      data-testid={`button-delete-task-${task.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           ))}
