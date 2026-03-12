@@ -1421,6 +1421,16 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
     queryKey: ["/api/staff"],
   });
 
+  const { data: companySettings } = useQuery<any>({
+    queryKey: ["/api/company-settings"],
+  });
+
+  useEffect(() => {
+    if (companySettings?.salesDefaultStaffId) {
+      setStaffId(companySettings.salesDefaultStaffId);
+    }
+  }, [companySettings?.salesDefaultStaffId]);
+
   const { data: tasks = [], isLoading } = useQuery<InquiryTask[]>({
     queryKey: [`/api/inquiries/${inquiryId}/tasks`],
   });
@@ -1434,7 +1444,7 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
       setNewContent("");
       setDueDate("");
       setDueTime("");
-      setStaffId("");
+      setStaffId(companySettings?.salesDefaultStaffId || "");
     },
     onError: () => toast({ title: "할일 추가 실패", variant: "destructive" }),
   });

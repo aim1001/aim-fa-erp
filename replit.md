@@ -58,7 +58,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder, isAdjustment) — isAdjustment=true인 항목은 추가/할인 항목으로 별도 관리
 - **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
 - **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms) - 견적서 PDF 헤더에 반영, website는 홈페이지 URL(데모 테스트 리포트 PDF에 표시), signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시), logoData/signatureData는 base64 data URI로 DB에 저장(배포 환경에서도 유지), autoCc는 이메일 발송 시 자동 CC, emailTemplate은 이메일 본문 템플릿({고객명},{견적번호} 치환), quotationNotesTemplate은 견적서 제외사항/기술지원 기본 템플릿, poDefault*는 발주서 기본값 설정
-  - 설정 페이지는 탭 구조: "회사 정보" 탭 (로고, 서명, 기본정보, 계좌) + "견적서" 탭 (제외사항/기술지원 템플릿, 이메일 자동CC, 이메일 본문 템플릿) + "발주서" 탭 (기본 담당자, 기본 지급조건, 기본 보증조건, 이메일 자동CC, 이메일 본문 템플릿)
+  - 설정 페이지는 탭 구조: "회사 정보" + "견적서" + "발주서" + "담당자" (영역별 기본 담당자: salesDefaultStaffId, projectDefaultStaffId, poDefaultStaffId, financeDefaultStaffId) + "텔레그램"
 - 발주서 이메일: 제목 형식 `[회사명-발주서] 발주번호 - 발주 안내`, CC/본문 설정값 자동 적용, 본문 템플릿 치환변수({발주번호},{입고일자},{구매처명},{담당자명})
 - 발주서 계약상세: 지급조건은 프리셋 Select(익월말/선처리/월말/2주이내) + 직접입력 + 계약금/중도금/잔금 분할 체크박스, 보증조건은 하자보증 1년 체크박스 + 직접입력, 입고장소는 회사주소 기본값 + 수동수정
 - **StaffSearchPopover** 컴포넌트: `client/src/components/staff-search-popover.tsx`로 분리 — 발주서, 설정 페이지에서 공통 사용
@@ -100,6 +100,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 대시보드 할일 4카테고리 탭: 전체/영업/프로젝트/구매발주/경영지원. 구매발주·경영지원 할일은 독립 테이블(`purchase_order_tasks`, `finance_tasks`)로 직접 추가/완료/삭제 가능. 캘린더 동기화 포함.
 - 내부 캘린더 (`/calendar`) — 앱 자체 캘린더 페이지. 할일(4종 Tasks)/입고예정/납품마감/대금예정/직접추가 일정을 통합 표시. 월별/주별/목록 뷰 전환, 카테고리 필터 토글 + 영역 필터(전체/영업/프로젝트/구매/경영지원), 이벤트 클릭 시 상세 팝오버(원본 이동 링크, 담당자 표시). 직접 추가 일정(calendar_events 테이블)은 CRUD 가능.
 - 할일/일정 담당자 지정 — 인콰이어리·프로젝트 할일 추가 시 staff 목록에서 담당자 선택 가능, 할일 목록에 이름 표시, 캘린더 팝오버에도 담당자 표시
+- 영역별 기본 담당자 설정 — 설정 페이지 "담당자" 탭에서 영업/프로젝트/구매발주/경영지원 영역별 기본 담당자 설정 가능. 각 영역 할일 추가 시 자동 선택됨 (company_settings: salesDefaultStaffId, projectDefaultStaffId, financeDefaultStaffId, poDefaultStaffId)
+- purchase_order_tasks, finance_tasks 테이블에 staffId 컬럼 추가
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:

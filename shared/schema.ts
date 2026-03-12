@@ -525,6 +525,7 @@ export const purchaseOrderTasks = pgTable("purchase_order_tasks", {
   dueTime: text("due_time"),
   calendarEventId: text("calendar_event_id"),
   taskType: text("task_type").default("schedule"),
+  staffId: varchar("staff_id"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -541,6 +542,7 @@ export const financeTasks = pgTable("finance_tasks", {
   dueTime: text("due_time"),
   calendarEventId: text("calendar_event_id"),
   taskType: text("task_type").default("schedule"),
+  staffId: varchar("staff_id"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -619,7 +621,10 @@ export const companySettings = pgTable("company_settings", {
   autoCc: text("auto_cc"),
   emailTemplate: text("email_template"),
   quotationNotesTemplate: text("quotation_notes_template"),
+  salesDefaultStaffId: varchar("sales_default_staff_id"),
+  projectDefaultStaffId: varchar("project_default_staff_id"),
   poDefaultStaffId: varchar("po_default_staff_id"),
+  financeDefaultStaffId: varchar("finance_default_staff_id"),
   poDefaultPaymentTerms: text("po_default_payment_terms"),
   poDefaultWarrantyTerms: text("po_default_warranty_terms"),
   poAutoCc: text("po_auto_cc"),

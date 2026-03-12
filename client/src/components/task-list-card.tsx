@@ -1,9 +1,10 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ListTodo, CalendarDays, RefreshCw, Plus, Trash2, FileText, FolderKanban, ShoppingCart, Receipt, Pencil, Check, X } from "lucide-react";
@@ -92,10 +93,29 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
   const [subTab, setSubTab] = useState<SubTabKey>("all");
   const [newContent, setNewContent] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
+  const [newStaffId, setNewStaffId] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editDueTime, setEditDueTime] = useState("");
+
+  const { data: companySettings } = useQuery<any>({
+    queryKey: ["/api/company-settings"],
+  });
+
+  const { data: staffList = [] } = useQuery<any[]>({
+    queryKey: ["/api/staff"],
+  });
+
+  useEffect(() => {
+    if (!companySettings) return;
+    const defaultId = subTab === "purchase"
+      ? (companySettings.poDefaultStaffId || "")
+      : subTab === "finance"
+      ? (companySettings.financeDefaultStaffId || "")
+      : "";
+    setNewStaffId(defaultId);
+  }, [subTab, companySettings]);
 
   const { data: inquiryTasks = [], isLoading: il } = useQuery<InquiryTask[]>({
     queryKey: ["/api/tasks/pending"],
@@ -237,7 +257,7 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
   });
 
   const createPOMutation = useMutation({
-    mutationFn: async (data: { content: string; dueDate?: string; taskType: string }) => {
+    mutationFn: async (data: { content: string; dueDate?: string; taskType: string; staffId?: string }) => {
       const res = await apiRequest("POST", "/api/purchase-order-tasks", data);
       return res.json();
     },
@@ -245,6 +265,7 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-order-tasks/pending"] });
       setNewContent("");
       setNewDueDate("");
+      setNewStaffId(companySettings?.poDefaultStaffId || "");
     },
     onError: (err: Error) => {
       toast({ title: "추가 실패", description: err.message, variant: "destructive" });
@@ -252,7 +273,7 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
   });
 
   const createFinMutation = useMutation({
-    mutationFn: async (data: { content: string; dueDate?: string; taskType: string }) => {
+    mutationFn: async (data: { content: string; dueDate?: string; taskType: string; staffId?: string }) => {
       const res = await apiRequest("POST", "/api/finance-tasks", data);
       return res.json();
     },
@@ -260,6 +281,7 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
       queryClient.invalidateQueries({ queryKey: ["/api/finance-tasks/pending"] });
       setNewContent("");
       setNewDueDate("");
+      setNewStaffId(companySettings?.financeDefaultStaffId || "");
     },
     onError: (err: Error) => {
       toast({ title: "추가 실패", description: err.message, variant: "destructive" });
@@ -359,8 +381,9 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
 
   const handleAddTask = () => {
     if (!newContent.trim()) return;
-    const data: { content: string; dueDate?: string; taskType: string } = { content: newContent.trim(), taskType: mainTab };
+    const data: { content: string; dueDate?: string; taskType: string; staffId?: string } = { content: newContent.trim(), taskType: mainTab };
     if (newDueDate) data.dueDate = newDueDate;
+    if (newStaffId) data.staffId = newStaffId;
     if (subTab === "purchase") createPOMutation.mutate(data);
     else if (subTab === "finance") createFinMutation.mutate(data);
   };
@@ -441,22 +464,33 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
         </div>
 
         {canAddInline && (
-          <div className="flex items-center gap-2 mb-2" data-testid="inline-add-task">
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap" data-testid="inline-add-task">
             <Input
               placeholder={mainTab === "todo" ? "새 할일 입력..." : "새 일정 입력..."}
               value={newContent}
               onChange={e => setNewContent(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") handleAddTask(); }}
-              className="h-7 text-sm flex-1"
+              className="h-7 text-sm flex-1 min-w-[120px]"
               data-testid="input-new-task-content"
             />
             <Input
               type="date"
               value={newDueDate}
               onChange={e => setNewDueDate(e.target.value)}
-              className="h-7 text-sm w-[130px]"
+              className="h-7 text-sm w-[120px]"
               data-testid="input-new-task-date"
             />
+            <Select value={newStaffId || "none"} onValueChange={v => setNewStaffId(v === "none" ? "" : v)}>
+              <SelectTrigger className="h-7 text-xs w-[90px]" data-testid="select-new-task-staff">
+                <SelectValue placeholder="담당자" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">없음</SelectItem>
+                {staffList.map((s: any) => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               size="sm"

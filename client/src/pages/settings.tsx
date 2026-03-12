@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays, Send, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays, Send, CheckCircle, XCircle, Loader2, Users } from "lucide-react";
 import type { CompanySettings, Staff } from "@shared/schema";
 import StaffSearchPopover from "@/components/staff-search-popover";
 
@@ -49,7 +49,10 @@ export default function SettingsPage() {
     autoCc: "",
     emailTemplate: "",
     quotationNotesTemplate: "",
+    salesDefaultStaffId: "" as string | null,
+    projectDefaultStaffId: "" as string | null,
     poDefaultStaffId: "" as string | null,
+    financeDefaultStaffId: "" as string | null,
     poDefaultPaymentTerms: "입고후 익월말",
     poDefaultWarrantyTerms: "하자보증 1년",
     poAutoCc: "",
@@ -57,7 +60,10 @@ export default function SettingsPage() {
     poCalendarId: "sales@aim-fa.com",
   });
 
+  const [salesDefaultContactPerson, setSalesDefaultContactPerson] = useState("");
+  const [projectDefaultContactPerson, setProjectDefaultContactPerson] = useState("");
   const [poDefaultContactPerson, setPoDefaultContactPerson] = useState("");
+  const [financeDefaultContactPerson, setFinanceDefaultContactPerson] = useState("");
 
   useEffect(() => {
     if (settings) {
@@ -74,16 +80,33 @@ export default function SettingsPage() {
         autoCc: settings.autoCc || "",
         emailTemplate: settings.emailTemplate || "",
         quotationNotesTemplate: settings.quotationNotesTemplate || DEFAULT_QUOTATION_NOTES,
+        salesDefaultStaffId: settings.salesDefaultStaffId || null,
+        projectDefaultStaffId: settings.projectDefaultStaffId || null,
         poDefaultStaffId: settings.poDefaultStaffId || null,
+        financeDefaultStaffId: settings.financeDefaultStaffId || null,
         poDefaultPaymentTerms: settings.poDefaultPaymentTerms || "입고후 익월말",
         poDefaultWarrantyTerms: settings.poDefaultWarrantyTerms || "하자보증 1년",
         poAutoCc: settings.poAutoCc || "",
         poEmailTemplate: settings.poEmailTemplate || "",
         poCalendarId: settings.poCalendarId || "sales@aim-fa.com",
       });
-      if (settings.poDefaultStaffId && staffList) {
-        const s = staffList.find(st => st.id === settings.poDefaultStaffId);
-        if (s) setPoDefaultContactPerson(s.name);
+      if (staffList) {
+        if (settings.salesDefaultStaffId) {
+          const s = staffList.find(st => st.id === settings.salesDefaultStaffId);
+          if (s) setSalesDefaultContactPerson(s.name);
+        }
+        if (settings.projectDefaultStaffId) {
+          const s = staffList.find(st => st.id === settings.projectDefaultStaffId);
+          if (s) setProjectDefaultContactPerson(s.name);
+        }
+        if (settings.poDefaultStaffId) {
+          const s = staffList.find(st => st.id === settings.poDefaultStaffId);
+          if (s) setPoDefaultContactPerson(s.name);
+        }
+        if (settings.financeDefaultStaffId) {
+          const s = staffList.find(st => st.id === settings.financeDefaultStaffId);
+          if (s) setFinanceDefaultContactPerson(s.name);
+        }
       }
     }
   }, [settings, staffList]);
@@ -211,7 +234,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="company" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="company" data-testid="tab-company-info">
               <Building2 className="h-4 w-4 mr-2" />
               회사 정보
@@ -223,6 +246,10 @@ export default function SettingsPage() {
             <TabsTrigger value="purchaseOrder" data-testid="tab-purchase-order-settings">
               <ShoppingCart className="h-4 w-4 mr-2" />
               발주서
+            </TabsTrigger>
+            <TabsTrigger value="staff-defaults" data-testid="tab-staff-defaults">
+              <Users className="h-4 w-4 mr-2" />
+              담당자
             </TabsTrigger>
             <TabsTrigger value="telegram" data-testid="tab-telegram-settings">
               <Send className="h-4 w-4 mr-2" />
@@ -609,6 +636,86 @@ export default function SettingsPage() {
               </Button>
             </div>
           </TabsContent>
+          <TabsContent value="staff-defaults" className="space-y-6 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Users className="h-4 w-4" />
+                  영역별 기본 담당자
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <p className="text-sm text-muted-foreground">각 영역에서 할일/일정 추가 시 자동으로 선택될 기본 담당자를 설정합니다.</p>
+                <div>
+                  <Label className="text-sm font-medium">영업</Label>
+                  <p className="text-xs text-muted-foreground mb-1.5">인콰이어리 할일 추가 시 기본 담당자</p>
+                  <StaffSearchPopover
+                    staffList={staffList || []}
+                    selectedStaffId={form.salesDefaultStaffId || ""}
+                    contactPerson={salesDefaultContactPerson}
+                    onSelect={(sid, name) => {
+                      setForm(f => ({ ...f, salesDefaultStaffId: sid || null }));
+                      setSalesDefaultContactPerson(name);
+                    }}
+                    data-testid="select-sales-default-staff"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">프로젝트</Label>
+                  <p className="text-xs text-muted-foreground mb-1.5">프로젝트 할일 추가 시 기본 담당자</p>
+                  <StaffSearchPopover
+                    staffList={staffList || []}
+                    selectedStaffId={form.projectDefaultStaffId || ""}
+                    contactPerson={projectDefaultContactPerson}
+                    onSelect={(sid, name) => {
+                      setForm(f => ({ ...f, projectDefaultStaffId: sid || null }));
+                      setProjectDefaultContactPerson(name);
+                    }}
+                    data-testid="select-project-default-staff"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">구매발주</Label>
+                  <p className="text-xs text-muted-foreground mb-1.5">구매발주 할일 추가 시 기본 담당자</p>
+                  <StaffSearchPopover
+                    staffList={staffList || []}
+                    selectedStaffId={form.poDefaultStaffId || ""}
+                    contactPerson={poDefaultContactPerson}
+                    onSelect={(sid, name) => {
+                      setForm(f => ({ ...f, poDefaultStaffId: sid || null }));
+                      setPoDefaultContactPerson(name);
+                    }}
+                    data-testid="select-po-default-staff"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">경영지원</Label>
+                  <p className="text-xs text-muted-foreground mb-1.5">경영지원 할일 추가 시 기본 담당자</p>
+                  <StaffSearchPopover
+                    staffList={staffList || []}
+                    selectedStaffId={form.financeDefaultStaffId || ""}
+                    contactPerson={financeDefaultContactPerson}
+                    onSelect={(sid, name) => {
+                      setForm(f => ({ ...f, financeDefaultStaffId: sid || null }));
+                      setFinanceDefaultContactPerson(name);
+                    }}
+                    data-testid="select-finance-default-staff"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+            <div className="flex justify-end pb-6">
+              <Button
+                onClick={() => saveMutation.mutate(form)}
+                disabled={saveMutation.isPending}
+                data-testid="button-save-staff-defaults"
+              >
+                <Save className="h-4 w-4 mr-1" />
+                {saveMutation.isPending ? "저장 중..." : "저장"}
+              </Button>
+            </div>
+          </TabsContent>
+
           <TabsContent value="telegram" className="space-y-6 mt-6">
             <TelegramSettings />
           </TabsContent>

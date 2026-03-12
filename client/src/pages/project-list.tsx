@@ -1476,6 +1476,16 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
     queryKey: ["/api/staff"],
   });
 
+  const { data: companySettings } = useQuery<any>({
+    queryKey: ["/api/company-settings"],
+  });
+
+  useEffect(() => {
+    if (companySettings?.projectDefaultStaffId) {
+      setStaffId(companySettings.projectDefaultStaffId);
+    }
+  }, [companySettings?.projectDefaultStaffId]);
+
   const { data: tasks = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/projects/${projectId}/tasks`],
   });
@@ -1489,7 +1499,7 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
       setNewContent("");
       setDueDate("");
       setDueTime("");
-      setStaffId("");
+      setStaffId(companySettings?.projectDefaultStaffId || "");
     },
     onError: () => toast({ title: "할일 추가 실패", variant: "destructive" }),
   });

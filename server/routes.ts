@@ -2027,7 +2027,7 @@ export async function registerRoutes(
 
   app.post("/api/purchase-order-tasks", async (req, res) => {
     try {
-      const { content, dueDate, dueTime, purchaseOrderId, taskType } = req.body;
+      const { content, dueDate, dueTime, purchaseOrderId, taskType, staffId } = req.body;
       const resolvedTaskType = taskType === "todo" ? "todo" : "schedule";
       if (!content) return res.status(400).json({ message: "내용은 필수입니다" });
       const normalizedDueDate = dueDate || null;
@@ -2058,6 +2058,7 @@ export async function registerRoutes(
         dueTime: normalizedDueTime,
         calendarEventId,
         taskType: resolvedTaskType,
+        staffId: staffId || null,
         createdAt: new Date().toISOString(),
       });
       (async () => {
@@ -2201,7 +2202,7 @@ export async function registerRoutes(
 
   app.post("/api/finance-tasks", async (req, res) => {
     try {
-      const { content, dueDate, dueTime, category, taskType } = req.body;
+      const { content, dueDate, dueTime, category, taskType, staffId } = req.body;
       const resolvedTaskType = taskType === "todo" ? "todo" : "schedule";
       if (!content) return res.status(400).json({ message: "내용은 필수입니다" });
       const normalizedDueDate = dueDate || null;
@@ -2232,6 +2233,7 @@ export async function registerRoutes(
         dueTime: normalizedDueTime,
         calendarEventId,
         taskType: resolvedTaskType,
+        staffId: staffId || null,
         createdAt: new Date().toISOString(),
       });
       import("./telegram").then(t => t.notifyTask("추가", task, "경영지원")).catch(() => {});
@@ -5319,7 +5321,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, salesDefaultStaffId, projectDefaultStaffId, poDefaultStaffId, financeDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -5351,7 +5353,10 @@ export async function registerRoutes(
         autoCc: autoCc || null,
         emailTemplate: emailTemplate || null,
         quotationNotesTemplate: quotationNotesTemplate === undefined ? undefined : (quotationNotesTemplate || null),
+        salesDefaultStaffId: salesDefaultStaffId === undefined ? undefined : (salesDefaultStaffId || null),
+        projectDefaultStaffId: projectDefaultStaffId === undefined ? undefined : (projectDefaultStaffId || null),
         poDefaultStaffId: poDefaultStaffId === undefined ? undefined : (poDefaultStaffId || null),
+        financeDefaultStaffId: financeDefaultStaffId === undefined ? undefined : (financeDefaultStaffId || null),
         poDefaultPaymentTerms: poDefaultPaymentTerms === undefined ? undefined : (poDefaultPaymentTerms || null),
         poDefaultWarrantyTerms: poDefaultWarrantyTerms === undefined ? undefined : (poDefaultWarrantyTerms || null),
         poAutoCc: poAutoCc === undefined ? undefined : (poAutoCc || null),
