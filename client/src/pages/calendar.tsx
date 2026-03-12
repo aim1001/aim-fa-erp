@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -45,12 +44,12 @@ const AREA_CONFIG: { key: AreaFilter; label: string; sourceTypes: string[] }[] =
 
 type ViewMode = "month" | "week" | "list";
 
-const CATEGORY_CONFIG: Record<string, { label: string; dotClass: string; badgeClass: string }> = {
-  task: { label: "할일", dotClass: "bg-blue-500", badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
-  delivery: { label: "입고", dotClass: "bg-orange-500", badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
-  deadline: { label: "납품", dotClass: "bg-red-500", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
-  payment: { label: "대금", dotClass: "bg-green-500", badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
-  custom: { label: "일정", dotClass: "bg-purple-500", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
+const CATEGORY_CONFIG: Record<string, { label: string; dotClass: string; badgeClass: string; activeBtn: string }> = {
+  task: { label: "할일", dotClass: "bg-blue-500", badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300", activeBtn: "bg-blue-500 text-white hover:bg-blue-600" },
+  delivery: { label: "입고", dotClass: "bg-orange-500", badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300", activeBtn: "bg-orange-500 text-white hover:bg-orange-600" },
+  deadline: { label: "납품", dotClass: "bg-red-500", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300", activeBtn: "bg-red-500 text-white hover:bg-red-600" },
+  payment: { label: "대금", dotClass: "bg-green-500", badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300", activeBtn: "bg-green-500 text-white hover:bg-green-600" },
+  custom: { label: "일정", dotClass: "bg-purple-500", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300", activeBtn: "bg-purple-500 text-white hover:bg-purple-600" },
 };
 
 const COLOR_STYLES: Record<string, { dotClass: string; badgeClass: string }> = {
@@ -484,17 +483,21 @@ export default function CalendarPage() {
               </Button>
             ))}
           </div>
-          <div className="flex items-center gap-1.5 mr-2">
+          <div className="flex items-center gap-1 mr-2">
             {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
-              <label key={key} className="flex items-center gap-1 text-xs cursor-pointer" data-testid={`filter-${key}`}>
-                <Checkbox
-                  checked={filters[key]}
-                  onCheckedChange={(v) => setFilters(f => ({ ...f, [key]: !!v }))}
-                  className="h-3.5 w-3.5"
-                />
-                <span className={cn("w-2 h-2 rounded-full", cfg.dotClass)} />
-                <span>{cfg.label}</span>
-              </label>
+              <button
+                key={key}
+                className={cn(
+                  "h-7 px-2.5 rounded-md text-xs font-medium transition-colors",
+                  filters[key]
+                    ? cfg.activeBtn
+                    : "bg-transparent text-muted-foreground hover:bg-muted"
+                )}
+                onClick={() => setFilters(f => ({ ...f, [key]: !f[key] }))}
+                data-testid={`filter-${key}`}
+              >
+                {cfg.label}
+              </button>
             ))}
           </div>
 
