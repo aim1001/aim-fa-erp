@@ -48,7 +48,7 @@ type ViewMode = "month" | "week" | "list";
 const CATEGORY_CONFIG: Record<string, { label: string; dotClass: string; badgeClass: string }> = {
   task: { label: "할일", dotClass: "bg-blue-500", badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
   delivery: { label: "입고", dotClass: "bg-orange-500", badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
-  deadline: { label: "마감", dotClass: "bg-red-500", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+  deadline: { label: "납품", dotClass: "bg-red-500", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
   payment: { label: "대금", dotClass: "bg-green-500", badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
   custom: { label: "일정", dotClass: "bg-purple-500", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
 };
