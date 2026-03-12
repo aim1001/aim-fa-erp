@@ -1,0 +1,832 @@
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Canvas } from "@/components/ui/canvas";
+import { Slider } from "@/components/ui/slider";
+import { useQuery } from "@tanstack/react-query";
+import { CalculationEngine, AIVE_SPECS, LENS_DATABASE } from "@/lib/calculations";
+import { CAMERA_DATABASE } from "@/lib/cameraDatabase";
+import { maskNumber, maskText, maskFormattedNumber, getAuthenticatedClass } from "@/lib/maskingUtils";
+import type { CameraModel } from "@shared/schema";
+import { ZoomIn, Maximize2, ArrowRight, Lock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+
+interface OpticsCalculatorProps {
+  onNavigateToFeeding?: (data: any) => void;
+  isAuthenticated: boolean;
+}
+
+export default function OpticsCalculator({ onNavigateToFeeding, isAuthenticated }: OpticsCalculatorProps) {
+  const [selectedCamera, setSelectedCamera] = useState<CameraModel | null>(null);
+  const [lensfocal, setLensfocal] = useState(25);
+  const [workingDistance, setWorkingDistance] = useState(800);
+  // 제품 형태 자동 판단 (가로=세로이면 원형)
+  const [productWidth, setProductWidth] = useState(10);
+  const [productHeight, setProductHeight] = useState(8);
+  const [productHeightZ, setProductHeightZ] = useState(5);
+  const [aiveModel, setAiveModel] = useState("AIVE2.2");
+  const [results, setResults] = useState<any>(null);
+
+  // 줌/팬 상태
+  const [zoomFactor, setZoomFactor] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+
+  const { data: cameraModels } = useQuery({
+    queryKey: ["/api/camera-models"],
+  });
+
+  useEffect(() => {
+    if (cameraModels && Array.isArray(cameraModels) && cameraModels.length > 0 && !selectedCamera) {
+      setSelectedCamera(cameraModels[0]);
+    }
+  }, [cameraModels, selectedCamera]);
+
+  useEffect(() => {
+    calculateOptics();
+  }, [selectedCamera, lensfocal, workingDistance, productWidth, productHeight, productHeightZ, aiveModel]);
+
+  const calculateOptics = () => {
+    if (!selectedCamera) return;
+
+    try {
+      const calculatedResults = CalculationEngine.calculateOptics(
+        selectedCamera.sensorWidth,
+        selectedCamera.sensorHeight,
+        selectedCamera.resolutionX,
+        selectedCamera.resolutionY,
+        lensfocal,
+        workingDistance,
+        productWidth,
+        productHeight,
+        productHeightZ
+      );
+
+      // 이론적 최대 배치 수량 계산 (0으로 나누기 방지)
+      const theoreticalProductsInX = productWidth > 0 ? Math.floor(calculatedResults.fovX / productWidth) : 0;
+      const theoreticalProductsInY = productHeight > 0 ? Math.floor(calculatedResults.fovY / productHeight) : 0;
+      const theoreticalProductCount = theoreticalProductsInX * theoreticalProductsInY;
+      
+      setResults({
+        ...calculatedResults,
+        theoreticalProductsInX,
+        theoreticalProductsInY,
+        theoreticalProductCount
+      });
+    } catch (error) {
+      console.error("계산 중 오류 발생:", error);
+      setResults(null);
+    }
+  };
+
+  const handleNavigateToFeeding = () => {
+    if (!results || !onNavigateToFeeding) return;
+    
+    const feedingData = {
+      // 제품 정보
+      partLength: productWidth,
+      partWidth: productHeight,
+      partHeight: productHeightZ,
+      // FOV 정보
+      fovWidth: results.fovX,
+      fovHeight: results.fovY,
+      // 이론적 최대 수량
+      maxTheoreticalCount: results.theoreticalProductCount,
+      // 시스템 정보
+      systemModel: aiveModel,
+      cameraModel: selectedCamera?.model
+    };
+    
+    onNavigateToFeeding(feedingData);
+  };
+
+  // 마우스 이벤트 핸들러
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDragging(true);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setLastMousePos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDragging) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const currentX = e.clientX - rect.left;
+    const currentY = e.clientY - rect.top;
+    
+    const deltaX = currentX - lastMousePos.x;
+    const deltaY = currentY - lastMousePos.y;
+    
+    setPanX(prev => prev + deltaX / zoomFactor);
+    setPanY(prev => prev + deltaY / zoomFactor);
+    
+    setLastMousePos({ x: currentX, y: currentY });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoomFactor(prev => Math.max(0.5, Math.min(5, prev * zoomDelta)));
+  };
+
+  const resetView = () => {
+    setZoomFactor(1);
+    setPanX(0);
+    setPanY(0);
+  };
+
+  // 향상된 시각화 함수
+  const drawOpticsVisualization = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
+    if (!results) return;
+
+    const { width, height } = canvas;
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, width, height);
+
+    // 중심점과 스케일 계산
+    const centerX = width / 2 + panX;
+    const centerY = height / 2 + panY;
+    
+    // FOV 크기에 맞는 기본 스케일
+    const baseScale = Math.min(width / (results.fovX * 1.5), height / (results.fovY * 1.5));
+    const scale = baseScale * zoomFactor;
+
+    // 시스템 영역 그리기
+    const aiveSpec = AIVE_SPECS[aiveModel as keyof typeof AIVE_SPECS];
+    if (aiveSpec) {
+      const aiveWidth = aiveSpec.width * scale;
+      const aiveHeight = aiveSpec.height * scale;
+      
+      // 시스템별 색상 구분
+      const isUnifeeder = aiveModel.startsWith('Unifeeder');
+      ctx.strokeStyle = isUnifeeder ? '#059669' : '#6B46C1';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(
+        centerX - aiveWidth / 2,
+        centerY - aiveHeight / 2,
+        aiveWidth,
+        aiveHeight
+      );
+      
+      // 시스템 라벨
+      ctx.fillStyle = isUnifeeder ? '#059669' : '#6B46C1';
+      ctx.font = 'bold 12px Inter';
+      ctx.fillText(
+        `${aiveModel} (${aiveSpec.width}×${aiveSpec.height}mm)`,
+        centerX - aiveWidth / 2 + 5,
+        centerY - aiveHeight / 2 - 5
+      );
+    }
+
+    // FOV 영역 그리기
+    const fovWidth = results.fovX * scale;
+    const fovHeight = results.fovY * scale;
+    
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#3B82F6';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(
+      centerX - fovWidth / 2,
+      centerY - fovHeight / 2,
+      fovWidth,
+      fovHeight
+    );
+
+    // FOV 배경 채우기
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+    ctx.fillRect(
+      centerX - fovWidth / 2,
+      centerY - fovHeight / 2,
+      fovWidth,
+      fovHeight
+    );
+
+    // 제품 배치 시뮬레이션 (적용률 반영)
+    const productsInX = Math.floor(results.fovX / productWidth);
+    const productsInY = Math.floor(results.fovY / productHeight);
+    
+    // 실제 사용 가능 영역 계산
+    const effectiveFovWidth = (results.effectiveFovX || results.fovX) * scale;
+    const effectiveFovHeight = (results.effectiveFovY || results.fovY) * scale;
+    const actualProductsInX = results.actualProductsInX || 0;
+    const actualProductsInY = results.actualProductsInY || 0;
+    
+    const productPixelWidth = productWidth * scale;
+    const productPixelHeight = productHeight * scale;
+
+    // 원형 여부 자동 판단 (가로=세로이면 원형)
+    const isCircular = productWidth === productHeight;
+
+    // 실제 사용 영역 표시 (연한 녹색 배경)
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.1)';
+    ctx.fillRect(
+      centerX - effectiveFovWidth / 2,
+      centerY - effectiveFovHeight / 2,
+      effectiveFovWidth,
+      effectiveFovHeight
+    );
+    
+    // 실제 사용 영역 경계선
+    ctx.strokeStyle = '#22C55E';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.strokeRect(
+      centerX - effectiveFovWidth / 2,
+      centerY - effectiveFovHeight / 2,
+      effectiveFovWidth,
+      effectiveFovHeight
+    );
+    ctx.setLineDash([]);
+
+    // 전체 FOV에 균등 분산 배치 (적용률 기반 랜덤 선택)
+    const actualProductCount = results.theoreticalProductCount || 0;
+    const totalPositions = productsInX * productsInY;
+    
+    // 적용률 기반으로 랜덤하게 활성 위치 선택
+    const activePositions = new Set<number>();
+    
+    // 시드 기반 랜덤 함수 (일관된 결과를 위해)
+    let seed = 1;
+    const random = () => {
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
+    };
+    
+    // 전체 위치 중에서 적용률만큼 랜덤 선택
+    while (activePositions.size < actualProductCount && activePositions.size < totalPositions) {
+      const randomIndex = Math.floor(random() * totalPositions);
+      activePositions.add(randomIndex);
+    }
+    
+    // 모든 제품 위치 그리기
+    let positionIndex = 0;
+    for (let x = 0; x < productsInX; x++) {
+      for (let y = 0; y < productsInY; y++) {
+        const pixelX = centerX - fovWidth / 2 + x * productPixelWidth;
+        const pixelY = centerY - fovHeight / 2 + y * productPixelHeight;
+        
+        // 이 위치가 활성 위치인지 확인
+        const isActive = activePositions.has(positionIndex);
+        
+        if (isActive) {
+          // 활성 제품 (적용률에 따라 선택된 제품)
+          ctx.fillStyle = isCircular ? '#10B981' : '#F59E0B';
+          ctx.strokeStyle = '#374151';
+          ctx.lineWidth = 2;
+        } else {
+          // 비활성 제품 (선택되지 않은 제품)
+          ctx.fillStyle = isCircular ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)';
+          ctx.strokeStyle = 'rgba(55, 65, 81, 0.2)';
+          ctx.lineWidth = 1;
+        }
+        
+        if (isCircular) {
+          // 원형 제품 (가로=세로일 때)
+          const radius = Math.min(productPixelWidth, productPixelHeight) / 2 - 1;
+          ctx.beginPath();
+          ctx.arc(pixelX + productPixelWidth / 2, pixelY + productPixelHeight / 2, radius, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          // 사각형 제품
+          ctx.fillRect(pixelX + 1, pixelY + 1, productPixelWidth - 2, productPixelHeight - 2);
+          ctx.strokeRect(pixelX + 1, pixelY + 1, productPixelWidth - 2, productPixelHeight - 2);
+        }
+        
+        positionIndex++;
+      }
+    }
+
+    // 카메라 표시 (상단)
+    const cameraY = centerY - fovHeight / 2 - workingDistance * scale / 10;
+    ctx.fillStyle = '#EF4444';
+    ctx.fillRect(centerX - 15, cameraY - 5, 30, 10);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '10px Inter';
+    ctx.fillText('카메라', centerX - 12, cameraY + 2);
+
+    // 작업거리 선
+    ctx.strokeStyle = '#F59E0B';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(centerX, cameraY + 5);
+    ctx.lineTo(centerX, centerY - fovHeight / 2);
+    ctx.stroke();
+
+    // 작업거리 라벨
+    ctx.fillStyle = '#F59E0B';
+    ctx.font = 'bold 12px Inter';
+    ctx.fillText(`WD: ${workingDistance}mm`, centerX + 10, (cameraY + centerY - fovHeight / 2) / 2);
+
+    // 격자 그리기
+    drawGrid(ctx, centerX, centerY, scale, fovWidth, fovHeight);
+
+    // 치수 라벨링
+    drawDimensions(ctx, centerX, centerY, fovWidth, fovHeight, results);
+
+    // 범례
+    drawLegend(ctx, width, height);
+
+    // 정보 패널
+    drawInfoPanel(ctx, width, height, results, aiveModel);
+  };
+
+  const drawGrid = (ctx: CanvasRenderingContext2D, centerX: number, centerY: number, scale: number, fovWidth: number, fovHeight: number) => {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+
+    const gridSpacing = Math.max(10, 50 / zoomFactor) * scale;
+    
+    // 세로선
+    for (let x = centerX - fovWidth / 2; x <= centerX + fovWidth / 2; x += gridSpacing) {
+      ctx.beginPath();
+      ctx.moveTo(x, centerY - fovHeight / 2);
+      ctx.lineTo(x, centerY + fovHeight / 2);
+      ctx.stroke();
+    }
+
+    // 가로선
+    for (let y = centerY - fovHeight / 2; y <= centerY + fovHeight / 2; y += gridSpacing) {
+      ctx.beginPath();
+      ctx.moveTo(centerX - fovWidth / 2, y);
+      ctx.lineTo(centerX + fovWidth / 2, y);
+      ctx.stroke();
+    }
+  };
+
+  const drawDimensions = (ctx: CanvasRenderingContext2D, centerX: number, centerY: number, fovWidth: number, fovHeight: number, results: any) => {
+    ctx.fillStyle = '#10B981';
+    ctx.font = 'bold 11px Inter';
+    
+    // FOV X 치수
+    ctx.fillText(
+      `${results.fovX}mm`,
+      centerX - fovWidth / 2,
+      centerY + fovHeight / 2 + 20
+    );
+    
+    // FOV Y 치수
+    ctx.save();
+    ctx.translate(centerX - fovWidth / 2 - 20, centerY);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(`${results.fovY}mm`, -20, 0);
+    ctx.restore();
+  };
+
+  const drawLegend = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const legendX = 10;
+    const legendY = height - 100;
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(legendX, legendY, 200, 90);
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 12px Inter';
+    ctx.fillText('범례', legendX + 10, legendY + 20);
+    
+    const legendItems = [
+      { color: '#3B82F6', text: 'FOV 영역 (전체)' },
+      { color: '#22C55E', text: '실제 사용 영역' },
+      { color: '#6B46C1', text: 'AIVE 시스템' },
+      { color: '#059669', text: 'Unifeeder 시스템' },
+      { color: '#F59E0B', text: '제품 (검출 가능)' },
+      { color: 'rgba(245, 158, 11, 0.15)', text: '제품 (분산 표시)' }
+    ];
+    
+    legendItems.forEach((item, index) => {
+      const y = legendY + 35 + index * 12;
+      ctx.fillStyle = item.color;
+      ctx.fillRect(legendX + 10, y - 4, 10, 8);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '10px Inter';
+      ctx.fillText(item.text, legendX + 25, y + 2);
+    });
+  };
+
+  const drawInfoPanel = (ctx: CanvasRenderingContext2D, width: number, height: number, results: any, aiveModel: string) => {
+    const panelX = width - 250;
+    const panelY = 10;
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.fillRect(panelX, panelY, 240, 200);
+    
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX, panelY, 240, 200);
+    
+    ctx.fillStyle = '#3B82F6';
+    ctx.font = 'bold 14px Inter';
+    ctx.fillText('계산 결과', panelX + 10, panelY + 25);
+    
+    const totalPositions = Math.floor(results.fovX / productWidth) * Math.floor(results.fovY / productHeight);
+    const distributionRate = ((results.theoreticalProductCount || 0) / totalPositions * 100).toFixed(1);
+    
+    const info = [
+      `전체 FOV: ${results.fovX} × ${results.fovY} mm`,
+      `픽셀 크기: ${results.pixelSize} mm`,
+      `시야각: ${results.angleX}° × ${results.angleY}°`,
+      `평균 오차: ±${results.avgError} mm`,
+      `전체 위치: ${totalPositions}개`,
+      `이론 제품: ${results.theoreticalProductCount}개`,
+      `이론 수량: ${results.theoreticalProductCount}개`,
+      `분산도: ${distributionRate}% (전체 영역 대비)`,
+      `효율성: ${results.efficiency}`
+    ];
+    
+    ctx.fillStyle = '#E5E7EB';
+    ctx.font = '11px Inter';
+    info.forEach((text, index) => {
+      ctx.fillText(text, panelX + 10, panelY + 50 + index * 16);
+    });
+    
+    // 높이 오차 정보
+    if (productHeightZ > 0) {
+      ctx.fillStyle = '#F59E0B';
+      ctx.font = 'bold 11px Inter';
+      ctx.fillText('높이 오차 분석', panelX + 10, panelY + 170);
+      
+      ctx.fillStyle = '#FEF3C7';
+      ctx.font = '10px Inter';
+      ctx.fillText(`Shape 오차: ${results.shapeErrorX?.toFixed(3)} / ${results.shapeErrorY?.toFixed(3)} mm`, panelX + 10, panelY + 185);
+      ctx.fillText(`최대 오차: ${results.maxErrorX?.toFixed(3)} / ${results.maxErrorY?.toFixed(3)} mm`, panelX + 10, panelY + 200);
+    }
+  };
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-6">
+      {/* 입력 패널 */}
+      <div className="space-y-6">
+        <Card className="calculation-card" data-testid="camera-selection-card">
+          <CardHeader>
+            <CardTitle>카메라 선택</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="camera-model">카메라 모델</Label>
+              <Select 
+                value={selectedCamera?.model || ""} 
+                onValueChange={(value) => {
+                  const camera = CAMERA_DATABASE.find(c => c.model === value);
+                  setSelectedCamera(camera || null);
+                }}
+                data-testid="select-camera-model"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="카메라 모델 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CAMERA_DATABASE.map((camera) => (
+                    <SelectItem key={camera.id} value={camera.model}>
+                      {camera.brand} {camera.model}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>해상도 X</Label>
+                <Input 
+                  value={selectedCamera?.resolutionX || 0} 
+                  disabled 
+                  className="bg-muted"
+                />
+              </div>
+              <div>
+                <Label>해상도 Y</Label>
+                <Input 
+                  value={selectedCamera?.resolutionY || 0} 
+                  disabled 
+                  className="bg-muted"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="lens-focal">렌즈 초점거리</Label>
+              <Select 
+                value={lensfocal.toString()} 
+                onValueChange={(value) => setLensfocal(Number(value))}
+                data-testid="select-lens-focal"
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LENS_DATABASE.map((lens) => (
+                    <SelectItem key={lens.value} value={lens.value.toString()}>
+                      {lens.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="working-distance">작업거리 (mm)</Label>
+              <div className="space-y-2">
+                <Input
+                  id="working-distance"
+                  type="number"
+                  value={workingDistance}
+                  onChange={(e) => setWorkingDistance(Number(e.target.value))}
+                  min={50}
+                  max={5000}
+                  data-testid="input-working-distance"
+                />
+                <Slider
+                  value={[workingDistance]}
+                  onValueChange={(value) => setWorkingDistance(value[0])}
+                  min={100}
+                  max={2000}
+                  step={50}
+                  className="mt-2"
+                  data-testid="slider-working-distance"
+                />
+                <div className="text-xs text-muted-foreground">
+                  슬라이더: 100-2000mm | 직접입력: 50-5000mm
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="aive-model">시스템 모델</Label>
+              <Select value={aiveModel} onValueChange={setAiveModel} data-testid="select-aive-model">
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AIVE2.2">AIVE2.2 (150×120mm)</SelectItem>
+                  <SelectItem value="AIVE3.0">AIVE3.0 (230×180mm)</SelectItem>
+                  <SelectItem value="Unifeeder2.0">Unifeeder2.0 (200×150mm)</SelectItem>
+                  <SelectItem value="Unifeeder3.0">Unifeeder3.0 (300×200mm)</SelectItem>
+                  <SelectItem value="Unifeeder5.0">Unifeeder5.0 (500×350mm)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="calculation-card" data-testid="product-settings-card">
+          <CardHeader>
+            <CardTitle>제품 설정</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="product-width">가로 (mm)</Label>
+                <Input
+                  id="product-width"
+                  type="number"
+                  value={productWidth}
+                  onChange={(e) => setProductWidth(Number(e.target.value))}
+                  data-testid="input-product-width"
+                />
+              </div>
+              <div>
+                <Label htmlFor="product-height">세로 (mm)</Label>
+                <Input
+                  id="product-height"
+                  type="number"
+                  value={productHeight}
+                  onChange={(e) => setProductHeight(Number(e.target.value))}
+                  data-testid="input-product-height"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="product-height-z">높이 (mm)</Label>
+              <Input
+                id="product-height-z"
+                type="number"
+                value={productHeightZ}
+                onChange={(e) => setProductHeightZ(Number(e.target.value))}
+                data-testid="input-product-height-z"
+              />
+            </div>
+
+
+            <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg text-xs">
+              <div className="font-medium text-blue-700 dark:text-blue-300 mb-1">💡 입력 가이드</div>
+              <div className="text-blue-600 dark:text-blue-400 space-y-1">
+                <div>• <strong>사각형 제품:</strong> 가로/세로를 다르게 입력</div>
+                <div>• <strong>원형 제품:</strong> 가로/세로를 지름으로 동일하게 입력</div>
+                <div>• <strong>높이:</strong> 제품이 세워진 부분의 높이 (오차 계산용)</div>
+              </div>
+            </div>
+
+            {/* 피더 계산으로 이동 버튼 */}
+            {results && onNavigateToFeeding && (
+              <div className="pt-4 border-t border-border">
+                <Button 
+                  onClick={handleNavigateToFeeding}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                  data-testid="button-navigate-feeding"
+                >
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                  피더 속도 계산으로 이동
+                </Button>
+                <div className="text-xs text-muted-foreground mt-2 text-center">
+                  현재 제품 설정을 피더 계산에 자동 적용합니다
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {results && (
+          <Card className="calculation-card" data-testid="results-card">
+            <CardHeader>
+              <CardTitle>계산 결과</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">검사 영역:</span>
+                  <span className="ml-2 font-mono">{results.inspectionArea} mm²</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">FOV:</span>
+                  <span className="ml-2 font-mono">{results.fovX} × {results.fovY} mm</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">픽셀 크기:</span>
+                  <span className="ml-2 font-mono">{results.pixelSize} mm</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">시야각:</span>
+                  <span className="ml-2 font-mono">{results.angleX}° × {results.angleY}°</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">평균 오차:</span>
+                  <span className="ml-2 font-mono">±{results.avgError} mm</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">이론 수량:</span>
+                  <span className="ml-2 font-mono">{results.productsPerFov}개</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">실제 수량:</span>
+                  <span className="ml-2 font-mono text-green-400">{results.theoreticalProductCount}개</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">커버리지:</span>
+                  <span className="ml-2 font-mono">{results.coverage}%</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">효율성:</span>
+                  <span className={`ml-2 font-mono ${
+                    results.efficiency === '우수' ? 'text-green-400' :
+                    results.efficiency === '양호' ? 'text-blue-400' :
+                    results.efficiency === '보통' ? 'text-yellow-400' : 'text-red-400'
+                  }`}>{results.efficiency}</span>
+                </div>
+              </div>
+              
+              {productHeightZ > 0 && (
+                <div className="border-t pt-3 mt-3">
+                  <div className="text-sm font-semibold mb-2">높이 오차 분석</div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Shape 오차:</span>
+                      <span className="ml-2 font-mono text-orange-400">
+                        {results.shapeErrorX} / {results.shapeErrorY} mm
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">최대 오차:</span>
+                      <span className="ml-2 font-mono text-red-400">
+                        {results.maxErrorX} / {results.maxErrorY} mm
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* 시각화 패널 */}
+      <div className="space-y-6">
+        <Card className="calculation-card" data-testid="visualization-card">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle>FOV 시각화</CardTitle>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setZoomFactor(prev => Math.min(5, prev * 1.2))}
+                  data-testid="button-zoom-in"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setZoomFactor(prev => Math.max(0.5, prev * 0.8))}
+                  data-testid="button-zoom-out"
+                >
+                  축소
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={resetView}
+                  data-testid="button-reset-view"
+                >
+                  리셋
+                </Button>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" data-testid="button-fullscreen">
+                      <Maximize2 className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-6xl">
+                    <DialogHeader>
+                      <DialogTitle>FOV 시각화 - 확대 보기</DialogTitle>
+                    </DialogHeader>
+                    <div className="canvas-container">
+                      <Canvas 
+                        width={1000} 
+                        height={700} 
+                        onDraw={drawOpticsVisualization}
+                        className="w-full h-auto border border-muted cursor-grab active:cursor-grabbing"
+                        data-testid="canvas-optics-large"
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={handleMouseUp}
+                        onWheel={handleWheel}
+                      />
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted/20 p-2 rounded">
+                      <strong>조작법:</strong> 마우스 휠로 확대/축소, 드래그로 이동, 리셋 버튼으로 초기화
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>확대: {(zoomFactor * 100).toFixed(0)}%  |  팬: X:{panX.toFixed(0)} Y:{panY.toFixed(0)}</span>
+              <div className="flex space-x-4">
+                <span className="flex items-center">
+                  <span className="w-3 h-3 bg-blue-500 rounded-full mr-1"></span>FOV 영역
+                </span>
+                <span className="flex items-center">
+                  <span className="w-3 h-3 bg-purple-500 rounded-full mr-1"></span>AIVE 시스템
+                </span>
+                <span className="flex items-center">
+                  <span className="w-3 h-3 bg-amber-500 rounded-full mr-1"></span>제품
+                </span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="canvas-container mb-4">
+              <Canvas 
+                width={600} 
+                height={400} 
+                onDraw={drawOpticsVisualization}
+                className="w-full h-auto cursor-grab active:cursor-grabbing"
+                data-testid="canvas-optics"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onWheel={handleWheel}
+              />
+            </div>
+            <div className="bg-muted/20 p-3 rounded text-xs">
+              <div className="font-medium mb-1">팁</div>
+              <div className="text-muted-foreground">
+                작업거리(WD)와 렌즈 초점거리를 조정하여 최적의 FOV를 설정하세요. 
+                제품이 FOV 영역 내에 효율적으로 배치되도록 하고, AIVE 시스템 사양과 비교해보세요.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}

@@ -46,7 +46,6 @@ export default function SettingsPage() {
     email: "",
     bankInfo: "",
     website: "",
-    calibrationAppUrl: "",
     autoCc: "",
     emailTemplate: "",
     quotationNotesTemplate: "",
@@ -72,7 +71,6 @@ export default function SettingsPage() {
         email: settings.email || "",
         bankInfo: settings.bankInfo || "",
         website: settings.website || "",
-        calibrationAppUrl: settings.calibrationAppUrl || "",
         autoCc: settings.autoCc || "",
         emailTemplate: settings.emailTemplate || "",
         quotationNotesTemplate: settings.quotationNotesTemplate || DEFAULT_QUOTATION_NOTES,
@@ -393,26 +391,6 @@ export default function SettingsPage() {
                   rows={3}
                   data-testid="input-bankInfo"
                 />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">캘리브레이션 앱 연동</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Label htmlFor="calibrationAppUrl" className="text-sm font-medium">캘리브레이션 앱 URL</Label>
-                <Input
-                  id="calibrationAppUrl"
-                  value={form.calibrationAppUrl}
-                  onChange={(e) => updateField("calibrationAppUrl", e.target.value)}
-                  placeholder="https://calibration-app.example.com"
-                  className="mt-1"
-                  data-testid="input-calibrationAppUrl"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  인콰이어리에서 캘리브레이션 계산 버튼 클릭 시 iframe으로 로드됩니다.
-                </p>
               </CardContent>
             </Card>
 
