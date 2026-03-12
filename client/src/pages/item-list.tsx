@@ -71,13 +71,14 @@ function InlineCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
+  const [isTyping, setIsTyping] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = useMemo(() => {
-    if (!draft) return options;
+    if (!isTyping || !draft) return options;
     const q = draft.toLowerCase();
     return options.filter(o => o.toLowerCase().includes(q));
-  }, [options, draft]);
+  }, [options, draft, isTyping]);
 
   const handleSelect = useCallback((val: string) => {
     setOpen(false);
@@ -97,7 +98,7 @@ function InlineCombobox({
   }, [draft, value, onSave]);
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setDraft(value); }}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) { setDraft(value); setIsTyping(false); } else { setIsTyping(false); } }}>
       <PopoverTrigger asChild>
         <span
           className={`cursor-pointer group/edit inline-flex items-center gap-1 ${className}`}
@@ -113,7 +114,7 @@ function InlineCombobox({
           ref={inputRef}
           className="h-7 text-xs px-2 mb-1"
           value={draft}
-          onChange={e => setDraft(e.target.value)}
+          onChange={e => { setDraft(e.target.value); setIsTyping(true); }}
           onKeyDown={handleKeyDown}
           placeholder="직접 입력..."
           autoFocus
@@ -161,19 +162,20 @@ function ComboboxInput({
   container?: HTMLElement | null;
 }) {
   const [open, setOpen] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const filteredOptions = useMemo(() => {
-    if (!value) return options;
+    if (!isTyping || !value) return options;
     const q = value.toLowerCase();
     return options.filter(o => o.toLowerCase().includes(q));
-  }, [options, value]);
+  }, [options, value, isTyping]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setIsTyping(false); }}>
       <PopoverTrigger asChild>
         <Input
           value={value}
-          onChange={e => { onChange(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
+          onChange={e => { onChange(e.target.value); setIsTyping(true); setOpen(true); }}
+          onFocus={() => { setIsTyping(false); setOpen(true); }}
           placeholder={placeholder}
           data-testid={testId}
         />
@@ -185,7 +187,7 @@ function ComboboxInput({
               <div
                 key={opt}
                 className={`text-xs px-2 py-1 rounded cursor-pointer hover-elevate ${opt === value ? "bg-accent" : ""}`}
-                onClick={() => { onChange(opt); setOpen(false); }}
+                onClick={() => { onChange(opt); setOpen(false); setIsTyping(false); }}
                 data-testid={`option-${testId}-${opt}`}
               >
                 {opt}
@@ -346,12 +348,13 @@ function ItemDetailRow({
           <span className="text-muted-foreground">유형</span>
           <Select
             value={item.itemType || ""}
-            onValueChange={val => patchMutation.mutate({ itemType: val })}
+            onValueChange={val => patchMutation.mutate({ itemType: val === "__none__" ? null : val })}
           >
             <SelectTrigger className="h-6 text-xs px-2 w-[100px] border-dashed" data-testid={`select-type-${item.itemCode}`}>
               <SelectValue placeholder="-" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="__none__" className="text-muted-foreground">(없음)</SelectItem>
               {itemTypes.map(t => (
                 <SelectItem key={t} value={t}>{t}</SelectItem>
               ))}
@@ -975,11 +978,12 @@ function AddItemDialog({
           <div className="grid grid-cols-2 gap-3 items-end">
             <div className="space-y-1">
               <Label className="text-xs">제품유형</Label>
-              <Select value={form.itemType} onValueChange={val => setForm(f => ({ ...f, itemType: val }))}>
+              <Select value={form.itemType || "__none__"} onValueChange={val => setForm(f => ({ ...f, itemType: val === "__none__" ? "" : val }))}>
                 <SelectTrigger data-testid="select-add-itemtype">
                   <SelectValue placeholder="유형 선택" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__" className="text-muted-foreground">(없음)</SelectItem>
                   {itemTypes.map(t => (
                     <SelectItem key={t} value={t}>{t}</SelectItem>
                   ))}
