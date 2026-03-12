@@ -2418,9 +2418,9 @@ function ContractDocumentUpload({ inquiryId }: { inquiryId: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: contractFiles, isLoading } = useQuery<ContractFile[]>({
-    queryKey: ["/api/inquiries", inquiryId, "contract-documents"],
+    queryKey: ["/api/inquiries", inquiryId, "documents"],
     queryFn: async () => {
-      const res = await fetch(`/api/inquiries/${inquiryId}/contract-documents`);
+      const res = await fetch(`/api/inquiries/${inquiryId}/documents`);
       if (!res.ok) return [];
       return res.json();
     },
@@ -2430,7 +2430,7 @@ function ContractDocumentUpload({ inquiryId }: { inquiryId: string }) {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch(`/api/inquiries/${inquiryId}/contract-documents`, {
+      const res = await fetch(`/api/inquiries/${inquiryId}/documents`, {
         method: "POST",
         body: formData,
       });
@@ -2441,7 +2441,7 @@ function ContractDocumentUpload({ inquiryId }: { inquiryId: string }) {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "contract-documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "documents"] });
       toast({ title: "계약서 업로드 완료" });
     },
     onError: (err: Error) => {

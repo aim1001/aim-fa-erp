@@ -6630,24 +6630,25 @@ export async function registerRoutes(
     try {
       const vendor = await storage.getVendor(req.params.id);
       if (!vendor) return res.status(404).json({ message: "구매처를 찾을 수 없습니다" });
-      const info = {
-        companyName: vendor.companyName,
-        businessNumber: vendor.businessNumber,
-        representative: vendor.representative,
-        address: vendor.address,
-        phone: vendor.phone,
-        fax: vendor.fax,
-        bankName: vendor.bankName,
-        bankAccount: vendor.bankAccount,
-        contactName: vendor.contactName,
-        contactEmail: vendor.contactEmail,
-        contactPhone: vendor.contactPhone,
-        memo: vendor.memo,
-        updatedAt: new Date().toISOString(),
-      };
+      const lines = [
+        `상호명: ${vendor.companyName || ""}`,
+        `사업자등록번호: ${vendor.businessNumber || ""}`,
+        `대표자: ${vendor.representative || ""}`,
+        `주소: ${vendor.address || ""}`,
+        `전화번호: ${vendor.phone || ""}`,
+        `팩스: ${vendor.fax || ""}`,
+        `거래은행: ${vendor.bankName || ""}`,
+        `계좌번호: ${vendor.bankAccount || ""}`,
+        `담당자: ${vendor.contactName || ""}`,
+        `담당자이메일: ${vendor.contactEmail || ""}`,
+        `담당자전화: ${vendor.contactPhone || ""}`,
+        `메모: ${vendor.memo || ""}`,
+        ``,
+        `업데이트: ${new Date().toISOString()}`,
+      ];
       const folderPath = getVendorFolderPath(vendor.companyName);
       const { uploadFileToFolderByPath } = await import("./onedrive");
-      await uploadFileToFolderByPath(folderPath, "vendor_info.json", Buffer.from(JSON.stringify(info, null, 2), "utf-8"));
+      await uploadFileToFolderByPath(folderPath, "업체정보.txt", Buffer.from(lines.join("\n"), "utf-8"));
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -6669,8 +6670,8 @@ export async function registerRoutes(
     }
   });
 
-  // --- Inquiry contract document upload ---
-  app.get("/api/inquiries/:id/contract-documents", async (req: Request, res: Response) => {
+  // --- Inquiry document upload (contracts etc.) ---
+  app.get("/api/inquiries/:id/documents", async (req: Request, res: Response) => {
     try {
       const inquiry = await storage.getInquiry(req.params.id);
       if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
@@ -6684,14 +6685,13 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/inquiries/:id/contract-documents", generalUpload.single("file"), async (req: Request, res: Response) => {
+  app.post("/api/inquiries/:id/documents", generalUpload.single("file"), async (req: Request, res: Response) => {
     try {
       const inquiry = await storage.getInquiry(req.params.id);
       if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
       if (!inquiry.onedriveFolderId) return res.status(400).json({ message: "OneDrive 폴더가 연결되지 않은 인콰이어리입니다" });
       if (!req.file) return res.status(400).json({ message: "파일을 선택해주세요" });
-      const ext = path.extname(req.file.originalname).toLowerCase();
-      const baseName = path.basename(req.file.originalname, ext);
+      const baseName = path.basename(req.file.originalname, path.extname(req.file.originalname));
       const fileName = baseName.startsWith("계약서") ? req.file.originalname : `계약서_${req.file.originalname}`;
       const { uploadFileToFolder } = await import("./onedrive");
       await uploadFileToFolder(inquiry.onedriveFolderId, fileName, req.file.buffer);
