@@ -5727,6 +5727,17 @@ export async function registerRoutes(
         try {
           const { uploadFileToFolder } = await import("./onedrive");
           const staffName = final.staffId ? (await storage.getStaff(final.staffId))?.name || '' : '';
+          let existingCreatedAt: string | undefined;
+          try {
+            const { downloadFile, listFolderFiles: listFiles } = await import("./onedrive");
+            const files = await listFiles(final.onedriveFolderId);
+            const infoFile = files.find(f => f.name === 'info.json');
+            if (infoFile) {
+              const buf = await downloadFile(infoFile.id);
+              const prev = JSON.parse(buf.toString('utf-8'));
+              existingCreatedAt = prev?.createdAt;
+            }
+          } catch {}
           const infoData = {
             orderNumber: final.orderNumber,
             vendor: final.vendor,
@@ -5740,6 +5751,7 @@ export async function registerRoutes(
             memo: final.memo,
             status: final.status,
             year: final.year,
+            createdAt: existingCreatedAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
           await uploadFileToFolder(final.onedriveFolderId, "info.json", Buffer.from(JSON.stringify(infoData, null, 2)));
