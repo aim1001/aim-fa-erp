@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +41,21 @@ const CATEGORY_CONFIG: Record<string, { label: string; dotClass: string; badgeCl
   payment: { label: "대금", dotClass: "bg-green-500", badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
   custom: { label: "일정", dotClass: "bg-purple-500", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
 };
+
+const COLOR_STYLES: Record<string, { dotClass: string; badgeClass: string }> = {
+  purple: { dotClass: "bg-purple-500", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
+  blue: { dotClass: "bg-blue-500", badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  green: { dotClass: "bg-green-500", badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  orange: { dotClass: "bg-orange-500", badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+  red: { dotClass: "bg-red-500", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+};
+
+function getEventStyles(event: CalendarEventItem) {
+  if (event.category === "custom" && event.color && COLOR_STYLES[event.color]) {
+    return COLOR_STYLES[event.color];
+  }
+  return CATEGORY_CONFIG[event.category] || CATEGORY_CONFIG.custom;
+}
 
 function getMonthRange(year: number, month: number) {
   const firstDay = new Date(year, month, 1);
@@ -274,7 +289,7 @@ export default function CalendarPage() {
                             <button
                               className={cn(
                                 "w-full text-left text-[10px] leading-tight px-1 py-0.5 rounded truncate",
-                                CATEGORY_CONFIG[evt.category]?.badgeClass,
+                                getEventStyles(evt).badgeClass,
                                 evt.completed && "line-through opacity-60",
                               )}
                               data-testid={`calendar-event-${evt.id}`}
@@ -342,7 +357,7 @@ export default function CalendarPage() {
                         <button
                           className={cn(
                             "w-full text-left text-xs px-2 py-1.5 rounded",
-                            CATEGORY_CONFIG[evt.category]?.badgeClass,
+                            getEventStyles(evt).badgeClass,
                             evt.completed && "line-through opacity-60",
                           )}
                           data-testid={`calendar-event-${evt.id}`}
@@ -394,7 +409,7 @@ export default function CalendarPage() {
                         )}
                         data-testid={`calendar-event-${evt.id}`}
                       >
-                        <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", CATEGORY_CONFIG[evt.category]?.dotClass)} />
+                        <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", getEventStyles(evt).dotClass)} />
                         <div className="flex-1 min-w-0">
                           <div className={cn("text-sm truncate", evt.completed && "line-through")}>
                             {evt.title}
@@ -402,7 +417,7 @@ export default function CalendarPage() {
                           {evt.description && <div className="text-xs text-muted-foreground truncate">{evt.description}</div>}
                         </div>
                         {evt.startTime && <span className="text-xs text-muted-foreground shrink-0">{evt.startTime}</span>}
-                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0", CATEGORY_CONFIG[evt.category]?.badgeClass)}>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0", getEventStyles(evt).badgeClass)}>
                           {CATEGORY_CONFIG[evt.category]?.label}
                         </span>
                       </button>
@@ -535,6 +550,7 @@ function EventDetail({
   onEdit: (e: CalendarEventItem) => void;
   onDelete: (id: string) => void;
 }) {
+  const styles = getEventStyles(event);
   const cfg = CATEGORY_CONFIG[event.category];
   const link = getSourceLinkStatic(event);
   const isCustom = event.sourceType === "calendarEvent";
@@ -542,7 +558,7 @@ function EventDetail({
   return (
     <div className="space-y-2">
       <div className="flex items-start gap-2">
-        <div className={cn("w-3 h-3 rounded-full mt-0.5 shrink-0", cfg?.dotClass)} />
+        <div className={cn("w-3 h-3 rounded-full mt-0.5 shrink-0", styles.dotClass)} />
         <div className="flex-1 min-w-0">
           <div className={cn("text-sm font-medium break-words", event.completed && "line-through opacity-60")}>{event.title}</div>
           <div className="text-xs text-muted-foreground mt-0.5">
@@ -551,7 +567,7 @@ function EventDetail({
             {event.endTime && ` ~ ${event.endTime}`}
           </div>
           {event.description && <div className="text-xs text-muted-foreground mt-1">{event.description}</div>}
-          <span className={cn("text-[10px] px-1.5 py-0.5 rounded mt-1 inline-block", cfg?.badgeClass)}>
+          <span className={cn("text-[10px] px-1.5 py-0.5 rounded mt-1 inline-block", styles.badgeClass)}>
             {cfg?.label}
           </span>
         </div>
@@ -607,6 +623,12 @@ function EventFormDialog({
   editingEvent?: CalendarEventItem | null;
 }) {
   const [localForm, setLocalForm] = useState(initialForm);
+
+  useEffect(() => {
+    if (open) {
+      setLocalForm(initialForm);
+    }
+  }, [open]);
 
   const updateField = (key: string, value: string) => {
     const updated = { ...localForm, [key]: value };
