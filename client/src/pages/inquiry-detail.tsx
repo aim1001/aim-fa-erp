@@ -15,7 +15,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2 } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2, AlertTriangle } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -1989,6 +1989,8 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
     },
   });
 
+  const [showUnregisteredWarning, setShowUnregisteredWarning] = useState(false);
+
   const convertMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/inquiries/${id}/convert-to-project`);
@@ -2054,6 +2056,10 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
               variant="default"
               size="sm"
               onClick={() => {
+                if (!inquiry.customerId) {
+                  setShowUnregisteredWarning(true);
+                  return;
+                }
                 const msg = inquiry.status === "won"
                   ? "프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다."
                   : "아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?";
@@ -2340,6 +2346,57 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
           </ScrollArea>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showUnregisteredWarning} onOpenChange={setShowUnregisteredWarning}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              미등록 고객사
+            </DialogTitle>
+            <DialogDescription>
+              이 인콰이어리는 아직 정식 고객사로 등록되지 않았습니다.
+              미등록 상태로 프로젝트를 전환하면 세금계산서 발행, 수금 계획 등에 문제가 생길 수 있습니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              variant="default"
+              onClick={() => {
+                setShowUnregisteredWarning(false);
+                const customerTab = document.querySelector('[data-testid="tab-customer"]') as HTMLElement;
+                if (customerTab) customerTab.click();
+                toast({ title: "고객사 탭에서 업체를 먼저 등록해주세요" });
+              }}
+              data-testid="button-register-first"
+            >
+              <Building2 className="h-4 w-4 mr-1" />
+              고객사 먼저 등록하기
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowUnregisteredWarning(false);
+                const msg = inquiry.status === "won"
+                  ? "프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다."
+                  : "아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?";
+                if (confirm(msg)) convertMutation.mutate();
+              }}
+              data-testid="button-convert-anyway"
+            >
+              <FolderOpen className="h-4 w-4 mr-1" />
+              임시 업체로 전환 진행
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setShowUnregisteredWarning(false)}
+              data-testid="button-cancel-convert"
+            >
+              취소
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
