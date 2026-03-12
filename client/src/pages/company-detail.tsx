@@ -345,6 +345,8 @@ export default function CompanyDetail() {
           { type: "사업자등록증", label: "사업자등록증 (PDF/이미지)" },
           { type: "통장사본", label: "통장사본 (PDF/이미지)" },
         ]}
+        title="거래처 문서"
+        folderHint="4.경영지원/database/고객사/[업체명]/"
       />
 
       <Card>

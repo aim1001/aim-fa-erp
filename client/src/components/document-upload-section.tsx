@@ -159,10 +159,14 @@ export function DocumentUploadSection({
   entityId,
   apiBase,
   docTypes,
+  title = "거래처 문서",
+  folderHint,
 }: {
   entityId: string;
   apiBase: string;
   docTypes: { type: string; label: string }[];
+  title?: string;
+  folderHint?: string;
 }) {
   const { toast } = useToast();
 
@@ -201,7 +205,7 @@ export function DocumentUploadSection({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">거래처 문서</CardTitle>
+          <CardTitle className="text-base">{title}</CardTitle>
           <Button
             size="sm"
             variant="outline"
@@ -241,9 +245,11 @@ export function DocumentUploadSection({
           </div>
         )}
 
-        <div className="text-[10px] text-muted-foreground">
-          OneDrive: 4.경영지원/database/거래처 정보/[업체명]/
-        </div>
+        {folderHint && (
+          <div className="text-[10px] text-muted-foreground">
+            OneDrive: {folderHint}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

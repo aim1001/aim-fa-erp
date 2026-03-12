@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DocumentUploadSection } from "@/components/document-upload-section";
 
 function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: () => void }) {
   const { toast } = useToast();
@@ -147,6 +148,16 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
             </div>
           </CardContent>
         </Card>
+        <DocumentUploadSection
+          entityId={vendorId}
+          apiBase="/api/vendors"
+          docTypes={[
+            { type: "사업자등록증", label: "사업자등록증 (PDF/이미지)" },
+            { type: "통장사본", label: "통장사본 (PDF/이미지)" },
+          ]}
+          title="구매처 문서"
+          folderHint="4.경영지원/database/구매처/[업체명]/"
+        />
       </div>
     </DialogContent>
   );

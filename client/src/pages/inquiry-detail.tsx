@@ -15,7 +15,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2, AlertTriangle } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2, AlertTriangle, Upload } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -2252,7 +2252,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
 
         <TabsContent value="files" className="flex-1 min-h-0 mt-3 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="pr-4">
+            <div className="space-y-4 pr-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-1">
                   <CardTitle className="text-base">파일 목록</CardTitle>
@@ -2310,6 +2310,10 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
                   )}
                 </CardContent>
               </Card>
+
+              {inquiry.onedriveFolderId && (
+                <ContractDocumentUpload inquiryId={id!} />
+              )}
             </div>
           </ScrollArea>
         </TabsContent>
@@ -2398,6 +2402,119 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+type ContractFile = {
+  id: string;
+  name: string;
+  webUrl: string;
+  size: number;
+  mimeType?: string;
+};
+
+function ContractDocumentUpload({ inquiryId }: { inquiryId: string }) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: contractFiles, isLoading } = useQuery<ContractFile[]>({
+    queryKey: ["/api/inquiries", inquiryId, "contract-documents"],
+    queryFn: async () => {
+      const res = await fetch(`/api/inquiries/${inquiryId}/contract-documents`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/inquiries/${inquiryId}/contract-documents`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "업로드 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "contract-documents"] });
+      toast({ title: "계약서 업로드 완료" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "업로드 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleFiles = useCallback((fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    uploadMutation.mutate(fileList[0]);
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-1">
+        <CardTitle className="text-base">계약서</CardTitle>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadMutation.isPending}
+          data-testid="button-upload-contract"
+        >
+          {uploadMutation.isPending ? (
+            <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />업로드 중...</>
+          ) : (
+            <><Upload className="h-3.5 w-3.5 mr-1" />계약서 업로드</>
+          )}
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xlsx,.xls"
+          className="hidden"
+          onChange={e => {
+            handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+          data-testid="input-contract-file"
+        />
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-10" />
+        ) : contractFiles && contractFiles.length > 0 ? (
+          <div className="space-y-1">
+            {contractFiles.map(f => (
+              <a
+                key={f.id}
+                href={f.webUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors group"
+                data-testid={`contract-file-${f.id}`}
+              >
+                <FileText className="h-4 w-4 text-red-500" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{f.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {f.size < 1024 * 1024 ? `${(f.size / 1024).toFixed(0)}KB` : `${(f.size / (1024 * 1024)).toFixed(1)}MB`}
+                  </p>
+                </div>
+                <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </a>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-2">
+            업로드된 계약서가 없습니다
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

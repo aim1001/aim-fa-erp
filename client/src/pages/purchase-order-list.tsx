@@ -2,7 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { PhoneLink, EmailLink } from "@/components/contact-links";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
@@ -1803,6 +1803,108 @@ function PaymentSearchPicker({
   );
 }
 
+function PODocumentUpload({ orderId }: { orderId: string }) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: files, isLoading } = useQuery<OneDriveFile[]>({
+    queryKey: ["/api/purchase-orders", orderId, "files"],
+    queryFn: async () => {
+      const res = await fetch(`/api/purchase-orders/${orderId}/files`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/purchase-orders/${orderId}/documents`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "업로드 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", orderId, "files"] });
+      toast({ title: "파일 업로드 완료" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "업로드 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleFiles = useCallback((fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    uploadMutation.mutate(fileList[0]);
+  }, []);
+
+  const docFiles = (files || []).filter(f => !f.name.endsWith(".json"));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-medium">발주서 원본 파일</Label>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadMutation.isPending}
+          data-testid="button-upload-po-doc"
+        >
+          {uploadMutation.isPending ? (
+            <><Loader2 className="h-3 w-3 mr-1 animate-spin" />업로드 중...</>
+          ) : (
+            <><Upload className="h-3 w-3 mr-1" />파일 업로드</>
+          )}
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.doc,.docx"
+          className="hidden"
+          onChange={e => {
+            handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+          data-testid="input-po-doc-file"
+        />
+      </div>
+      {isLoading ? (
+        <Skeleton className="h-8" />
+      ) : docFiles.length > 0 ? (
+        <div className="space-y-1">
+          {docFiles.map(f => (
+            <a
+              key={f.id}
+              href={f.webUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50 transition-colors text-xs group"
+              data-testid={`po-file-${f.id}`}
+            >
+              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="flex-1 truncate">{f.name}</span>
+              <span className="text-[10px] text-muted-foreground">
+                {f.size < 1024 * 1024 ? `${(f.size / 1024).toFixed(0)}KB` : `${(f.size / (1024 * 1024)).toFixed(1)}MB`}
+              </span>
+              <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100" />
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[10px] text-muted-foreground text-center py-1">업로드된 파일 없음</p>
+      )}
+    </div>
+  );
+}
+
 function OrderDetailModal({
   order,
   invoices,
@@ -2501,6 +2603,12 @@ function OrderDetailModal({
                 </div>
               </div>
             </div>
+
+            {order.onedriveFolderId && (
+              <div className="border-t pt-3">
+                <PODocumentUpload orderId={order.id} />
+              </div>
+            )}
 
             <div className="flex justify-end pt-2 border-t">
               <Button size="sm" onClick={handleSave} disabled={!isDirty} data-testid="button-save-detail">

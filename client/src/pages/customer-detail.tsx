@@ -396,6 +396,8 @@ export default function CustomerDetail() {
         entityId={id!}
         apiBase="/api/customers"
         docTypes={[{ type: "사업자등록증", label: "사업자등록증 (PDF/이미지)" }]}
+        title="고객사 문서"
+        folderHint="4.경영지원/database/고객사/[업체명]/"
       />
 
       <Card>
