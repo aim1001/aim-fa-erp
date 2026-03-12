@@ -1562,11 +1562,11 @@ export async function registerRoutes(
             } else {
               const { deleteCalendarEvent } = await import("./google-calendar");
               await deleteCalendarEvent(existing.calendarEventId);
+              allowed.calendarEventId = null;
             }
           } catch (calErr: any) {
             console.log(`Google 완료 처리 실패: ${calErr.message}`);
           }
-          allowed.calendarEventId = null;
         }
       } else if (allowed.dueDate !== undefined || allowed.dueTime !== undefined) {
         if (existing.calendarEventId) {
@@ -1735,11 +1735,11 @@ export async function registerRoutes(
             } else {
               const { deleteCalendarEvent } = await import("./google-calendar");
               await deleteCalendarEvent(existing.calendarEventId);
+              allowed.calendarEventId = null;
             }
           } catch (calErr: any) {
             console.log(`Google 완료 처리 실패: ${calErr.message}`);
           }
-          allowed.calendarEventId = null;
         }
       } else if (allowed.dueDate !== undefined || allowed.dueTime !== undefined) {
         if (existing.calendarEventId) {
@@ -2044,11 +2044,11 @@ export async function registerRoutes(
             } else {
               const { deleteCalendarEvent } = await import("./google-calendar");
               await deleteCalendarEvent(existing.calendarEventId);
+              allowed.calendarEventId = null;
             }
           } catch (calErr: any) {
             console.log(`Google 완료 처리 실패: ${calErr.message}`);
           }
-          allowed.calendarEventId = null;
         }
       }
       if ("dueDate" in req.body || "dueTime" in req.body) {
@@ -2196,11 +2196,11 @@ export async function registerRoutes(
             } else {
               const { deleteCalendarEvent } = await import("./google-calendar");
               await deleteCalendarEvent(existing.calendarEventId);
+              allowed.calendarEventId = null;
             }
           } catch (calErr: any) {
             console.log(`Google 완료 처리 실패: ${calErr.message}`);
           }
-          allowed.calendarEventId = null;
         }
       }
       if ("dueDate" in req.body || "dueTime" in req.body) {
