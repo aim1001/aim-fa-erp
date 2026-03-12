@@ -4971,6 +4971,18 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-items/excel-url", requireAuth, async (_req, res) => {
+    try {
+      const { listFilesByPath } = await import("./onedrive");
+      const files = await listFilesByPath("2.공사/database");
+      const excel = files.find((f: any) => f.name.toLowerCase() === "purchaselist.xlsx");
+      if (!excel) return res.status(404).json({ message: "purchaselist.xlsx 파일을 찾을 수 없습니다" });
+      res.json({ webUrl: excel.webUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/purchase-items/sync-onedrive", requireAuth, async (_req, res) => {
     try {
       const rows = await parsePurchaseListFromOneDrive();

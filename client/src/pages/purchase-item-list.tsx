@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload, Star, Layers, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload, Star, Layers, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -540,6 +540,22 @@ export default function PurchaseItemList() {
     },
   });
 
+  const [openingExcel, setOpeningExcel] = useState(false);
+  const openExcel = async () => {
+    setOpeningExcel(true);
+    try {
+      const res = await apiRequest("GET", "/api/purchase-items/excel-url");
+      const data = await res.json();
+      if (data.webUrl) {
+        window.open(data.webUrl, "_blank");
+      }
+    } catch (err: any) {
+      toast({ title: "엑셀 열기 실패", description: err.message, variant: "destructive" });
+    } finally {
+      setOpeningExcel(false);
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
       const res = await apiRequest("POST", "/api/purchase-items", data);
@@ -656,6 +672,15 @@ export default function PurchaseItemList() {
           >
             <Plus className="h-4 w-4" />
             <span>품목 추가</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={openExcel}
+            disabled={openingExcel}
+            data-testid="button-open-purchase-excel"
+          >
+            <FileSpreadsheet className={openingExcel ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            <span>{openingExcel ? "여는 중..." : "엑셀 열기"}</span>
           </Button>
           <Button
             variant="outline"
