@@ -1,8 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload, Star, Layers, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from "lucide-react";
-import { useState, useMemo, Fragment, useCallback } from "react";
+import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload, Star, Layers, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Check, ChevronsUpDown } from "lucide-react";
+import { useState, useMemo, Fragment, useCallback, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -127,6 +127,122 @@ function formatPrice(val: number | null | undefined) {
   return val.toLocaleString("ko-KR") + "원";
 }
 
+function CategoryCombobox({
+  value,
+  options,
+  onSelect,
+  placeholder = "선택...",
+  testId,
+  compact = false,
+}: {
+  value: string;
+  options: string[];
+  onSelect: (val: string) => void;
+  placeholder?: string;
+  testId: string;
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open && inputRef.current) {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    if (!search) return options;
+    const q = search.toLowerCase();
+    return options.filter(o => o.toLowerCase().includes(q));
+  }, [options, search]);
+
+  const handleSelect = (val: string) => {
+    onSelect(val);
+    setOpen(false);
+    setSearch("");
+  };
+
+  const handleAddNew = () => {
+    if (search.trim()) {
+      onSelect(search.trim());
+      setOpen(false);
+      setSearch("");
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(""); }}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={compact
+            ? "h-6 px-2 text-xs justify-between font-normal min-w-[80px] max-w-[140px]"
+            : "h-9 px-3 text-sm justify-between font-normal w-full"
+          }
+          data-testid={testId}
+        >
+          <span className="truncate">{value || placeholder}</span>
+          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[200px] p-0" align="start">
+        <div className="flex flex-col">
+          <div className="flex items-center border-b px-2">
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <input
+              ref={inputRef}
+              className="flex h-8 w-full bg-transparent py-1 px-2 text-xs outline-none placeholder:text-muted-foreground"
+              placeholder="검색 또는 새 값 입력..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && search.trim()) {
+                  if (filtered.length > 0) {
+                    handleSelect(filtered[0]);
+                  } else {
+                    handleAddNew();
+                  }
+                }
+              }}
+              data-testid={`${testId}-search`}
+            />
+          </div>
+          <div className="max-h-[200px] overflow-y-auto p-1">
+            {filtered.length === 0 && !search.trim() && (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">항목 없음</div>
+            )}
+            {filtered.map(opt => (
+              <button
+                key={opt}
+                className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground"
+                onClick={() => handleSelect(opt)}
+                data-testid={`${testId}-option-${opt}`}
+              >
+                <Check className={`mr-2 h-3 w-3 ${value === opt ? "opacity-100" : "opacity-0"}`} />
+                {opt}
+              </button>
+            ))}
+            {search.trim() && !options.includes(search.trim()) && (
+              <button
+                className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground text-blue-600 dark:text-blue-400"
+                onClick={handleAddNew}
+                data-testid={`${testId}-add-new`}
+              >
+                <Plus className="mr-2 h-3 w-3" />
+                "{search.trim()}" 추가
+              </button>
+            )}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function InlineEdit({
   value,
   onSave,
@@ -230,7 +346,7 @@ function VendorBadge({ item }: { item: PurchaseItemWithVendor }) {
   return <span className="text-xs text-foreground/30">-</span>;
 }
 
-function PurchaseItemDetailRow({ item, vendors }: { item: PurchaseItemWithVendor; vendors: Vendor[] }) {
+function PurchaseItemDetailRow({ item, vendors, categories, category2Map }: { item: PurchaseItemWithVendor; vendors: Vendor[]; categories: string[]; category2Map: Map<string, string[]> }) {
   const { toast } = useToast();
 
   const patchMutation = useMutation({
@@ -271,6 +387,29 @@ function PurchaseItemDetailRow({ item, vendors }: { item: PurchaseItemWithVendor
             <span>저장 중...</span>
           </div>
         )}
+
+        <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          <span className="text-muted-foreground">대분류</span>
+          <CategoryCombobox
+            value={item.category1}
+            options={categories}
+            onSelect={val => patchMutation.mutate({ category1: val })}
+            testId={`combo-cat1-${item.id}`}
+            compact
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          <span className="text-muted-foreground">소분류</span>
+          <CategoryCombobox
+            value={item.category2 || ""}
+            options={category2Map.get(item.category1) || []}
+            onSelect={val => patchMutation.mutate({ category2: val })}
+            placeholder="소분류..."
+            testId={`combo-cat2-${item.id}`}
+            compact
+          />
+        </div>
 
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground">품명</span>
@@ -584,6 +723,21 @@ export default function PurchaseItemList() {
     const set = new Set(filtered.map(i => i.category2).filter(Boolean) as string[]);
     return Array.from(set).sort();
   }, [items, categoryFilter]);
+
+  const category2Map = useMemo(() => {
+    if (!items) return new Map<string, string[]>();
+    const m = new Map<string, string[]>();
+    for (const item of items) {
+      if (!item.category2) continue;
+      const arr = m.get(item.category1) || [];
+      if (!arr.includes(item.category2)) arr.push(item.category2);
+      m.set(item.category1, arr);
+    }
+    for (const [k, v] of m) {
+      m.set(k, v.sort());
+    }
+    return m;
+  }, [items]);
 
   const filtered = useMemo(() => {
     if (!items) return [];
@@ -901,7 +1055,7 @@ export default function PurchaseItemList() {
                     {isExpanded && (
                       <TableRow className="hover:bg-transparent border-b border-border/20">
                         <TableCell colSpan={12} className="p-0">
-                          <PurchaseItemDetailRow item={item} vendors={vendors} />
+                          <PurchaseItemDetailRow item={item} vendors={vendors} categories={categories} category2Map={category2Map} />
                         </TableCell>
                       </TableRow>
                     )}
@@ -921,11 +1075,23 @@ export default function PurchaseItemList() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">대분류 *</Label>
-              <Input value={form.category1} onChange={e => setForm(f => ({ ...f, category1: e.target.value }))} placeholder="FEEDER" data-testid="input-add-category1" />
+              <CategoryCombobox
+                value={form.category1}
+                options={categories}
+                onSelect={val => setForm(f => ({ ...f, category1: val, category2: "" }))}
+                placeholder="대분류 선택..."
+                testId="combo-add-category1"
+              />
             </div>
             <div>
               <Label className="text-xs">소분류</Label>
-              <Input value={form.category2} onChange={e => setForm(f => ({ ...f, category2: e.target.value }))} placeholder="MECHANICAL" data-testid="input-add-category2" />
+              <CategoryCombobox
+                value={form.category2}
+                options={form.category1 ? (category2Map.get(form.category1) || []) : []}
+                onSelect={val => setForm(f => ({ ...f, category2: val }))}
+                placeholder="소분류 선택..."
+                testId="combo-add-category2"
+              />
             </div>
             <div>
               <Label className="text-xs">품목코드 *</Label>
