@@ -556,7 +556,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/optics-calculator/pdf", async (req, res) => {
+  app.post("/api/optics-calculator/pdf", requireAuth, async (req, res) => {
     try {
       const { camera, lensFocal, workingDistance, aiveModel, product, results, canvasImage, inquiryNumber, customerName } = req.body;
       if (!camera || !results) {
