@@ -767,3 +767,19 @@ export interface FeedingSpeedData {
     jamProbability: number;
   };
 }
+
+export const calendarEvents = pgTable("calendar_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  date: text("date").notNull(),
+  endDate: text("end_date"),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  description: text("description"),
+  color: text("color").default("purple"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true });
+export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
+export type CalendarEvent = typeof calendarEvents.$inferSelect;

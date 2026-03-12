@@ -66,6 +66,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **staff** 테이블: 자사 인력풀 (name, department(자유입력+자동완성), title(직함: 대표이사/매니저/팀원 등 자유입력), email, phone(휴대폰), createdAt) — 대표이사는 부서 "-"
 - 프로젝트↔계산서↔결제 연동: salesInvoices, purchaseInvoices, payments에 projectId 필드로 프로젝트 연결
 - 발주서↔계산서↔송금 연동: 발주서 생성 시 송금 예정(payment) 자동 생성 → 계산서 연결 시 해당 payment에 purchaseInvoiceId 설정하여 계산서로 이관 → 계산서에서 송금 관리(조정/분할/완료) → 발주서는 연결된 계산서의 결제 상태를 참조하여 표시 (계산서 미연결 시 직접 paymentId 기반 표시). 발주서 상세에서는 송금 상태 조회만 가능, 관리는 계산서에서.
+- **calendar_events** 테이블: 직접 추가 일정 (title, date YYYY-MM-DD, endDate nullable, startTime HH:mm nullable, endTime nullable, description, color(purple/blue/green/orange/red), createdAt ISO)
 - Snapshot + bridge architecture: 연결 시점의 정보를 스냅샷으로 보존하면서 현재 레코드 참조도 유지
 
 ## Authentication
@@ -97,6 +98,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 발주서 PDF/이메일 - 발주 상세 모달에서 PDF 다운로드 + 구매처 이메일 발송 (Gmail API, 발주서 PDF 첨부, OneDrive 자동 저장, vendor contactEmail 자동 채움, CC/autoCc 지원)
 - 발주서 입고일정 Google Calendar 연동 - 예정입고일 설정 시 캘린더에 `[입고] {발주번호} - {구매처명}` 이벤트 자동 등록/수정/삭제 (calendarId 설정 가능, 기본: sales@aim-fa.com)
 - 대시보드 할일 4카테고리 탭: 전체/영업/프로젝트/구매발주/경영지원. 구매발주·경영지원 할일은 독립 테이블(`purchase_order_tasks`, `finance_tasks`)로 직접 추가/완료/삭제 가능. 캘린더 동기화 포함.
+- 내부 캘린더 (`/calendar`) — 앱 자체 캘린더 페이지. 할일(4종 Tasks)/입고예정/납품마감/대금예정/직접추가 일정을 통합 표시. 월별/주별/목록 뷰 전환, 카테고리 필터 토글, 이벤트 클릭 시 상세 팝오버(원본 이동 링크). 직접 추가 일정(calendar_events 테이블)은 CRUD 가능.
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:

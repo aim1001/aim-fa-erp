@@ -31,12 +31,14 @@ import {
   type FinanceTask, type InsertFinanceTask,
   type ProjectItem, type InsertProjectItem,
   type TelegramMemo, type InsertTelegramMemo,
+  type CalendarEvent, type InsertCalendarEvent,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
   purchaseOrders, purchaseOrderItems, vendorContacts, recurringExpenses,
   purchaseOrderTasks, financeTasks, projectItems, telegramMemos, itemComponents,
+  calendarEvents,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -279,6 +281,12 @@ export interface IStorage {
   deleteTelegramMemo(id: string): Promise<void>;
   getUnreadMemoCount(): Promise<number>;
   getTelegramMemoByMessageId(messageId: number, chatId?: string): Promise<TelegramMemo | undefined>;
+
+  getCalendarEvents(start: string, end: string): Promise<CalendarEvent[]>;
+  getCalendarEvent(id: string): Promise<CalendarEvent | undefined>;
+  createCalendarEvent(data: InsertCalendarEvent): Promise<CalendarEvent>;
+  updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
+  deleteCalendarEvent(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1522,6 +1530,30 @@ export class DatabaseStorage implements IStorage {
     if (chatId) conditions.push(eq(telegramMemos.chatId, chatId));
     const [row] = await db.select().from(telegramMemos).where(and(...conditions));
     return row;
+  }
+
+  async getCalendarEvents(start: string, end: string): Promise<CalendarEvent[]> {
+    return db.select().from(calendarEvents)
+      .where(and(gte(calendarEvents.date, start), lte(calendarEvents.date, end)));
+  }
+
+  async getCalendarEvent(id: string): Promise<CalendarEvent | undefined> {
+    const [row] = await db.select().from(calendarEvents).where(eq(calendarEvents.id, id));
+    return row;
+  }
+
+  async createCalendarEvent(data: InsertCalendarEvent): Promise<CalendarEvent> {
+    const [row] = await db.insert(calendarEvents).values(data).returning();
+    return row;
+  }
+
+  async updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined> {
+    const [row] = await db.update(calendarEvents).set(data).where(eq(calendarEvents.id, id)).returning();
+    return row;
+  }
+
+  async deleteCalendarEvent(id: string): Promise<void> {
+    await db.delete(calendarEvents).where(eq(calendarEvents.id, id));
   }
 }
 

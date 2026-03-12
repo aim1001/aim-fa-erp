@@ -6562,5 +6562,224 @@ export async function registerRoutes(
     console.log("[Telegram] Memo polling disabled in development (use POST /api/telegram/memos/poll-now)");
   }
 
+  app.get("/api/calendar/events", async (req, res) => {
+    try {
+      const start = req.query.start as string;
+      const end = req.query.end as string;
+      if (!start || !end) return res.status(400).json({ message: "start and end required" });
+
+      const unified: Array<{
+        id: string;
+        title: string;
+        date: string;
+        endDate?: string | null;
+        startTime?: string | null;
+        endTime?: string | null;
+        category: string;
+        color: string;
+        completed?: boolean;
+        sourceType: string;
+        sourceId?: string;
+        description?: string | null;
+      }> = [];
+
+      const [customEvents, allInquiryTasks, allProjectTasks, allPOTasks, allFinanceTasks] = await Promise.all([
+        storage.getCalendarEvents(start, end),
+        pool.query(`SELECT t.*, i.inquiry_number, i.customer_name FROM inquiry_tasks t JOIN inquiries i ON t.inquiry_id = i.id WHERE t.due_date IS NOT NULL AND t.due_date >= $1 AND t.due_date <= $2`, [start, end]),
+        pool.query(`SELECT t.*, p.project_number, p.customer_name FROM project_tasks t JOIN projects p ON t.project_id = p.id WHERE t.due_date IS NOT NULL AND t.due_date >= $1 AND t.due_date <= $2`, [start, end]),
+        pool.query(`SELECT t.*, po.order_number, po.vendor FROM purchase_order_tasks t JOIN purchase_orders po ON t.purchase_order_id = po.id WHERE t.due_date IS NOT NULL AND t.due_date >= $1 AND t.due_date <= $2`, [start, end]),
+        pool.query(`SELECT * FROM finance_tasks WHERE due_date IS NOT NULL AND due_date >= $1 AND due_date <= $2`, [start, end]),
+      ]);
+
+      for (const e of customEvents) {
+        unified.push({
+          id: `custom-${e.id}`,
+          title: e.title,
+          date: e.date,
+          endDate: e.endDate,
+          startTime: e.startTime,
+          endTime: e.endTime,
+          category: "custom",
+          color: e.color || "purple",
+          sourceType: "calendarEvent",
+          sourceId: e.id,
+          description: e.description,
+        });
+      }
+
+      for (const r of allInquiryTasks.rows) {
+        unified.push({
+          id: `itask-${r.id}`,
+          title: `[${r.inquiry_number}] ${r.content}`,
+          date: r.due_date,
+          startTime: r.due_time,
+          category: "task",
+          color: "blue",
+          completed: r.completed,
+          sourceType: "inquiryTask",
+          sourceId: r.inquiry_id,
+          description: r.customer_name,
+        });
+      }
+
+      for (const r of allProjectTasks.rows) {
+        unified.push({
+          id: `ptask-${r.id}`,
+          title: `[${r.project_number}] ${r.content}`,
+          date: r.due_date,
+          startTime: r.due_time,
+          category: "task",
+          color: "blue",
+          completed: r.completed,
+          sourceType: "projectTask",
+          sourceId: r.project_id,
+          description: r.customer_name,
+        });
+      }
+
+      for (const r of allPOTasks.rows) {
+        unified.push({
+          id: `potask-${r.id}`,
+          title: `[${r.order_number}] ${r.content}`,
+          date: r.due_date,
+          startTime: r.due_time,
+          category: "task",
+          color: "blue",
+          completed: r.completed,
+          sourceType: "poTask",
+          sourceId: r.purchase_order_id,
+          description: r.vendor,
+        });
+      }
+
+      for (const r of allFinanceTasks.rows) {
+        unified.push({
+          id: `ftask-${r.id}`,
+          title: r.content,
+          date: r.due_date,
+          startTime: r.due_time,
+          category: "task",
+          color: "blue",
+          completed: r.completed,
+          sourceType: "financeTask",
+          sourceId: r.id,
+          description: r.category,
+        });
+      }
+
+      const poRows = await pool.query(
+        `SELECT id, order_number, vendor, expected_delivery_date FROM purchase_orders WHERE expected_delivery_date IS NOT NULL AND expected_delivery_date >= $1 AND expected_delivery_date <= $2`,
+        [start, end]
+      );
+      for (const r of poRows.rows) {
+        unified.push({
+          id: `delivery-${r.id}`,
+          title: `[입고] ${r.order_number} - ${r.vendor}`,
+          date: r.expected_delivery_date,
+          category: "delivery",
+          color: "orange",
+          sourceType: "purchaseOrder",
+          sourceId: r.id,
+        });
+      }
+
+      const projRows = await pool.query(
+        `SELECT id, project_number, customer_name, delivery_date, completion_date FROM projects WHERE (delivery_date IS NOT NULL AND delivery_date >= $1 AND delivery_date <= $2) OR (completion_date IS NOT NULL AND completion_date >= $3 AND completion_date <= $4)`,
+        [start, end, start, end]
+      );
+      for (const r of projRows.rows) {
+        if (r.delivery_date && r.delivery_date >= start && r.delivery_date <= end) {
+          unified.push({
+            id: `projdel-${r.id}`,
+            title: `[납품] ${r.project_number} - ${r.customer_name}`,
+            date: r.delivery_date,
+            category: "deadline",
+            color: "red",
+            sourceType: "project",
+            sourceId: r.id,
+          });
+        }
+        if (r.completion_date && r.completion_date >= start && r.completion_date <= end) {
+          unified.push({
+            id: `projcomp-${r.id}`,
+            title: `[완료] ${r.project_number} - ${r.customer_name}`,
+            date: r.completion_date,
+            category: "deadline",
+            color: "red",
+            sourceType: "project",
+            sourceId: r.id,
+          });
+        }
+      }
+
+      const payRows = await pool.query(
+        `SELECT id, type, company_name, description, amount, planned_date, status FROM payments WHERE planned_date IS NOT NULL AND planned_date >= $1 AND planned_date <= $2 AND status = 'planned'`,
+        [start, end]
+      );
+      for (const r of payRows.rows) {
+        const label = r.type === "income" ? "수납" : "지급";
+        const amtStr = r.amount ? ` ${(r.amount / 10000).toFixed(0)}만원` : "";
+        unified.push({
+          id: `pay-${r.id}`,
+          title: `[${label}] ${r.company_name || r.description || "미지정"}${amtStr}`,
+          date: r.planned_date,
+          category: "payment",
+          color: "green",
+          sourceType: "payment",
+          sourceId: r.id,
+          description: r.description,
+        });
+      }
+
+      unified.sort((a, b) => {
+        const dc = a.date.localeCompare(b.date);
+        if (dc !== 0) return dc;
+        const ta = a.startTime || "";
+        const tb = b.startTime || "";
+        return ta.localeCompare(tb);
+      });
+
+      res.json(unified);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/calendar/events", async (req, res) => {
+    try {
+      const { insertCalendarEventSchema } = await import("@shared/schema");
+      const data = insertCalendarEventSchema.parse({
+        ...req.body,
+        createdAt: new Date().toISOString(),
+      });
+      const event = await storage.createCalendarEvent(data);
+      res.status(201).json(event);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/calendar/events/:id", async (req, res) => {
+    try {
+      const existing = await storage.getCalendarEvent(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const event = await storage.updateCalendarEvent(req.params.id, req.body);
+      res.json(event);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/calendar/events/:id", async (req, res) => {
+    try {
+      const existing = await storage.getCalendarEvent(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      await storage.deleteCalendarEvent(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

@@ -2,7 +2,7 @@ import {
   LayoutDashboard, RefreshCw, Building2, LogOut,
   Truck, Wallet, FolderKanban, ClipboardList,
   CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart,
-  Settings, Users, TrendingUp, Cloud, ScanEye
+  Settings, Users, TrendingUp, Cloud, ScanEye, CalendarDays
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -164,6 +164,16 @@ export function AppSidebar() {
                   data-testid="nav-main-dashboard"
                 >
                   <Link href="/"><LayoutDashboard className="h-4 w-4" /><span>대시보드</span></Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  data-active={location === "/calendar"}
+                  className="data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground"
+                  data-testid="nav-calendar"
+                >
+                  <Link href="/calendar"><CalendarDays className="h-4 w-4" /><span>캘린더</span></Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

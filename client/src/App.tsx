@@ -29,6 +29,7 @@ import PurchaseOrderList from "@/pages/purchase-order-list";
 import SettingsPage from "@/pages/settings";
 import StaffList from "@/pages/staff-list";
 import OpticsCalculatorPage from "@/pages/optics-calculator";
+import CalendarPage from "@/pages/calendar";
 import Login from "@/pages/login";
 import { getQueryFn } from "@/lib/queryClient";
 
@@ -54,6 +55,7 @@ function Router() {
       <Route path="/settings" component={SettingsPage} />
       <Route path="/staff" component={StaffList} />
       <Route path="/optics-calculator" component={OpticsCalculatorPage} />
+      <Route path="/calendar" component={CalendarPage} />
       <Route component={NotFound} />
     </Switch>
   );
