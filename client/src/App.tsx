@@ -28,6 +28,7 @@ import PurchaseItemList from "@/pages/purchase-item-list";
 import PurchaseOrderList from "@/pages/purchase-order-list";
 import SettingsPage from "@/pages/settings";
 import StaffList from "@/pages/staff-list";
+import OpticsCalculatorPage from "@/pages/optics-calculator";
 import Login from "@/pages/login";
 import { getQueryFn } from "@/lib/queryClient";
 
@@ -52,6 +53,7 @@ function Router() {
       <Route path="/purchase-orders" component={PurchaseOrderList} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/staff" component={StaffList} />
+      <Route path="/optics-calculator" component={OpticsCalculatorPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -680,3 +680,90 @@ export const telegramMemos = pgTable("telegram_memos", {
 export const insertTelegramMemoSchema = createInsertSchema(telegramMemos).omit({ id: true, createdAt: true });
 export type InsertTelegramMemo = z.infer<typeof insertTelegramMemoSchema>;
 export type TelegramMemo = typeof telegramMemos.$inferSelect;
+
+export interface CameraModel {
+  id: string;
+  brand: string;
+  model: string;
+  megaPixels: number;
+  resolutionX: number;
+  resolutionY: number;
+  sensorWidth: number;
+  sensorHeight: number;
+  pixelSize: number;
+}
+
+export interface OpticsCalculation {
+  fovX: number;
+  fovY: number;
+  inspectionArea: number;
+  pixelSize: number;
+  angleX: number;
+  angleY: number;
+  avgError: number;
+  shapeErrorX: number;
+  shapeErrorY: number;
+  maxErrorX: number;
+  maxErrorY: number;
+  productsPerFov: number;
+  coverage: number;
+  efficiency: string;
+}
+
+export interface ToolCalibrationData {
+  points: Array<{ x: number; y: number }>;
+  results: {
+    xOffset: number;
+    yOffset: number;
+    minRadius: number;
+    avgRadius: number;
+    maxRadius: number;
+    deviation: number;
+  };
+}
+
+export interface RobotCalibrationData {
+  points: Array<{ index: number; imageX: number; imageY: number; robotX: number; robotY: number }>;
+  results: {
+    averageError: number;
+    maxError: number;
+    minError: number;
+    rmsError: number;
+    rotation: number;
+    scale: number;
+    homographyMatrix: number[][];
+    pointErrors: Array<{
+      index: number;
+      error: number;
+      errorX: number;
+      errorY: number;
+      transformedX: number;
+      transformedY: number;
+      originalX: number;
+      originalY: number;
+      robotX: number;
+      robotY: number;
+    }>;
+    worstPointIndex: number;
+    bestPointIndex: number;
+    qualityGrade: string;
+    recommendations: string[];
+  };
+}
+
+export interface FeedingSpeedData {
+  bowlDiameter?: number;
+  trackWidth?: number;
+  frequency?: number;
+  amplitude?: number;
+  partLength?: number;
+  partWeight?: number;
+  results: {
+    feedingRate: number;
+    efficiency: number;
+    trackVelocity: number;
+    partSpacing: number;
+    powerConsumption: number;
+    jamProbability: number;
+  };
+}

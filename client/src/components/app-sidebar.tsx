@@ -33,7 +33,8 @@ export function AppSidebar() {
   const isInquiryPage = location === "/inquiries";
   const isProjectPage = location === "/projects";
   const isSalesDashboard = location === "/sales-dashboard";
-  const isSalesSection = isSalesDashboard || isInquiryPage;
+  const isOpticsCalculator = location === "/optics-calculator";
+  const isSalesSection = isSalesDashboard || isInquiryPage || isOpticsCalculator;
   const isProjectSection = isProjectPage;
   const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan"].includes(location);
   const isTradeSection = ["/purchase-items", "/items", "/purchase-orders"].includes(location);
@@ -202,6 +203,17 @@ export function AppSidebar() {
                       data-testid="nav-inquiries"
                     >
                       <Link href="/inquiries"><span>인콰이어리</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={isOpticsCalculator}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-optics-calculator"
+                    >
+                      <Link href="/optics-calculator"><span>광학 계산기</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
