@@ -1748,6 +1748,11 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
                   <ListTodo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 )}
                 <span className="text-sm flex-1 min-w-0 truncate line-through">{task.content}</span>
+                {task.staffId && (
+                  <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                    {staffList.find((s: any) => s.id === task.staffId)?.name || ""}
+                  </span>
+                )}
                 {task.dueDate && (
                   <span className="text-[10px] shrink-0 text-muted-foreground">{task.dueDate}{task.dueTime ? ` ${task.dueTime}` : ""}</span>
                 )}
