@@ -328,7 +328,7 @@ export default function OpticsCalculator() {
     }
   };
 
-  const drawDimensions = (ctx: CanvasRenderingContext2D, centerX: number, centerY: number, fovWidth: number, fovHeight: number, results: any) => {
+  const drawDimensions = (ctx: CanvasRenderingContext2D, centerX: number, centerY: number, fovWidth: number, fovHeight: number, results: OpticsResults) => {
     ctx.fillStyle = '#10B981';
     ctx.font = 'bold 11px Inter';
     
@@ -375,7 +375,7 @@ export default function OpticsCalculator() {
     });
   };
 
-  const drawInfoPanel = (ctx: CanvasRenderingContext2D, width: number, height: number, results: any, aiveModel: string) => {
+  const drawInfoPanel = (ctx: CanvasRenderingContext2D, width: number, height: number, results: OpticsResults, aiveModel: string) => {
     const panelX = width - 250;
     const panelY = 10;
     
