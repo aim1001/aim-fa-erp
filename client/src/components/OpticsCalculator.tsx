@@ -41,9 +41,10 @@ interface OpticsResults {
 interface OpticsCalculatorProps {
   inquiryNumber?: string;
   customerName?: string;
+  showPdf?: boolean;
 }
 
-export default function OpticsCalculator({ inquiryNumber, customerName }: OpticsCalculatorProps = {}) {
+export default function OpticsCalculator({ inquiryNumber, customerName, showPdf = false }: OpticsCalculatorProps = {}) {
   const [selectedCamera, setSelectedCamera] = useState<CameraModel | null>(null);
   const [lensfocal, setLensfocal] = useState(25);
   const [workingDistance, setWorkingDistance] = useState(800);
@@ -830,28 +831,30 @@ export default function OpticsCalculator({ inquiryNumber, customerName }: Optics
                 onWheel={handleWheel}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!results || pdfLoading}
-                onClick={() => handlePdfExport(true)}
-                data-testid="button-pdf-preview"
-              >
-                {pdfLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <FileDown className="h-3 w-3 mr-1" />}
-                PDF 보기
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!results || pdfLoading}
-                onClick={() => handlePdfExport(false)}
-                data-testid="button-pdf-download"
-              >
-                <FileDown className="h-3 w-3 mr-1" />
-                PDF 다운로드
-              </Button>
-            </div>
+            {showPdf && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!results || pdfLoading}
+                  onClick={() => handlePdfExport(true)}
+                  data-testid="button-pdf-preview"
+                >
+                  {pdfLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <FileDown className="h-3 w-3 mr-1" />}
+                  PDF 보기
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!results || pdfLoading}
+                  onClick={() => handlePdfExport(false)}
+                  data-testid="button-pdf-download"
+                >
+                  <FileDown className="h-3 w-3 mr-1" />
+                  PDF 다운로드
+                </Button>
+              </div>
+            )}
             <div className="bg-muted/20 p-3 rounded text-xs mt-3">
               <div className="font-medium mb-1">팁</div>
               <div className="text-muted-foreground">

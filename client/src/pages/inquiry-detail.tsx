@@ -2414,7 +2414,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
         <TabsContent value="optics" className="flex-1 min-h-0 mt-3 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="pr-4">
-              <OpticsCalculator inquiryNumber={inquiry.inquiryNumber} customerName={inquiry.customerName} />
+              <OpticsCalculator inquiryNumber={inquiry.inquiryNumber} customerName={inquiry.customerName} showPdf />
             </div>
           </ScrollArea>
         </TabsContent>
