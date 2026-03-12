@@ -4654,6 +4654,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/purchase-items/:id/linked-products", requireAuth, async (req, res) => {
+    try {
+      const products = await storage.getLinkedProductsByPurchaseItemId(req.params.id);
+      res.json(products);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/purchase-items", requireAuth, async (req, res) => {
     try {
       const search = req.query.search as string | undefined;
