@@ -25,6 +25,7 @@ import { useDialogContainer } from "@/hooks/use-dialog-container";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo, InquiryTask, ContractTemplate } from "@shared/schema";
 import { QuotationSection } from "@/components/quotation-section";
+import OpticsCalculator from "@/components/OpticsCalculator";
 
 function useInlineUpdate(inquiryId: string) {
   const { toast } = useToast();
@@ -2181,6 +2182,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
           <TabsTrigger value="quotation" data-testid="tab-quotation">견적 및 내역</TabsTrigger>
           <TabsTrigger value="files" data-testid="tab-files">파일목록</TabsTrigger>
           <TabsTrigger value="contract" data-testid="tab-contract">계약조건</TabsTrigger>
+          <TabsTrigger value="optics" data-testid="tab-optics">광학 계산기</TabsTrigger>
         </TabsList>
 
         <TabsContent value="customer" className="flex-1 min-h-0 mt-3 overflow-hidden">
@@ -2405,6 +2407,14 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
           <ScrollArea className="h-full">
             <div className="space-y-4 pr-4">
               <ContractConditionsTab key={`contract-${inquiry.contractRatio}-${inquiry.midRatio}-${inquiry.finalRatio}-${inquiry.contractTimingType}-${inquiry.midTimingType}-${inquiry.finalTimingType}-${inquiry.midAfterDelivery}-${inquiry.finalAfterDelivery}-${(inquiry.contractClauses || "").length}-${(inquiry.warrantyTerms || "").length}`} inquiryId={id!} inquiry={inquiry} />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="optics" className="flex-1 min-h-0 mt-3 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="pr-4">
+              <OpticsCalculator inquiryNumber={inquiry.inquiryNumber} customerName={inquiry.customerName} />
             </div>
           </ScrollArea>
         </TabsContent>

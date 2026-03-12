@@ -1,16 +1,18 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Canvas } from "@/components/ui/canvas";
+import { Canvas, type CanvasHandle } from "@/components/ui/canvas";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { CalculationEngine, AIVE_SPECS, LENS_DATABASE } from "@/lib/calculations";
 import type { CameraModel } from "@shared/schema";
-import { ZoomIn, Maximize2 } from "lucide-react";
+import { ZoomIn, Maximize2, FileDown, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface OpticsResults {
   fovX: number;
@@ -36,7 +38,12 @@ interface OpticsResults {
   theoreticalProductCount: number;
 }
 
-export default function OpticsCalculator() {
+interface OpticsCalculatorProps {
+  inquiryNumber?: string;
+  customerName?: string;
+}
+
+export default function OpticsCalculator({ inquiryNumber, customerName }: OpticsCalculatorProps = {}) {
   const [selectedCamera, setSelectedCamera] = useState<CameraModel | null>(null);
   const [lensfocal, setLensfocal] = useState(25);
   const [workingDistance, setWorkingDistance] = useState(800);
@@ -51,6 +58,11 @@ export default function OpticsCalculator() {
   const [panY, setPanY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState("");
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const canvasHandleRef = useRef<CanvasHandle>(null);
+  const { toast } = useToast();
 
   const { data: cameraModels } = useQuery<CameraModel[]>({
     queryKey: ["/api/camera-models"],
@@ -139,6 +151,69 @@ export default function OpticsCalculator() {
     setZoomFactor(1);
     setPanX(0);
     setPanY(0);
+  };
+
+  const handlePdfExport = async (inline: boolean = true) => {
+    if (!selectedCamera || !results) return;
+    setPdfLoading(true);
+    try {
+      const canvasImage = canvasHandleRef.current?.toDataURL("image/png", 1.0) || "";
+      const body = {
+        inquiryNumber,
+        customerName,
+        camera: {
+          brand: selectedCamera.brand,
+          model: selectedCamera.model,
+          resolutionX: selectedCamera.resolutionX,
+          resolutionY: selectedCamera.resolutionY,
+          sensorWidth: selectedCamera.sensorWidth,
+          sensorHeight: selectedCamera.sensorHeight,
+        },
+        lensFocal: lensfocal,
+        workingDistance,
+        aiveModel,
+        product: { width: productWidth, height: productHeight, heightZ: productHeightZ },
+        results: {
+          fovX: results.fovX, fovY: results.fovY,
+          inspectionArea: results.inspectionArea, pixelSize: results.pixelSize,
+          angleX: results.angleX, angleY: results.angleY,
+          avgError: results.avgError,
+          shapeErrorX: results.shapeErrorX, shapeErrorY: results.shapeErrorY,
+          maxErrorX: results.maxErrorX, maxErrorY: results.maxErrorY,
+          productsPerFov: results.productsPerFov, coverage: results.coverage,
+          efficiency: results.efficiency,
+          theoreticalProductCount: results.theoreticalProductCount,
+        },
+        canvasImage,
+      };
+
+      const response = await fetch(`/api/optics-calculator/pdf?inline=${inline ? "1" : "0"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) throw new Error("PDF 생성 실패");
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      if (inline) {
+        if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+        setPdfPreviewUrl(url);
+        setPdfDialogOpen(true);
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `optics_report${inquiryNumber ? `_${inquiryNumber}` : ""}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err: any) {
+      toast({ title: "오류", description: err.message || "PDF 생성에 실패했습니다", variant: "destructive" });
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   const drawOpticsVisualization = useCallback((ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
@@ -742,6 +817,7 @@ export default function OpticsCalculator() {
           <CardContent>
             <div className="mb-4">
               <Canvas 
+                ref={canvasHandleRef}
                 width={600} 
                 height={400} 
                 onDraw={drawOpticsVisualization}
@@ -754,7 +830,29 @@ export default function OpticsCalculator() {
                 onWheel={handleWheel}
               />
             </div>
-            <div className="bg-muted/20 p-3 rounded text-xs">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!results || pdfLoading}
+                onClick={() => handlePdfExport(true)}
+                data-testid="button-pdf-preview"
+              >
+                {pdfLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <FileDown className="h-3 w-3 mr-1" />}
+                PDF 보기
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!results || pdfLoading}
+                onClick={() => handlePdfExport(false)}
+                data-testid="button-pdf-download"
+              >
+                <FileDown className="h-3 w-3 mr-1" />
+                PDF 다운로드
+              </Button>
+            </div>
+            <div className="bg-muted/20 p-3 rounded text-xs mt-3">
               <div className="font-medium mb-1">팁</div>
               <div className="text-muted-foreground">
                 작업거리(WD)와 렌즈 초점거리를 조정하여 최적의 FOV를 설정하세요. 
@@ -764,6 +862,22 @@ export default function OpticsCalculator() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>광학 계산기 리포트</DialogTitle>
+          </DialogHeader>
+          {pdfPreviewUrl && (
+            <iframe
+              src={pdfPreviewUrl}
+              className="w-full h-[70vh]"
+              title="광학 계산기 PDF 미리보기"
+              data-testid="iframe-optics-pdf-preview"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -556,6 +556,27 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/optics-calculator/pdf", async (req, res) => {
+    try {
+      const { camera, lensFocal, workingDistance, aiveModel, product, results, canvasImage, inquiryNumber, customerName } = req.body;
+      if (!camera || !results) {
+        return res.status(400).json({ message: "카메라 및 계산 결과 데이터가 필요합니다" });
+      }
+
+      const { generateOpticsCalculatorPDF } = await import("./optics-calculator-export");
+      const buf = await generateOpticsCalculatorPDF({
+        inquiryNumber, customerName, camera, lensFocal, workingDistance, aiveModel, product, results, canvasImage,
+      });
+
+      const disposition = req.query.inline === "1" ? "inline" : "attachment";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `${disposition}; filename="optics_report.pdf"`);
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/inquiries/:id/files", async (req, res) => {
     try {
       const files = await storage.getInquiryFiles(req.params.id);

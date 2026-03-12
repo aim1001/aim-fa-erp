@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, forwardRef, useImperativeHandle } from "react";
 
 interface CanvasProps {
   width: number;
@@ -13,7 +13,11 @@ interface CanvasProps {
   "data-testid"?: string;
 }
 
-export function Canvas({
+export interface CanvasHandle {
+  toDataURL: (type?: string, quality?: number) => string;
+}
+
+export const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas({
   width,
   height,
   onDraw,
@@ -24,8 +28,14 @@ export function Canvas({
   onMouseLeave,
   onWheel,
   "data-testid": dataTestId,
-}: CanvasProps) {
+}, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    toDataURL: (type?: string, quality?: number) => {
+      return canvasRef.current?.toDataURL(type, quality) ?? "";
+    },
+  }));
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -55,4 +65,4 @@ export function Canvas({
       data-testid={dataTestId}
     />
   );
-}
+});
