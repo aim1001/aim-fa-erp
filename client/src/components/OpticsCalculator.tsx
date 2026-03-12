@@ -11,7 +11,6 @@ import { CalculationEngine, AIVE_SPECS, LENS_DATABASE } from "@/lib/calculations
 import type { CameraModel } from "@shared/schema";
 import { ZoomIn, Maximize2, FileDown, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface OpticsResults {
@@ -866,7 +865,13 @@ export default function OpticsCalculator({ inquiryNumber, customerName, showPdf 
         </Card>
       </div>
 
-      <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
+      <Dialog open={pdfDialogOpen} onOpenChange={(open) => {
+        setPdfDialogOpen(open);
+        if (!open && pdfPreviewUrl) {
+          URL.revokeObjectURL(pdfPreviewUrl);
+          setPdfPreviewUrl("");
+        }
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>광학 계산기 리포트</DialogTitle>
