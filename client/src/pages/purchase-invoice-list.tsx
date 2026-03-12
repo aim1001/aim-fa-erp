@@ -752,7 +752,7 @@ export default function PurchaseInvoiceList() {
             disabled={!importYear}
             data-testid="button-open-purchase-excel"
           >
-            <ExternalLink className="h-4 w-4 mr-1" />엑셀 열기
+            <ExternalLink className="h-4 w-4 mr-1" />엑셀 직접 열기
           </Button>
           <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-purchase-invoice">
             <Plus className="h-4 w-4 mr-1" />추가
