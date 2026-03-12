@@ -576,8 +576,9 @@ export default function PurchaseItemList() {
       if (category2Filter !== "all" && (item.category2 || "") !== category2Filter) return false;
       if (vendorFilter === "linked" && !item.vendorId) return false;
       if (vendorFilter === "unlinked" && item.vendorId) return false;
-      if (activeFilter === "active" && item.active !== true) return false;
-      if (activeFilter === "inactive" && item.active !== false) return false;
+      const isActive = item.active ?? true;
+      if (activeFilter === "active" && !isActive) return false;
+      if (activeFilter === "inactive" && isActive) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
