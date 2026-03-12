@@ -1470,13 +1470,18 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
   const [taskType, setTaskType] = useState<"todo" | "schedule">("todo");
+  const [staffId, setStaffId] = useState("");
+
+  const { data: staffList = [] } = useQuery<any[]>({
+    queryKey: ["/api/staff"],
+  });
 
   const { data: tasks = [], isLoading } = useQuery<any[]>({
     queryKey: [`/api/projects/${projectId}/tasks`],
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { content: string; dueDate?: string; dueTime?: string; taskType?: string }) =>
+    mutationFn: (data: { content: string; dueDate?: string; dueTime?: string; taskType?: string; staffId?: string }) =>
       apiRequest("POST", `/api/projects/${projectId}/tasks`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/tasks`] });
@@ -1484,6 +1489,7 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
       setNewContent("");
       setDueDate("");
       setDueTime("");
+      setStaffId("");
     },
     onError: () => toast({ title: "할일 추가 실패", variant: "destructive" }),
   });
@@ -1604,12 +1610,23 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
           onChange={e => setNewContent(e.target.value)}
           onKeyDown={e => {
             if (e.key === "Enter" && newContent.trim()) {
-              createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType });
+              createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType, staffId: staffId || undefined });
             }
           }}
           className="h-7 text-xs"
           data-testid="input-project-task-content"
         />
+        <Select value={staffId || "none"} onValueChange={v => setStaffId(v === "none" ? "" : v)}>
+          <SelectTrigger className="h-7 text-[10px] w-[80px] shrink-0" data-testid="select-project-task-staff">
+            <SelectValue placeholder="담당" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">담당자</SelectItem>
+            {staffList.map((s: any) => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Input
           type="date"
           value={dueDate}
@@ -1629,7 +1646,7 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
           variant="outline"
           className="h-7 px-2 shrink-0"
           disabled={!newContent.trim() || createMutation.isPending}
-          onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType })}
+          onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType, staffId: staffId || undefined })}
           data-testid="button-add-project-task"
         >
           <Plus className="h-3 w-3" />
@@ -1653,6 +1670,11 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
                 <ListTodo className="h-3 w-3 shrink-0 text-muted-foreground" />
               )}
               <span className="text-xs flex-1 min-w-0 truncate">{task.content}</span>
+              {task.staffId && (
+                <span className="text-[9px] shrink-0 px-1 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" data-testid={`text-project-task-staff-${task.id}`}>
+                  {staffList.find((s: any) => s.id === task.staffId)?.name || ""}
+                </span>
+              )}
               {task.dueDate && (
                 <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
                   <button

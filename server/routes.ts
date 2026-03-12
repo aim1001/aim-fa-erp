@@ -1491,7 +1491,7 @@ export async function registerRoutes(
 
   app.post("/api/inquiries/:id/tasks", async (req, res) => {
     try {
-      const { content, dueDate, dueTime, taskType } = req.body;
+      const { content, dueDate, dueTime, taskType, staffId } = req.body;
       const resolvedTaskType = taskType === "schedule" ? "schedule" : "todo";
       if (!content?.trim()) return res.status(400).json({ message: "내용을 입력하세요" });
       const normalizedDueDate = typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(dueDate) ? dueDate.slice(0, 10) : null;
@@ -1523,6 +1523,7 @@ export async function registerRoutes(
         dueTime: normalizedDueTime,
         calendarEventId,
         taskType: resolvedTaskType,
+        staffId: staffId || null,
         createdAt: new Date().toISOString().slice(0, 10),
       });
       storage.getInquiry(req.params.id).then(inq => {
@@ -1547,6 +1548,9 @@ export async function registerRoutes(
       if (req.body.dueTime !== undefined) {
         allowed.dueTime = typeof req.body.dueTime === "string" && /^\d{2}:\d{2}/.test(req.body.dueTime)
           ? req.body.dueTime.slice(0, 5) : null;
+      }
+      if (req.body.staffId !== undefined) {
+        allowed.staffId = req.body.staffId || null;
       }
       if (Object.keys(allowed).length === 0) return res.status(400).json({ message: "수정할 내용이 없습니다" });
 
@@ -1682,7 +1686,7 @@ export async function registerRoutes(
 
   app.post("/api/projects/:id/tasks", async (req, res) => {
     try {
-      const { content, dueDate, dueTime, taskType } = req.body;
+      const { content, dueDate, dueTime, taskType, staffId } = req.body;
       const resolvedTaskType = taskType === "schedule" ? "schedule" : "todo";
       if (!content?.trim()) return res.status(400).json({ message: "내용을 입력하세요" });
       const normalizedDueDate = typeof dueDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(dueDate) ? dueDate.slice(0, 10) : null;
@@ -1714,6 +1718,7 @@ export async function registerRoutes(
         dueTime: normalizedDueTime,
         calendarEventId,
         taskType: resolvedTaskType,
+        staffId: staffId || null,
         createdAt: new Date().toISOString().slice(0, 10),
       });
       storage.getProject(req.params.id).then(proj => {
@@ -1738,6 +1743,9 @@ export async function registerRoutes(
       if (req.body.dueTime !== undefined) {
         allowed.dueTime = typeof req.body.dueTime === "string" && /^\d{2}:\d{2}/.test(req.body.dueTime)
           ? req.body.dueTime.slice(0, 5) : null;
+      }
+      if (req.body.staffId !== undefined) {
+        allowed.staffId = req.body.staffId || null;
       }
       if (Object.keys(allowed).length === 0) return res.status(400).json({ message: "수정할 내용이 없습니다" });
 
@@ -6581,12 +6589,13 @@ export async function registerRoutes(
         sourceType: string;
         sourceId?: string;
         description?: string | null;
+        assigneeName?: string | null;
       }> = [];
 
       const [customEvents, allInquiryTasks, allProjectTasks, allPOTasks, allFinanceTasks] = await Promise.all([
         storage.getCalendarEvents(start, end),
-        pool.query(`SELECT t.*, i.inquiry_number, i.customer_name FROM inquiry_tasks t JOIN inquiries i ON t.inquiry_id = i.id WHERE t.due_date IS NOT NULL AND t.due_date >= $1 AND t.due_date <= $2`, [start, end]),
-        pool.query(`SELECT t.*, p.project_number, p.customer_name FROM project_tasks t JOIN projects p ON t.project_id = p.id WHERE t.due_date IS NOT NULL AND t.due_date >= $1 AND t.due_date <= $2`, [start, end]),
+        pool.query(`SELECT t.*, i.inquiry_number, i.customer_name, s.name as staff_name FROM inquiry_tasks t JOIN inquiries i ON t.inquiry_id = i.id LEFT JOIN staff s ON t.staff_id = s.id WHERE t.due_date IS NOT NULL AND t.due_date >= $1 AND t.due_date <= $2`, [start, end]),
+        pool.query(`SELECT t.*, p.project_number, p.customer_name, s.name as staff_name FROM project_tasks t JOIN projects p ON t.project_id = p.id LEFT JOIN staff s ON t.staff_id = s.id WHERE t.due_date IS NOT NULL AND t.due_date >= $1 AND t.due_date <= $2`, [start, end]),
         pool.query(`SELECT t.*, po.order_number, po.vendor FROM purchase_order_tasks t JOIN purchase_orders po ON t.purchase_order_id = po.id WHERE t.due_date IS NOT NULL AND t.due_date >= $1 AND t.due_date <= $2`, [start, end]),
         pool.query(`SELECT * FROM finance_tasks WHERE due_date IS NOT NULL AND due_date >= $1 AND due_date <= $2`, [start, end]),
       ]);
@@ -6619,6 +6628,7 @@ export async function registerRoutes(
           sourceType: "inquiryTask",
           sourceId: r.inquiry_id,
           description: r.customer_name,
+          assigneeName: r.staff_name || null,
         });
       }
 
@@ -6634,6 +6644,7 @@ export async function registerRoutes(
           sourceType: "projectTask",
           sourceId: r.project_id,
           description: r.customer_name,
+          assigneeName: r.staff_name || null,
         });
       }
 

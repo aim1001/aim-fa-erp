@@ -491,6 +491,7 @@ export const inquiryTasks = pgTable("inquiry_tasks", {
   dueTime: text("due_time"),
   calendarEventId: text("calendar_event_id"),
   taskType: text("task_type").default("todo"),
+  staffId: varchar("staff_id"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -507,6 +508,7 @@ export const projectTasks = pgTable("project_tasks", {
   dueTime: text("due_time"),
   calendarEventId: text("calendar_event_id"),
   taskType: text("task_type").default("todo"),
+  staffId: varchar("staff_id"),
   createdAt: text("created_at").notNull(),
 });
 

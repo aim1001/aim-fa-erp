@@ -30,7 +30,18 @@ type CalendarEventItem = {
   sourceType: string;
   sourceId?: string;
   description?: string | null;
+  assigneeName?: string | null;
 };
+
+type AreaFilter = "all" | "sales" | "project" | "purchase" | "finance";
+
+const AREA_CONFIG: { key: AreaFilter; label: string; sourceTypes: string[] }[] = [
+  { key: "all", label: "전체", sourceTypes: [] },
+  { key: "sales", label: "영업", sourceTypes: ["inquiryTask"] },
+  { key: "project", label: "프로젝트", sourceTypes: ["projectTask", "project"] },
+  { key: "purchase", label: "구매", sourceTypes: ["poTask", "purchaseOrder"] },
+  { key: "finance", label: "경영지원", sourceTypes: ["financeTask", "payment"] },
+];
 
 type ViewMode = "month" | "week" | "list";
 
@@ -107,6 +118,7 @@ export default function CalendarPage() {
   const [filters, setFilters] = useState<Record<string, boolean>>({
     task: true, delivery: true, deadline: true, payment: true, custom: true,
   });
+  const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventItem | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEventItem | null>(null);
@@ -127,7 +139,15 @@ export default function CalendarPage() {
     },
   });
 
-  const filteredEvents = useMemo(() => events.filter(e => filters[e.category]), [events, filters]);
+  const filteredEvents = useMemo(() => {
+    const areaSourceTypes = AREA_CONFIG.find(a => a.key === areaFilter)?.sourceTypes || [];
+    return events.filter(e => {
+      if (!filters[e.category]) return false;
+      if (areaFilter === "all") return true;
+      if (e.sourceType === "calendarEvent") return true;
+      return areaSourceTypes.includes(e.sourceType);
+    });
+  }, [events, filters, areaFilter]);
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarEventItem[]> = {};
@@ -450,6 +470,20 @@ export default function CalendarPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex border rounded-md mr-1">
+            {AREA_CONFIG.map(area => (
+              <Button
+                key={area.key}
+                variant={areaFilter === area.key ? "default" : "ghost"}
+                size="sm"
+                className="h-7 px-2 text-xs rounded-none first:rounded-l-md last:rounded-r-md"
+                onClick={() => setAreaFilter(area.key)}
+                data-testid={`area-filter-${area.key}`}
+              >
+                {area.label}
+              </Button>
+            ))}
+          </div>
           <div className="flex items-center gap-1.5 mr-2">
             {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
               <label key={key} className="flex items-center gap-1 text-xs cursor-pointer" data-testid={`filter-${key}`}>
@@ -567,9 +601,16 @@ function EventDetail({
             {event.endTime && ` ~ ${event.endTime}`}
           </div>
           {event.description && <div className="text-xs text-muted-foreground mt-1">{event.description}</div>}
-          <span className={cn("text-[10px] px-1.5 py-0.5 rounded mt-1 inline-block", styles.badgeClass)}>
-            {cfg?.label}
-          </span>
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <span className={cn("text-[10px] px-1.5 py-0.5 rounded inline-block", styles.badgeClass)}>
+              {cfg?.label}
+            </span>
+            {event.assigneeName && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 inline-block" data-testid="text-event-assignee">
+                {event.assigneeName}
+              </span>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex items-center gap-1 pt-1 border-t">

@@ -1411,17 +1411,22 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
   const [dueDate, setDueDate] = useState("");
   const [dueTime, setDueTime] = useState("");
   const [taskType, setTaskType] = useState<"todo" | "schedule">("todo");
+  const [staffId, setStaffId] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editDueTime, setEditDueTime] = useState("");
+
+  const { data: staffList = [] } = useQuery<any[]>({
+    queryKey: ["/api/staff"],
+  });
 
   const { data: tasks = [], isLoading } = useQuery<InquiryTask[]>({
     queryKey: [`/api/inquiries/${inquiryId}/tasks`],
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: { content: string; dueDate?: string; dueTime?: string; taskType?: string }) =>
+    mutationFn: (data: { content: string; dueDate?: string; dueTime?: string; taskType?: string; staffId?: string }) =>
       apiRequest("POST", `/api/inquiries/${inquiryId}/tasks`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/inquiries/${inquiryId}/tasks`] });
@@ -1429,6 +1434,7 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
       setNewContent("");
       setDueDate("");
       setDueTime("");
+      setStaffId("");
     },
     onError: () => toast({ title: "할일 추가 실패", variant: "destructive" }),
   });
@@ -1563,12 +1569,23 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
             onChange={e => setNewContent(e.target.value)}
             onKeyDown={e => {
               if (e.key === "Enter" && newContent.trim()) {
-                createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType });
+                createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType, staffId: staffId || undefined });
               }
             }}
             className="h-8 text-sm"
             data-testid="input-task-content"
           />
+          <Select value={staffId || "none"} onValueChange={v => setStaffId(v === "none" ? "" : v)}>
+            <SelectTrigger className="h-8 text-xs w-[100px] shrink-0" data-testid="select-task-staff">
+              <SelectValue placeholder="담당자" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">담당자</SelectItem>
+              {staffList.map((s: any) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
             type="date"
             value={dueDate}
@@ -1588,7 +1605,7 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
             variant="outline"
             className="h-8 px-2 shrink-0"
             disabled={!newContent.trim() || createMutation.isPending}
-            onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType })}
+            onClick={() => createMutation.mutate({ content: newContent.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, taskType, staffId: staffId || undefined })}
             data-testid="button-add-task"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -1675,6 +1692,11 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
                       <ListTodo className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     )}
                     <span className="text-sm flex-1 min-w-0 truncate">{task.content}</span>
+                    {task.staffId && (
+                      <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" data-testid={`text-task-staff-${task.id}`}>
+                        {staffList.find((s: any) => s.id === task.staffId)?.name || ""}
+                      </span>
+                    )}
                     {task.dueDate && (
                       <span className={`text-[10px] shrink-0 inline-flex items-center gap-0.5 ${isOverdue(task.dueDate) ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
                         <button

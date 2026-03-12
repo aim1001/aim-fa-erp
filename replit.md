@@ -51,8 +51,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **item_components** 테이블: 판매제품 BOM 구성품 (itemMasterId FK→item_master, purchaseItemId FK→purchase_items nullable, itemName, spec, quantity, unitCost, isAdjustment, sortOrder, remark) — 판매제품에 구매품 연결, purchaseItemId null이면 임시 항목(직접 입력), isAdjustment=true는 금액 조정 항목, "원가 적용" 버튼으로만 item_master.cost에 반영 (자동 갱신 없음, 직접 입력한 원가 유지). 구매품 관리 리스트에서 BOM 연결 여부를 Layers 아이콘으로 표시 (연결됨=파란색/미연결=회색, 호버 시 연결된 판매제품명 툴팁)
 - **purchase_order_items** 테이블: 발주 품목 (purchaseOrderId FK→purchase_orders, itemCode, itemName, spec, brand, quantity, unitPrice, amount, category1, sortOrder, isAdjustment) — 발주서 품목 단위 관리, isAdjustment=true는 가격 조정 항목(할인/추가비용)
 - **inquiry_memos** 테이블: 인콰이어리 메모 (inquiryId FK→inquiries, content, createdAt ISO string) - 날짜별 메모 누적 관리
-- **inquiry_tasks** 테이블: 인콰이어리 할일 (inquiryId FK→inquiries, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, createdAt YYYY-MM-DD) - taskType="todo"이면 Google Tasks로 등록/완료/삭제, taskType="schedule"이면 Google Calendar로 등록/삭제
-- **project_tasks** 테이블: 프로젝트 할일 (projectId FK→projects, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, createdAt YYYY-MM-DD) - Google Tasks/Calendar 연동 (inquiry_tasks와 동일 패턴)
+- **inquiry_tasks** 테이블: 인콰이어리 할일 (inquiryId FK→inquiries, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, staffId varchar nullable FK→staff, createdAt YYYY-MM-DD) - taskType="todo"이면 Google Tasks로 등록/완료/삭제, taskType="schedule"이면 Google Calendar로 등록/삭제, staffId로 담당자 지정
+- **project_tasks** 테이블: 프로젝트 할일 (projectId FK→projects, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, staffId varchar nullable FK→staff, createdAt YYYY-MM-DD) - Google Tasks/Calendar 연동 (inquiry_tasks와 동일 패턴), staffId로 담당자 지정
 - 대시보드 TaskListCard: 인콰이어리 할일 + 프로젝트 할일을 통합 표시, 프로젝트 할일은 번호 앞에 "P:" 접두사로 구분
 - **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, adjustmentAmount, adjustmentNote, discountType(percent/amount 선택), discountValue(비율% 또는 금액), discountTruncUnit(none/1000/10000/100000/1000000 - 최종공급가액에 절사 적용), deliveryDays(납기일수 - purchase_items의 최대 leadTimeDays 자동계산, 수정가능), createdAt)
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder, isAdjustment) — isAdjustment=true인 항목은 추가/할인 항목으로 별도 관리
@@ -98,7 +98,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - 발주서 PDF/이메일 - 발주 상세 모달에서 PDF 다운로드 + 구매처 이메일 발송 (Gmail API, 발주서 PDF 첨부, OneDrive 자동 저장, vendor contactEmail 자동 채움, CC/autoCc 지원)
 - 발주서 입고일정 Google Calendar 연동 - 예정입고일 설정 시 캘린더에 `[입고] {발주번호} - {구매처명}` 이벤트 자동 등록/수정/삭제 (calendarId 설정 가능, 기본: sales@aim-fa.com)
 - 대시보드 할일 4카테고리 탭: 전체/영업/프로젝트/구매발주/경영지원. 구매발주·경영지원 할일은 독립 테이블(`purchase_order_tasks`, `finance_tasks`)로 직접 추가/완료/삭제 가능. 캘린더 동기화 포함.
-- 내부 캘린더 (`/calendar`) — 앱 자체 캘린더 페이지. 할일(4종 Tasks)/입고예정/납품마감/대금예정/직접추가 일정을 통합 표시. 월별/주별/목록 뷰 전환, 카테고리 필터 토글, 이벤트 클릭 시 상세 팝오버(원본 이동 링크). 직접 추가 일정(calendar_events 테이블)은 CRUD 가능.
+- 내부 캘린더 (`/calendar`) — 앱 자체 캘린더 페이지. 할일(4종 Tasks)/입고예정/납품마감/대금예정/직접추가 일정을 통합 표시. 월별/주별/목록 뷰 전환, 카테고리 필터 토글 + 영역 필터(전체/영업/프로젝트/구매/경영지원), 이벤트 클릭 시 상세 팝오버(원본 이동 링크, 담당자 표시). 직접 추가 일정(calendar_events 테이블)은 CRUD 가능.
+- 할일/일정 담당자 지정 — 인콰이어리·프로젝트 할일 추가 시 staff 목록에서 담당자 선택 가능, 할일 목록에 이름 표시, 캘린더 팝오버에도 담당자 표시
 
 ## Excel Customer Info Structure
 견적서 엑셀 파일 시트에서 고객 정보 위치:
