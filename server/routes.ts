@@ -3665,6 +3665,21 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/sales-invoices/excel-url", requireAuth, async (req, res) => {
+    try {
+      const year = req.query.year as string;
+      if (!year) return res.status(400).json({ message: "연도를 지정해주세요" });
+      const { listFilesByPath } = await import("./onedrive");
+      const basePath = `4.경영지원/database/${year}`;
+      const files = await listFilesByPath(basePath);
+      const excel = files.find((f: any) => f.name.startsWith("매출전자세금계산서목록") && (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")));
+      if (!excel) return res.status(404).json({ message: `${year}년 매출전자세금계산서 파일을 찾을 수 없습니다` });
+      res.json({ webUrl: excel.webUrl, fileName: excel.name });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/purchase-invoices/import-onedrive", async (req, res) => {
     try {
       const { year } = req.body;
@@ -3810,6 +3825,21 @@ export async function registerRoutes(
       }
 
       res.json({ imported, updated, skipped, vendorsCreated, total: rows.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-invoices/excel-url", requireAuth, async (req, res) => {
+    try {
+      const year = req.query.year as string;
+      if (!year) return res.status(400).json({ message: "연도를 지정해주세요" });
+      const { listFilesByPath } = await import("./onedrive");
+      const basePath = `4.경영지원/database/${year}`;
+      const files = await listFilesByPath(basePath);
+      const excel = files.find((f: any) => f.name.startsWith("매입전자세금계산서목록") && (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")));
+      if (!excel) return res.status(404).json({ message: `${year}년 매입전자세금계산서 파일을 찾을 수 없습니다` });
+      res.json({ webUrl: excel.webUrl, fileName: excel.name });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

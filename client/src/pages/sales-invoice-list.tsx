@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2 } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
@@ -699,6 +699,25 @@ export default function SalesInvoiceList() {
           >
             {importMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
             {importMutation.isPending ? "가져오는 중..." : "OneDrive에서 가져오기"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              if (!importYear) { toast({ title: "연도를 먼저 선택해주세요", variant: "destructive" }); return; }
+              try {
+                const res = await fetch(`/api/sales-invoices/excel-url?year=${importYear}`);
+                if (!res.ok) { const err = await res.json(); toast({ title: "파일 열기 실패", description: err.message, variant: "destructive" }); return; }
+                const { webUrl } = await res.json();
+                window.open(webUrl, "_blank");
+              } catch (e: any) {
+                toast({ title: "파일 열기 실패", description: e.message, variant: "destructive" });
+              }
+            }}
+            disabled={!importYear}
+            data-testid="button-open-sales-excel"
+          >
+            <ExternalLink className="h-4 w-4 mr-1" />엑셀 열기
           </Button>
           <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-sales-invoice">
             <Plus className="h-4 w-4 mr-1" />추가
