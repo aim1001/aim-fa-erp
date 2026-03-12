@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import {
   FileText, Plus, Trash2, Search, Pencil, Check, X,
-  Upload, FileDown, Package, Loader2, Star, Mail, Send, ArrowUpToLine,
+  Upload, FileDown, Package, Loader2, Star, Mail, Send, ArrowUpToLine, Copy, Lock,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -235,10 +235,11 @@ function ItemSearchPopover({ onSelect, disabled }: {
   );
 }
 
-function ItemsTab({ quotation, items, onRefresh }: {
+function ItemsTab({ quotation, items, onRefresh, isLocked }: {
   quotation: Quotation;
   items: QuotationItem[];
   onRefresh: () => void;
+  isLocked?: boolean;
 }) {
   const { toast } = useToast();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -297,8 +298,9 @@ function ItemsTab({ quotation, items, onRefresh }: {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <ItemSearchPopover onSelect={handleAddItem} disabled={addItemMut.isPending} />
-        <div className="text-xs text-muted-foreground">
+        {!isLocked && <ItemSearchPopover onSelect={handleAddItem} disabled={addItemMut.isPending} />}
+        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+          {isLocked && <Lock className="h-3 w-3" />}
           {regularItems.length}개 품목 · 총 마진율: <MarginBadge rate={overallMargin} />
         </div>
       </div>
@@ -352,7 +354,7 @@ function ItemsTab({ quotation, items, onRefresh }: {
                       <td className="px-2 py-1.5 w-20 text-muted-foreground">{item.itemCode || "-"}</td>
                       <td className="px-2 py-1.5 font-medium">{item.itemName}</td>
                       <td className="px-2 py-1.5 w-24 text-muted-foreground">{item.spec || "-"}</td>
-                      {isEditing ? (
+                      {isEditing && !isLocked ? (
                         <>
                           <td className="px-1 py-1 w-14">
                             <Input
@@ -400,6 +402,7 @@ function ItemsTab({ quotation, items, onRefresh }: {
                           <td className="px-2 py-1.5 w-24 text-right font-medium">{fmtNum(item.amount)}</td>
                           <td className="px-2 py-1.5 w-14 text-center"><MarginBadge rate={margin} /></td>
                           <td className="px-1 py-1 w-10">
+                            {!isLocked && (
                             <div className="flex gap-0.5">
                               <Button size="sm" variant="ghost" className="h-5 w-5 p-0"
                                 data-testid={`button-edit-item-${item.id}`}
@@ -412,6 +415,7 @@ function ItemsTab({ quotation, items, onRefresh }: {
                                 <Trash2 className="h-3 w-3" />
                               </Button>
                             </div>
+                            )}
                           </td>
                         </>
                       )}
@@ -442,11 +446,12 @@ const FALLBACK_NOTES = `[제외사항]
   대전 이남 80만원
 - 원격 기술지원: 4시간 20만원`;
 
-function PricingTab({ quotation, items, inquiryId, onRefresh }: {
+function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
   quotation: Quotation;
   items: QuotationItem[];
   inquiryId: string;
   onRefresh: () => void;
+  isLocked?: boolean;
 }) {
   const { data: companySettings } = useQuery<CompanySettings>({
     queryKey: ["/api/company-settings"],
@@ -606,7 +611,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
                 const isEditing = editingAdjId === item.id;
                 return (
                   <tr key={item.id} className="border-t hover:bg-muted/20" data-testid={`adj-item-row-${item.id}`}>
-                    {isEditing ? (
+                    {isEditing && !isLocked ? (
                       <>
                         <td className="px-1 py-1">
                           <Input value={editAdjForm.itemName} onChange={e => setEditAdjForm(f => ({ ...f, itemName: e.target.value }))} className="text-xs h-7" data-testid={`input-edit-adj-name-${item.id}`} />
@@ -648,6 +653,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
                         <td className="px-2 py-1.5 w-24 text-right font-medium">{fmtNum(item.amount)}</td>
                         <td className="px-2 py-1.5 w-14 text-center"><MarginBadge rate={margin} /></td>
                         <td className="px-1 py-1 w-10">
+                          {!isLocked && (
                           <div className="flex gap-0.5">
                             <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-edit-adj-${item.id}`}
                               onClick={() => { setEditingAdjId(item.id); setEditAdjForm({ itemName: item.itemName, spec: item.spec || "", quantity: item.quantity, costPrice: item.costPrice || 0, unitPrice: item.unitPrice }); }}>
@@ -658,12 +664,14 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>
+                          )}
                         </td>
                       </>
                     )}
                   </tr>
                 );
               })}
+              {!isLocked && (
               <tr className="border-t bg-muted/10">
                 <td className="px-1 py-1">
                   <Input value={newAdj.itemName} onChange={e => setNewAdj(f => ({ ...f, itemName: e.target.value }))} placeholder="품목명" className="text-xs h-7" data-testid="input-new-adj-name" />
@@ -688,6 +696,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
                   </Button>
                 </td>
               </tr>
+              )}
               {adjustmentItems.length > 0 && (
                 <tr className="border-t bg-muted/30">
                   <td colSpan={5} className="px-2 py-1.5 text-right font-semibold">추가 항목 소계</td>
@@ -713,6 +722,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
           </div>
         </div>
 
+        {!isLocked && (
         <div className="border-t pt-3 space-y-2">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium">할인</label>
@@ -739,7 +749,9 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
             )}
           </div>
         </div>
+        )}
 
+        {!isLocked && (
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium">절사</label>
           <Select value={discountTruncUnit} onValueChange={setDiscountTruncUnit}>
@@ -755,6 +767,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
             </SelectContent>
           </Select>
         </div>
+        )}
 
         {actualDiscount > 0 && (
           <div className="flex items-center justify-between text-sm">
@@ -786,6 +799,8 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
         </div>
       </div>
 
+      {!isLocked && (
+      <>
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">납기</span>
         <Input
@@ -844,6 +859,8 @@ function PricingTab({ quotation, items, inquiryId, onRefresh }: {
         {updateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Check className="h-4 w-4 mr-1" />}
         저장
       </Button>
+      </>
+      )}
     </div>
   );
 }
@@ -854,11 +871,12 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().split("T")[0];
 }
 
-function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
+function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: {
   quotation: Quotation;
   items: QuotationItem[];
   inquiry: Inquiry;
   inquiryId: string;
+  isLocked?: boolean;
 }) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
@@ -1070,31 +1088,43 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId }: {
     <div className="flex items-center gap-2 flex-wrap border rounded-md px-3 py-2 bg-muted/30">
       <div className="flex items-center gap-1.5 text-xs">
         <span className="text-muted-foreground">견적일</span>
-        <Input
-          type="date"
-          value={quoteDate}
-          onChange={e => setQuoteDate(e.target.value)}
-          className="h-7 text-xs w-32"
-          data-testid="input-quote-date"
-        />
+        {isLocked ? (
+          <span className="text-xs font-medium">{quoteDate}</span>
+        ) : (
+          <Input
+            type="date"
+            value={quoteDate}
+            onChange={e => setQuoteDate(e.target.value)}
+            className="h-7 text-xs w-32"
+            data-testid="input-quote-date"
+          />
+        )}
       </div>
       <div className="flex items-center gap-1.5 text-xs">
         <span className="text-muted-foreground">유효</span>
         <span className="text-xs">{addDays(quoteDate, 30)}</span>
       </div>
-      <Select value={status} onValueChange={setStatus}>
-        <SelectTrigger className="h-7 text-xs w-20" data-testid="select-quote-status">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="draft">작성중</SelectItem>
-          <SelectItem value="sent">발송</SelectItem>
-          <SelectItem value="accepted">수주</SelectItem>
-        </SelectContent>
-      </Select>
-      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleSaveHeader} disabled={updateMut.isPending} data-testid="button-save-header">
-        <Check className="h-3 w-3 mr-1" />저장
-      </Button>
+      {isLocked ? (
+        <Badge variant={status === "accepted" ? "default" : "secondary"} className="text-xs">
+          {status === "sent" ? "발송" : "수주"}
+        </Badge>
+      ) : (
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="h-7 text-xs w-20" data-testid="select-quote-status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="draft">작성중</SelectItem>
+            <SelectItem value="sent">발송</SelectItem>
+            <SelectItem value="accepted">수주</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
+      {!isLocked && (
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleSaveHeader} disabled={updateMut.isPending} data-testid="button-save-header">
+          <Check className="h-3 w-3 mr-1" />저장
+        </Button>
+      )}
       <div className="flex-1" />
       {inquiry.onedriveFolderId && (
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleExport} disabled={exporting || items.length === 0} data-testid="button-export-onedrive">
@@ -1174,15 +1204,23 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
     );
   }
 
+  const isLocked = quotation.status === "sent" || quotation.status === "accepted";
+
   return (
     <div className="space-y-4">
-      <QuotationHeaderBar quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} />
+      {isLocked && (
+        <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2">
+          <Lock className="h-3.5 w-3.5 shrink-0" />
+          <span>이 견적서는 {quotation.status === "sent" ? "발송" : "수주"} 상태이므로 편집이 잠겨 있습니다. 수정이 필요하면 복사본을 만들어주세요.</span>
+        </div>
+      )}
+      <QuotationHeaderBar quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} isLocked={isLocked} />
 
       <div className="border-2 border-primary/20 rounded-lg p-3 bg-background">
-        <ItemsTab quotation={quotation} items={items} onRefresh={onRefresh} />
+        <ItemsTab quotation={quotation} items={items} onRefresh={onRefresh} isLocked={isLocked} />
       </div>
 
-      <PricingTab quotation={quotation} items={items} inquiryId={inquiryId} onRefresh={onRefresh} />
+      <PricingTab quotation={quotation} items={items} inquiryId={inquiryId} onRefresh={onRefresh} isLocked={isLocked} />
     </div>
   );
 }
@@ -1243,6 +1281,19 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
     onError: () => toast({ title: "삭제 실패", variant: "destructive" }),
   });
 
+  const copyMut = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/quotations/${id}/copy`);
+      return res.json();
+    },
+    onSuccess: (q: Quotation) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "quotations"] });
+      setSelectedId(q.id);
+      toast({ title: "견적서 복사 완료" });
+    },
+    onError: () => toast({ title: "복사 실패", variant: "destructive" }),
+  });
+
   const statusLabel: Record<string, string> = { draft: "작성중", sent: "발송", accepted: "수주" };
 
   return (
@@ -1250,7 +1301,9 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 flex-wrap flex-1">
           {isLoading && <span className="text-xs text-muted-foreground">불러오는 중...</span>}
-          {quotationList.map(q => (
+          {quotationList.map(q => {
+            const qLocked = q.status === "sent" || q.status === "accepted";
+            return (
             <div key={q.id} className="flex items-center gap-1">
               <Button
                 size="sm"
@@ -1259,7 +1312,8 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
                 onClick={() => setSelectedId(selectedId === q.id ? null : q.id)}
                 data-testid={`quotation-row-${q.id}`}
               >
-                <FileText className="h-3 w-3 mr-1" />
+                {qLocked && <Lock className="h-3 w-3 mr-1" />}
+                {!qLocked && <FileText className="h-3 w-3 mr-1" />}
                 {q.quoteNumber}
                 <Badge
                   variant={q.status === "accepted" ? "default" : "secondary"}
@@ -1268,7 +1322,22 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
                   {statusLabel[q.status || "draft"] || q.status}
                 </Badge>
               </Button>
-              {selectedId === q.id && (
+              {selectedId === q.id && qLocked && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    copyMut.mutate(q.id);
+                  }}
+                  disabled={copyMut.isPending}
+                  data-testid={`button-copy-quotation-${q.id}`}
+                >
+                  <Copy className="h-3 w-3 mr-1" />복사
+                </Button>
+              )}
+              {selectedId === q.id && !qLocked && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -1283,7 +1352,8 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
                 </Button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
         <Button size="sm" onClick={() => createMut.mutate()} disabled={createMut.isPending} data-testid="button-new-quotation">
           <Plus className="h-3 w-3 mr-1" />새 견적서

@@ -199,6 +199,7 @@ export interface IStorage {
   createQuotation(data: InsertQuotation): Promise<Quotation>;
   updateQuotation(id: string, data: Partial<InsertQuotation>): Promise<Quotation | undefined>;
   deleteQuotation(id: string): Promise<void>;
+  copyQuotation(id: string, newQuoteNumber: string): Promise<Quotation>;
   createQuotationItem(data: InsertQuotationItem): Promise<QuotationItem>;
   updateQuotationItem(id: string, data: Partial<InsertQuotationItem>): Promise<QuotationItem | undefined>;
   deleteQuotationItem(id: string): Promise<void>;
@@ -1113,6 +1114,49 @@ export class DatabaseStorage implements IStorage {
   async deleteQuotation(id: string): Promise<void> {
     await db.delete(quotationItems).where(eq(quotationItems.quotationId, id));
     await db.delete(quotations).where(eq(quotations.id, id));
+  }
+
+  async copyQuotation(id: string, newQuoteNumber: string): Promise<Quotation> {
+    const source = await this.getQuotationWithItems(id);
+    if (!source) throw new Error("원본 견적서를 찾을 수 없습니다");
+    const today = new Date().toISOString().split("T")[0];
+    const validDate = new Date();
+    validDate.setDate(validDate.getDate() + 30);
+    const validUntil = validDate.toISOString().split("T")[0];
+    const now = new Date().toISOString();
+    const newQ = await this.createQuotation({
+      inquiryId: source.quotation.inquiryId,
+      quoteNumber: newQuoteNumber,
+      quoteDate: today,
+      validUntil,
+      notes: source.quotation.notes,
+      status: "draft",
+      adjustmentAmount: source.quotation.adjustmentAmount,
+      adjustmentNote: source.quotation.adjustmentNote,
+      discountType: source.quotation.discountType,
+      discountValue: source.quotation.discountValue,
+      discountTruncate: source.quotation.discountTruncate,
+      discountTruncUnit: source.quotation.discountTruncUnit,
+      deliveryDays: source.quotation.deliveryDays,
+      createdAt: now,
+    });
+    for (const item of source.items) {
+      await this.createQuotationItem({
+        quotationId: newQ.id,
+        itemCode: item.itemCode,
+        itemName: item.itemName,
+        spec: item.spec,
+        quantity: item.quantity,
+        costPrice: item.costPrice,
+        unitPrice: item.unitPrice,
+        amount: item.amount,
+        category1: item.category1,
+        category2: item.category2,
+        sortOrder: item.sortOrder,
+        isAdjustment: item.isAdjustment,
+      });
+    }
+    return newQ;
   }
 
   async createQuotationItem(data: InsertQuotationItem): Promise<QuotationItem> {

@@ -2389,8 +2389,12 @@ export async function registerRoutes(
 
   app.patch("/api/quotations/:id", async (req, res) => {
     try {
+      const existing = await storage.getQuotationWithItems(req.params.id);
+      if (!existing) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      if (existing.quotation.status === "sent" || existing.quotation.status === "accepted") {
+        return res.status(403).json({ message: "발송/수주 상태의 견적서는 수정할 수 없습니다" });
+      }
       const q = await storage.updateQuotation(req.params.id, req.body);
-      if (!q) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
       res.json(q);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -2399,10 +2403,34 @@ export async function registerRoutes(
 
   app.delete("/api/quotations/:id", async (req, res) => {
     try {
+      const existing = await storage.getQuotationWithItems(req.params.id);
+      if (!existing) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      if (existing.quotation.status === "sent" || existing.quotation.status === "accepted") {
+        return res.status(403).json({ message: "발송/수주 상태의 견적서는 삭제할 수 없습니다" });
+      }
       await storage.deleteQuotation(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/quotations/:id/copy", async (req, res) => {
+    try {
+      const source = await storage.getQuotationWithItems(req.params.id);
+      if (!source) return res.status(404).json({ message: "원본 견적서를 찾을 수 없습니다" });
+      const siblings = await storage.getQuotationsByInquiry(source.quotation.inquiryId);
+      const baseNum = source.quotation.quoteNumber.replace(/-r\d+$/, "");
+      let maxRev = 0;
+      for (const q of siblings) {
+        const m = q.quoteNumber.match(/-r(\d+)$/);
+        if (m) maxRev = Math.max(maxRev, parseInt(m[1], 10));
+      }
+      const newQuoteNumber = `${baseNum}-r${maxRev + 1}`;
+      const newQ = await storage.copyQuotation(req.params.id, newQuoteNumber);
+      res.status(201).json(newQ);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
     }
   });
 
@@ -2433,6 +2461,11 @@ export async function registerRoutes(
 
   app.post("/api/quotations/:id/items", async (req, res) => {
     try {
+      const parentQ = await storage.getQuotationWithItems(req.params.id);
+      if (!parentQ) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
+      if (parentQ.quotation.status === "sent" || parentQ.quotation.status === "accepted") {
+        return res.status(403).json({ message: "발송/수주 상태의 견적서에는 품목을 추가할 수 없습니다" });
+      }
       const { itemCode, itemName, spec, quantity, unitPrice, costPrice, category1, category2, sortOrder, isAdjustment } = req.body;
       const qty = quantity || 1;
       const price = unitPrice || 0;
