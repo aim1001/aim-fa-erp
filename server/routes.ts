@@ -2456,7 +2456,10 @@ export async function registerRoutes(
     const result = await storage.getQuotationWithItems(quotationId);
     if (!result) return null;
     const regularItems = result.items.filter(i => !i.isAdjustment);
-    const totalSales = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+    const adjustmentItems = result.items.filter(i => i.isAdjustment);
+    const regularSales = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+    const adjustmentSales = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+    const totalSales = regularSales + adjustmentSales;
     const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * (i.quantity || 1)), 0);
     const totalMargin = totalSales - totalCost;
     await storage.updateInquiry(result.quotation.inquiryId, {
@@ -4404,6 +4407,20 @@ export async function registerRoutes(
         console.log(`OneDrive 프로젝트 폴더 생성 실패 (전환은 계속): ${driveErr.message}`);
       }
 
+      let latestQuoteTotalAmount: number | null = null;
+      try {
+        const quots = await storage.getQuotationsByInquiry(inquiry.id);
+        if (quots.length > 0) {
+          const latestQuot = quots[quots.length - 1];
+          const quotData = await storage.getQuotationWithItems(latestQuot.id);
+          if (quotData && quotData.items.length > 0) {
+            latestQuoteTotalAmount = quotData.items.reduce((s, i) => s + (i.amount || 0), 0);
+          }
+        }
+      } catch (calcErr: any) {
+        console.log(`최종금액 계산 실패 (lastQuoteSales 사용): ${calcErr.message}`);
+      }
+
       const project = await storage.createProject({
         projectNumber,
         customerName,
@@ -4414,7 +4431,7 @@ export async function registerRoutes(
         onedriveFolderId,
         onedriveWebUrl,
         status: "active",
-        totalAmount: inquiry.lastQuoteSales || null,
+        totalAmount: latestQuoteTotalAmount ?? inquiry.lastQuoteSales ?? null,
         depositRatio: inquiry.contractRatio || null,
         depositTimingType: inquiry.contractTimingType || null,
         depositTimingDays: inquiry.contractTimingDays || null,

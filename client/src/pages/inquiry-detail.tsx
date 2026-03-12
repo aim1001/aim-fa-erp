@@ -2060,9 +2060,12 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
                   setShowUnregisteredWarning(true);
                   return;
                 }
+                const amountText = inquiry.lastQuoteSales
+                  ? `\n최종 공급가액: ${inquiry.lastQuoteSales.toLocaleString()}원`
+                  : "\n금액 정보 없음";
                 const msg = inquiry.status === "won"
-                  ? "프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다."
-                  : "아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?";
+                  ? `프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다.${amountText}`
+                  : `아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?${amountText}`;
                 if (confirm(msg)) convertMutation.mutate();
               }}
               disabled={convertMutation.isPending}
@@ -2361,6 +2364,13 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
             <DialogDescription>
               이 인콰이어리는 아직 정식 고객사로 등록되지 않았습니다.
               미등록 상태로 프로젝트를 전환하면 세금계산서 발행, 수금 계획 등에 문제가 생길 수 있습니다.
+              {inquiry.lastQuoteSales ? (
+                <span className="block mt-2 font-medium text-foreground">
+                  최종 공급가액: {inquiry.lastQuoteSales.toLocaleString()}원
+                </span>
+              ) : (
+                <span className="block mt-2 text-muted-foreground">금액 정보 없음</span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 pt-2">
@@ -2381,9 +2391,12 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
               variant="outline"
               onClick={() => {
                 setShowUnregisteredWarning(false);
+                const amountText = inquiry.lastQuoteSales
+                  ? `\n최종 공급가액: ${inquiry.lastQuoteSales.toLocaleString()}원`
+                  : "\n금액 정보 없음";
                 const msg = inquiry.status === "won"
-                  ? "프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다."
-                  : "아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?";
+                  ? `프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다.${amountText}`
+                  : `아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?${amountText}`;
                 if (confirm(msg)) convertMutation.mutate();
               }}
               data-testid="button-convert-anyway"
