@@ -16,7 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { DialogFooter } from "@/components/ui/dialog";
-import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2, FlaskConical, FileDown } from "lucide-react";
+import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2, FileDown } from "lucide-react";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -2098,7 +2098,10 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   });
   const linkedProject = allProjects?.find(p => p.inquiryId === id);
 
-  const [demoReportOpen, setDemoReportOpen] = useState(false);
+  const { data: staffList } = useQuery<any[]>({
+    queryKey: ["/api/staff"],
+  });
+  const assignedStaff = staffList?.find((s: any) => s.id === inquiry?.staffId);
 
   if (isLoading) {
     return (
@@ -2151,15 +2154,6 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
             </Button>
           )}
           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDemoReportOpen(true)}
-            data-testid="button-demo-report"
-          >
-            <FlaskConical className="h-4 w-4 mr-1" />
-            테스트 리포트
-          </Button>
-          <Button
             variant="destructive"
             size="sm"
             onClick={() => {
@@ -2173,8 +2167,6 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
           </Button>
         </div>
       </div>
-      <DemoReportDialog open={demoReportOpen} onOpenChange={setDemoReportOpen} inquiry={inquiry} />
-
       <Tabs defaultValue="customer" className="flex-1 flex flex-col min-h-0 [&>[data-state=active]]:flex-1 [&>[data-state=active]]:min-h-0">
         <TabsList className="w-full justify-start shrink-0" data-testid="tabs-inquiry-detail">
           <TabsTrigger value="customer" data-testid="tab-customer">고객정보</TabsTrigger>
@@ -2414,7 +2406,23 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
         <TabsContent value="optics" className="flex-1 min-h-0 mt-3 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="pr-4">
-              <OpticsCalculator inquiryNumber={inquiry.inquiryNumber} customerName={inquiry.customerName} showPdf />
+              <OpticsCalculator
+                inquiryNumber={inquiry.inquiryNumber}
+                customerName={inquiry.customerName}
+                showPdf
+                staff={assignedStaff ? {
+                  name: assignedStaff.name || "",
+                  phone: assignedStaff.phone || "",
+                  email: assignedStaff.email || "",
+                } : undefined}
+                customer={{
+                  company: inquiry.snapshotCompanyName || inquiry.customerName || "",
+                  contactName: inquiry.snapshotContactName || "",
+                  title: "",
+                  phone: inquiry.snapshotPhone || "",
+                  email: inquiry.snapshotEmail || "",
+                }}
+              />
             </div>
           </ScrollArea>
         </TabsContent>

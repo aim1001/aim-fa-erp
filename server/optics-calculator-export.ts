@@ -10,6 +10,18 @@ const FONT_BOLD = path.join(FONT_DIR, "Pretendard-Bold.otf");
 export interface OpticsCalculatorPdfInput {
   inquiryNumber?: string;
   customerName?: string;
+  staff?: {
+    name: string;
+    phone: string;
+    email: string;
+  };
+  customer?: {
+    company: string;
+    contactName: string;
+    title: string;
+    phone: string;
+    email: string;
+  };
   camera: {
     brand: string;
     model: string;
@@ -65,6 +77,140 @@ export async function generateOpticsCalculatorPDF(input: OpticsCalculatorPdfInpu
     const PAGE_RIGHT = PAGE_W - 50;
     const PAGE_WIDTH = PAGE_RIGHT - PAGE_LEFT;
     const CENTER_X = PAGE_W / 2;
+
+    if (input.staff && input.customer) {
+      doc.rect(0, 0, PAGE_W, 6).fill("#1a56db");
+
+      let cy = 60;
+
+      if (companyInfo?.logoData || companyInfo?.logoUrl) {
+        try {
+          const logoMaxH = 50;
+          const logoMaxW = 160;
+          let logoSource: string | Buffer | undefined;
+          if (companyInfo.logoData) {
+            const matches = companyInfo.logoData.match(/^data:[^;]+;base64,(.+)$/);
+            if (matches) logoSource = Buffer.from(matches[1], "base64");
+          }
+          if (!logoSource && companyInfo.logoUrl) {
+            const logoPath = path.join(process.cwd(), "server", "uploads", path.basename(companyInfo.logoUrl));
+            if (fs.existsSync(logoPath)) logoSource = logoPath;
+          }
+          if (logoSource) {
+            doc.image(logoSource, CENTER_X - logoMaxW / 2, cy, {
+              fit: [logoMaxW, logoMaxH],
+              align: "center",
+            });
+            cy += logoMaxH + 20;
+          }
+        } catch {
+          cy += 20;
+        }
+      } else {
+        cy += 20;
+      }
+
+      doc.moveTo(PAGE_LEFT + 80, cy).lineTo(PAGE_RIGHT - 80, cy).lineWidth(1).stroke("#1a56db");
+      cy += 40;
+
+      doc.font("Bold").fontSize(28).fillColor("#111");
+      doc.text("Flexible Feeding System", PAGE_LEFT, cy, { width: PAGE_WIDTH, align: "center" });
+      cy += 40;
+
+      doc.font("Bold").fontSize(22).fillColor("#1a56db");
+      doc.text("Test Report", PAGE_LEFT, cy, { width: PAGE_WIDTH, align: "center" });
+      cy += 50;
+
+      doc.moveTo(PAGE_LEFT + 80, cy).lineTo(PAGE_RIGHT - 80, cy).lineWidth(0.5).stroke("#ccc");
+      cy += 50;
+
+      const boxW = (PAGE_WIDTH - 30) / 2;
+      const boxLeft = PAGE_LEFT;
+      const boxRight = PAGE_LEFT + boxW + 30;
+      const boxRadius = 6;
+      const coverHeaderH = 32;
+      const coverRowH = 22;
+
+      const drawInfoBox = (
+        x: number,
+        startY: number,
+        title: string,
+        rows: { label: string; value: string }[],
+      ) => {
+        const contentH = rows.length * coverRowH + 12;
+        const totalH = coverHeaderH + contentH;
+
+        doc.save();
+        doc.roundedRect(x, startY, boxW, totalH, boxRadius).fill("#f8fafc");
+        doc.restore();
+
+        doc.save();
+        doc.roundedRect(x, startY, boxW, coverHeaderH, boxRadius);
+        doc.rect(x, startY + boxRadius, boxW, coverHeaderH - boxRadius);
+        doc.fill("#1a56db");
+        doc.restore();
+
+        doc.font("Bold").fontSize(11).fillColor("#ffffff");
+        doc.text(title, x + 14, startY + 9, { width: boxW - 28 });
+
+        let rY = startY + coverHeaderH + 8;
+        for (const row of rows) {
+          doc.font("Regular").fontSize(9).fillColor("#666");
+          doc.text(row.label, x + 14, rY, { width: 70 });
+          doc.font("Regular").fontSize(9.5).fillColor("#111");
+          doc.text(row.value || "-", x + 88, rY, { width: boxW - 102 });
+          rY += coverRowH;
+        }
+
+        return totalH;
+      };
+
+      const staffRows = [
+        { label: "Name", value: input.staff.name },
+        { label: "Phone", value: input.staff.phone },
+        { label: "E-mail", value: input.staff.email },
+      ];
+
+      const customerRows = [
+        { label: "Company", value: input.customer.company },
+        { label: "Name", value: [input.customer.contactName, input.customer.title].filter(Boolean).join(", ") },
+        { label: "Phone", value: input.customer.phone },
+        { label: "E-mail", value: input.customer.email },
+      ];
+
+      const ch1 = drawInfoBox(boxLeft, cy, "Written by", staffRows);
+      const ch2 = drawInfoBox(boxRight, cy, "Customer", customerRows);
+      cy += Math.max(ch1, ch2) + 60;
+
+      if (companyInfo) {
+        doc.moveTo(PAGE_LEFT + 120, cy).lineTo(PAGE_RIGHT - 120, cy).lineWidth(0.5).stroke("#ddd");
+        cy += 25;
+
+        doc.font("Regular").fontSize(8.5).fillColor("#888");
+        if (companyInfo.address) {
+          doc.text(companyInfo.address, PAGE_LEFT, cy, { width: PAGE_WIDTH, align: "center" });
+          cy += 14;
+        }
+
+        const contactParts: string[] = [];
+        if (companyInfo.phone) contactParts.push(`Tel: ${companyInfo.phone}`);
+        if (companyInfo.fax) contactParts.push(`Fax: ${companyInfo.fax}`);
+        if (companyInfo.email) contactParts.push(companyInfo.email);
+        if (contactParts.length > 0) {
+          doc.text(contactParts.join("  |  "), PAGE_LEFT, cy, { width: PAGE_WIDTH, align: "center" });
+          cy += 14;
+        }
+
+        if (companyInfo.website) {
+          doc.font("Regular").fontSize(8.5).fillColor("#1a56db");
+          doc.text(companyInfo.website, PAGE_LEFT, cy, { width: PAGE_WIDTH, align: "center" });
+        }
+      }
+
+      doc.rect(0, PAGE_H - 6, PAGE_W, 6).fill("#1a56db");
+
+      doc.addPage();
+    }
 
     doc.rect(0, 0, PAGE_W, 6).fill("#1a56db");
 

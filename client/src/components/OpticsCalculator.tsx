@@ -41,9 +41,21 @@ interface OpticsCalculatorProps {
   inquiryNumber?: string;
   customerName?: string;
   showPdf?: boolean;
+  staff?: {
+    name: string;
+    phone: string;
+    email: string;
+  };
+  customer?: {
+    company: string;
+    contactName: string;
+    title: string;
+    phone: string;
+    email: string;
+  };
 }
 
-export default function OpticsCalculator({ inquiryNumber, customerName, showPdf = false }: OpticsCalculatorProps = {}) {
+export default function OpticsCalculator({ inquiryNumber, customerName, showPdf = false, staff, customer }: OpticsCalculatorProps = {}) {
   const [selectedCamera, setSelectedCamera] = useState<CameraModel | null>(null);
   const [lensfocal, setLensfocal] = useState(25);
   const [workingDistance, setWorkingDistance] = useState(800);
@@ -158,7 +170,7 @@ export default function OpticsCalculator({ inquiryNumber, customerName, showPdf 
     setPdfLoading(true);
     try {
       const canvasImage = canvasHandleRef.current?.toDataURL("image/png", 1.0) || "";
-      const body = {
+      const body: Record<string, any> = {
         inquiryNumber,
         customerName,
         camera: {
@@ -186,6 +198,8 @@ export default function OpticsCalculator({ inquiryNumber, customerName, showPdf 
         },
         canvasImage,
       };
+      if (staff) body.staff = staff;
+      if (customer) body.customer = customer;
 
       const response = await fetch(`/api/optics-calculator/pdf?inline=${inline ? "1" : "0"}`, {
         method: "POST",

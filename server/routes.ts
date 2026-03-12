@@ -558,14 +558,14 @@ export async function registerRoutes(
 
   app.post("/api/optics-calculator/pdf", requireAuth, async (req, res) => {
     try {
-      const { camera, lensFocal, workingDistance, aiveModel, product, results, canvasImage, inquiryNumber, customerName } = req.body;
+      const { camera, lensFocal, workingDistance, aiveModel, product, results, canvasImage, inquiryNumber, customerName, staff, customer } = req.body;
       if (!camera || !results) {
         return res.status(400).json({ message: "카메라 및 계산 결과 데이터가 필요합니다" });
       }
 
       const { generateOpticsCalculatorPDF } = await import("./optics-calculator-export");
       const buf = await generateOpticsCalculatorPDF({
-        inquiryNumber, customerName, camera, lensFocal, workingDistance, aiveModel, product, results, canvasImage,
+        inquiryNumber, customerName, staff, customer, camera, lensFocal, workingDistance, aiveModel, product, results, canvasImage,
       });
 
       const disposition = req.query.inline === "1" ? "inline" : "attachment";
