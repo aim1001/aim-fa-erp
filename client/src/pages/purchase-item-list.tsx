@@ -130,6 +130,7 @@ function formatPrice(val: number | null | undefined) {
 function CategoryCombobox({
   value,
   options,
+  allOptions,
   onSelect,
   placeholder = "선택...",
   testId,
@@ -137,6 +138,7 @@ function CategoryCombobox({
 }: {
   value: string;
   options: string[];
+  allOptions?: string[];
   onSelect: (val: string) => void;
   placeholder?: string;
   testId: string;
@@ -152,11 +154,25 @@ function CategoryCombobox({
     }
   }, [open]);
 
+  const primarySet = useMemo(() => new Set(options), [options]);
+  const otherOptions = useMemo(() => {
+    if (!allOptions) return [];
+    return allOptions.filter(o => !primarySet.has(o));
+  }, [allOptions, primarySet]);
+
   const filtered = useMemo(() => {
     if (!search) return options;
     const q = search.toLowerCase();
     return options.filter(o => o.toLowerCase().includes(q));
   }, [options, search]);
+
+  const filteredOthers = useMemo(() => {
+    if (!search) return otherOptions;
+    const q = search.toLowerCase();
+    return otherOptions.filter(o => o.toLowerCase().includes(q));
+  }, [otherOptions, search]);
+
+  const allCombined = useMemo(() => [...options, ...otherOptions], [options, otherOptions]);
 
   const handleSelect = (val: string) => {
     onSelect(val);
@@ -212,7 +228,7 @@ function CategoryCombobox({
             />
           </div>
           <div className="max-h-[200px] overflow-y-auto p-1">
-            {filtered.length === 0 && !search.trim() && (
+            {filtered.length === 0 && filteredOthers.length === 0 && !search.trim() && (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">항목 없음</div>
             )}
             {filtered.map(opt => (
@@ -226,7 +242,24 @@ function CategoryCombobox({
                 {opt}
               </button>
             ))}
-            {search.trim() && !options.includes(search.trim()) && (
+            {filteredOthers.length > 0 && (
+              <>
+                {filtered.length > 0 && <div className="border-t my-1" />}
+                <div className="px-2 py-1 text-[10px] text-muted-foreground">기타</div>
+                {filteredOthers.map(opt => (
+                  <button
+                    key={opt}
+                    className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+                    onClick={() => handleSelect(opt)}
+                    data-testid={`${testId}-option-${opt}`}
+                  >
+                    <Check className={`mr-2 h-3 w-3 ${value === opt ? "opacity-100" : "opacity-0"}`} />
+                    {opt}
+                  </button>
+                ))}
+              </>
+            )}
+            {search.trim() && !allCombined.includes(search.trim()) && (
               <button
                 className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground text-blue-600 dark:text-blue-400"
                 onClick={handleAddNew}
@@ -346,7 +379,7 @@ function VendorBadge({ item }: { item: PurchaseItemWithVendor }) {
   return <span className="text-xs text-foreground/30">-</span>;
 }
 
-function PurchaseItemDetailRow({ item, vendors, categories, category2Map }: { item: PurchaseItemWithVendor; vendors: Vendor[]; categories: string[]; category2Map: Map<string, string[]> }) {
+function PurchaseItemDetailRow({ item, vendors, categories, category2Map, allCategory2 }: { item: PurchaseItemWithVendor; vendors: Vendor[]; categories: string[]; category2Map: Map<string, string[]>; allCategory2: string[] }) {
   const { toast } = useToast();
 
   const patchMutation = useMutation({
@@ -404,6 +437,7 @@ function PurchaseItemDetailRow({ item, vendors, categories, category2Map }: { it
           <CategoryCombobox
             value={item.category2 || ""}
             options={category2Map.get(item.category1) || []}
+            allOptions={allCategory2}
             onSelect={val => patchMutation.mutate({ category2: val })}
             placeholder="소분류..."
             testId={`combo-cat2-${item.id}`}
@@ -739,6 +773,12 @@ export default function PurchaseItemList() {
     return m;
   }, [items]);
 
+  const allCategory2 = useMemo(() => {
+    if (!items) return [];
+    const set = new Set(items.map(i => i.category2).filter(Boolean) as string[]);
+    return Array.from(set).sort();
+  }, [items]);
+
   const filtered = useMemo(() => {
     if (!items) return [];
     let list = items.filter(item => {
@@ -1055,7 +1095,7 @@ export default function PurchaseItemList() {
                     {isExpanded && (
                       <TableRow className="hover:bg-transparent border-b border-border/20">
                         <TableCell colSpan={12} className="p-0">
-                          <PurchaseItemDetailRow item={item} vendors={vendors} categories={categories} category2Map={category2Map} />
+                          <PurchaseItemDetailRow item={item} vendors={vendors} categories={categories} category2Map={category2Map} allCategory2={allCategory2} />
                         </TableCell>
                       </TableRow>
                     )}
@@ -1088,6 +1128,7 @@ export default function PurchaseItemList() {
               <CategoryCombobox
                 value={form.category2}
                 options={form.category1 ? (category2Map.get(form.category1) || []) : []}
+                allOptions={allCategory2}
                 onSelect={val => setForm(f => ({ ...f, category2: val }))}
                 placeholder="소분류 선택..."
                 testId="combo-add-category2"
