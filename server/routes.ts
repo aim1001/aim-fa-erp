@@ -5088,6 +5088,32 @@ export async function registerRoutes(
     }
   })();
 
+  (async () => {
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS item_components (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+            item_master_id VARCHAR NOT NULL,
+            purchase_item_id VARCHAR,
+            item_name TEXT NOT NULL,
+            spec TEXT,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            unit_cost INTEGER,
+            is_adjustment BOOLEAN DEFAULT false,
+            sort_order INTEGER DEFAULT 0,
+            remark TEXT
+          )
+        `);
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      console.error("[startup] item_components table creation failed:", err.message);
+    }
+  })();
+
   app.post("/api/admin/migrate-data", requireAuth, async (req, res) => {
     try {
       const data = req.body;
