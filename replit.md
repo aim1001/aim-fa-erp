@@ -57,7 +57,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **quotations** 테이블: 견적서 (inquiryId FK→inquiries, quoteNumber, quoteDate, validUntil, notes, status draft/sent/accepted, adjustmentAmount, adjustmentNote, discountType(percent/amount 선택), discountValue(비율% 또는 금액), discountTruncUnit(none/1000/10000/100000/1000000 - 최종공급가액에 절사 적용), deliveryDays(납기일수 - purchase_items의 최대 leadTimeDays 자동계산, 수정가능), createdAt)
 - **quotation_items** 테이블: 견적서 품목 (quotationId FK→quotations, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder, isAdjustment) — isAdjustment=true인 항목은 추가/할인 항목으로 별도 관리
 - **contract_templates** 테이블: 계약조건 템플릿 (name, content, isDefault, createdAt) - 재사용 가능한 계약 세부내용 관리
-- **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms) - 견적서 PDF 헤더에 반영, signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시), logoData/signatureData는 base64 data URI로 DB에 저장(배포 환경에서도 유지), autoCc는 이메일 발송 시 자동 CC, emailTemplate은 이메일 본문 템플릿({고객명},{견적번호} 치환), quotationNotesTemplate은 견적서 제외사항/기술지원 기본 템플릿, poDefault*는 발주서 기본값 설정
+- **company_settings** 테이블: 회사 정보 설정 (companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms) - 견적서 PDF 헤더에 반영, website는 홈페이지 URL(데모 테스트 리포트 PDF에 표시), signatureUrl은 대표이사 서명 이미지(Seller Sign란에 표시), logoData/signatureData는 base64 data URI로 DB에 저장(배포 환경에서도 유지), autoCc는 이메일 발송 시 자동 CC, emailTemplate은 이메일 본문 템플릿({고객명},{견적번호} 치환), quotationNotesTemplate은 견적서 제외사항/기술지원 기본 템플릿, poDefault*는 발주서 기본값 설정
   - 설정 페이지는 탭 구조: "회사 정보" 탭 (로고, 서명, 기본정보, 계좌) + "견적서" 탭 (제외사항/기술지원 템플릿, 이메일 자동CC, 이메일 본문 템플릿) + "발주서" 탭 (기본 담당자, 기본 지급조건, 기본 보증조건, 이메일 자동CC, 이메일 본문 템플릿)
 - 발주서 이메일: 제목 형식 `[회사명-발주서] 발주번호 - 발주 안내`, CC/본문 설정값 자동 적용, 본문 템플릿 치환변수({발주번호},{입고일자},{구매처명},{담당자명})
 - 발주서 계약상세: 지급조건은 프리셋 Select(익월말/선처리/월말/2주이내) + 직접입력 + 계약금/중도금/잔금 분할 체크박스, 보증조건은 하자보증 1년 체크박스 + 직접입력, 입고장소는 회사주소 기본값 + 수동수정
@@ -134,6 +134,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - `client/src/components/quotation-section.tsx` - Quotation section component (견적서 생성/편집/내보내기)
 - `server/quotation-export.ts` - PDF + Excel generation for quotations (pdfkit, exceljs)
 - `server/purchase-order-export.ts` - PDF generation for purchase orders (pdfkit, Pretendard font, A4 layout: 헤더+구매처정보+품목테이블+합계+서명란+비고)
+- `server/demo-report-export.ts` - Demo test report PDF generation (A4 커버페이지: 로고, 타이틀 "Flexible Feeding System, Test report", 담당자/고객 정보 박스, 회사 푸터; 인콰이어리 상세 "테스트 리포트" 버튼 → DemoReportDialog에서 날짜/담당자/고객정보 편집 후 PDF 다운로드)
 - `server/google-calendar.ts` - Google Calendar integration (견적 발송 시 이벤트 생성, 할일 캘린더 등록)
 
 ## Telegram 알림

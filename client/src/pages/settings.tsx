@@ -45,6 +45,7 @@ export default function SettingsPage() {
     fax: "",
     email: "",
     bankInfo: "",
+    website: "",
     autoCc: "",
     emailTemplate: "",
     quotationNotesTemplate: "",
@@ -69,6 +70,7 @@ export default function SettingsPage() {
         fax: settings.fax || "",
         email: settings.email || "",
         bankInfo: settings.bankInfo || "",
+        website: settings.website || "",
         autoCc: settings.autoCc || "",
         emailTemplate: settings.emailTemplate || "",
         quotationNotesTemplate: settings.quotationNotesTemplate || DEFAULT_QUOTATION_NOTES,
@@ -197,6 +199,7 @@ export default function SettingsPage() {
     { key: "phone", label: "전화번호", placeholder: "02-0000-0000" },
     { key: "fax", label: "팩스", placeholder: "02-0000-0000" },
     { key: "email", label: "이메일", placeholder: "info@company.com" },
+    { key: "website", label: "홈페이지", placeholder: "www.company.com" },
   ];
 
   return (

@@ -525,6 +525,29 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/inquiries/:id/demo-report/pdf", requireAuth, async (req, res) => {
+    try {
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+
+      const { staff, customer } = req.body;
+      if (!staff?.name || !customer?.company) {
+        return res.status(400).json({ message: "작성자 이름과 고객사명은 필수입니다" });
+      }
+
+      const { generateDemoReportPDF } = await import("./demo-report-export");
+      const buf = await generateDemoReportPDF({ staff, customer });
+
+      const safeNumber = inquiry.inquiryNumber.replace(/[/\\:*?"<>|]/g, "_");
+      res.setHeader("Content-Type", "application/pdf");
+      const disposition = req.query.inline === "1" ? "inline" : "attachment";
+      res.setHeader("Content-Disposition", `${disposition}; filename="test_report_${safeNumber}.pdf"`);
+      res.send(buf);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/inquiries/:id/files", async (req, res) => {
     try {
       const files = await storage.getInquiryFiles(req.params.id);
@@ -4972,7 +4995,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, poDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -4995,6 +5018,7 @@ export async function registerRoutes(
         phone: phone || null,
         fax: fax || null,
         email: email || null,
+        website: website || null,
         logoUrl: logoUrl === undefined ? undefined : (logoUrl || null),
         signatureUrl: signatureUrl === undefined ? undefined : (signatureUrl || null),
         logoData: logoData === undefined ? undefined : (logoData || null),
