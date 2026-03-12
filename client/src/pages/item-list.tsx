@@ -1,13 +1,18 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Package, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Upload } from "lucide-react";
+import { Package, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Upload, Trash2, Layers, PlusCircle } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback, useRef, useEffect } from "react";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { ItemMaster, ItemInventory, ItemDocument } from "@shared/schema";
+import type { ItemMaster, ItemInventory, ItemDocument, ItemComponent, PurchaseItem } from "@shared/schema";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -416,7 +421,400 @@ function ItemDetailRow({
           </div>
         )}
       </div>
+
+      <ComponentSection itemId={item.id} itemCost={item.cost} patchItemCost={(cost: number) => patchMutation.mutate({ cost })} />
     </div>
+  );
+}
+
+function ComponentSection({
+  itemId,
+  itemCost,
+  patchItemCost,
+}: {
+  itemId: string;
+  itemCost: number | null;
+  patchItemCost: (cost: number) => void;
+}) {
+  const { toast } = useToast();
+  const [showAddDialog, setShowAddDialog] = useState(false);
+
+  const { data: components = [], isLoading } = useQuery<ItemComponent[]>({
+    queryKey: ["/api/items", itemId, "components"],
+    queryFn: async () => {
+      const res = await fetch(`/api/items/${itemId}/components`, { credentials: "include" });
+      if (!res.ok) throw new Error("구성품 로드 실패");
+      return res.json();
+    },
+  });
+
+  const { data: purchaseItems = [] } = useQuery<PurchaseItem[]>({
+    queryKey: ["/api/purchase-items"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (compId: string) => {
+      await apiRequest("DELETE", `/api/items/${itemId}/components/${compId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/items", itemId, "components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-items/bom-links"] });
+      toast({ title: "구성품 삭제 완료" });
+    },
+  });
+
+  const patchCompMutation = useMutation({
+    mutationFn: async ({ compId, fields }: { compId: string; fields: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/items/${itemId}/components/${compId}`, fields);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/items", itemId, "components"] });
+    },
+  });
+
+  const purchaseItemMap = useMemo(() => {
+    const m = new Map<string, PurchaseItem>();
+    purchaseItems.forEach(pi => m.set(pi.id, pi));
+    return m;
+  }, [purchaseItems]);
+
+  const getEffectiveCost = (comp: ItemComponent) => {
+    if (comp.unitCost !== null && comp.unitCost !== undefined) return comp.unitCost;
+    if (comp.purchaseItemId) {
+      const pi = purchaseItemMap.get(comp.purchaseItemId);
+      return pi?.cost ?? 0;
+    }
+    return 0;
+  };
+
+  const totalCost = components.reduce((sum, c) => sum + getEffectiveCost(c) * c.quantity, 0);
+
+  return (
+    <div className="border-t border-blue-200/50 dark:border-blue-800/30 px-4 py-2" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-2 mb-1.5">
+        <Layers className="h-3.5 w-3.5 text-blue-500" />
+        <span className="text-xs font-medium text-blue-700 dark:text-blue-400">구성품 (BOM)</span>
+        <Badge variant="outline" className="text-[10px] h-4 px-1.5">{components.length}건</Badge>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-5 px-1.5 text-[10px] ml-auto"
+          onClick={() => setShowAddDialog(true)}
+          data-testid={`button-add-component-${itemId}`}
+        >
+          <PlusCircle className="h-3 w-3 mr-0.5" />추가
+        </Button>
+      </div>
+
+      {isLoading && <div className="text-[10px] text-muted-foreground">로딩 중...</div>}
+
+      {components.length > 0 && (
+        <div className="space-y-0.5">
+          <div className="grid grid-cols-[1fr_80px_80px_80px_24px] gap-1 text-[10px] text-muted-foreground px-1">
+            <span>품명</span>
+            <span className="text-right">단가</span>
+            <span className="text-center">수량</span>
+            <span className="text-right">소계</span>
+            <span></span>
+          </div>
+          {components.map(comp => {
+            const effCost = getEffectiveCost(comp);
+            const subtotal = effCost * comp.quantity;
+            return (
+              <div key={comp.id} className={`grid grid-cols-[1fr_80px_80px_80px_24px] gap-1 items-center text-xs px-1 py-0.5 rounded ${comp.isAdjustment ? "bg-orange-50 dark:bg-orange-950/20" : "bg-white/50 dark:bg-gray-900/30"}`}>
+                <div className="flex items-center gap-1 min-w-0">
+                  {comp.purchaseItemId && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Badge variant="outline" className="text-[9px] h-3.5 px-1 shrink-0 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400">연결</Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        구매품 연결됨: {purchaseItemMap.get(comp.purchaseItemId)?.itemCode || comp.purchaseItemId}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {comp.isAdjustment && (
+                    <Badge variant="outline" className="text-[9px] h-3.5 px-1 shrink-0 bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-400">조정</Badge>
+                  )}
+                  <span className="truncate" data-testid={`text-comp-name-${comp.id}`}>{comp.itemName}</span>
+                  {comp.spec && <span className="text-muted-foreground truncate">({comp.spec})</span>}
+                </div>
+                <span className="text-right tabular-nums" data-testid={`text-comp-cost-${comp.id}`}>{effCost.toLocaleString()}</span>
+                <div className="text-center">
+                  <input
+                    type="number"
+                    className="w-12 text-center text-xs bg-transparent border-b border-dashed border-gray-300 dark:border-gray-600 focus:outline-none focus:border-blue-500"
+                    defaultValue={comp.quantity}
+                    min={1}
+                    onBlur={e => {
+                      const newQty = parseInt(e.target.value, 10) || 1;
+                      if (newQty !== comp.quantity) {
+                        patchCompMutation.mutate({ compId: comp.id, fields: { quantity: newQty } });
+                      }
+                    }}
+                    onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    data-testid={`input-comp-qty-${comp.id}`}
+                  />
+                </div>
+                <span className="text-right tabular-nums font-medium" data-testid={`text-comp-subtotal-${comp.id}`}>{subtotal.toLocaleString()}</span>
+                <button
+                  className="text-destructive/50 hover:text-destructive p-0.5"
+                  onClick={() => deleteMutation.mutate(comp.id)}
+                  data-testid={`button-delete-comp-${comp.id}`}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
+          <div className="grid grid-cols-[1fr_80px_80px_80px_24px] gap-1 text-xs px-1 pt-1 border-t border-dashed border-blue-200/50 dark:border-blue-800/30">
+            <span className="font-medium">합계 원가</span>
+            <span></span>
+            <span></span>
+            <span className="text-right font-bold tabular-nums text-blue-700 dark:text-blue-400" data-testid={`text-bom-total-${itemId}`}>
+              {totalCost.toLocaleString()}
+            </span>
+            <span></span>
+          </div>
+          {totalCost > 0 && totalCost !== (itemCost || 0) && (
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] text-muted-foreground">현재 원가: {(itemCost || 0).toLocaleString()}원</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-5 px-2 text-[10px]"
+                onClick={() => patchItemCost(totalCost)}
+                data-testid={`button-apply-bom-cost-${itemId}`}
+              >
+                원가 적용 ({totalCost.toLocaleString()})
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {components.length === 0 && !isLoading && (
+        <div className="text-[10px] text-muted-foreground py-1">
+          등록된 구성품이 없습니다.
+          <button className="text-blue-500 hover:underline ml-1" onClick={() => setShowAddDialog(true)} data-testid={`link-add-component-${itemId}`}>
+            추가하기
+          </button>
+        </div>
+      )}
+
+      <AddComponentDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
+        itemId={itemId}
+        purchaseItems={purchaseItems}
+      />
+    </div>
+  );
+}
+
+function AddComponentDialog({
+  open,
+  onOpenChange,
+  itemId,
+  purchaseItems,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  itemId: string;
+  purchaseItems: PurchaseItem[];
+}) {
+  const { toast } = useToast();
+  const { ref: dialogRef, container } = useDialogContainer();
+  const [mode, setMode] = useState<"search" | "manual">("search");
+  const [search, setSearch] = useState("");
+  const [selectedPI, setSelectedPI] = useState<PurchaseItem | null>(null);
+  const [manualName, setManualName] = useState("");
+  const [manualSpec, setManualSpec] = useState("");
+  const [manualCost, setManualCost] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [isAdjustment, setIsAdjustment] = useState(false);
+  const [remark, setRemark] = useState("");
+
+  const resetForm = () => {
+    setMode("search");
+    setSearch("");
+    setSelectedPI(null);
+    setManualName("");
+    setManualSpec("");
+    setManualCost("");
+    setQuantity("1");
+    setIsAdjustment(false);
+    setRemark("");
+  };
+
+  const filteredPI = useMemo(() => {
+    if (!search) return purchaseItems.slice(0, 20);
+    const q = search.toLowerCase();
+    return purchaseItems.filter(pi =>
+      pi.itemName.toLowerCase().includes(q) ||
+      pi.itemCode.toLowerCase().includes(q) ||
+      (pi.spec && pi.spec.toLowerCase().includes(q))
+    ).slice(0, 20);
+  }, [purchaseItems, search]);
+
+  const createMutation = useMutation({
+    mutationFn: async (data: Record<string, any>) => {
+      const res = await apiRequest("POST", `/api/items/${itemId}/components`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/items", itemId, "components"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-items/bom-links"] });
+      toast({ title: "구성품 추가 완료" });
+      resetForm();
+      onOpenChange(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "추가 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = () => {
+    if (mode === "search" && selectedPI) {
+      createMutation.mutate({
+        purchaseItemId: selectedPI.id,
+        itemName: selectedPI.itemName,
+        spec: selectedPI.spec || "",
+        quantity: parseInt(quantity, 10) || 1,
+        unitCost: selectedPI.cost || 0,
+        isAdjustment: false,
+        remark,
+      });
+    } else if (mode === "manual" && manualName) {
+      createMutation.mutate({
+        purchaseItemId: null,
+        itemName: manualName,
+        spec: manualSpec,
+        quantity: parseInt(quantity, 10) || 1,
+        unitCost: parseInt(manualCost, 10) || 0,
+        isAdjustment,
+        remark,
+      });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
+      <div ref={dialogRef} />
+      <DialogContent className="max-w-md" container={container} data-testid="dialog-add-component">
+        <DialogHeader>
+          <DialogTitle className="text-sm">구성품 추가</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            구매품을 검색하거나 직접 입력하여 추가합니다.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex gap-1 mb-3">
+          <Button
+            size="sm"
+            variant={mode === "search" ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => setMode("search")}
+            data-testid="button-mode-search"
+          >
+            구매품 검색
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "manual" ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => setMode("manual")}
+            data-testid="button-mode-manual"
+          >
+            직접 입력
+          </Button>
+        </div>
+
+        {mode === "search" && (
+          <div className="space-y-2">
+            <Input
+              placeholder="구매품 검색 (품명/코드)"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="h-8 text-xs"
+              data-testid="input-search-purchase-item"
+            />
+            <div className="max-h-40 overflow-y-auto border rounded space-y-0">
+              {filteredPI.map(pi => (
+                <div
+                  key={pi.id}
+                  className={`flex items-center justify-between px-2 py-1.5 text-xs cursor-pointer hover:bg-muted/50 ${selectedPI?.id === pi.id ? "bg-blue-50 dark:bg-blue-950/30" : ""}`}
+                  onClick={() => setSelectedPI(pi)}
+                  data-testid={`option-pi-${pi.id}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="font-mono text-[10px] text-muted-foreground mr-1">{pi.itemCode}</span>
+                    <span className="font-medium">{pi.itemName}</span>
+                    {pi.spec && <span className="text-muted-foreground ml-1">({pi.spec})</span>}
+                  </div>
+                  <span className="shrink-0 text-muted-foreground ml-2">{(pi.cost || 0).toLocaleString()}원</span>
+                </div>
+              ))}
+              {filteredPI.length === 0 && (
+                <div className="text-[10px] text-muted-foreground text-center py-3">검색 결과가 없습니다</div>
+              )}
+            </div>
+            {selectedPI && (
+              <div className="text-xs bg-blue-50 dark:bg-blue-950/20 rounded p-2">
+                선택: <span className="font-medium">{selectedPI.itemName}</span>
+                <span className="text-muted-foreground ml-1">({selectedPI.itemCode})</span>
+                <span className="ml-2">{(selectedPI.cost || 0).toLocaleString()}원</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {mode === "manual" && (
+          <div className="space-y-2">
+            <div>
+              <Label className="text-xs">품명 *</Label>
+              <Input value={manualName} onChange={e => setManualName(e.target.value)} className="h-8 text-xs" data-testid="input-comp-name" />
+            </div>
+            <div>
+              <Label className="text-xs">사양</Label>
+              <Input value={manualSpec} onChange={e => setManualSpec(e.target.value)} className="h-8 text-xs" data-testid="input-comp-spec" />
+            </div>
+            <div>
+              <Label className="text-xs">단가</Label>
+              <Input type="number" value={manualCost} onChange={e => setManualCost(e.target.value)} className="h-8 text-xs" data-testid="input-comp-cost" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={isAdjustment} onCheckedChange={setIsAdjustment} className="scale-75" data-testid="switch-adjustment" />
+              <Label className="text-xs">조정 항목 (금액 조정용)</Label>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-2">
+          <div className="flex-1">
+            <Label className="text-xs">수량</Label>
+            <Input type="number" min="1" value={quantity} onChange={e => setQuantity(e.target.value)} className="h-8 text-xs" data-testid="input-comp-quantity" />
+          </div>
+          <div className="flex-1">
+            <Label className="text-xs">비고</Label>
+            <Input value={remark} onChange={e => setRemark(e.target.value)} className="h-8 text-xs" data-testid="input-comp-remark" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => { onOpenChange(false); resetForm(); }} data-testid="button-cancel-component">취소</Button>
+          <Button
+            size="sm"
+            onClick={handleSubmit}
+            disabled={createMutation.isPending || (mode === "search" && !selectedPI) || (mode === "manual" && !manualName)}
+            data-testid="button-submit-component"
+          >
+            {createMutation.isPending ? "저장 중..." : "추가"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

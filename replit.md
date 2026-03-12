@@ -48,6 +48,7 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **item_inventory** 테이블: 재고 관리 (품목코드, 재고유형(AVAILABLE/TEST/DEMO), 수량, 업데이트일)
 - **item_document** 테이블: 제품 문서 (품목코드, 문서유형, URL, 이름)
 - **purchase_items** 테이블: 구매품 마스터 (대분류, 소분류, 품목코드, 품명, 브랜드, 원산지, 규격, 공급업체텍스트, vendorId FK→vendors, 단가, 통화, 리드타임, 재고품여부, 유형, 단위, 활성여부, 안전재고, MOQ, 비고, isFavorite 즐겨찾기)
+- **item_components** 테이블: 판매제품 BOM 구성품 (itemMasterId FK→item_master, purchaseItemId FK→purchase_items nullable, itemName, spec, quantity, unitCost, isAdjustment, sortOrder, remark) — 판매제품에 구매품 연결, purchaseItemId null이면 임시 항목(직접 입력), isAdjustment=true는 금액 조정 항목, "원가 적용" 버튼으로만 item_master.cost에 반영 (자동 갱신 없음, 직접 입력한 원가 유지). 구매품 관리 리스트에서 BOM 연결 여부를 Layers 아이콘으로 표시 (연결됨=파란색/미연결=회색, 호버 시 연결된 판매제품명 툴팁)
 - **purchase_order_items** 테이블: 발주 품목 (purchaseOrderId FK→purchase_orders, itemCode, itemName, spec, brand, quantity, unitPrice, amount, category1, sortOrder, isAdjustment) — 발주서 품목 단위 관리, isAdjustment=true는 가격 조정 항목(할인/추가비용)
 - **inquiry_memos** 테이블: 인콰이어리 메모 (inquiryId FK→inquiries, content, createdAt ISO string) - 날짜별 메모 누적 관리
 - **inquiry_tasks** 테이블: 인콰이어리 할일 (inquiryId FK→inquiries, content, completed boolean, dueDate YYYY-MM-DD nullable, dueTime HH:mm nullable, calendarEventId text nullable, createdAt YYYY-MM-DD) - 인콰이어리별 할일/체크리스트 관리, dueDate 있으면 Google Calendar 자동 등록(완료/삭제 시 캘린더에서도 삭제)

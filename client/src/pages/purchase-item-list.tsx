@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload, Star } from "lucide-react";
+import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload, Star, Layers } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -458,6 +458,20 @@ export default function PurchaseItemList() {
 
   const vendors = vendorList || [];
 
+  const { data: bomLinks = [] } = useQuery<Array<{ purchaseItemId: string; itemMasterId: string; itemName: string; itemCode: string }>>({
+    queryKey: ["/api/purchase-items/bom-links"],
+  });
+
+  const bomLinkMap = useMemo(() => {
+    const m = new Map<string, Array<{ itemName: string; itemCode: string }>>();
+    for (const link of bomLinks) {
+      const arr = m.get(link.purchaseItemId) || [];
+      arr.push({ itemName: link.itemName, itemCode: link.itemCode });
+      m.set(link.purchaseItemId, arr);
+    }
+    return m;
+  }, [bomLinks]);
+
   const toggleFavMutation = useMutation({
     mutationFn: async ({ id, isFavorite }: { id: string; isFavorite: boolean }) => {
       await apiRequest("PATCH", `/api/purchase-items/${id}`, { isFavorite });
@@ -691,6 +705,7 @@ export default function PurchaseItemList() {
                 <TableHead className="text-right w-[100px] text-xs h-9 px-3">단가</TableHead>
                 <TableHead className="hidden lg:table-cell text-center w-[60px] text-xs h-9 px-3">L/T</TableHead>
                 <TableHead className="hidden xl:table-cell w-[80px] text-xs h-9 px-3">유형</TableHead>
+                <TableHead className="text-center w-[28px] text-xs h-9 px-1"><Layers className="h-3 w-3 mx-auto text-muted-foreground" /></TableHead>
                 <TableHead className="text-center w-[28px] text-xs h-9 px-1"><Star className="h-3 w-3 mx-auto text-muted-foreground" /></TableHead>
                 <TableHead className="text-center w-[35px] text-xs h-9 px-1"></TableHead>
                 <TableHead className="w-[28px] h-9 px-1"></TableHead>
@@ -733,6 +748,33 @@ export default function PurchaseItemList() {
                       <TableCell className="hidden xl:table-cell text-xs py-1.5 px-3 text-foreground/70">
                         {item.itemType || "-"}
                       </TableCell>
+                      <TableCell className="text-center py-1.5 px-1">
+                        {(() => {
+                          const links = bomLinkMap.get(item.id);
+                          if (links && links.length > 0) {
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span data-testid={`icon-bom-linked-${item.id}`}>
+                                    <Layers className="h-3.5 w-3.5 text-blue-500 mx-auto" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs max-w-[200px]">
+                                  <div className="font-medium mb-0.5">연결된 판매제품:</div>
+                                  {links.map((l, i) => (
+                                    <div key={i}>{l.itemName} ({l.itemCode})</div>
+                                  ))}
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          }
+                          return (
+                            <span data-testid={`icon-bom-none-${item.id}`}>
+                              <Layers className="h-3.5 w-3.5 text-muted-foreground/20 mx-auto" />
+                            </span>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell className="text-center py-1.5 px-1" onClick={e => e.stopPropagation()}>
                         <button
                           className="p-0.5 hover:scale-110 transition-transform"
@@ -755,7 +797,7 @@ export default function PurchaseItemList() {
                     </TableRow>
                     {isExpanded && (
                       <TableRow className="hover:bg-transparent border-b border-border/20">
-                        <TableCell colSpan={11} className="p-0">
+                        <TableCell colSpan={12} className="p-0">
                           <PurchaseItemDetailRow item={item} vendors={vendors} />
                         </TableCell>
                       </TableRow>

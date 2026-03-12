@@ -390,6 +390,23 @@ export const insertPurchaseItemSchema = createInsertSchema(purchaseItems).omit({
 export type InsertPurchaseItem = z.infer<typeof insertPurchaseItemSchema>;
 export type PurchaseItem = typeof purchaseItems.$inferSelect;
 
+export const itemComponents = pgTable("item_components", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemMasterId: varchar("item_master_id").notNull(),
+  purchaseItemId: varchar("purchase_item_id"),
+  itemName: text("item_name").notNull(),
+  spec: text("spec"),
+  quantity: integer("quantity").notNull().default(1),
+  unitCost: integer("unit_cost"),
+  isAdjustment: boolean("is_adjustment").default(false),
+  sortOrder: integer("sort_order").default(0),
+  remark: text("remark"),
+});
+
+export const insertItemComponentSchema = createInsertSchema(itemComponents).omit({ id: true });
+export type InsertItemComponent = z.infer<typeof insertItemComponentSchema>;
+export type ItemComponent = typeof itemComponents.$inferSelect;
+
 export const purchaseOrders = pgTable("purchase_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   orderNumber: text("order_number"),

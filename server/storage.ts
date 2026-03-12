@@ -14,6 +14,7 @@ import {
   type ItemInventory, type InsertItemInventory,
   type ItemDocument, type InsertItemDocument,
   type PurchaseItem, type InsertPurchaseItem,
+  type ItemComponent, type InsertItemComponent,
   type InquiryMemo, type InsertInquiryMemo,
   type InquiryTask, type InsertInquiryTask,
   type ProjectTask, type InsertProjectTask,
@@ -35,7 +36,7 @@ import {
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
   purchaseOrders, purchaseOrderItems, vendorContacts, recurringExpenses,
-  purchaseOrderTasks, financeTasks, projectItems, telegramMemos,
+  purchaseOrderTasks, financeTasks, projectItems, telegramMemos, itemComponents,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -185,6 +186,13 @@ export interface IStorage {
   deleteItemDocument(id: string): Promise<void>;
   deleteItemDocumentsByItemCode(itemCode: string): Promise<void>;
   getItemsWithDetails(): Promise<Array<ItemMaster & { inventory: ItemInventory[]; documents: ItemDocument[] }>>;
+
+  getItemComponents(itemMasterId: string): Promise<ItemComponent[]>;
+  createItemComponent(data: InsertItemComponent): Promise<ItemComponent>;
+  updateItemComponent(id: string, data: Partial<InsertItemComponent>): Promise<ItemComponent | undefined>;
+  deleteItemComponent(id: string): Promise<void>;
+  getLinkedProductsByPurchaseItemId(purchaseItemId: string): Promise<Array<{ itemMasterId: string; itemName: string; itemCode: string }>>;
+  getPurchaseItemBomLinks(): Promise<Array<{ purchaseItemId: string; itemMasterId: string; itemName: string; itemCode: string }>>;
 
   getQuotationsByInquiry(inquiryId: string): Promise<Quotation[]>;
   getQuotationWithItems(id: string): Promise<{ quotation: Quotation; items: QuotationItem[] } | undefined>;
@@ -1013,6 +1021,56 @@ export class DatabaseStorage implements IStorage {
       documents: docMap.get(item.itemCode) || [],
     }));
   }
+  async getItemComponents(itemMasterId: string): Promise<ItemComponent[]> {
+    return db.select().from(itemComponents).where(eq(itemComponents.itemMasterId, itemMasterId)).orderBy(itemComponents.sortOrder);
+  }
+
+  async createItemComponent(data: InsertItemComponent): Promise<ItemComponent> {
+    const [comp] = await db.insert(itemComponents).values(data).returning();
+    return comp;
+  }
+
+  async updateItemComponent(id: string, data: Partial<InsertItemComponent>): Promise<ItemComponent | undefined> {
+    const [comp] = await db.update(itemComponents).set(data).where(eq(itemComponents.id, id)).returning();
+    return comp;
+  }
+
+  async deleteItemComponent(id: string): Promise<void> {
+    await db.delete(itemComponents).where(eq(itemComponents.id, id));
+  }
+
+  async getLinkedProductsByPurchaseItemId(purchaseItemId: string): Promise<Array<{ itemMasterId: string; itemName: string; itemCode: string }>> {
+    const comps = await db.select().from(itemComponents).where(eq(itemComponents.purchaseItemId, purchaseItemId));
+    if (comps.length === 0) return [];
+    const masterIds = [...new Set(comps.map(c => c.itemMasterId))];
+    const masters = await db.select().from(itemMaster).where(
+      or(...masterIds.map(mid => eq(itemMaster.id, mid)))
+    );
+    return masters.map(m => ({ itemMasterId: m.id, itemName: m.itemName, itemCode: m.itemCode }));
+  }
+
+  async getPurchaseItemBomLinks(): Promise<Array<{ purchaseItemId: string; itemMasterId: string; itemName: string; itemCode: string }>> {
+    const allComps = await db.select().from(itemComponents);
+    const linkedComps = allComps.filter(c => c.purchaseItemId);
+    if (linkedComps.length === 0) return [];
+    const masterIds = [...new Set(linkedComps.map(c => c.itemMasterId))];
+    const masters = await db.select().from(itemMaster).where(
+      or(...masterIds.map(mid => eq(itemMaster.id, mid)))
+    );
+    const masterMap = new Map(masters.map(m => [m.id, m]));
+    const seen = new Set<string>();
+    const results: Array<{ purchaseItemId: string; itemMasterId: string; itemName: string; itemCode: string }> = [];
+    for (const c of linkedComps) {
+      if (!c.purchaseItemId || !masterMap.has(c.itemMasterId)) continue;
+      const key = `${c.purchaseItemId}:${c.itemMasterId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const m = masterMap.get(c.itemMasterId)!;
+      results.push({ purchaseItemId: c.purchaseItemId, itemMasterId: m.id, itemName: m.itemName, itemCode: m.itemCode });
+    }
+    return results;
+  }
+
   async getInquiryMemos(inquiryId: string): Promise<InquiryMemo[]> {
     return db.select().from(inquiryMemos).where(eq(inquiryMemos.inquiryId, inquiryId)).orderBy(desc(inquiryMemos.createdAt));
   }

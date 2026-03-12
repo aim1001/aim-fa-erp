@@ -4573,6 +4573,87 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/items/:id/components", requireAuth, async (req, res) => {
+    try {
+      const components = await storage.getItemComponents(req.params.id);
+      res.json(components);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/items/:id/components", requireAuth, async (req, res) => {
+    try {
+      if (!req.body.itemName) {
+        return res.status(400).json({ message: "품명은 필수입니다" });
+      }
+      const qty = req.body.quantity ?? 1;
+      if (typeof qty !== "number" || qty < 1) {
+        return res.status(400).json({ message: "수량은 1 이상이어야 합니다" });
+      }
+      const data = {
+        itemMasterId: req.params.id,
+        purchaseItemId: req.body.purchaseItemId || null,
+        itemName: req.body.itemName,
+        spec: req.body.spec || null,
+        quantity: qty,
+        unitCost: req.body.unitCost ?? null,
+        isAdjustment: req.body.isAdjustment ?? false,
+        sortOrder: req.body.sortOrder ?? 0,
+        remark: req.body.remark || null,
+      };
+      const comp = await storage.createItemComponent(data);
+      res.json(comp);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/items/:id/components/:componentId", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getItemComponents(req.params.id);
+      if (!existing.find(c => c.id === req.params.componentId)) {
+        return res.status(404).json({ message: "구성품을 찾을 수 없습니다" });
+      }
+      const allowedFields = ["purchaseItemId", "itemName", "spec", "quantity", "unitCost", "isAdjustment", "sortOrder", "remark"];
+      const fields: Record<string, any> = {};
+      for (const key of allowedFields) {
+        if (req.body[key] !== undefined) {
+          fields[key] = req.body[key];
+        }
+      }
+      if (fields.quantity !== undefined && (typeof fields.quantity !== "number" || fields.quantity < 1)) {
+        return res.status(400).json({ message: "수량은 1 이상이어야 합니다" });
+      }
+      const comp = await storage.updateItemComponent(req.params.componentId, fields);
+      res.json(comp);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/items/:id/components/:componentId", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getItemComponents(req.params.id);
+      if (!existing.find(c => c.id === req.params.componentId)) {
+        return res.status(404).json({ message: "구성품을 찾을 수 없습니다" });
+      }
+      await storage.deleteItemComponent(req.params.componentId);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/purchase-items/bom-links", requireAuth, async (_req, res) => {
+    try {
+      const links = await storage.getPurchaseItemBomLinks();
+      res.json(links);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/purchase-items", requireAuth, async (req, res) => {
     try {
       const search = req.query.search as string | undefined;
