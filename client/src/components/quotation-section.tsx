@@ -1105,10 +1105,20 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
         <span className="text-xs">{addDays(quoteDate, 30)}</span>
       </div>
       {isLocked ? (
-        <Badge variant={status === "accepted" ? "default" : "secondary"} className="text-xs">
-          {status === "sent" ? "발송" : "수주"}
-        </Badge>
+        <Select value={status} onValueChange={(v) => {
+          setStatus(v);
+          updateMut.mutate({ status: v });
+        }}>
+          <SelectTrigger className="h-7 text-xs w-20" data-testid="select-quote-status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="sent">발송</SelectItem>
+            <SelectItem value="accepted">수주</SelectItem>
+          </SelectContent>
+        </Select>
       ) : (
+        <>
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="h-7 text-xs w-20" data-testid="select-quote-status">
             <SelectValue />
@@ -1119,11 +1129,10 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
             <SelectItem value="accepted">수주</SelectItem>
           </SelectContent>
         </Select>
-      )}
-      {!isLocked && (
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleSaveHeader} disabled={updateMut.isPending} data-testid="button-save-header">
           <Check className="h-3 w-3 mr-1" />저장
         </Button>
+        </>
       )}
       <div className="flex-1" />
       {inquiry.onedriveFolderId && (

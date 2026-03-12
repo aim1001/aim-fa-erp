@@ -2391,8 +2391,16 @@ export async function registerRoutes(
     try {
       const existing = await storage.getQuotationWithItems(req.params.id);
       if (!existing) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
-      if (existing.quotation.status === "sent" || existing.quotation.status === "accepted") {
-        return res.status(403).json({ message: "발송/수주 상태의 견적서는 수정할 수 없습니다" });
+      const isLocked = existing.quotation.status === "sent" || existing.quotation.status === "accepted";
+      if (isLocked) {
+        const allowedKeys = ["status"];
+        const bodyKeys = Object.keys(req.body);
+        const hasOnlyAllowed = bodyKeys.every(k => allowedKeys.includes(k));
+        const newStatus = req.body.status;
+        const validTransition = newStatus === "sent" || newStatus === "accepted";
+        if (!hasOnlyAllowed || !validTransition) {
+          return res.status(403).json({ message: "발송/수주 상태의 견적서는 상태 변경만 가능합니다" });
+        }
       }
       const q = await storage.updateQuotation(req.params.id, req.body);
       res.json(q);
@@ -2500,8 +2508,22 @@ export async function registerRoutes(
     }
   });
 
+  async function checkQuotationItemLock(itemId: string): Promise<string | null> {
+    const result = await pool.query(
+      `SELECT q.status FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE qi.id = $1`,
+      [itemId]
+    );
+    if (result.rows.length === 0) return null;
+    return result.rows[0].status;
+  }
+
   app.patch("/api/quotation-items/:id", async (req, res) => {
     try {
+      const parentStatus = await checkQuotationItemLock(req.params.id);
+      if (parentStatus === null) return res.status(404).json({ message: "항목을 찾을 수 없습니다" });
+      if (parentStatus === "sent" || parentStatus === "accepted") {
+        return res.status(403).json({ message: "발송/수주 상태의 견적서 품목은 수정할 수 없습니다" });
+      }
       const data = { ...req.body };
       if (data.quantity != null || data.unitPrice != null) {
         const qty = data.quantity ?? 0;
@@ -2518,6 +2540,11 @@ export async function registerRoutes(
 
   app.delete("/api/quotation-items/:id", async (req, res) => {
     try {
+      const parentStatus = await checkQuotationItemLock(req.params.id);
+      if (parentStatus === null) return res.status(404).json({ message: "항목을 찾을 수 없습니다" });
+      if (parentStatus === "sent" || parentStatus === "accepted") {
+        return res.status(403).json({ message: "발송/수주 상태의 견적서 품목은 삭제할 수 없습니다" });
+      }
       await storage.deleteQuotationItem(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
