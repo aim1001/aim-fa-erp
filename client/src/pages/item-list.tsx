@@ -347,7 +347,7 @@ function ItemDetailRow({
         <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
           <span className="text-muted-foreground">유형</span>
           <Select
-            value={item.itemType || ""}
+            value={item.itemType || "__none__"}
             onValueChange={val => patchMutation.mutate({ itemType: val === "__none__" ? null : val })}
           >
             <SelectTrigger className="h-6 text-xs px-2 w-[100px] border-dashed" data-testid={`select-type-${item.itemCode}`}>
