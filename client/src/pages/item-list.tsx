@@ -577,7 +577,7 @@ function ComponentSection({
             </span>
             <span></span>
           </div>
-          {totalCost > 0 && totalCost !== (itemCost || 0) && (
+          {totalCost !== (itemCost || 0) && (
             <div className="flex items-center gap-2 mt-1">
               <span className="text-[10px] text-muted-foreground">현재 원가: {(itemCost || 0).toLocaleString()}원</span>
               <Button
@@ -682,7 +682,7 @@ function AddComponentDialog({
         itemName: selectedPI.itemName,
         spec: selectedPI.spec || "",
         quantity: parseInt(quantity, 10) || 1,
-        unitCost: selectedPI.cost || 0,
+        unitCost: null,
         isAdjustment: false,
         remark,
       });
