@@ -339,11 +339,11 @@ export function TaskListCard({ onInquiryClick, onProjectClick }: { onInquiryClic
   };
 
   const handleSaveEdit = (item: TaskItem) => {
-    const updates: any = { id: item.id };
+    const updates: { id: string; content?: string; dueDate?: string | null; dueTime?: string | null } = { id: item.id };
     if (editContent.trim() !== item.content) updates.content = editContent.trim();
     if (editDueDate !== (item.dueDate || "")) updates.dueDate = editDueDate || null;
     if (editDueTime !== (item.dueTime || "")) updates.dueTime = editDueTime || null;
-    if (Object.keys(updates).length <= 1) { setEditingTaskId(null); return; }
+    if (updates.content === undefined && updates.dueDate === undefined && updates.dueTime === undefined) { setEditingTaskId(null); return; }
     if (item.type === "inquiry") editInquiryMutation.mutate(updates);
     else if (item.type === "project") editProjectMutation.mutate(updates);
     else if (item.type === "purchase") editPOMutation.mutate(updates);

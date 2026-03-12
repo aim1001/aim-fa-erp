@@ -1610,11 +1610,11 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
                       autoFocus
                       onKeyDown={e => {
                         if (e.key === "Enter" && editContent.trim()) {
-                          const updates: any = { id: task.id };
+                          const updates: { id: string; content?: string; dueDate?: string | null; dueTime?: string | null } = { id: task.id };
                           if (editContent.trim() !== task.content) updates.content = editContent.trim();
                           if (editDueDate !== (task.dueDate || "")) updates.dueDate = editDueDate || null;
                           if (editDueTime !== (task.dueTime || "")) updates.dueTime = editDueTime || null;
-                          if (Object.keys(updates).length > 1) editMutation.mutate(updates);
+                          if (updates.content !== undefined || updates.dueDate !== undefined || updates.dueTime !== undefined) editMutation.mutate(updates);
                           else setEditingTaskId(null);
                         }
                         if (e.key === "Escape") setEditingTaskId(null);
@@ -1641,11 +1641,11 @@ function TaskSection({ inquiryId }: { inquiryId: string }) {
                       className="h-7 px-1.5 shrink-0"
                       disabled={!editContent.trim() || editMutation.isPending}
                       onClick={() => {
-                        const updates: any = { id: task.id };
+                        const updates: { id: string; content?: string; dueDate?: string | null; dueTime?: string | null } = { id: task.id };
                         if (editContent.trim() !== task.content) updates.content = editContent.trim();
                         if (editDueDate !== (task.dueDate || "")) updates.dueDate = editDueDate || null;
                         if (editDueTime !== (task.dueTime || "")) updates.dueTime = editDueTime || null;
-                        if (Object.keys(updates).length > 1) editMutation.mutate(updates);
+                        if (updates.content !== undefined || updates.dueDate !== undefined || updates.dueTime !== undefined) editMutation.mutate(updates);
                         else setEditingTaskId(null);
                       }}
                       data-testid={`button-save-task-${task.id}`}
