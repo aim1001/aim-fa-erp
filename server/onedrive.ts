@@ -563,6 +563,14 @@ export async function getFolderMetadata(folderId: string): Promise<{ createdDate
   return { createdDateTime: result.createdDateTime };
 }
 
+export async function getFolderWebUrl(folderId: string): Promise<string> {
+  const result = await graphCallWithRetry(
+    (token) => graphFetchDirect(`/me/drive/items/${folderId}`, token, { select: 'id,webUrl' }),
+    'getFolderWebUrl'
+  );
+  return result.webUrl || '';
+}
+
 export async function uploadFileByPath(path: string, content: Buffer): Promise<void> {
   const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
   await graphCallWithRetry(

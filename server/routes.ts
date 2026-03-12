@@ -5449,6 +5449,42 @@ export async function registerRoutes(
         }
       }
 
+      try {
+        const yr = order.year || new Date().getFullYear();
+        const sanitize = (s: string) => s.replace(/[\/\\:*?"<>|]/g, '_').replace(/\s+/g, ' ').replace(/[.\s]+$/, '').trim();
+        const folderSegment = sanitize(`${order.orderNumber}_${sanitize(order.vendor || '')}_${sanitize(order.description || '')}`);
+        const folderPath = `2.공사/${yr}/발주서/${folderSegment}`;
+        const { ensureFolderByPath, getFolderWebUrl, uploadFileToFolder } = await import("./onedrive");
+        const folderId = await ensureFolderByPath(folderPath);
+        const webUrl = await getFolderWebUrl(folderId);
+        const folderName = `일반::${folderSegment}`;
+        await storage.updatePurchaseOrder(order.id, {
+          onedriveFolderId: folderId,
+          onedriveWebUrl: webUrl,
+          folderName,
+        });
+
+        const staffName = order.staffId ? (await storage.getStaff(order.staffId))?.name || '' : '';
+        const infoData = {
+          orderNumber: order.orderNumber,
+          vendor: order.vendor,
+          description: order.description,
+          supplyAmount: order.supplyAmount,
+          taxAmount: order.taxAmount,
+          totalAmount: order.totalAmount,
+          expectedDeliveryDate: order.expectedDeliveryDate,
+          staffId: order.staffId,
+          staffName,
+          memo: order.memo,
+          status: order.status,
+          year: yr,
+          createdAt: new Date().toISOString(),
+        };
+        await uploadFileToFolder(folderId, "info.json", Buffer.from(JSON.stringify(infoData, null, 2)));
+      } catch (folderErr: any) {
+        console.log(`OneDrive 발주 폴더 생성 실패 (발주 생성은 계속): ${folderErr.message}`);
+      }
+
       const updated = await storage.getPurchaseOrder(order.id);
       res.status(201).json({ order: updated, payment });
     } catch (err: any) {
@@ -5686,6 +5722,32 @@ export async function registerRoutes(
       }
 
       const final = await storage.getPurchaseOrder(req.params.id);
+
+      if (final?.onedriveFolderId) {
+        try {
+          const { uploadFileToFolder } = await import("./onedrive");
+          const staffName = final.staffId ? (await storage.getStaff(final.staffId))?.name || '' : '';
+          const infoData = {
+            orderNumber: final.orderNumber,
+            vendor: final.vendor,
+            description: final.description,
+            supplyAmount: final.supplyAmount,
+            taxAmount: final.taxAmount,
+            totalAmount: final.totalAmount,
+            expectedDeliveryDate: final.expectedDeliveryDate,
+            staffId: final.staffId,
+            staffName,
+            memo: final.memo,
+            status: final.status,
+            year: final.year,
+            updatedAt: new Date().toISOString(),
+          };
+          await uploadFileToFolder(final.onedriveFolderId, "info.json", Buffer.from(JSON.stringify(infoData, null, 2)));
+        } catch (infoErr: any) {
+          console.log(`OneDrive 발주 info.json 업데이트 실패: ${infoErr.message}`);
+        }
+      }
+
       res.json(final);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
