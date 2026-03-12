@@ -1503,10 +1503,15 @@ export async function registerRoutes(
         try {
           const inquiry = await storage.getInquiry(req.params.id);
           const title = `${prefix} ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${content.trim()}`;
-          const { createTaskEvent } = await import("./google-calendar");
-          calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+          if (resolvedTaskType === "todo") {
+            const { createGoogleTask } = await import("./google-tasks");
+            calendarEventId = await createGoogleTask(title, normalizedDueDate);
+          } else {
+            const { createTaskEvent } = await import("./google-calendar");
+            calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+          }
         } catch (calErr: any) {
-          console.log(`Google Calendar 등록 실패 (할일 생성은 계속): ${calErr.message}`);
+          console.log(`Google 등록 실패 (할일 생성은 계속): ${calErr.message}`);
         }
       }
 
@@ -1551,20 +1556,30 @@ export async function registerRoutes(
       if (allowed.completed === true) {
         if (existing.calendarEventId) {
           try {
-            const { deleteCalendarEvent } = await import("./google-calendar");
-            await deleteCalendarEvent(existing.calendarEventId);
+            if (existing.taskType === "todo") {
+              const { completeGoogleTask } = await import("./google-tasks");
+              await completeGoogleTask(existing.calendarEventId);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(existing.calendarEventId);
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+            console.log(`Google 완료 처리 실패: ${calErr.message}`);
           }
           allowed.calendarEventId = null;
         }
       } else if (allowed.dueDate !== undefined || allowed.dueTime !== undefined) {
         if (existing.calendarEventId) {
           try {
-            const { deleteCalendarEvent } = await import("./google-calendar");
-            await deleteCalendarEvent(existing.calendarEventId);
+            if (existing.taskType === "todo") {
+              const { deleteGoogleTask } = await import("./google-tasks");
+              await deleteGoogleTask(existing.calendarEventId);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(existing.calendarEventId);
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 기존 이벤트 삭제 실패: ${calErr.message}`);
+            console.log(`Google 기존 이벤트 삭제 실패: ${calErr.message}`);
           }
           allowed.calendarEventId = null;
         }
@@ -1576,11 +1591,17 @@ export async function registerRoutes(
             const content = allowed.content || existing.content;
             const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
             const title = `${prefix} ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${content}`;
-            const { createTaskEvent } = await import("./google-calendar");
-            const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
-            allowed.calendarEventId = newEventId;
+            if (existing.taskType === "todo") {
+              const { createGoogleTask } = await import("./google-tasks");
+              const newEventId = await createGoogleTask(title, newDueDate);
+              allowed.calendarEventId = newEventId;
+            } else {
+              const { createTaskEvent } = await import("./google-calendar");
+              const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
+              allowed.calendarEventId = newEventId;
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 재등록 실패: ${calErr.message}`);
+            console.log(`Google 재등록 실패: ${calErr.message}`);
           }
         }
       }
@@ -1604,10 +1625,15 @@ export async function registerRoutes(
       const existing = await storage.getTask(req.params.id);
       if (existing?.calendarEventId) {
         try {
-          const { deleteCalendarEvent } = await import("./google-calendar");
-          await deleteCalendarEvent(existing.calendarEventId);
+          if (existing.taskType === "todo") {
+            const { deleteGoogleTask } = await import("./google-tasks");
+            await deleteGoogleTask(existing.calendarEventId);
+          } else {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          }
         } catch (calErr: any) {
-          console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+          console.log(`Google 삭제 실패: ${calErr.message}`);
         }
       }
       await storage.deleteTask(req.params.id);
@@ -1650,10 +1676,15 @@ export async function registerRoutes(
         try {
           const project = await storage.getProject(req.params.id);
           const title = `${prefix} ${project?.projectNumber || ""}_${project?.customerName || ""}: ${content.trim()}`;
-          const { createTaskEvent } = await import("./google-calendar");
-          calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+          if (resolvedTaskType === "todo") {
+            const { createGoogleTask } = await import("./google-tasks");
+            calendarEventId = await createGoogleTask(title, normalizedDueDate);
+          } else {
+            const { createTaskEvent } = await import("./google-calendar");
+            calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+          }
         } catch (calErr: any) {
-          console.log(`Google Calendar 등록 실패 (프로젝트 할일 생성은 계속): ${calErr.message}`);
+          console.log(`Google 등록 실패 (프로젝트 할일 생성은 계속): ${calErr.message}`);
         }
       }
 
@@ -1698,20 +1729,30 @@ export async function registerRoutes(
       if (allowed.completed === true) {
         if (existing.calendarEventId) {
           try {
-            const { deleteCalendarEvent } = await import("./google-calendar");
-            await deleteCalendarEvent(existing.calendarEventId);
+            if (existing.taskType === "todo") {
+              const { completeGoogleTask } = await import("./google-tasks");
+              await completeGoogleTask(existing.calendarEventId);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(existing.calendarEventId);
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+            console.log(`Google 완료 처리 실패: ${calErr.message}`);
           }
           allowed.calendarEventId = null;
         }
       } else if (allowed.dueDate !== undefined || allowed.dueTime !== undefined) {
         if (existing.calendarEventId) {
           try {
-            const { deleteCalendarEvent } = await import("./google-calendar");
-            await deleteCalendarEvent(existing.calendarEventId);
+            if (existing.taskType === "todo") {
+              const { deleteGoogleTask } = await import("./google-tasks");
+              await deleteGoogleTask(existing.calendarEventId);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(existing.calendarEventId);
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 기존 이벤트 삭제 실패: ${calErr.message}`);
+            console.log(`Google 기존 이벤트 삭제 실패: ${calErr.message}`);
           }
           allowed.calendarEventId = null;
         }
@@ -1723,11 +1764,17 @@ export async function registerRoutes(
             const content = allowed.content || existing.content;
             const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
             const title = `${prefix} ${project?.projectNumber || ""}_${project?.customerName || ""}: ${content}`;
-            const { createTaskEvent } = await import("./google-calendar");
-            const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
-            allowed.calendarEventId = newEventId;
+            if (existing.taskType === "todo") {
+              const { createGoogleTask } = await import("./google-tasks");
+              const newEventId = await createGoogleTask(title, newDueDate);
+              allowed.calendarEventId = newEventId;
+            } else {
+              const { createTaskEvent } = await import("./google-calendar");
+              const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
+              allowed.calendarEventId = newEventId;
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 재등록 실패: ${calErr.message}`);
+            console.log(`Google 재등록 실패: ${calErr.message}`);
           }
         }
       }
@@ -1751,10 +1798,15 @@ export async function registerRoutes(
       const existing = await storage.getProjectTask(req.params.id);
       if (existing?.calendarEventId) {
         try {
-          const { deleteCalendarEvent } = await import("./google-calendar");
-          await deleteCalendarEvent(existing.calendarEventId);
+          if (existing.taskType === "todo") {
+            const { deleteGoogleTask } = await import("./google-tasks");
+            await deleteGoogleTask(existing.calendarEventId);
+          } else {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          }
         } catch (calErr: any) {
-          console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+          console.log(`Google 삭제 실패: ${calErr.message}`);
         }
       }
       await storage.deleteProjectTask(req.params.id);
@@ -1767,6 +1819,7 @@ export async function registerRoutes(
   app.post("/api/tasks/sync-calendar", async (_req, res) => {
     try {
       const { createTaskEvent } = await import("./google-calendar");
+      const { createGoogleTask } = await import("./google-tasks");
       const inquiryTasksList = await storage.getAllPendingTasks();
       const projectTasksList = await storage.getAllPendingProjectTasks();
 
@@ -1777,7 +1830,9 @@ export async function registerRoutes(
         try {
           const prefix = task.taskType === "schedule" ? "[일정]" : "[할일]";
           const title = `${prefix} ${task.inquiryNumber || ""}_${task.customerName || ""}: ${task.content}`;
-          const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
+          const eventId = task.taskType === "todo"
+            ? await createGoogleTask(title, task.dueDate)
+            : await createTaskEvent(title, task.dueDate, task.dueTime);
           if (eventId) {
             await storage.updateTask(task.id, { calendarEventId: eventId });
             synced++;
@@ -1790,7 +1845,9 @@ export async function registerRoutes(
         try {
           const prefix = task.taskType === "schedule" ? "[일정]" : "[할일]";
           const title = `${prefix} P:${task.projectNumber || ""}_${task.customerName || ""}: ${task.content}`;
-          const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
+          const eventId = task.taskType === "todo"
+            ? await createGoogleTask(title, task.dueDate)
+            : await createTaskEvent(title, task.dueDate, task.dueTime);
           if (eventId) {
             await storage.updateProjectTask(task.id, { calendarEventId: eventId });
             synced++;
@@ -1804,7 +1861,9 @@ export async function registerRoutes(
         try {
           const poPrefix = task.taskType === "todo" ? "[할일]" : "[일정]";
           const title = `${poPrefix} ${task.content}`;
-          const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
+          const eventId = task.taskType === "todo"
+            ? await createGoogleTask(title, task.dueDate)
+            : await createTaskEvent(title, task.dueDate, task.dueTime);
           if (eventId) {
             await storage.updatePurchaseOrderTask(task.id, { calendarEventId: eventId });
             synced++;
@@ -1818,7 +1877,9 @@ export async function registerRoutes(
         try {
           const finPrefix = task.taskType === "todo" ? "[할일]" : "[일정]";
           const title = `${finPrefix} ${task.content}`;
-          const eventId = await createTaskEvent(title, task.dueDate, task.dueTime);
+          const eventId = task.taskType === "todo"
+            ? await createGoogleTask(title, task.dueDate)
+            : await createTaskEvent(title, task.dueDate, task.dueTime);
           if (eventId) {
             await storage.updateFinanceTask(task.id, { calendarEventId: eventId });
             synced++;
@@ -1842,15 +1903,29 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
       if (!existing.dueDate) return res.status(400).json({ message: "기한이 설정되지 않았습니다" });
 
-      const { createTaskEvent, deleteCalendarEvent } = await import("./google-calendar");
       if (existing.calendarEventId) {
-        try { await deleteCalendarEvent(existing.calendarEventId); } catch {}
+        try {
+          if (existing.taskType === "todo") {
+            const { deleteGoogleTask } = await import("./google-tasks");
+            await deleteGoogleTask(existing.calendarEventId);
+          } else {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          }
+        } catch {}
       }
 
       const inquiry = await storage.getInquiry(existing.inquiryId);
       const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
       const title = `${prefix} ${inquiry?.inquiryNumber || ""}_${inquiry?.customerName || ""}: ${existing.content}`;
-      const eventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+      let eventId: string | null = null;
+      if (existing.taskType === "todo") {
+        const { createGoogleTask } = await import("./google-tasks");
+        eventId = await createGoogleTask(title, existing.dueDate);
+      } else {
+        const { createTaskEvent } = await import("./google-calendar");
+        eventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+      }
       await storage.updateTask(existing.id, { calendarEventId: eventId });
       const updated = await storage.getTask(existing.id);
       res.json(updated);
@@ -1865,15 +1940,29 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "할일을 찾을 수 없습니다" });
       if (!existing.dueDate) return res.status(400).json({ message: "기한이 설정되지 않았습니다" });
 
-      const { createTaskEvent, deleteCalendarEvent } = await import("./google-calendar");
       if (existing.calendarEventId) {
-        try { await deleteCalendarEvent(existing.calendarEventId); } catch {}
+        try {
+          if (existing.taskType === "todo") {
+            const { deleteGoogleTask } = await import("./google-tasks");
+            await deleteGoogleTask(existing.calendarEventId);
+          } else {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          }
+        } catch {}
       }
 
       const project = await storage.getProject(existing.projectId);
       const prefix = existing.taskType === "schedule" ? "[일정]" : "[할일]";
       const title = `${prefix} P:${project?.projectNumber || ""}_${project?.customerName || ""}: ${existing.content}`;
-      const eventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+      let eventId: string | null = null;
+      if (existing.taskType === "todo") {
+        const { createGoogleTask } = await import("./google-tasks");
+        eventId = await createGoogleTask(title, existing.dueDate);
+      } else {
+        const { createTaskEvent } = await import("./google-calendar");
+        eventId = await createTaskEvent(title, existing.dueDate, existing.dueTime);
+      }
       await storage.updateProjectTask(existing.id, { calendarEventId: eventId });
       const updated = await storage.getProjectTask(existing.id);
       res.json(updated);
@@ -1905,10 +1994,15 @@ export async function registerRoutes(
       if (normalizedDueDate) {
         try {
           const title = `${prefix} ${content}`;
-          const { createTaskEvent } = await import("./google-calendar");
-          calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+          if (resolvedTaskType === "todo") {
+            const { createGoogleTask } = await import("./google-tasks");
+            calendarEventId = await createGoogleTask(title, normalizedDueDate);
+          } else {
+            const { createTaskEvent } = await import("./google-calendar");
+            calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+          }
         } catch (calErr: any) {
-          console.log(`Google Calendar 등록 실패 (구매발주 할일 생성은 계속): ${calErr.message}`);
+          console.log(`Google 등록 실패 (구매발주 할일 생성은 계속): ${calErr.message}`);
         }
       }
 
@@ -1944,10 +2038,15 @@ export async function registerRoutes(
         allowed.completed = req.body.completed;
         if (req.body.completed && existing.calendarEventId) {
           try {
-            const { deleteCalendarEvent } = await import("./google-calendar");
-            await deleteCalendarEvent(existing.calendarEventId);
+            if (existing.taskType === "todo") {
+              const { completeGoogleTask } = await import("./google-tasks");
+              await completeGoogleTask(existing.calendarEventId);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(existing.calendarEventId);
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+            console.log(`Google 완료 처리 실패: ${calErr.message}`);
           }
           allowed.calendarEventId = null;
         }
@@ -1960,8 +2059,13 @@ export async function registerRoutes(
 
         if (existing.calendarEventId) {
           try {
-            const { deleteCalendarEvent } = await import("./google-calendar");
-            await deleteCalendarEvent(existing.calendarEventId);
+            if (existing.taskType === "todo") {
+              const { deleteGoogleTask } = await import("./google-tasks");
+              await deleteGoogleTask(existing.calendarEventId);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(existing.calendarEventId);
+            }
           } catch {}
           allowed.calendarEventId = null;
         }
@@ -1970,11 +2074,17 @@ export async function registerRoutes(
           try {
             const poPrefix = existing.taskType === "todo" ? "[할일]" : "[일정]";
             const title = `${poPrefix} ${req.body.content || existing.content}`;
-            const { createTaskEvent } = await import("./google-calendar");
-            const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
-            allowed.calendarEventId = newEventId;
+            if (existing.taskType === "todo") {
+              const { createGoogleTask } = await import("./google-tasks");
+              const newEventId = await createGoogleTask(title, newDueDate);
+              allowed.calendarEventId = newEventId;
+            } else {
+              const { createTaskEvent } = await import("./google-calendar");
+              const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
+              allowed.calendarEventId = newEventId;
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 재등록 실패: ${calErr.message}`);
+            console.log(`Google 재등록 실패: ${calErr.message}`);
           }
         }
       }
@@ -1998,10 +2108,15 @@ export async function registerRoutes(
       const existing = await storage.getPurchaseOrderTask(req.params.id);
       if (existing?.calendarEventId) {
         try {
-          const { deleteCalendarEvent } = await import("./google-calendar");
-          await deleteCalendarEvent(existing.calendarEventId);
+          if (existing.taskType === "todo") {
+            const { deleteGoogleTask } = await import("./google-tasks");
+            await deleteGoogleTask(existing.calendarEventId);
+          } else {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          }
         } catch (calErr: any) {
-          console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+          console.log(`Google 삭제 실패: ${calErr.message}`);
         }
       }
       await storage.deletePurchaseOrderTask(req.params.id);
@@ -2034,10 +2149,15 @@ export async function registerRoutes(
       if (normalizedDueDate) {
         try {
           const title = `${prefix} ${content}`;
-          const { createTaskEvent } = await import("./google-calendar");
-          calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+          if (resolvedTaskType === "todo") {
+            const { createGoogleTask } = await import("./google-tasks");
+            calendarEventId = await createGoogleTask(title, normalizedDueDate);
+          } else {
+            const { createTaskEvent } = await import("./google-calendar");
+            calendarEventId = await createTaskEvent(title, normalizedDueDate, normalizedDueTime);
+          }
         } catch (calErr: any) {
-          console.log(`Google Calendar 등록 실패 (경영지원 할일 생성은 계속): ${calErr.message}`);
+          console.log(`Google 등록 실패 (경영지원 할일 생성은 계속): ${calErr.message}`);
         }
       }
 
@@ -2070,10 +2190,15 @@ export async function registerRoutes(
         allowed.completed = req.body.completed;
         if (req.body.completed && existing.calendarEventId) {
           try {
-            const { deleteCalendarEvent } = await import("./google-calendar");
-            await deleteCalendarEvent(existing.calendarEventId);
+            if (existing.taskType === "todo") {
+              const { completeGoogleTask } = await import("./google-tasks");
+              await completeGoogleTask(existing.calendarEventId);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(existing.calendarEventId);
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+            console.log(`Google 완료 처리 실패: ${calErr.message}`);
           }
           allowed.calendarEventId = null;
         }
@@ -2086,8 +2211,13 @@ export async function registerRoutes(
 
         if (existing.calendarEventId) {
           try {
-            const { deleteCalendarEvent } = await import("./google-calendar");
-            await deleteCalendarEvent(existing.calendarEventId);
+            if (existing.taskType === "todo") {
+              const { deleteGoogleTask } = await import("./google-tasks");
+              await deleteGoogleTask(existing.calendarEventId);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(existing.calendarEventId);
+            }
           } catch {}
           allowed.calendarEventId = null;
         }
@@ -2096,11 +2226,17 @@ export async function registerRoutes(
           try {
             const finPrefix = existing.taskType === "todo" ? "[할일]" : "[일정]";
             const title = `${finPrefix} ${req.body.content || existing.content}`;
-            const { createTaskEvent } = await import("./google-calendar");
-            const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
-            allowed.calendarEventId = newEventId;
+            if (existing.taskType === "todo") {
+              const { createGoogleTask } = await import("./google-tasks");
+              const newEventId = await createGoogleTask(title, newDueDate);
+              allowed.calendarEventId = newEventId;
+            } else {
+              const { createTaskEvent } = await import("./google-calendar");
+              const newEventId = await createTaskEvent(title, newDueDate, newDueTime);
+              allowed.calendarEventId = newEventId;
+            }
           } catch (calErr: any) {
-            console.log(`Google Calendar 재등록 실패: ${calErr.message}`);
+            console.log(`Google 재등록 실패: ${calErr.message}`);
           }
         }
       }
@@ -2120,10 +2256,15 @@ export async function registerRoutes(
       const existing = await storage.getFinanceTask(req.params.id);
       if (existing?.calendarEventId) {
         try {
-          const { deleteCalendarEvent } = await import("./google-calendar");
-          await deleteCalendarEvent(existing.calendarEventId);
+          if (existing.taskType === "todo") {
+            const { deleteGoogleTask } = await import("./google-tasks");
+            await deleteGoogleTask(existing.calendarEventId);
+          } else {
+            const { deleteCalendarEvent } = await import("./google-calendar");
+            await deleteCalendarEvent(existing.calendarEventId);
+          }
         } catch (calErr: any) {
-          console.log(`Google Calendar 삭제 실패: ${calErr.message}`);
+          console.log(`Google 삭제 실패: ${calErr.message}`);
         }
       }
       await storage.deleteFinanceTask(req.params.id);
