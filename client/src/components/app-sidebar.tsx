@@ -2,7 +2,7 @@ import {
   LayoutDashboard, RefreshCw, Building2, LogOut,
   Truck, Wallet, FolderKanban, ClipboardList,
   CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart,
-  Settings, Users, TrendingUp, Cloud
+  Settings, Users, TrendingUp, Cloud, ScanEye
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -213,7 +213,7 @@ export function AppSidebar() {
                       className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
                       data-testid="nav-optics-calculator"
                     >
-                      <Link href="/optics-calculator"><span>광학 계산기</span></Link>
+                      <Link href="/optics-calculator"><ScanEye className="h-4 w-4" /><span>광학 계산기</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
