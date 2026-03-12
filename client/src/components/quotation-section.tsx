@@ -799,30 +799,32 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
         </div>
       </div>
 
-      {!isLocked && (
-      <>
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium">납기</span>
-        <Input
-          type="number"
-          value={deliveryDays ?? ""}
-          onChange={e => {
-            const v = e.target.value === "" ? null : parseInt(e.target.value) || 0;
-            setDeliveryDays(v);
-            setDeliveryAutoCalculated(false);
-          }}
-          className="h-7 text-xs w-16"
-          placeholder="일"
-          data-testid="input-delivery-days"
-        />
+        {isLocked ? (
+          <span className="text-xs font-medium">{deliveryDays ?? "-"}</span>
+        ) : (
+          <Input
+            type="number"
+            value={deliveryDays ?? ""}
+            onChange={e => {
+              const v = e.target.value === "" ? null : parseInt(e.target.value) || 0;
+              setDeliveryDays(v);
+              setDeliveryAutoCalculated(false);
+            }}
+            className="h-7 text-xs w-16"
+            placeholder="일"
+            data-testid="input-delivery-days"
+          />
+        )}
         <span className="text-xs text-muted-foreground">일</span>
-        {deliveryAutoCalculated && autoDeliveryDays > 0 && (
+        {!isLocked && deliveryAutoCalculated && autoDeliveryDays > 0 && (
           <span className="text-xs text-muted-foreground">(자동)</span>
         )}
-        {deliveryAutoCalculated && autoDeliveryDays === 0 && (
+        {!isLocked && deliveryAutoCalculated && autoDeliveryDays === 0 && (
           <span className="text-xs text-muted-foreground">(리드타임 정보 없음)</span>
         )}
-        {!deliveryAutoCalculated && autoDeliveryDays > 0 && (
+        {!isLocked && !deliveryAutoCalculated && autoDeliveryDays > 0 && (
           <button
             className="text-xs text-blue-500 hover:underline"
             onClick={() => { setDeliveryDays(autoDeliveryDays); setDeliveryAutoCalculated(true); }}
@@ -834,32 +836,41 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
       </div>
 
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-sm font-medium">비고</label>
-          <button
-            type="button"
-            className="text-xs text-blue-500 hover:underline"
-            onClick={() => setNotes(defaultNotes)}
-            data-testid="button-load-default-notes"
-          >
-            기본 메모 불러오기
-          </button>
-        </div>
-        <Textarea
-          value={notes}
-          onChange={e => setNotes(e.target.value)}
-          rows={9}
-          className="text-xs"
-          placeholder="견적서 비고 사항..."
-          data-testid="input-quotation-notes"
-        />
+        <label className="text-sm font-medium mb-1 block">비고</label>
+        {isLocked ? (
+          <div className="text-xs whitespace-pre-wrap bg-muted/20 rounded-md p-3 border" data-testid="text-quotation-notes">
+            {notes || <span className="text-muted-foreground">없음</span>}
+          </div>
+        ) : (
+          <>
+          <div className="flex items-center justify-between mb-1">
+            <div />
+            <button
+              type="button"
+              className="text-xs text-blue-500 hover:underline"
+              onClick={() => setNotes(defaultNotes)}
+              data-testid="button-load-default-notes"
+            >
+              기본 메모 불러오기
+            </button>
+          </div>
+          <Textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={9}
+            className="text-xs"
+            placeholder="견적서 비고 사항..."
+            data-testid="input-quotation-notes"
+          />
+          </>
+        )}
       </div>
 
+      {!isLocked && (
       <Button onClick={handleSave} disabled={updateMut.isPending} data-testid="button-save-pricing">
         {updateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Check className="h-4 w-4 mr-1" />}
         저장
       </Button>
-      </>
       )}
     </div>
   );
