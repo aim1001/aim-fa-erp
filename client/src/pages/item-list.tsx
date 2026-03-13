@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Package, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Upload, Trash2, Layers, PlusCircle } from "lucide-react";
+import { Package, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Upload, Trash2, Layers, PlusCircle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback, useRef, useEffect } from "react";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
 import { Input } from "@/components/ui/input";
@@ -1017,9 +1017,27 @@ export default function ItemList() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [category2Filter, setCategory2Filter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [sortField, setSortField] = useState<"category1" | "category2" | "itemCode" | "itemName" | "cost" | "salesPrice" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const handleCategoryFilterChange = (val: string) => {
+    setCategoryFilter(val);
+    setCategory2Filter("all");
+  };
 
   const { data: items, isLoading } = useQuery<ItemWithDetails[]>({
     queryKey: ["/api/items"],
@@ -1064,6 +1082,13 @@ export default function ItemList() {
     return Array.from(set).sort() as string[];
   }, [items]);
 
+  const category2Options = useMemo(() => {
+    if (!items) return [];
+    const base = categoryFilter !== "all" ? items.filter(i => i.category1 === categoryFilter) : items;
+    const set = new Set(base.map(i => i.category2).filter(Boolean) as string[]);
+    return Array.from(set).sort();
+  }, [items, categoryFilter]);
+
   const itemTypes = useMemo(() => {
     if (!items) return [];
     const set = new Set(items.map(i => i.itemType).filter(Boolean));
@@ -1072,9 +1097,13 @@ export default function ItemList() {
 
   const filtered = useMemo(() => {
     if (!items) return [];
-    return items.filter(item => {
+    let list = items.filter(item => {
       if (categoryFilter !== "all" && item.category1 !== categoryFilter) return false;
+      if (category2Filter !== "all" && (item.category2 || "") !== category2Filter) return false;
       if (typeFilter !== "all" && item.itemType !== typeFilter) return false;
+      const isActive = item.active ?? true;
+      if (activeFilter === "active" && !isActive) return false;
+      if (activeFilter === "inactive" && isActive) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -1086,7 +1115,19 @@ export default function ItemList() {
       }
       return true;
     });
-  }, [items, search, categoryFilter, typeFilter]);
+
+    if (sortField) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      list = [...list].sort((a, b) => {
+        if (sortField === "cost" || sortField === "salesPrice") {
+          return ((a[sortField] || 0) - (b[sortField] || 0)) * dir;
+        }
+        return (a[sortField] || "").localeCompare(b[sortField] || "", "ko") * dir;
+      });
+    }
+
+    return list;
+  }, [items, search, categoryFilter, category2Filter, typeFilter, activeFilter, sortField, sortDir]);
 
   const stats = useMemo(() => {
     if (!items) return { total: 0, active: 0, categories: 0 };
@@ -1149,13 +1190,24 @@ export default function ItemList() {
             data-testid="input-search-items"
           />
         </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+        <Select value={categoryFilter} onValueChange={handleCategoryFilterChange}>
           <SelectTrigger className="w-[150px]" data-testid="select-category-filter">
-            <SelectValue placeholder="카테고리" />
+            <SelectValue placeholder="대분류" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">전체 카테고리</SelectItem>
+            <SelectItem value="all">전체 대분류</SelectItem>
             {categories.map(c => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={category2Filter} onValueChange={setCategory2Filter}>
+          <SelectTrigger className="w-[150px]" data-testid="select-category2-filter">
+            <SelectValue placeholder="소분류" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 소분류</SelectItem>
+            {category2Options.map(c => (
               <SelectItem key={c} value={c}>{c}</SelectItem>
             ))}
           </SelectContent>
@@ -1171,6 +1223,20 @@ export default function ItemList() {
             ))}
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-1">
+          {(["all", "active", "inactive"] as const).map(s => (
+            <Button
+              key={s}
+              variant={activeFilter === s ? "default" : "ghost"}
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setActiveFilter(s)}
+              data-testid={`button-active-filter-${s}`}
+            >
+              {s === "all" ? "전체" : s === "active" ? "사용" : "미사용"}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
@@ -1190,14 +1256,26 @@ export default function ItemList() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 border-b border-border/40">
-                <TableHead className="w-[70px] text-xs h-9 px-3">대분류</TableHead>
-                <TableHead className="w-[70px] text-xs h-9 px-3">소분류</TableHead>
-                <TableHead className="w-[130px] text-xs h-9 px-3">품목코드</TableHead>
-                <TableHead className="max-w-[180px] text-xs h-9 px-3">품목명</TableHead>
+                <TableHead className="w-[70px] text-xs h-9 px-3 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("category1")} data-testid="sort-category1">
+                  <span className="inline-flex items-center gap-1">대분류 {sortField === "category1" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </TableHead>
+                <TableHead className="w-[70px] text-xs h-9 px-3 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("category2")} data-testid="sort-category2">
+                  <span className="inline-flex items-center gap-1">소분류 {sortField === "category2" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </TableHead>
+                <TableHead className="w-[130px] text-xs h-9 px-3 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("itemCode")} data-testid="sort-itemCode">
+                  <span className="inline-flex items-center gap-1">품목코드 {sortField === "itemCode" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </TableHead>
+                <TableHead className="max-w-[180px] text-xs h-9 px-3 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("itemName")} data-testid="sort-itemName">
+                  <span className="inline-flex items-center gap-1">품목명 {sortField === "itemName" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </TableHead>
                 <TableHead className="hidden md:table-cell max-w-[160px] text-xs h-9 px-3">사양</TableHead>
                 <TableHead className="w-[70px] text-xs h-9 px-3">유형</TableHead>
-                <TableHead className="text-right w-[100px] text-xs h-9 px-3">원가</TableHead>
-                <TableHead className="text-right w-[100px] text-xs h-9 px-3">판매가</TableHead>
+                <TableHead className="text-right w-[100px] text-xs h-9 px-3 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("cost")} data-testid="sort-cost">
+                  <span className="inline-flex items-center gap-1 justify-end w-full">원가 {sortField === "cost" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </TableHead>
+                <TableHead className="text-right w-[100px] text-xs h-9 px-3 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("salesPrice")} data-testid="sort-salesPrice">
+                  <span className="inline-flex items-center gap-1 justify-end w-full">판매가 {sortField === "salesPrice" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
+                </TableHead>
                 <TableHead className="text-right w-[90px] text-xs h-9 px-3 hidden lg:table-cell">마진</TableHead>
                 <TableHead className="text-center w-[45px] text-xs h-9 px-2">재고</TableHead>
                 <TableHead className="text-center w-[35px] text-xs h-9 px-1"></TableHead>
