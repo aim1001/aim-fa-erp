@@ -11,8 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon,
-  List, LayoutGrid, Columns, Edit, Trash2, ExternalLink
+  List, LayoutGrid, Columns, Edit, Trash2, ExternalLink, CheckSquare
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 
@@ -30,7 +31,10 @@ type CalendarEventItem = {
   sourceId?: string;
   description?: string | null;
   assigneeName?: string | null;
+  taskType?: string | null;
 };
+
+type PageMode = "schedule" | "todo";
 
 type AreaFilter = "all" | "sales" | "project" | "purchase" | "finance";
 
@@ -113,6 +117,7 @@ export default function CalendarPage() {
     d.setDate(d.getDate() - d.getDay());
     return d;
   });
+  const [pageMode, setPageMode] = useState<PageMode>("schedule");
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [filters, setFilters] = useState<Record<string, boolean>>({
     task: true, delivery: true, deadline: true, payment: true, custom: true,
@@ -122,6 +127,7 @@ export default function CalendarPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEventItem | null>(null);
   const [addForm, setAddForm] = useState({ title: "", date: fmt(today), endDate: "", startTime: "", endTime: "", description: "", color: "purple" });
+  const [todoShowCompleted, setTodoShowCompleted] = useState(false);
 
   const range = useMemo(() => {
     if (viewMode === "month") return getMonthRange(currentYear, currentMonth);
@@ -129,10 +135,20 @@ export default function CalendarPage() {
     return getMonthRange(currentYear, currentMonth);
   }, [viewMode, currentYear, currentMonth, currentWeekStart]);
 
+  const todoRange = useMemo(() => {
+    const s = new Date();
+    s.setMonth(s.getMonth() - 3);
+    const e = new Date();
+    e.setMonth(e.getMonth() + 6);
+    return { start: fmt(s), end: fmt(e) };
+  }, []);
+
+  const activeRange = pageMode === "todo" ? todoRange : range;
+
   const { data: events = [], isLoading } = useQuery<CalendarEventItem[]>({
-    queryKey: ["/api/calendar/events", range.start, range.end],
+    queryKey: ["/api/calendar/events", activeRange.start, activeRange.end],
     queryFn: async () => {
-      const res = await fetch(`/api/calendar/events?start=${range.start}&end=${range.end}`, { credentials: "include" });
+      const res = await fetch(`/api/calendar/events?start=${activeRange.start}&end=${activeRange.end}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load events");
       return res.json();
     },
@@ -141,6 +157,7 @@ export default function CalendarPage() {
   const filteredEvents = useMemo(() => {
     const areaSourceTypes = AREA_CONFIG.find(a => a.key === areaFilter)?.sourceTypes || [];
     return events.filter(e => {
+      if (e.category === "task" && e.taskType === "todo") return false;
       if (!filters[e.category]) return false;
       if (areaFilter === "all") return true;
       if (e.sourceType === "calendarEvent") return true;
@@ -209,6 +226,36 @@ export default function CalendarPage() {
     },
     onError: (err: Error) => toast({ title: "오류", description: err.message, variant: "destructive" }),
   });
+
+  const completeMutation = useMutation({
+    mutationFn: async ({ compositeId, completed }: { compositeId: string; completed: boolean }) => {
+      await apiRequest("PATCH", `/api/calendar/tasks/${compositeId}/complete`, { completed });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });
+    },
+    onError: (err: Error) => toast({ title: "완료 처리 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const todoEvents = useMemo(() => {
+    const tasks = events.filter(e => e.category === "task" && e.taskType === "todo");
+    const areaSourceTypes = AREA_CONFIG.find(a => a.key === areaFilter)?.sourceTypes || [];
+    const filtered = tasks.filter(e => {
+      if (areaFilter !== "all" && !areaSourceTypes.includes(e.sourceType)) return false;
+      if (!todoShowCompleted && e.completed) return false;
+      return true;
+    });
+    return filtered;
+  }, [events, areaFilter, todoShowCompleted]);
+
+  const todoByDate = useMemo(() => {
+    const map: Record<string, CalendarEventItem[]> = {};
+    for (const e of todoEvents) {
+      if (!map[e.date]) map[e.date] = [];
+      map[e.date].push(e);
+    }
+    return map;
+  }, [todoEvents]);
 
   function goToday() {
     const t = new Date();
@@ -454,18 +501,115 @@ export default function CalendarPage() {
     );
   }
 
+  function renderTodoView() {
+    const sortedDates = Object.keys(todoByDate).sort();
+    return (
+      <div className="flex-1 overflow-auto p-4 space-y-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm text-muted-foreground">{todoEvents.length}건</span>
+          <Button
+            variant={todoShowCompleted ? "default" : "outline"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setTodoShowCompleted(!todoShowCompleted)}
+            data-testid="button-todo-show-completed"
+          >
+            {todoShowCompleted ? "전체" : "미완료"}
+          </Button>
+        </div>
+        {sortedDates.length === 0 ? (
+          <div className="text-center text-muted-foreground py-12 text-sm">할 일이 없습니다</div>
+        ) : sortedDates.map(date => (
+          <div key={date}>
+            <div className={cn("text-xs font-semibold mb-2 px-1", date === todayStr ? "text-primary" : "text-muted-foreground")}>
+              {fmtKorean(date)} {date === todayStr && "(오늘)"}
+            </div>
+            <div className="space-y-1">
+              {todoByDate[date].map(evt => {
+                const styles = getEventStyles(evt);
+                const link = getSourceLink(evt);
+                return (
+                  <div
+                    key={evt.id}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors hover:bg-muted/50",
+                      evt.completed && "opacity-50"
+                    )}
+                    data-testid={`todo-item-${evt.id}`}
+                  >
+                    <Checkbox
+                      checked={!!evt.completed}
+                      onCheckedChange={(checked) => {
+                        completeMutation.mutate({ compositeId: evt.id, completed: !!checked });
+                      }}
+                      data-testid={`checkbox-todo-${evt.id}`}
+                    />
+                    <div className={cn("w-2 h-2 rounded-full shrink-0", styles.dotClass)} />
+                    <div className="flex-1 min-w-0">
+                      <div className={cn("text-sm break-words", evt.completed && "line-through")}>{evt.title}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        {evt.description && <span className="text-[10px] text-muted-foreground">{evt.description}</span>}
+                        {evt.assigneeName && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{evt.assigneeName}</span>
+                        )}
+                      </div>
+                    </div>
+                    {evt.startTime && <span className="text-xs text-muted-foreground shrink-0">{evt.startTime}</span>}
+                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0", styles.badgeClass)}>
+                      {CATEGORY_CONFIG[evt.category]?.label}
+                    </span>
+                    {link && (
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => navigate(link)} data-testid={`todo-navigate-${evt.id}`}>
+                        <ExternalLink className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full" data-testid="page-calendar">
       <div className="flex items-center justify-between px-4 py-3 border-b gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={goToday} data-testid="button-today">오늘</Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goPrev} data-testid="button-prev">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goNext} data-testid="button-next">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <h2 className="text-lg font-semibold whitespace-nowrap" data-testid="text-calendar-title">{headerTitle}</h2>
+          <div className="flex border rounded-md mr-2">
+            <Button
+              variant={pageMode === "schedule" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-3 rounded-r-none text-xs"
+              onClick={() => setPageMode("schedule")}
+              data-testid="button-page-schedule"
+            >
+              <CalendarIcon className="h-3.5 w-3.5 mr-1" />스케줄
+            </Button>
+            <Button
+              variant={pageMode === "todo" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-3 rounded-l-none text-xs"
+              onClick={() => setPageMode("todo")}
+              data-testid="button-page-todo"
+            >
+              <CheckSquare className="h-3.5 w-3.5 mr-1" />할 일
+            </Button>
+          </div>
+
+          {pageMode === "schedule" && (
+            <>
+              <Button variant="outline" size="sm" onClick={goToday} data-testid="button-today">오늘</Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goPrev} data-testid="button-prev">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={goNext} data-testid="button-next">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <h2 className="text-lg font-semibold whitespace-nowrap" data-testid="text-calendar-title">{headerTitle}</h2>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -483,63 +627,67 @@ export default function CalendarPage() {
               </Button>
             ))}
           </div>
-          <div className="flex items-center gap-1 mr-2">
-            {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
-              <button
-                key={key}
-                className={cn(
-                  "h-7 px-2.5 rounded-md text-xs font-medium transition-colors",
-                  filters[key]
-                    ? cfg.activeBtn
-                    : "bg-transparent text-muted-foreground hover:bg-muted"
-                )}
-                onClick={() => setFilters(f => ({ ...f, [key]: !f[key] }))}
-                data-testid={`filter-${key}`}
-              >
-                {cfg.label}
-              </button>
-            ))}
-          </div>
+          {pageMode === "schedule" && (
+            <>
+              <div className="flex items-center gap-1 mr-2">
+                {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
+                  <button
+                    key={key}
+                    className={cn(
+                      "h-7 px-2.5 rounded-md text-xs font-medium transition-colors",
+                      filters[key]
+                        ? cfg.activeBtn
+                        : "bg-transparent text-muted-foreground hover:bg-muted"
+                    )}
+                    onClick={() => setFilters(f => ({ ...f, [key]: !f[key] }))}
+                    data-testid={`filter-${key}`}
+                  >
+                    {cfg.label}
+                  </button>
+                ))}
+              </div>
 
-          <div className="flex border rounded-md">
-            <Button
-              variant={viewMode === "month" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 px-2 rounded-r-none"
-              onClick={() => setViewMode("month")}
-              data-testid="button-view-month"
-            >
-              <LayoutGrid className="h-3.5 w-3.5 mr-1" />월
-            </Button>
-            <Button
-              variant={viewMode === "week" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 px-2 rounded-none border-x"
-              onClick={() => setViewMode("week")}
-              data-testid="button-view-week"
-            >
-              <Columns className="h-3.5 w-3.5 mr-1" />주
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 px-2 rounded-l-none"
-              onClick={() => setViewMode("list")}
-              data-testid="button-view-list"
-            >
-              <List className="h-3.5 w-3.5 mr-1" />목록
-            </Button>
-          </div>
+              <div className="flex border rounded-md">
+                <Button
+                  variant={viewMode === "month" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 px-2 rounded-r-none"
+                  onClick={() => setViewMode("month")}
+                  data-testid="button-view-month"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5 mr-1" />월
+                </Button>
+                <Button
+                  variant={viewMode === "week" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 px-2 rounded-none border-x"
+                  onClick={() => setViewMode("week")}
+                  data-testid="button-view-week"
+                >
+                  <Columns className="h-3.5 w-3.5 mr-1" />주
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 px-2 rounded-l-none"
+                  onClick={() => setViewMode("list")}
+                  data-testid="button-view-list"
+                >
+                  <List className="h-3.5 w-3.5 mr-1" />목록
+                </Button>
+              </div>
 
-          <Button size="sm" onClick={() => { setAddForm({ ...addForm, date: fmt(today) }); setShowAddDialog(true); }} data-testid="button-add-event">
-            <Plus className="h-4 w-4 mr-1" />일정 추가
-          </Button>
+              <Button size="sm" onClick={() => { setAddForm({ ...addForm, date: fmt(today) }); setShowAddDialog(true); }} data-testid="button-add-event">
+                <Plus className="h-4 w-4 mr-1" />일정 추가
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
       {isLoading ? (
         <div className="flex-1 flex items-center justify-center text-muted-foreground">불러오는 중...</div>
-      ) : viewMode === "month" ? renderMonthGrid() : viewMode === "week" ? renderWeekGrid() : renderListView()}
+      ) : pageMode === "todo" ? renderTodoView() : viewMode === "month" ? renderMonthGrid() : viewMode === "week" ? renderWeekGrid() : renderListView()}
 
       <EventFormDialog
         open={showAddDialog}

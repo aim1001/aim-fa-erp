@@ -6774,6 +6774,7 @@ export async function registerRoutes(
         sourceId?: string;
         description?: string | null;
         assigneeName?: string | null;
+        taskType?: string | null;
       }> = [];
 
       const [customEvents, allInquiryTasks, allProjectTasks, allPOTasks, allFinanceTasks] = await Promise.all([
@@ -6813,6 +6814,7 @@ export async function registerRoutes(
           sourceId: r.inquiry_id,
           description: r.customer_name,
           assigneeName: r.staff_name || null,
+          taskType: r.task_type || "todo",
         });
       }
 
@@ -6829,6 +6831,7 @@ export async function registerRoutes(
           sourceId: r.project_id,
           description: r.customer_name,
           assigneeName: r.staff_name || null,
+          taskType: r.task_type || "todo",
         });
       }
 
@@ -6844,6 +6847,7 @@ export async function registerRoutes(
           sourceType: "poTask",
           sourceId: r.purchase_order_id,
           description: r.vendor,
+          taskType: r.task_type || "schedule",
         });
       }
 
@@ -6859,6 +6863,7 @@ export async function registerRoutes(
           sourceType: "financeTask",
           sourceId: r.id,
           description: r.category,
+          taskType: r.task_type || "schedule",
         });
       }
 
@@ -6935,6 +6940,59 @@ export async function registerRoutes(
       });
 
       res.json(unified);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/calendar/tasks/:compositeId/complete", async (req, res) => {
+    try {
+      const { compositeId } = req.params;
+      const { completed } = req.body;
+      if (typeof completed !== "boolean") return res.status(400).json({ message: "completed (boolean) required" });
+
+      let table: string;
+      let realId: string;
+
+      if (compositeId.startsWith("itask-")) {
+        table = "inquiry_tasks";
+        realId = compositeId.replace("itask-", "");
+      } else if (compositeId.startsWith("ptask-")) {
+        table = "project_tasks";
+        realId = compositeId.replace("ptask-", "");
+      } else if (compositeId.startsWith("potask-")) {
+        table = "purchase_order_tasks";
+        realId = compositeId.replace("potask-", "");
+      } else if (compositeId.startsWith("ftask-")) {
+        table = "finance_tasks";
+        realId = compositeId.replace("ftask-", "");
+      } else {
+        return res.status(400).json({ message: "Invalid task ID format" });
+      }
+
+      const updateResult = await pool.query(`UPDATE ${table} SET completed = $1 WHERE id = $2`, [completed, realId]);
+      if (updateResult.rowCount === 0) return res.status(404).json({ message: "Task not found" });
+
+      if (completed && (table === "inquiry_tasks" || table === "project_tasks")) {
+        try {
+          const taskRow = await pool.query(`SELECT * FROM ${table} WHERE id = $1`, [realId]);
+          const task = taskRow.rows[0];
+          if (task?.calendar_event_id) {
+            if (task.task_type === "todo") {
+              const { completeGoogleTask } = await import("./google-tasks");
+              await completeGoogleTask(task.calendar_event_id);
+            } else {
+              const { deleteCalendarEvent } = await import("./google-calendar");
+              await deleteCalendarEvent(task.calendar_event_id);
+              await pool.query(`UPDATE ${table} SET calendar_event_id = NULL WHERE id = $1`, [realId]);
+            }
+          }
+        } catch (syncErr: any) {
+          console.log(`Google 동기화 실패 (완료 처리는 계속): ${syncErr.message}`);
+        }
+      }
+
+      res.json({ success: true, completed });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
