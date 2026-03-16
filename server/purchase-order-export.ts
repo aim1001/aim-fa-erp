@@ -55,6 +55,14 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
     const PAGE_WIDTH = PAGE_RIGHT - PAGE_LEFT;
     const headerTop = 40;
     const pageBottom = 842 - 25;
+    const footerY = pageBottom - 30;
+    const contentLimit = footerY - 10;
+
+    function drawFooter() {
+      doc.moveTo(PAGE_LEFT, footerY).lineTo(PAGE_RIGHT, footerY).lineWidth(0.8).stroke("#333");
+      doc.font("Bold").fontSize(7.5).fillColor("#000");
+      doc.text("www.aim-fa.com", PAGE_LEFT, footerY + 3, { width: PAGE_WIDTH, align: "center", lineBreak: false });
+    }
 
     doc.font("Bold").fontSize(22).fillColor("#000").text("발 주 서", PAGE_LEFT, headerTop);
 
@@ -200,6 +208,7 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
       y += rowH;
 
       if (y > pageBottom - 230) {
+        drawFooter();
         doc.addPage();
         y = 50;
         doc.rect(50, y, 495, 18).fill("#E8E8E8");
@@ -259,8 +268,6 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
     const signLeftX = PAGE_LEFT + signInset;
     const signRightX = signLeftX + signW + signGapW;
 
-    const footerY = pageBottom - 35;
-    const contentLimit = footerY - 10;
     const signY = Math.max(y, contentLimit - signHeaderH - signBoxH - 50);
 
     doc.rect(signLeftX, signY, signW, signHeaderH).fill("#E8E8E8");
@@ -309,7 +316,12 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
 
     let bY = signBodyY + signBoxH + 8;
 
-    if (order.memo && bY < contentLimit - 20) {
+    if (order.memo) {
+      if (bY > footerY - 20) {
+        drawFooter();
+        doc.addPage();
+        bY = 50;
+      }
       doc.moveTo(PAGE_LEFT, bY).lineTo(PAGE_RIGHT, bY).lineWidth(0.5).stroke("#ccc");
       bY += 6;
       doc.font("Bold").fontSize(7).fillColor("#000").text("■ 비고", PAGE_LEFT, bY);
@@ -319,13 +331,11 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
       if (memoH <= availH) {
         doc.font("Regular").fontSize(6.5).fillColor("#333").text(order.memo, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5 });
       } else {
-        doc.font("Regular").fontSize(6.5).fillColor("#333").text(order.memo, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5, height: availH, ellipsis: true });
+        doc.font("Regular").fontSize(6.5).fillColor("#333").text(order.memo, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5, height: Math.max(availH, 20), ellipsis: true });
       }
     }
 
-    doc.moveTo(PAGE_LEFT, footerY).lineTo(PAGE_RIGHT, footerY).lineWidth(0.8).stroke("#333");
-    doc.font("Bold").fontSize(7.5).fillColor("#000");
-    doc.text("www.aim-fa.com", PAGE_LEFT, footerY + 3, { width: PAGE_WIDTH, align: "center", lineBreak: false });
+    drawFooter();
 
     doc.end();
   });
