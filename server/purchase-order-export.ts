@@ -41,7 +41,7 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
   const totalAmount = order.totalAmount || (supplyAmount + taxAmount);
 
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ size: "A4", margin: 25 });
     const chunks: Buffer[] = [];
     doc.on("data", (c: Buffer) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
