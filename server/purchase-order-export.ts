@@ -220,6 +220,12 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
       }
     }
 
+    if (y > footerY - 235) {
+      drawFooter();
+      doc.addPage();
+      y = 50;
+    }
+
     y += 5;
     doc.moveTo(50, y).lineTo(545, y).stroke("#ccc");
     y += 10;
@@ -268,7 +274,8 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
     const signLeftX = PAGE_LEFT + signInset;
     const signRightX = signLeftX + signW + signGapW;
 
-    const signY = Math.max(y, contentLimit - signHeaderH - signBoxH - 50);
+    const signYMax = footerY - signHeaderH - signBoxH - 15;
+    const signY = Math.min(Math.max(y, contentLimit - signHeaderH - signBoxH - 50), signYMax);
 
     doc.rect(signLeftX, signY, signW, signHeaderH).fill("#E8E8E8");
     doc.font("Bold").fontSize(7).fillColor("#000");
