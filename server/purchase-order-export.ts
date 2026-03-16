@@ -199,7 +199,7 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
       doc.text(fmtNum(item.amount), colX[5], y, { width: colW[5], align: "right" });
       y += rowH;
 
-      if (y > pageBottom - 180) {
+      if (y > pageBottom - 230) {
         doc.addPage();
         y = 50;
         doc.rect(50, y, 495, 18).fill("#E8E8E8");
@@ -259,7 +259,9 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
     const signLeftX = PAGE_LEFT + signInset;
     const signRightX = signLeftX + signW + signGapW;
 
-    const signY = Math.max(y, pageBottom - signHeaderH - signBoxH - 60);
+    const footerY = pageBottom - 35;
+    const contentLimit = footerY - 10;
+    const signY = Math.max(y, contentLimit - signHeaderH - signBoxH - 50);
 
     doc.rect(signLeftX, signY, signW, signHeaderH).fill("#E8E8E8");
     doc.font("Bold").fontSize(7).fillColor("#000");
@@ -307,16 +309,20 @@ export async function generatePurchaseOrderPDF(orderId: string): Promise<Buffer>
 
     let bY = signBodyY + signBoxH + 8;
 
-    if (order.memo) {
+    if (order.memo && bY < contentLimit - 20) {
       doc.moveTo(PAGE_LEFT, bY).lineTo(PAGE_RIGHT, bY).lineWidth(0.5).stroke("#ccc");
       bY += 6;
       doc.font("Bold").fontSize(7).fillColor("#000").text("■ 비고", PAGE_LEFT, bY);
       bY += 10;
-      doc.font("Regular").fontSize(6.5).fillColor("#333").text(order.memo, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5 });
-      bY += doc.heightOfString(order.memo, { width: PAGE_WIDTH, lineGap: 0.5 }) + 8;
+      const memoH = doc.heightOfString(order.memo, { width: PAGE_WIDTH, lineGap: 0.5 });
+      const availH = contentLimit - bY;
+      if (memoH <= availH) {
+        doc.font("Regular").fontSize(6.5).fillColor("#333").text(order.memo, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5 });
+      } else {
+        doc.font("Regular").fontSize(6.5).fillColor("#333").text(order.memo, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5, height: availH, ellipsis: true });
+      }
     }
 
-    const footerY = pageBottom - 16;
     doc.moveTo(PAGE_LEFT, footerY).lineTo(PAGE_RIGHT, footerY).lineWidth(0.8).stroke("#333");
     doc.font("Bold").fontSize(7.5).fillColor("#000");
     doc.text("www.aim-fa.com", PAGE_LEFT, footerY + 3, { width: PAGE_WIDTH, align: "center", lineBreak: false });
