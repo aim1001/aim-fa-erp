@@ -784,6 +784,7 @@ export const calendarEvents = pgTable("calendar_events", {
   endTime: text("end_time"),
   description: text("description"),
   color: text("color").default("purple"),
+  completed: boolean("completed").default(false).notNull(),
   createdAt: text("created_at").notNull(),
 });
 

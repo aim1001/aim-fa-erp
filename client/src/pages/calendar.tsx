@@ -252,6 +252,10 @@ export default function CalendarPage() {
     onError: (err: Error) => toast({ title: "완료 처리 실패", description: err.message, variant: "destructive" }),
   });
 
+  function handleComplete(evt: CalendarEventItem) {
+    completeMutation.mutate({ compositeId: evt.id, completed: !evt.completed });
+  }
+
   const todoEvents = useMemo(() => {
     const tasks = events.filter(e => e.category === "task" && e.taskType === "todo");
     const areaSourceTypes = AREA_CONFIG.find(a => a.key === areaFilter)?.sourceTypes || [];
@@ -380,7 +384,7 @@ export default function CalendarPage() {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-72 p-3" align="start">
-                            <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
+                            <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} onComplete={handleComplete} />
                           </PopoverContent>
                         </Popover>
                       ))}
@@ -448,7 +452,7 @@ export default function CalendarPage() {
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="w-72 p-3" align="start">
-                        <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
+                        <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} onComplete={handleComplete} />
                       </PopoverContent>
                     </Popover>
                   ))}
@@ -504,7 +508,7 @@ export default function CalendarPage() {
                       </button>
                     </PopoverTrigger>
                     <PopoverContent className="w-72 p-3" align="start">
-                      <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
+                      <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} onComplete={handleComplete} />
                     </PopoverContent>
                   </Popover>
                 ))}
@@ -758,16 +762,19 @@ function EventDetail({
   onNavigate,
   onEdit,
   onDelete,
+  onComplete,
 }: {
   event: CalendarEventItem;
   onNavigate: (event: CalendarEventItem) => void;
   onEdit: (e: CalendarEventItem) => void;
   onDelete: (id: string) => void;
+  onComplete: (event: CalendarEventItem) => void;
 }) {
   const styles = getEventStyles(event);
   const cfg = CATEGORY_CONFIG[event.category];
   const hasLink = !!getSourceLinkStatic(event);
   const isCustom = event.sourceType === "calendarEvent";
+  const isCompletable = ["inquiryTask", "projectTask", "poTask", "financeTask", "calendarEvent"].includes(event.sourceType);
 
   return (
     <div className="space-y-2">
@@ -794,6 +801,17 @@ function EventDetail({
         </div>
       </div>
       <div className="flex items-center gap-1 pt-1 border-t">
+        {isCompletable && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-7 text-xs", event.completed ? "text-orange-600" : "text-green-600")}
+            onClick={() => onComplete(event)}
+            data-testid="button-event-complete"
+          >
+            <CheckSquare className="h-3 w-3 mr-1" />{event.completed ? "미완료" : "완료"}
+          </Button>
+        )}
         {hasLink && (
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate(event)} data-testid="button-event-navigate">
             <ExternalLink className="h-3 w-3 mr-1" />이동

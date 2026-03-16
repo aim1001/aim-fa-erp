@@ -6799,6 +6799,7 @@ export async function registerRoutes(
           endTime: e.endTime,
           category: "custom",
           color: e.color || "purple",
+          completed: e.completed ?? false,
           sourceType: "calendarEvent",
           sourceId: e.id,
           description: e.description,
@@ -6970,6 +6971,9 @@ export async function registerRoutes(
       } else if (compositeId.startsWith("ftask-")) {
         table = "finance_tasks";
         realId = compositeId.replace("ftask-", "");
+      } else if (compositeId.startsWith("custom-")) {
+        table = "calendar_events";
+        realId = compositeId.replace("custom-", "");
       } else {
         return res.status(400).json({ message: "Invalid task ID format" });
       }
