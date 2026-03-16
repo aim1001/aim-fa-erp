@@ -16,6 +16,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
+import { InquiryDetailDialog } from "@/pages/inquiry-detail";
+import { ProjectDetailModal } from "@/pages/project-list";
 
 type CalendarEventItem = {
   id: string;
@@ -128,6 +130,19 @@ export default function CalendarPage() {
   const [editingEvent, setEditingEvent] = useState<CalendarEventItem | null>(null);
   const [addForm, setAddForm] = useState({ title: "", date: fmt(today), endDate: "", startTime: "", endTime: "", description: "", color: "purple" });
   const [todoShowCompleted, setTodoShowCompleted] = useState(false);
+  const [modalInquiryId, setModalInquiryId] = useState<string | null>(null);
+  const [modalProjectId, setModalProjectId] = useState<string | null>(null);
+
+  function handleEventNavigate(evt: CalendarEventItem) {
+    if (evt.sourceType === "inquiryTask" && evt.sourceId) {
+      setModalInquiryId(evt.sourceId);
+    } else if ((evt.sourceType === "projectTask" || evt.sourceType === "project") && evt.sourceId) {
+      setModalProjectId(evt.sourceId);
+    } else {
+      const link = getSourceLink(evt);
+      if (link) navigate(link);
+    }
+  }
 
   const range = useMemo(() => {
     if (viewMode === "month") return getMonthRange(currentYear, currentMonth);
@@ -365,7 +380,7 @@ export default function CalendarPage() {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-72 p-3" align="start">
-                            <EventDetail event={evt} onNavigate={navigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
+                            <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
                           </PopoverContent>
                         </Popover>
                       ))}
@@ -433,7 +448,7 @@ export default function CalendarPage() {
                         </button>
                       </PopoverTrigger>
                       <PopoverContent className="w-72 p-3" align="start">
-                        <EventDetail event={evt} onNavigate={navigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
+                        <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
                       </PopoverContent>
                     </Popover>
                   ))}
@@ -489,7 +504,7 @@ export default function CalendarPage() {
                       </button>
                     </PopoverTrigger>
                     <PopoverContent className="w-72 p-3" align="start">
-                      <EventDetail event={evt} onNavigate={navigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
+                      <EventDetail event={evt} onNavigate={handleEventNavigate} onEdit={setEditingEvent} onDelete={(id) => deleteMutation.mutate(id)} />
                     </PopoverContent>
                   </Popover>
                 ))}
@@ -559,7 +574,7 @@ export default function CalendarPage() {
                       {CATEGORY_CONFIG[evt.category]?.label}
                     </span>
                     {link && (
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => navigate(link)} data-testid={`todo-navigate-${evt.id}`}>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => handleEventNavigate(evt)} data-testid={`todo-navigate-${evt.id}`}>
                         <ExternalLink className="h-3 w-3" />
                       </Button>
                     )}
@@ -720,6 +735,18 @@ export default function CalendarPage() {
           isPending={updateMutation.isPending}
         />
       )}
+
+      <InquiryDetailDialog
+        inquiryId={modalInquiryId}
+        open={!!modalInquiryId}
+        onOpenChange={(open) => { if (!open) setModalInquiryId(null); }}
+      />
+      {modalProjectId && (
+        <ProjectDetailModal
+          projectId={modalProjectId}
+          onClose={() => setModalProjectId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -731,13 +758,13 @@ function EventDetail({
   onDelete,
 }: {
   event: CalendarEventItem;
-  onNavigate: (path: string) => void;
+  onNavigate: (event: CalendarEventItem) => void;
   onEdit: (e: CalendarEventItem) => void;
   onDelete: (id: string) => void;
 }) {
   const styles = getEventStyles(event);
   const cfg = CATEGORY_CONFIG[event.category];
-  const link = getSourceLinkStatic(event);
+  const hasLink = !!getSourceLinkStatic(event);
   const isCustom = event.sourceType === "calendarEvent";
 
   return (
@@ -765,8 +792,8 @@ function EventDetail({
         </div>
       </div>
       <div className="flex items-center gap-1 pt-1 border-t">
-        {link && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate(link)} data-testid="button-event-navigate">
+        {hasLink && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate(event)} data-testid="button-event-navigate">
             <ExternalLink className="h-3 w-3 mr-1" />이동
           </Button>
         )}
