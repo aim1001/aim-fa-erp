@@ -6975,7 +6975,8 @@ export async function registerRoutes(
         table = "calendar_events";
         realId = compositeId.replace("custom-", "");
       } else {
-        return res.status(400).json({ message: "Invalid task ID format" });
+        table = "calendar_events";
+        realId = compositeId;
       }
 
       const updateResult = await pool.query(`UPDATE ${table} SET completed = $1 WHERE id = $2`, [completed, realId]);
