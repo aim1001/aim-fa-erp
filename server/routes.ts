@@ -2612,7 +2612,9 @@ export async function registerRoutes(
 
       const companyName = companyInfo?.companyName || "에이아이엠";
       const emailSubject = subject || `[견적서] ${result.quotation.quoteNumber} - ${companyName}`;
-      const emailBody = body || `
+      const emailBody = body
+        ? `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">${body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>`
+        : `
         <div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">
           <p>안녕하세요, ${inquiry.snapshotCompanyName || '고객'}님.</p>
           <p>${companyName}입니다.</p>
@@ -5741,7 +5743,9 @@ export async function registerRoutes(
 
       const companyName = companyInfo?.companyName || "에이아이엠";
       const emailSubject = subject || `[발주서] ${order.orderNumber || ""} - ${companyName}`;
-      const emailBody = body || `
+      const emailBody = body
+        ? `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">${body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>`
+        : `
         <div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">
           <p>안녕하세요.</p>
           <p>${companyName}입니다.</p>
