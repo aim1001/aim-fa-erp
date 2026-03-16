@@ -741,12 +741,14 @@ export default function CalendarPage() {
         open={!!modalInquiryId}
         onOpenChange={(open) => { if (!open) setModalInquiryId(null); }}
       />
-      {modalProjectId && (
-        <ProjectDetailModal
-          projectId={modalProjectId}
-          onClose={() => setModalProjectId(null)}
-        />
-      )}
+      <Dialog open={!!modalProjectId} onOpenChange={(open) => { if (!open) setModalProjectId(null); }}>
+        {modalProjectId && (
+          <ProjectDetailModal
+            projectId={modalProjectId}
+            onClose={() => setModalProjectId(null)}
+          />
+        )}
+      </Dialog>
     </div>
   );
 }
