@@ -704,8 +704,7 @@ function AddComponentDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetForm(); }}>
-      <div ref={dialogRef} />
-      <DialogContent className="max-w-md" container={container} data-testid="dialog-add-component">
+      <DialogContent className="max-w-md" data-testid="dialog-add-component">
         <DialogHeader>
           <DialogTitle className="text-sm">구성품 추가</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
@@ -713,7 +712,7 @@ function AddComponentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex gap-1 mb-3">
+        <div ref={dialogRef} className="flex gap-1 mb-3">
           <Button
             size="sm"
             variant={mode === "search" ? "default" : "outline"}
