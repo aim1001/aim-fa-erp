@@ -670,7 +670,11 @@ export default function InquiryList() {
       list = list.filter(i =>
         i.customerName.toLowerCase().includes(s) ||
         i.inquiryNumber.toLowerCase().includes(s) ||
-        (i.productInfo && i.productInfo.toLowerCase().includes(s))
+        (i.productInfo && i.productInfo.toLowerCase().includes(s)) ||
+        (i.snapshotAddress && i.snapshotAddress.toLowerCase().includes(s)) ||
+        (i.snapshotContactName && i.snapshotContactName.toLowerCase().includes(s)) ||
+        (i.snapshotEmail && i.snapshotEmail.toLowerCase().includes(s)) ||
+        (i.snapshotPhone && i.snapshotPhone.toLowerCase().includes(s))
       );
     }
 
@@ -813,7 +817,7 @@ export default function InquiryList() {
             <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="고객명, 영업번호 검색..."
+                placeholder="고객명, 영업번호, 주소, 담당자, 이메일, 전화번호, 제품..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
