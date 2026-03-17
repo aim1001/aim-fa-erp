@@ -3,6 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ShoppingCart, RefreshCw, Search, ChevronDown, ChevronUp, Save, X, Pencil, Plus, Trash2, Link2, Unlink, Upload, Star, Layers, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Check, ChevronsUpDown } from "lucide-react";
 import { useState, useMemo, Fragment, useCallback, useRef, useEffect } from "react";
+import { useDialogContainer } from "@/hooks/use-dialog-container";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -135,6 +136,7 @@ function CategoryCombobox({
   placeholder = "선택...",
   testId,
   compact = false,
+  container,
 }: {
   value: string;
   options: string[];
@@ -143,6 +145,7 @@ function CategoryCombobox({
   placeholder?: string;
   testId: string;
   compact?: boolean;
+  container?: HTMLElement | null;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -205,7 +208,7 @@ function CategoryCombobox({
           <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start">
+      <PopoverContent className="w-[200px] p-0" align="start" onOpenAutoFocus={e => e.preventDefault()} {...(container ? { container } : {})}>
         <div className="flex flex-col">
           <div className="flex items-center border-b px-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -614,6 +617,7 @@ const EMPTY_FORM: Record<string, string> = {
 
 export default function PurchaseItemList() {
   const { toast } = useToast();
+  const { ref: dialogRef, container } = useDialogContainer();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [category2Filter, setCategory2Filter] = useState("all");
@@ -1112,7 +1116,7 @@ export default function PurchaseItemList() {
           <DialogHeader>
             <DialogTitle>구매품 추가</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
+          <div ref={dialogRef} className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">대분류 *</Label>
               <CategoryCombobox
@@ -1121,6 +1125,7 @@ export default function PurchaseItemList() {
                 onSelect={val => setForm(f => ({ ...f, category1: val, category2: "" }))}
                 placeholder="대분류 선택..."
                 testId="combo-add-category1"
+                container={container}
               />
             </div>
             <div>
@@ -1132,6 +1137,7 @@ export default function PurchaseItemList() {
                 onSelect={val => setForm(f => ({ ...f, category2: val }))}
                 placeholder="소분류 선택..."
                 testId="combo-add-category2"
+                container={container}
               />
             </div>
             <div>
