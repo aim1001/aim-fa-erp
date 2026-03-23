@@ -653,8 +653,14 @@ function TimelineView({
 
   const cancelEdit = () => setEditingCell(null);
 
-  const PLANNED_FIELD_ORDER: EditField[] = ["date", "company", "description", "amount"];
-  const COMPLETED_FIELD_ORDER: EditField[] = ["date", "amount"];
+  const getEditableFields = (payment: EnrichedPayment): EditField[] => {
+    const isLinked = !!(payment.projectId || payment.salesInvoiceId || payment.purchaseInvoiceId);
+    const isCompleted = payment.status === "completed";
+    if (isCompleted) {
+      return isLinked ? ["date"] : ["date", "amount"];
+    }
+    return isLinked ? ["date", "description"] : ["date", "company", "description", "amount"];
+  };
 
   const handleCellKey = (e: React.KeyboardEvent, payment: EnrichedPayment) => {
     if (e.key === "Enter") { e.preventDefault(); commitEdit(payment); }
@@ -663,12 +669,12 @@ function TimelineView({
       e.preventDefault();
       const direction = e.shiftKey ? -1 : 1;
       const currentField = editingCell.field;
-      const isCompleted = payment.status === "completed";
-      const order = isCompleted ? COMPLETED_FIELD_ORDER : PLANNED_FIELD_ORDER;
+      const order = getEditableFields(payment);
       const idx = order.indexOf(currentField);
       const nextField = order[idx + direction];
       commitEdit(payment);
       if (nextField) {
+        const isCompleted = payment.status === "completed";
         const editDate = isCompleted ? (payment.actualDate || payment.plannedDate || "") : (payment.plannedDate || "");
         const editAmt = isCompleted ? String(payment.actualAmount ?? payment.amount ?? 0) : String(payment.amount ?? 0);
         const map: Record<EditField, string> = {
@@ -947,15 +953,17 @@ function TimelineView({
                   : "-";
                 const isToday = dateStr === today;
 
-                const isLinked = !!(p.projectId || (p as any).invoiceId);
+                const isLinked = !!(p.projectId || p.salesInvoiceId || p.purchaseInvoiceId);
+                const editableFields = getEditableFields(p);
                 const editingDate = editingCell?.id === p.id && editingCell.field === "date";
                 const editingCompany = editingCell?.id === p.id && editingCell.field === "company";
                 const editingDesc = editingCell?.id === p.id && editingCell.field === "description";
                 const editingAmt = editingCell?.id === p.id && editingCell.field === "amount";
                 const editDate = isCompleted ? (p.actualDate || p.plannedDate || "") : (p.plannedDate || "");
                 const editAmt = isCompleted ? String(p.actualAmount ?? p.amount ?? 0) : String(p.amount ?? 0);
-                const canEditCompany = !isCompleted && !isLinked;
-                const canEditAmount = !isLinked;
+                const canEditCompany = editableFields.includes("company");
+                const canEditAmount = editableFields.includes("amount");
+                const canEditDesc = editableFields.includes("description");
 
                 return (
                   <tr
@@ -1015,10 +1023,7 @@ function TimelineView({
                             value={editValue}
                             onChange={e => setEditValue(e.target.value)}
                             onBlur={() => commitEdit(p)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") { e.preventDefault(); setEditingCell({ id: p.id, field: "description" }); setEditValue(p.description || ""); }
-                              else handleCellKey(e, p);
-                            }}
+                            onKeyDown={e => handleCellKey(e, p)}
                             data-testid={`input-company-${p.id}`}
                           />
                         </div>
@@ -1041,20 +1046,20 @@ function TimelineView({
                         <div className="group">
                           <div className={`text-xs font-medium truncate max-w-[200px] flex items-center gap-0.5 ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
                             {p.companyName || "-"}
-                            {isLinked ? (
+                            {(isLinked || isCompleted) && !canEditCompany ? (
                               <Lock className="h-2.5 w-2.5 opacity-30 shrink-0" />
-                            ) : !isCompleted ? (
+                            ) : canEditCompany ? (
                               <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
                             ) : null}
                           </div>
-                          {(p.description || canEditCompany) && (
+                          {(p.description || canEditDesc) && (
                             <div
-                              className={`text-[10px] text-muted-foreground truncate max-w-[200px] flex items-center gap-0.5 ${canEditCompany ? "cursor-text" : ""}`}
-                              onClick={e => { if (canEditCompany) { e.stopPropagation(); startEdit(p.id, "description", p.description || ""); } }}
+                              className={`text-[10px] text-muted-foreground truncate max-w-[200px] flex items-center gap-0.5 ${canEditDesc ? "cursor-text" : ""}`}
+                              onClick={e => { if (canEditDesc) { e.stopPropagation(); startEdit(p.id, "description", p.description || ""); } }}
                               data-testid={`cell-description-${p.id}`}
                             >
                               {p.description || <span className="opacity-30 italic">내용</span>}
-                              {canEditCompany && <Pencil className="h-2 w-2 opacity-0 group-hover:opacity-30 transition-opacity shrink-0" />}
+                              {canEditDesc && <Pencil className="h-2 w-2 opacity-0 group-hover:opacity-30 transition-opacity shrink-0" />}
                             </div>
                           )}
                         </div>
