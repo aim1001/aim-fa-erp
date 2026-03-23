@@ -599,7 +599,7 @@ function TimelineView({
   const [editValue, setEditValue] = useState("");
 
   const patchMutation = useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
+    mutationFn: async ({ id, field, patch }: { id: string; field: EditField; patch: Record<string, unknown> }) => {
       const res = await apiRequest("PATCH", `/api/payments/${id}`, patch);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: "저장 실패" }));
@@ -607,13 +607,13 @@ function TimelineView({
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      setEditingCell(null);
+      setEditingCell(prev => (prev?.id === variables.id && prev?.field === variables.field ? null : prev));
     },
-    onError: (err: Error) => {
+    onError: (err: Error, variables) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-      setEditingCell(null);
+      setEditingCell(prev => (prev?.id === variables.id && prev?.field === variables.field ? null : prev));
     },
   });
 
@@ -648,7 +648,7 @@ function TimelineView({
       (field === "company" && editValue === currentCompany) ||
       (field === "description" && editValue === currentDesc);
     if (unchanged) { setEditingCell(null); return; }
-    patchMutation.mutate({ id, patch });
+    patchMutation.mutate({ id, field, patch });
   };
 
   const cancelEdit = () => setEditingCell(null);
