@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown, Filter, TrendingUp, Pencil } from "lucide-react";
+import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown, Filter, TrendingUp, Pencil, Lock } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { FundOverviewTab } from "./fund-overview-tab";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -593,6 +593,95 @@ function TimelineView({
     setTimeout(() => rowCompanyRef.current?.focus(), 30);
   };
 
+  // Inline cell editing state
+  type EditField = "date" | "company" | "description" | "amount";
+  const [editingCell, setEditingCell] = useState<{ id: string; field: EditField } | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const patchMutation = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
+      const res = await apiRequest("PATCH", `/api/payments/${id}`, patch);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "저장 실패" }));
+        throw new Error(err.message || "저장 실패");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      setEditingCell(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+      setEditingCell(null);
+    },
+  });
+
+  const startEdit = (id: string, field: EditField, currentValue: string) => {
+    setEditingCell({ id, field });
+    setEditValue(currentValue);
+  };
+
+  const commitEdit = (payment: EnrichedPayment) => {
+    if (!editingCell) return;
+    const { id, field } = editingCell;
+    const isCompleted = payment.status === "completed";
+    let patch: Record<string, unknown> = {};
+    if (field === "date") {
+      patch = isCompleted ? { actualDate: editValue || null } : { plannedDate: editValue || null };
+    } else if (field === "amount") {
+      const val = parseInt(editValue);
+      if (isNaN(val) || val <= 0) { setEditingCell(null); return; }
+      patch = isCompleted ? { actualAmount: val, amount: val } : { amount: val };
+    } else if (field === "company") {
+      patch = { companyName: editValue || null };
+    } else if (field === "description") {
+      patch = { description: editValue || null };
+    }
+    const currentDate = isCompleted ? (payment.actualDate || payment.plannedDate || "") : (payment.plannedDate || "");
+    const currentAmt = isCompleted ? (payment.actualAmount ?? payment.amount ?? 0) : (payment.amount ?? 0);
+    const currentCompany = payment.companyName || "";
+    const currentDesc = payment.description || "";
+    const unchanged =
+      (field === "date" && editValue === currentDate) ||
+      (field === "amount" && editValue === String(currentAmt)) ||
+      (field === "company" && editValue === currentCompany) ||
+      (field === "description" && editValue === currentDesc);
+    if (unchanged) { setEditingCell(null); return; }
+    patchMutation.mutate({ id, patch });
+  };
+
+  const cancelEdit = () => setEditingCell(null);
+
+  const PLANNED_FIELD_ORDER: EditField[] = ["date", "company", "description", "amount"];
+  const COMPLETED_FIELD_ORDER: EditField[] = ["date", "amount"];
+
+  const handleCellKey = (e: React.KeyboardEvent, payment: EnrichedPayment) => {
+    if (e.key === "Enter") { e.preventDefault(); commitEdit(payment); }
+    if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+    if (e.key === "Tab" && editingCell) {
+      e.preventDefault();
+      const direction = e.shiftKey ? -1 : 1;
+      const currentField = editingCell.field;
+      const isCompleted = payment.status === "completed";
+      const order = isCompleted ? COMPLETED_FIELD_ORDER : PLANNED_FIELD_ORDER;
+      const idx = order.indexOf(currentField);
+      const nextField = order[idx + direction];
+      commitEdit(payment);
+      if (nextField) {
+        const editDate = isCompleted ? (payment.actualDate || payment.plannedDate || "") : (payment.plannedDate || "");
+        const editAmt = isCompleted ? String(payment.actualAmount ?? payment.amount ?? 0) : String(payment.amount ?? 0);
+        const map: Record<EditField, string> = {
+          date: editDate,
+          company: payment.companyName || "",
+          description: payment.description || "",
+          amount: editAmt,
+        };
+        startEdit(payment.id, nextField, map[nextField]);
+      }
+    }
+  };
+
   const commitBalance = () => {
     const val = parseInt(balanceInput);
     if (!isNaN(val)) onSaveBalance(val);
@@ -858,56 +947,189 @@ function TimelineView({
                   : "-";
                 const isToday = dateStr === today;
 
+                const isLinked = !!(p.projectId || (p as any).invoiceId);
+                const editingDate = editingCell?.id === p.id && editingCell.field === "date";
+                const editingCompany = editingCell?.id === p.id && editingCell.field === "company";
+                const editingDesc = editingCell?.id === p.id && editingCell.field === "description";
+                const editingAmt = editingCell?.id === p.id && editingCell.field === "amount";
+                const editDate = isCompleted ? (p.actualDate || p.plannedDate || "") : (p.plannedDate || "");
+                const editAmt = isCompleted ? String(p.actualAmount ?? p.amount ?? 0) : String(p.amount ?? 0);
+                const canEditCompany = !isCompleted && !isLinked;
+                const canEditAmount = !isLinked;
+
                 return (
                   <tr
                     key={p.id}
-                    className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${rowBg}`}
-                    onClick={() => onSelectPayment(p.id)}
+                    className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${rowBg} ${editingCell?.id === p.id ? "ring-1 ring-primary/20 bg-primary/5" : ""}`}
+                    onClick={() => { if (!editingCell) onSelectPayment(p.id); }}
                     data-testid={`timeline-row-${p.id}`}
                   >
-                    <td className="py-1.5 px-2">
-                      <span className={`text-xs font-mono ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
-                        {displayDate}
-                        {isToday && <span className="ml-1 text-[9px] text-primary">오늘</span>}
-                      </span>
+                    <td
+                      className="py-1 px-2 cursor-text"
+                      onClick={e => { e.stopPropagation(); startEdit(p.id, "date", editDate); }}
+                      data-testid={`cell-date-${p.id}`}
+                    >
+                      {editingDate ? (
+                        <input
+                          type="date"
+                          autoFocus
+                          className="w-full h-6 text-xs border rounded px-1 bg-background"
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onBlur={() => commitEdit(p)}
+                          onKeyDown={e => handleCellKey(e, p)}
+                          data-testid={`input-date-${p.id}`}
+                        />
+                      ) : (
+                        <span className={`text-xs font-mono group flex items-center gap-0.5 ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
+                          {displayDate}
+                          {isToday && <span className="text-[9px] text-primary">오늘</span>}
+                          <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
+                        </span>
+                      )}
                     </td>
-                    <td className="py-1.5 px-2">
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${isIncome ? "text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400" : "text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-400"}`}>
+                    <td className="py-1.5 px-2" onClick={e => e.stopPropagation()}>
+                      <span
+                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer ${isIncome ? "text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400" : "text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-400"}`}
+                        onClick={() => onSelectPayment(p.id)}
+                      >
                         {isIncome ? "입금" : "출금"}
                       </span>
                     </td>
-                    <td className="py-1.5 px-2">
-                      <div className={`text-xs font-medium truncate max-w-[200px] ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
-                        {p.companyName || "-"}
-                      </div>
-                      {p.description && (
-                        <div className="text-[10px] text-muted-foreground truncate max-w-[200px]">{p.description}</div>
+                    <td
+                      className={`py-1 px-2 ${canEditCompany ? "cursor-text" : ""}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (canEditCompany) startEdit(p.id, "company", p.companyName || "");
+                        else onSelectPayment(p.id);
+                      }}
+                      data-testid={`cell-company-${p.id}`}
+                    >
+                      {editingCompany ? (
+                        <div className="flex flex-col gap-0.5">
+                          <input
+                            type="text"
+                            autoFocus
+                            className="w-full h-6 text-xs border rounded px-1 bg-background"
+                            placeholder="거래처"
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onBlur={() => commitEdit(p)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") { e.preventDefault(); setEditingCell({ id: p.id, field: "description" }); setEditValue(p.description || ""); }
+                              else handleCellKey(e, p);
+                            }}
+                            data-testid={`input-company-${p.id}`}
+                          />
+                        </div>
+                      ) : editingDesc ? (
+                        <div className="flex flex-col gap-0.5">
+                          <div className={`text-xs font-medium truncate max-w-[200px] ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>{p.companyName || "-"}</div>
+                          <input
+                            type="text"
+                            autoFocus
+                            className="w-full h-5 text-[10px] border rounded px-1 bg-background"
+                            placeholder="내용"
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onBlur={() => commitEdit(p)}
+                            onKeyDown={e => handleCellKey(e, p)}
+                            data-testid={`input-description-${p.id}`}
+                          />
+                        </div>
+                      ) : (
+                        <div className="group">
+                          <div className={`text-xs font-medium truncate max-w-[200px] flex items-center gap-0.5 ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
+                            {p.companyName || "-"}
+                            {isLinked ? (
+                              <Lock className="h-2.5 w-2.5 opacity-30 shrink-0" />
+                            ) : !isCompleted ? (
+                              <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
+                            ) : null}
+                          </div>
+                          {(p.description || canEditCompany) && (
+                            <div
+                              className={`text-[10px] text-muted-foreground truncate max-w-[200px] flex items-center gap-0.5 ${canEditCompany ? "cursor-text" : ""}`}
+                              onClick={e => { if (canEditCompany) { e.stopPropagation(); startEdit(p.id, "description", p.description || ""); } }}
+                              data-testid={`cell-description-${p.id}`}
+                            >
+                              {p.description || <span className="opacity-30 italic">내용</span>}
+                              {canEditCompany && <Pencil className="h-2 w-2 opacity-0 group-hover:opacity-30 transition-opacity shrink-0" />}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </td>
-                    <td className="py-1.5 px-2 text-right">
+                    <td
+                      className={`py-1 px-2 text-right ${canEditAmount && isIncome ? "cursor-text" : ""}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (canEditAmount && isIncome) startEdit(p.id, "amount", editAmt);
+                        else if (!isIncome) {} // no-op for expense row income cell
+                        else onSelectPayment(p.id);
+                      }}
+                      data-testid={`cell-income-${p.id}`}
+                    >
                       {isIncome ? (
-                        <span className={`text-xs font-bold text-blue-600 dark:text-blue-400 ${!isCompleted ? "opacity-60" : ""}`}>
-                          {amt.toLocaleString()}
-                        </span>
+                        editingAmt ? (
+                          <input
+                            type="number"
+                            autoFocus
+                            className="w-full h-6 text-xs border rounded px-1 bg-background text-right"
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onBlur={() => commitEdit(p)}
+                            onKeyDown={e => handleCellKey(e, p)}
+                            data-testid={`input-amount-${p.id}`}
+                          />
+                        ) : (
+                          <span className={`text-xs font-bold text-blue-600 dark:text-blue-400 ${!isCompleted ? "opacity-60" : ""} group flex items-center justify-end gap-0.5`}>
+                            {isLinked && <Lock className="h-2.5 w-2.5 opacity-30" />}
+                            {amt.toLocaleString()}
+                          </span>
+                        )
                       ) : (
                         <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </td>
-                    <td className="py-1.5 px-2 text-right">
+                    <td
+                      className={`py-1 px-2 text-right ${canEditAmount && !isIncome ? "cursor-text" : ""}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (canEditAmount && !isIncome) startEdit(p.id, "amount", editAmt);
+                        else if (isIncome) {} // no-op
+                        else onSelectPayment(p.id);
+                      }}
+                      data-testid={`cell-expense-${p.id}`}
+                    >
                       {!isIncome ? (
-                        <span className={`text-xs font-bold text-red-600 dark:text-red-400 ${!isCompleted ? "opacity-60" : ""}`}>
-                          {amt.toLocaleString()}
-                        </span>
+                        editingAmt ? (
+                          <input
+                            type="number"
+                            autoFocus
+                            className="w-full h-6 text-xs border rounded px-1 bg-background text-right"
+                            value={editValue}
+                            onChange={e => setEditValue(e.target.value)}
+                            onBlur={() => commitEdit(p)}
+                            onKeyDown={e => handleCellKey(e, p)}
+                            data-testid={`input-amount-${p.id}`}
+                          />
+                        ) : (
+                          <span className={`text-xs font-bold text-red-600 dark:text-red-400 ${!isCompleted ? "opacity-60" : ""} flex items-center justify-end gap-0.5`}>
+                            {isLinked && <Lock className="h-2.5 w-2.5 opacity-30" />}
+                            {amt.toLocaleString()}
+                          </span>
+                        )
                       ) : (
                         <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </td>
-                    <td className="py-1.5 px-2 text-right">
+                    <td className="py-1.5 px-2 text-right" onClick={e => { e.stopPropagation(); onSelectPayment(p.id); }}>
                       <span className={`text-xs font-bold ${balanceNeg ? "text-red-600 dark:text-red-400" : affectsBalance ? "text-foreground" : "text-muted-foreground/50"}`}>
                         {balanceNeg ? "▼ " : ""}{displayBalance.toLocaleString()}
                       </span>
                     </td>
-                    <td className="py-1.5 px-2">
+                    <td className="py-1.5 px-2" onClick={e => { e.stopPropagation(); onSelectPayment(p.id); }}>
                       <span className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded ${statusClass}`}>
                         {statusLabel}
                       </span>
