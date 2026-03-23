@@ -830,6 +830,13 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
             )}
           </div>
 
+          {isLinked && inquiry.snapshotAddress && (
+            <>
+              <span className="text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />주소</span>
+              <span className="text-sm" data-testid="text-customer-address">{inquiry.snapshotAddress}</span>
+            </>
+          )}
+
           {(showChangeSearch || !isLinked) && (
             <>
               <span />
