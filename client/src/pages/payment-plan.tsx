@@ -498,13 +498,9 @@ function TimelineView({
   };
 
   const addMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (payload: { type: string; companyName: string | null; description: string | null; amount: number | null; plannedDate: string | null }) => {
       const res = await apiRequest("POST", "/api/payments", {
-        type: quickType,
-        companyName: quickCompany || null,
-        description: quickDescription || null,
-        amount: quickAmount ? parseInt(quickAmount) : null,
-        plannedDate: quickDate || null,
+        ...payload,
         status: "planned",
         paymentMethod: "specific_date",
       });
@@ -523,12 +519,76 @@ function TimelineView({
 
   const submitQuick = () => {
     if (!quickAmount || addMutation.isPending) return;
-    addMutation.mutate();
+    addMutation.mutate({
+      type: quickType,
+      companyName: quickCompany || null,
+      description: quickDescription || null,
+      amount: parseInt(quickAmount),
+      plannedDate: quickDate || null,
+    });
   };
 
   const handleQuickKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") { e.preventDefault(); submitQuick(); }
     if (e.key === "Escape") { resetQuick(); }
+  };
+
+  // Inline draft row state
+  const [isAddingRow, setIsAddingRow] = useState(false);
+  const [rowType, setRowType] = useState<"income" | "expense">("expense");
+  const [rowCompany, setRowCompany] = useState("");
+  const [rowDescription, setRowDescription] = useState("");
+  const [rowAmount, setRowAmount] = useState("");
+  const [rowDate, setRowDate] = useState(today);
+  const rowCompanyRef = useRef<HTMLInputElement>(null);
+
+  const resetRow = () => {
+    setIsAddingRow(false);
+    setRowCompany("");
+    setRowDescription("");
+    setRowAmount("");
+    setRowDate(today);
+    setRowType("expense");
+  };
+
+  const rowMutation = useMutation({
+    mutationFn: async (payload: { type: string; companyName: string | null; description: string | null; amount: number | null; plannedDate: string | null }) => {
+      const res = await apiRequest("POST", "/api/payments", {
+        ...payload,
+        status: "planned",
+        paymentMethod: "specific_date",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      resetRow();
+      toast({ title: "추가되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "추가 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const submitRow = () => {
+    if (!rowAmount || rowMutation.isPending) return;
+    rowMutation.mutate({
+      type: rowType,
+      companyName: rowCompany || null,
+      description: rowDescription || null,
+      amount: parseInt(rowAmount),
+      plannedDate: rowDate || null,
+    });
+  };
+
+  const handleRowKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); submitRow(); }
+    if (e.key === "Escape") { resetRow(); }
+  };
+
+  const openDraftRow = () => {
+    setIsAddingRow(true);
+    setTimeout(() => rowCompanyRef.current?.focus(), 30);
   };
 
   const commitBalance = () => {
@@ -676,26 +736,105 @@ function TimelineView({
         </Button>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>이 달에 등록된 자금 계획이 없습니다.</p>
-        </div>
-      ) : (
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="text-left py-1.5 px-2 font-medium text-xs w-20">날짜</th>
-                <th className="text-left py-1.5 px-2 font-medium text-xs w-12">구분</th>
-                <th className="text-left py-1.5 px-2 font-medium text-xs">거래처 / 내용</th>
-                <th className="text-right py-1.5 px-2 font-medium text-xs text-blue-600 w-28">입금</th>
-                <th className="text-right py-1.5 px-2 font-medium text-xs text-red-600 w-28">출금</th>
-                <th className="text-right py-1.5 px-2 font-medium text-xs w-32">잔액</th>
-                <th className="text-left py-1.5 px-2 font-medium text-xs w-16">상태</th>
+      <div className="border rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="text-left py-1.5 px-2 font-medium text-xs w-20">날짜</th>
+              <th className="text-left py-1.5 px-2 font-medium text-xs w-12">구분</th>
+              <th className="text-left py-1.5 px-2 font-medium text-xs">거래처 / 내용</th>
+              <th className="text-right py-1.5 px-2 font-medium text-xs text-blue-600 w-28">입금</th>
+              <th className="text-right py-1.5 px-2 font-medium text-xs text-red-600 w-28">출금</th>
+              <th className="text-right py-1.5 px-2 font-medium text-xs w-32">잔액</th>
+              <th className="text-left py-1.5 px-2 font-medium text-xs w-16">상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isAddingRow && (
+              <tr className="border-b bg-blue-50/40 dark:bg-blue-950/20" data-testid="draft-row">
+                <td className="py-1 px-1">
+                  <input
+                    type="date"
+                    className="w-full h-6 text-xs border rounded px-1 bg-background"
+                    value={rowDate}
+                    onChange={e => setRowDate(e.target.value)}
+                    onKeyDown={handleRowKey}
+                    data-testid="draft-row-date"
+                  />
+                </td>
+                <td className="py-1 px-1">
+                  <div className="flex items-center border rounded overflow-hidden">
+                    <button
+                      className={`text-[9px] px-1 py-0.5 ${rowType === "income" ? "bg-blue-600 text-white" : "text-muted-foreground"}`}
+                      onClick={() => setRowType("income")}
+                      data-testid="draft-row-toggle-income"
+                    >입</button>
+                    <button
+                      className={`text-[9px] px-1 py-0.5 ${rowType === "expense" ? "bg-red-600 text-white" : "text-muted-foreground"}`}
+                      onClick={() => setRowType("expense")}
+                      data-testid="draft-row-toggle-expense"
+                    >출</button>
+                  </div>
+                </td>
+                <td className="py-1 px-1">
+                  <input
+                    ref={rowCompanyRef}
+                    type="text"
+                    className="w-full h-6 text-xs border rounded px-1 bg-background mb-0.5"
+                    placeholder="거래처"
+                    value={rowCompany}
+                    onChange={e => setRowCompany(e.target.value)}
+                    onKeyDown={handleRowKey}
+                    data-testid="draft-row-company"
+                  />
+                  <input
+                    type="text"
+                    className="w-full h-5 text-[10px] border rounded px-1 bg-background"
+                    placeholder="내용"
+                    value={rowDescription}
+                    onChange={e => setRowDescription(e.target.value)}
+                    onKeyDown={handleRowKey}
+                    data-testid="draft-row-description"
+                  />
+                </td>
+                <td className="py-1 px-1" colSpan={2}>
+                  <input
+                    type="number"
+                    className="w-full h-6 text-xs border rounded px-1 bg-background text-right"
+                    placeholder="금액"
+                    value={rowAmount}
+                    onChange={e => setRowAmount(e.target.value)}
+                    onKeyDown={handleRowKey}
+                    data-testid="draft-row-amount"
+                  />
+                </td>
+                <td className="py-1 px-1" colSpan={2}>
+                  <div className="flex items-center gap-1">
+                    <button
+                      className="text-[10px] px-2 py-0.5 bg-primary text-primary-foreground rounded disabled:opacity-50"
+                      onClick={submitRow}
+                      disabled={!rowAmount || rowMutation.isPending}
+                      data-testid="draft-row-save"
+                    >
+                      {rowMutation.isPending ? "저장중" : "저장"}
+                    </button>
+                    <button
+                      className="text-[10px] px-2 py-0.5 border rounded text-muted-foreground hover:text-foreground"
+                      onClick={resetRow}
+                      data-testid="draft-row-cancel"
+                    >취소</button>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody>
+            )}
+            {rows.length === 0 && !isAddingRow && (
+              <tr>
+                <td colSpan={7} className="py-10 text-center text-muted-foreground">
+                  <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-xs">이 달에 등록된 자금 계획이 없습니다.</p>
+                </td>
+              </tr>
+            )}
               {rows.map(({ payment: p, isCompleted, isOverdue, dateStr, amt, balance, prevBalance, affectsBalance }) => {
                 const isIncome = p.type === "income";
                 const rowBg = isCompleted ? "" : "bg-muted/10";
@@ -774,22 +913,23 @@ function TimelineView({
                   </tr>
                 );
               })}
-              <tr>
-                <td colSpan={7} className="py-1.5 px-2 border-t">
-                  <button
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
-                    onClick={() => quickCompanyRef.current?.focus()}
-                    data-testid="button-add-row"
-                  >
-                    <Plus className="h-3 w-3" />
-                    행 추가
-                  </button>
-                </td>
-              </tr>
+              {!isAddingRow && (
+                <tr>
+                  <td colSpan={7} className="py-1.5 px-2 border-t">
+                    <button
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                      onClick={openDraftRow}
+                      data-testid="button-add-row"
+                    >
+                      <Plus className="h-3 w-3" />
+                      행 추가
+                    </button>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-      )}
     </div>
   );
 }
