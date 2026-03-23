@@ -6913,5 +6913,29 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/monthly-balances", async (req, res) => {
+    try {
+      const { year, month } = req.query;
+      if (!year || !month) return res.status(400).json({ message: "year and month required" });
+      const balance = await storage.getMonthlyBalance(parseInt(year as string), parseInt(month as string));
+      res.json(balance ?? null);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/monthly-balances", async (req, res) => {
+    try {
+      const { year, month, openingBalance } = req.body;
+      if (!year || !month || openingBalance === undefined) {
+        return res.status(400).json({ message: "year, month, openingBalance required" });
+      }
+      const balance = await storage.upsertMonthlyBalance(parseInt(year), parseInt(month), parseInt(openingBalance));
+      res.json(balance);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

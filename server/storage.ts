@@ -32,13 +32,14 @@ import {
   type ProjectItem, type InsertProjectItem,
   type TelegramMemo, type InsertTelegramMemo,
   type CalendarEvent, type InsertCalendarEvent,
+  type MonthlyBalance, type InsertMonthlyBalance,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
   purchaseOrders, purchaseOrderItems, vendorContacts, recurringExpenses,
   purchaseOrderTasks, financeTasks, projectItems, telegramMemos, itemComponents,
-  calendarEvents,
+  calendarEvents, monthlyBalances,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -287,6 +288,9 @@ export interface IStorage {
   createCalendarEvent(data: InsertCalendarEvent): Promise<CalendarEvent>;
   updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
   deleteCalendarEvent(id: string): Promise<void>;
+
+  getMonthlyBalance(year: number, month: number): Promise<MonthlyBalance | undefined>;
+  upsertMonthlyBalance(year: number, month: number, openingBalance: number): Promise<MonthlyBalance>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1554,6 +1558,26 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCalendarEvent(id: string): Promise<void> {
     await db.delete(calendarEvents).where(eq(calendarEvents.id, id));
+  }
+
+  async getMonthlyBalance(year: number, month: number): Promise<MonthlyBalance | undefined> {
+    const [row] = await db.select().from(monthlyBalances)
+      .where(and(eq(monthlyBalances.year, year), eq(monthlyBalances.month, month)));
+    return row;
+  }
+
+  async upsertMonthlyBalance(year: number, month: number, openingBalance: number): Promise<MonthlyBalance> {
+    const existing = await this.getMonthlyBalance(year, month);
+    if (existing) {
+      const [row] = await db.update(monthlyBalances)
+        .set({ openingBalance })
+        .where(and(eq(monthlyBalances.year, year), eq(monthlyBalances.month, month)))
+        .returning();
+      return row;
+    } else {
+      const [row] = await db.insert(monthlyBalances).values({ year, month, openingBalance }).returning();
+      return row;
+    }
   }
 }
 

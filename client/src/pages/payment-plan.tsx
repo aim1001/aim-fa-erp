@@ -3,12 +3,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown, Filter } from "lucide-react";
+import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown, Filter, TrendingUp, Pencil } from "lucide-react";
 import { useState, useMemo } from "react";
 import { FundOverviewTab } from "./fund-overview-tab";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Payment } from "@shared/schema";
+import type { Payment, MonthlyBalance } from "@shared/schema";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ko } from "date-fns/locale";
@@ -316,6 +316,63 @@ function AddPaymentDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
   );
 }
 
+function CalendarDayPill({ items, type, total, onSelectPayment, day }: {
+  items: Payment[];
+  type: "income" | "expense";
+  total: number;
+  onSelectPayment: (id: string) => void;
+  day: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const isIncome = type === "income";
+  const baseClass = isIncome
+    ? "text-[10px] bg-blue-50 text-blue-700 rounded px-1 truncate cursor-pointer hover:bg-blue-100"
+    : "text-[10px] bg-red-50 text-red-700 rounded px-1 truncate cursor-pointer hover:bg-red-100";
+  const prefix = isIncome ? "+" : "-";
+
+  if (items.length === 1) {
+    return (
+      <div
+        className={baseClass}
+        onClick={() => onSelectPayment(items[0].id)}
+        data-testid={`cal-${type}-${day}`}
+      >
+        {prefix}{total.toLocaleString()}
+      </div>
+    );
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <div className={baseClass} data-testid={`cal-${type}-${day}`}>
+          {prefix}{total.toLocaleString()} ({items.length}건)
+        </div>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-2" align="start" side="right">
+        <div className="text-xs font-medium mb-2 text-muted-foreground">
+          {day}일 {isIncome ? "입금" : "출금"} {items.length}건
+        </div>
+        <div className="space-y-1">
+          {items.map(p => (
+            <div
+              key={p.id}
+              className="text-xs rounded px-2 py-1.5 cursor-pointer hover:bg-muted flex items-center justify-between gap-2"
+              onClick={() => { setOpen(false); onSelectPayment(p.id); }}
+              data-testid={`cal-${type}-item-${p.id}`}
+            >
+              <span className="truncate text-muted-foreground">{(p as any).projectCustomerName || (p as any).companyName || "—"}</span>
+              <span className={`font-medium shrink-0 ${isIncome ? "text-blue-700" : "text-red-700"}`}>
+                {prefix}{(p.amount || 0).toLocaleString()}
+              </span>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function CalendarView({ payments, year, month, onSelectPayment }: {
   payments: Payment[];
   year: number;
@@ -367,31 +424,33 @@ function CalendarView({ payments, year, month, onSelectPayment }: {
         <div key={wi} className="grid grid-cols-7 border-b last:border-b-0">
           {week.map((day, di) => {
             const dayPayments = day ? paymentsByDate.get(day) || [] : [];
-            const income = dayPayments.filter(p => p.type === "income").reduce((s, p) => s + (p.amount || 0), 0);
-            const expense = dayPayments.filter(p => p.type === "expense").reduce((s, p) => s + (p.amount || 0), 0);
+            const incomeItems = dayPayments.filter(p => p.type === "income");
+            const expenseItems = dayPayments.filter(p => p.type === "expense");
+            const incomeTotal = incomeItems.reduce((s, p) => s + (p.amount || 0), 0);
+            const expenseTotal = expenseItems.reduce((s, p) => s + (p.amount || 0), 0);
             return (
               <div key={di} className={`min-h-[80px] p-1 border-r last:border-r-0 ${day ? "bg-background" : "bg-muted/20"} ${di === 0 ? "text-red-500" : di === 6 ? "text-blue-500" : ""}`}>
                 {day && (
                   <>
                     <div className="text-xs font-medium mb-1">{day}</div>
                     <div className="space-y-0.5">
-                      {income > 0 && (
-                        <div
-                          className="text-[10px] bg-blue-50 text-blue-700 rounded px-1 truncate cursor-pointer hover:bg-blue-100"
-                          onClick={() => { const p = dayPayments.find(p => p.type === "income"); if (p) onSelectPayment(p.id); }}
-                          data-testid={`cal-income-${day}`}
-                        >
-                          +{income.toLocaleString()}
-                        </div>
+                      {incomeItems.length > 0 && (
+                        <CalendarDayPill
+                          items={incomeItems}
+                          type="income"
+                          total={incomeTotal}
+                          onSelectPayment={onSelectPayment}
+                          day={day}
+                        />
                       )}
-                      {expense > 0 && (
-                        <div
-                          className="text-[10px] bg-red-50 text-red-700 rounded px-1 truncate cursor-pointer hover:bg-red-100"
-                          onClick={() => { const p = dayPayments.find(p => p.type === "expense"); if (p) onSelectPayment(p.id); }}
-                          data-testid={`cal-expense-${day}`}
-                        >
-                          -{expense.toLocaleString()}
-                        </div>
+                      {expenseItems.length > 0 && (
+                        <CalendarDayPill
+                          items={expenseItems}
+                          type="expense"
+                          total={expenseTotal}
+                          onSelectPayment={onSelectPayment}
+                          day={day}
+                        />
                       )}
                     </div>
                   </>
@@ -405,12 +464,208 @@ function CalendarView({ payments, year, month, onSelectPayment }: {
   );
 }
 
+function TimelineView({
+  payments,
+  year,
+  month,
+  openingBalance,
+  onSelectPayment,
+  onEditBalance,
+}: {
+  payments: EnrichedPayment[];
+  year: number;
+  month: number;
+  openingBalance: number;
+  onSelectPayment: (id: string) => void;
+  onEditBalance: () => void;
+}) {
+  const [balanceMode, setBalanceMode] = useState<"actual" | "expected">("expected");
+
+  const rows = useMemo(() => {
+    const sorted = [...payments].sort((a, b) => {
+      const da = (a.status === "completed" ? (a.actualDate || a.plannedDate) : a.plannedDate) || "9999-99-99";
+      const db = (b.status === "completed" ? (b.actualDate || b.plannedDate) : b.plannedDate) || "9999-99-99";
+      return da.localeCompare(db);
+    });
+
+    let running = openingBalance;
+    return sorted.map(p => {
+      const isCompleted = p.status === "completed";
+      const isOverdue = !isCompleted && p.plannedDate && p.plannedDate < new Date().toISOString().split("T")[0];
+      const dateStr = isCompleted ? (p.actualDate || p.plannedDate) : p.plannedDate;
+      const amt = isCompleted ? (p.actualAmount || p.amount || 0) : (p.amount || 0);
+
+      let includeInBalance = false;
+      if (balanceMode === "actual") {
+        includeInBalance = isCompleted;
+      } else {
+        includeInBalance = true;
+      }
+
+      let balance = running;
+      if (includeInBalance) {
+        if (p.type === "income") running += amt;
+        else running -= amt;
+        balance = running;
+      }
+
+      return { payment: p, isCompleted, isOverdue, dateStr, amt, balance, includeInBalance };
+    });
+  }, [payments, openingBalance, balanceMode]);
+
+  const today = new Date().toISOString().split("T")[0];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">기초잔액</span>
+          <button
+            className="flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors group"
+            onClick={onEditBalance}
+            data-testid="button-edit-opening-balance"
+          >
+            <span>{openingBalance.toLocaleString()}원</span>
+            <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+          </button>
+        </div>
+        <div className="flex items-center gap-1 border rounded-lg p-0.5">
+          <Button
+            variant={balanceMode === "expected" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setBalanceMode("expected")}
+            data-testid="button-balance-expected"
+          >
+            예상잔액
+          </Button>
+          <Button
+            variant={balanceMode === "actual" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setBalanceMode("actual")}
+            data-testid="button-balance-actual"
+          >
+            실제잔액
+          </Button>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-30" />
+          <p>이 달에 등록된 자금 계획이 없습니다.</p>
+        </div>
+      ) : (
+        <div className="border rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="text-left py-1.5 px-2 font-medium text-xs w-20">날짜</th>
+                <th className="text-left py-1.5 px-2 font-medium text-xs w-12">구분</th>
+                <th className="text-left py-1.5 px-2 font-medium text-xs">거래처 / 내용</th>
+                <th className="text-right py-1.5 px-2 font-medium text-xs text-blue-600 w-28">입금</th>
+                <th className="text-right py-1.5 px-2 font-medium text-xs text-red-600 w-28">출금</th>
+                <th className="text-right py-1.5 px-2 font-medium text-xs w-32">잔액</th>
+                <th className="text-left py-1.5 px-2 font-medium text-xs w-16">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ payment: p, isCompleted, isOverdue, dateStr, amt, balance, includeInBalance }) => {
+                const isIncome = p.type === "income";
+                const rowBg = isCompleted ? "" : "bg-muted/10";
+                const balanceNeg = balance < 0;
+
+                let statusLabel = "예정";
+                let statusClass = "text-slate-500 bg-slate-50 dark:bg-slate-800/40";
+                if (isCompleted) {
+                  statusLabel = "완료";
+                  statusClass = "text-green-700 bg-green-50 dark:bg-green-900/30";
+                } else if (isOverdue) {
+                  statusLabel = "연체";
+                  statusClass = "text-orange-700 bg-orange-50 dark:bg-orange-900/30";
+                }
+
+                const displayDate = dateStr
+                  ? `${parseInt(dateStr.substring(5, 7))}/${parseInt(dateStr.substring(8, 10))}`
+                  : "-";
+                const isToday = dateStr === today;
+
+                return (
+                  <tr
+                    key={p.id}
+                    className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${rowBg}`}
+                    onClick={() => onSelectPayment(p.id)}
+                    data-testid={`timeline-row-${p.id}`}
+                  >
+                    <td className="py-1.5 px-2">
+                      <span className={`text-xs font-mono ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
+                        {displayDate}
+                        {isToday && <span className="ml-1 text-[9px] text-primary">오늘</span>}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-2">
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${isIncome ? "text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400" : "text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-400"}`}>
+                        {isIncome ? "입금" : "출금"}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-2">
+                      <div className={`text-xs font-medium truncate max-w-[200px] ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
+                        {p.companyName || "-"}
+                      </div>
+                      {p.description && (
+                        <div className="text-[10px] text-muted-foreground truncate max-w-[200px]">{p.description}</div>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-right">
+                      {isIncome ? (
+                        <span className={`text-xs font-bold text-blue-600 dark:text-blue-400 ${!isCompleted ? "opacity-60" : ""}`}>
+                          {amt.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-right">
+                      {!isIncome ? (
+                        <span className={`text-xs font-bold text-red-600 dark:text-red-400 ${!isCompleted ? "opacity-60" : ""}`}>
+                          {amt.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-right">
+                      {includeInBalance ? (
+                        <span className={`text-xs font-bold ${balanceNeg ? "text-red-600 dark:text-red-400" : "text-foreground"}`}>
+                          {balanceNeg ? "▼ " : ""}{balance.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/40">-</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2">
+                      <span className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded ${statusClass}`}>
+                        {statusLabel}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PaymentPlan() {
   const { toast } = useToast();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund">("list");
+  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund" | "timeline">("timeline");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -422,6 +677,8 @@ export default function PaymentPlan() {
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
   const [sortKey, setSortKey] = useState<"status" | "type" | "plannedDate" | "invoiceIssueDate" | "companyName">("plannedDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [showBalanceEdit, setShowBalanceEdit] = useState(false);
+  const [balanceInput, setBalanceInput] = useState("");
 
   const toggleSort = (key: typeof sortKey) => {
     if (sortKey === key) {
@@ -431,6 +688,31 @@ export default function PaymentPlan() {
       setSortDir("asc");
     }
   };
+
+  const { data: monthlyBalance } = useQuery<MonthlyBalance | null>({
+    queryKey: ["/api/monthly-balances", year, month],
+    queryFn: async () => {
+      const res = await fetch(`/api/monthly-balances?year=${year}&month=${month}`);
+      return res.json();
+    },
+  });
+
+  const saveBalance = useMutation({
+    mutationFn: async (openingBalance: number) => {
+      const res = await apiRequest("POST", "/api/monthly-balances", { year, month, openingBalance });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/monthly-balances"] });
+      setShowBalanceEdit(false);
+      toast({ title: "기초잔액이 저장되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const openingBalance = monthlyBalance?.openingBalance ?? 0;
 
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
@@ -615,6 +897,14 @@ export default function PaymentPlan() {
           {viewMode !== "fund" && (
             <>
               <Button
+                variant={viewMode === "timeline" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("timeline")}
+                data-testid="button-view-timeline"
+              >
+                <TrendingUp className="h-4 w-4 mr-1" />타임라인
+              </Button>
+              <Button
                 variant={viewMode === "list" ? "default" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("list")}
@@ -636,7 +926,7 @@ export default function PaymentPlan() {
             variant={viewMode === "fund" ? "default" : "ghost"}
             size="sm"
             onClick={() => {
-              if (viewMode === "fund") { setViewMode("list"); }
+              if (viewMode === "fund") { setViewMode("timeline"); }
               else if (fundAuthenticated) { setViewMode("fund"); }
               else { setShowPasswordDialog(true); setFundPassword(""); setPasswordError(false); }
             }}
@@ -733,6 +1023,18 @@ export default function PaymentPlan() {
 
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
+      ) : viewMode === "timeline" ? (
+        <TimelineView
+          payments={payments || []}
+          year={year}
+          month={month}
+          openingBalance={openingBalance}
+          onSelectPayment={setSelectedId}
+          onEditBalance={() => {
+            setBalanceInput(String(openingBalance));
+            setShowBalanceEdit(true);
+          }}
+        />
       ) : viewMode === "list" ? (
         sorted.length > 0 ? (
           <div className="border rounded-lg overflow-hidden">
@@ -929,7 +1231,15 @@ export default function PaymentPlan() {
         <FundOverviewTab year={year} month={month} />
       )}
 
-      {viewMode !== "fund" && payments && <div className="text-xs text-muted-foreground">{sorted.length === payments.length ? `총 ${sorted.length}건` : `${sorted.length}건 / 총 ${payments.length}건`}</div>}
+      {viewMode !== "fund" && payments && (
+        <div className="text-xs text-muted-foreground">
+          {viewMode === "timeline"
+            ? `총 ${payments.length}건`
+            : sorted.length === payments.length
+              ? `총 ${sorted.length}건`
+              : `${sorted.length}건 / 총 ${payments.length}건`}
+        </div>
+      )}
 
       <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null); }}>
         {selectedId && <PaymentDetailModal paymentId={selectedId} onClose={() => setSelectedId(null)} />}
@@ -959,6 +1269,43 @@ export default function PaymentPlan() {
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowPasswordDialog(false)}>취소</Button>
             <Button onClick={() => { if (fundPassword === "6937") { setShowPasswordDialog(false); setFundAuthenticated(true); setViewMode("fund"); } else setPasswordError(true); }} data-testid="button-confirm-fund-password">확인</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showBalanceEdit} onOpenChange={open => { if (!open) setShowBalanceEdit(false); }}>
+        <DialogContent className="max-w-xs" data-testid="modal-balance-edit">
+          <DialogHeader><DialogTitle>{year}년 {month}월 기초잔액 설정</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">월 시작 시점의 통장 잔액을 입력하세요. 이 값을 기준으로 누적 잔액이 계산됩니다.</div>
+            <Input
+              type="number"
+              placeholder="예: 5000000"
+              value={balanceInput}
+              onChange={e => setBalanceInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && balanceInput !== "") {
+                  saveBalance.mutate(parseInt(balanceInput) || 0);
+                }
+              }}
+              autoFocus
+              data-testid="input-opening-balance"
+            />
+            {balanceInput && (
+              <div className="text-sm font-medium text-muted-foreground">
+                {(parseInt(balanceInput) || 0).toLocaleString()}원
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setShowBalanceEdit(false)}>취소</Button>
+            <Button
+              onClick={() => saveBalance.mutate(parseInt(balanceInput) || 0)}
+              disabled={saveBalance.isPending || balanceInput === ""}
+              data-testid="button-save-opening-balance"
+            >
+              저장
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

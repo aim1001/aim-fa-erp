@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, date, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, date, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -774,6 +774,19 @@ export interface FeedingSpeedData {
     jamProbability: number;
   };
 }
+
+export const monthlyBalances = pgTable("monthly_balances", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(),
+  openingBalance: integer("opening_balance").notNull().default(0),
+}, (table) => ({
+  yearMonthIdx: uniqueIndex("monthly_balances_year_month_idx").on(table.year, table.month),
+}));
+
+export const insertMonthlyBalanceSchema = createInsertSchema(monthlyBalances).omit({ id: true });
+export type InsertMonthlyBalance = z.infer<typeof insertMonthlyBalanceSchema>;
+export type MonthlyBalance = typeof monthlyBalances.$inferSelect;
 
 export const calendarEvents = pgTable("calendar_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
