@@ -6915,9 +6915,12 @@ export async function registerRoutes(
 
   app.get("/api/monthly-balances", async (req, res) => {
     try {
-      const { year, month } = req.query;
-      if (!year || !month) return res.status(400).json({ message: "year and month required" });
-      const balance = await storage.getMonthlyBalance(parseInt(year as string), parseInt(month as string));
+      const year = parseInt(req.query.year as string);
+      const month = parseInt(req.query.month as string);
+      if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+        return res.status(400).json({ message: "valid year and month (1-12) required" });
+      }
+      const balance = await storage.getMonthlyBalance(year, month);
       res.json(balance ?? null);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -6926,11 +6929,13 @@ export async function registerRoutes(
 
   app.post("/api/monthly-balances", async (req, res) => {
     try {
-      const { year, month, openingBalance } = req.body;
-      if (!year || !month || openingBalance === undefined) {
-        return res.status(400).json({ message: "year, month, openingBalance required" });
+      const year = parseInt(req.body.year);
+      const month = parseInt(req.body.month);
+      const openingBalance = parseInt(req.body.openingBalance);
+      if (isNaN(year) || isNaN(month) || month < 1 || month > 12 || isNaN(openingBalance)) {
+        return res.status(400).json({ message: "valid year, month (1-12), and openingBalance required" });
       }
-      const balance = await storage.upsertMonthlyBalance(parseInt(year), parseInt(month), parseInt(openingBalance));
+      const balance = await storage.upsertMonthlyBalance(year, month, openingBalance);
       res.json(balance);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

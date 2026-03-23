@@ -466,16 +466,12 @@ function CalendarView({ payments, year, month, onSelectPayment }: {
 
 function TimelineView({
   payments,
-  year,
-  month,
   openingBalance,
   onSelectPayment,
   onSaveBalance,
   isSavingBalance,
 }: {
   payments: EnrichedPayment[];
-  year: number;
-  month: number;
   openingBalance: number;
   onSelectPayment: (id: string) => void;
   onSaveBalance: (value: number) => void;
@@ -1043,8 +1039,6 @@ export default function PaymentPlan() {
       ) : viewMode === "timeline" ? (
         <TimelineView
           payments={payments || []}
-          year={year}
-          month={month}
           openingBalance={openingBalance}
           onSelectPayment={setSelectedId}
           onSaveBalance={v => saveBalance.mutate(v)}
