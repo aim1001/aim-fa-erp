@@ -317,7 +317,7 @@ function AddPaymentDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
 }
 
 function CalendarDayPill({ items, type, total, onSelectPayment, day }: {
-  items: Payment[];
+  items: EnrichedPayment[];
   type: "income" | "expense";
   total: number;
   onSelectPayment: (id: string) => void;
@@ -361,7 +361,7 @@ function CalendarDayPill({ items, type, total, onSelectPayment, day }: {
               onClick={() => { setOpen(false); onSelectPayment(p.id); }}
               data-testid={`cal-${type}-item-${p.id}`}
             >
-              <span className="truncate text-muted-foreground">{(p as any).projectCustomerName || (p as any).companyName || "—"}</span>
+              <span className="truncate text-muted-foreground">{p.projectCustomerName || p.companyName || "—"}</span>
               <span className={`font-medium shrink-0 ${isIncome ? "text-blue-700" : "text-red-700"}`}>
                 {prefix}{(p.amount || 0).toLocaleString()}
               </span>
@@ -374,7 +374,7 @@ function CalendarDayPill({ items, type, total, onSelectPayment, day }: {
 }
 
 function CalendarView({ payments, year, month, onSelectPayment }: {
-  payments: Payment[];
+  payments: EnrichedPayment[];
   year: number;
   month: number;
   onSelectPayment: (id: string) => void;
@@ -385,7 +385,7 @@ function CalendarView({ payments, year, month, onSelectPayment }: {
   const daysInMonth = lastDay.getDate();
 
   const paymentsByDate = useMemo(() => {
-    const map = new Map<number, Payment[]>();
+    const map = new Map<number, EnrichedPayment[]>();
     payments.forEach(p => {
       const dateStr = p.actualDate || p.plannedDate;
       if (dateStr) {
@@ -470,16 +470,26 @@ function TimelineView({
   month,
   openingBalance,
   onSelectPayment,
-  onEditBalance,
+  onSaveBalance,
+  isSavingBalance,
 }: {
   payments: EnrichedPayment[];
   year: number;
   month: number;
   openingBalance: number;
   onSelectPayment: (id: string) => void;
-  onEditBalance: () => void;
+  onSaveBalance: (value: number) => void;
+  isSavingBalance?: boolean;
 }) {
   const [balanceMode, setBalanceMode] = useState<"actual" | "expected">("expected");
+  const [editingBalance, setEditingBalance] = useState(false);
+  const [balanceInput, setBalanceInput] = useState("");
+
+  const commitBalance = () => {
+    const val = parseInt(balanceInput);
+    if (!isNaN(val)) onSaveBalance(val);
+    setEditingBalance(false);
+  };
 
   const rows = useMemo(() => {
     const sorted = [...payments].sort((a, b) => {
@@ -495,21 +505,15 @@ function TimelineView({
       const dateStr = isCompleted ? (p.actualDate || p.plannedDate) : p.plannedDate;
       const amt = isCompleted ? (p.actualAmount || p.amount || 0) : (p.amount || 0);
 
-      let includeInBalance = false;
-      if (balanceMode === "actual") {
-        includeInBalance = isCompleted;
-      } else {
-        includeInBalance = true;
-      }
+      const affectsBalance = balanceMode === "expected" || isCompleted;
 
-      let balance = running;
-      if (includeInBalance) {
+      const prevRunning = running;
+      if (affectsBalance) {
         if (p.type === "income") running += amt;
         else running -= amt;
-        balance = running;
       }
 
-      return { payment: p, isCompleted, isOverdue, dateStr, amt, balance, includeInBalance };
+      return { payment: p, isCompleted, isOverdue, dateStr, amt, balance: running, prevBalance: prevRunning, affectsBalance };
     });
   }, [payments, openingBalance, balanceMode]);
 
@@ -520,14 +524,33 @@ function TimelineView({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">기초잔액</span>
-          <button
-            className="flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors group"
-            onClick={onEditBalance}
-            data-testid="button-edit-opening-balance"
-          >
-            <span>{openingBalance.toLocaleString()}원</span>
-            <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-          </button>
+          {editingBalance ? (
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                className="h-7 w-36 text-sm font-semibold"
+                value={balanceInput}
+                autoFocus
+                onChange={e => setBalanceInput(e.target.value)}
+                onBlur={commitBalance}
+                onKeyDown={e => {
+                  if (e.key === "Enter") commitBalance();
+                  if (e.key === "Escape") setEditingBalance(false);
+                }}
+                data-testid="input-opening-balance-inline"
+              />
+              {isSavingBalance && <span className="text-xs text-muted-foreground">저장중...</span>}
+            </div>
+          ) : (
+            <button
+              className="flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors group"
+              onClick={() => { setBalanceInput(String(openingBalance)); setEditingBalance(true); }}
+              data-testid="button-edit-opening-balance"
+            >
+              <span>{openingBalance.toLocaleString()}원</span>
+              <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
           <Button
@@ -571,10 +594,11 @@ function TimelineView({
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ payment: p, isCompleted, isOverdue, dateStr, amt, balance, includeInBalance }) => {
+              {rows.map(({ payment: p, isCompleted, isOverdue, dateStr, amt, balance, prevBalance, affectsBalance }) => {
                 const isIncome = p.type === "income";
                 const rowBg = isCompleted ? "" : "bg-muted/10";
-                const balanceNeg = balance < 0;
+                const displayBalance = affectsBalance ? balance : prevBalance;
+                const balanceNeg = displayBalance < 0;
 
                 let statusLabel = "예정";
                 let statusClass = "text-slate-500 bg-slate-50 dark:bg-slate-800/40";
@@ -636,13 +660,9 @@ function TimelineView({
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-right">
-                      {includeInBalance ? (
-                        <span className={`text-xs font-bold ${balanceNeg ? "text-red-600 dark:text-red-400" : "text-foreground"}`}>
-                          {balanceNeg ? "▼ " : ""}{balance.toLocaleString()}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/40">-</span>
-                      )}
+                      <span className={`text-xs font-bold ${balanceNeg ? "text-red-600 dark:text-red-400" : affectsBalance ? "text-foreground" : "text-muted-foreground/50"}`}>
+                        {balanceNeg ? "▼ " : ""}{displayBalance.toLocaleString()}
+                      </span>
                     </td>
                     <td className="py-1.5 px-2">
                       <span className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded ${statusClass}`}>
@@ -677,8 +697,6 @@ export default function PaymentPlan() {
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
   const [sortKey, setSortKey] = useState<"status" | "type" | "plannedDate" | "invoiceIssueDate" | "companyName">("plannedDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [showBalanceEdit, setShowBalanceEdit] = useState(false);
-  const [balanceInput, setBalanceInput] = useState("");
 
   const toggleSort = (key: typeof sortKey) => {
     if (sortKey === key) {
@@ -1030,10 +1048,8 @@ export default function PaymentPlan() {
           month={month}
           openingBalance={openingBalance}
           onSelectPayment={setSelectedId}
-          onEditBalance={() => {
-            setBalanceInput(String(openingBalance));
-            setShowBalanceEdit(true);
-          }}
+          onSaveBalance={v => saveBalance.mutate(v)}
+          isSavingBalance={saveBalance.isPending}
         />
       ) : viewMode === "list" ? (
         sorted.length > 0 ? (
@@ -1269,43 +1285,6 @@ export default function PaymentPlan() {
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowPasswordDialog(false)}>취소</Button>
             <Button onClick={() => { if (fundPassword === "6937") { setShowPasswordDialog(false); setFundAuthenticated(true); setViewMode("fund"); } else setPasswordError(true); }} data-testid="button-confirm-fund-password">확인</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showBalanceEdit} onOpenChange={open => { if (!open) setShowBalanceEdit(false); }}>
-        <DialogContent className="max-w-xs" data-testid="modal-balance-edit">
-          <DialogHeader><DialogTitle>{year}년 {month}월 기초잔액 설정</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="text-xs text-muted-foreground">월 시작 시점의 통장 잔액을 입력하세요. 이 값을 기준으로 누적 잔액이 계산됩니다.</div>
-            <Input
-              type="number"
-              placeholder="예: 5000000"
-              value={balanceInput}
-              onChange={e => setBalanceInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter" && balanceInput !== "") {
-                  saveBalance.mutate(parseInt(balanceInput) || 0);
-                }
-              }}
-              autoFocus
-              data-testid="input-opening-balance"
-            />
-            {balanceInput && (
-              <div className="text-sm font-medium text-muted-foreground">
-                {(parseInt(balanceInput) || 0).toLocaleString()}원
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setShowBalanceEdit(false)}>취소</Button>
-            <Button
-              onClick={() => saveBalance.mutate(parseInt(balanceInput) || 0)}
-              disabled={saveBalance.isPending || balanceInput === ""}
-              data-testid="button-save-opening-balance"
-            >
-              저장
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
