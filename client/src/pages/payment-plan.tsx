@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown, Filter, TrendingUp, Pencil } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { FundOverviewTab } from "./fund-overview-tab";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -477,9 +477,59 @@ function TimelineView({
   onSaveBalance: (value: number) => void;
   isSavingBalance?: boolean;
 }) {
+  const { toast } = useToast();
   const [balanceMode, setBalanceMode] = useState<"actual" | "expected">("expected");
   const [editingBalance, setEditingBalance] = useState(false);
   const [balanceInput, setBalanceInput] = useState("");
+
+  const today = new Date().toISOString().split("T")[0];
+  const [quickType, setQuickType] = useState<"income" | "expense">("expense");
+  const [quickCompany, setQuickCompany] = useState("");
+  const [quickDescription, setQuickDescription] = useState("");
+  const [quickAmount, setQuickAmount] = useState("");
+  const [quickDate, setQuickDate] = useState(today);
+  const quickCompanyRef = useRef<HTMLInputElement>(null);
+
+  const resetQuick = () => {
+    setQuickCompany("");
+    setQuickDescription("");
+    setQuickAmount("");
+    setQuickDate(today);
+  };
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/payments", {
+        type: quickType,
+        companyName: quickCompany || null,
+        description: quickDescription || null,
+        amount: quickAmount ? parseInt(quickAmount) : null,
+        plannedDate: quickDate || null,
+        status: "planned",
+        paymentMethod: "specific_date",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      resetQuick();
+      setTimeout(() => quickCompanyRef.current?.focus(), 50);
+      toast({ title: "추가되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "추가 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const submitQuick = () => {
+    if (!quickAmount || addMutation.isPending) return;
+    addMutation.mutate();
+  };
+
+  const handleQuickKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); submitQuick(); }
+    if (e.key === "Escape") { resetQuick(); }
+  };
 
   const commitBalance = () => {
     const val = parseInt(balanceInput);
@@ -512,8 +562,6 @@ function TimelineView({
       return { payment: p, isCompleted, isOverdue, dateStr, amt, balance: running, prevBalance: prevRunning, affectsBalance };
     });
   }, [payments, openingBalance, balanceMode]);
-
-  const today = new Date().toISOString().split("T")[0];
 
   return (
     <div className="space-y-3">
@@ -568,6 +616,64 @@ function TimelineView({
             실제잔액
           </Button>
         </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 p-2 bg-muted/20 border border-dashed rounded-lg" data-testid="quick-input-bar">
+        <div className="flex items-center border rounded p-0.5 shrink-0">
+          <button
+            className={`text-[10px] font-medium px-2 py-0.5 rounded transition-colors ${quickType === "income" ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setQuickType("income")}
+            data-testid="quick-toggle-income"
+          >입금</button>
+          <button
+            className={`text-[10px] font-medium px-2 py-0.5 rounded transition-colors ${quickType === "expense" ? "bg-red-600 text-white" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setQuickType("expense")}
+            data-testid="quick-toggle-expense"
+          >출금</button>
+        </div>
+        <Input
+          ref={quickCompanyRef}
+          className="h-7 text-xs flex-1 min-w-[80px] max-w-[140px]"
+          placeholder="거래처"
+          value={quickCompany}
+          onChange={e => setQuickCompany(e.target.value)}
+          onKeyDown={handleQuickKey}
+          data-testid="quick-input-company"
+        />
+        <Input
+          className="h-7 text-xs flex-1 min-w-[80px] max-w-[140px]"
+          placeholder="내용"
+          value={quickDescription}
+          onChange={e => setQuickDescription(e.target.value)}
+          onKeyDown={handleQuickKey}
+          data-testid="quick-input-description"
+        />
+        <Input
+          type="number"
+          className="h-7 text-xs w-28 shrink-0"
+          placeholder="금액"
+          value={quickAmount}
+          onChange={e => setQuickAmount(e.target.value)}
+          onKeyDown={handleQuickKey}
+          data-testid="quick-input-amount"
+        />
+        <Input
+          type="date"
+          className="h-7 text-xs w-32 shrink-0"
+          value={quickDate}
+          onChange={e => setQuickDate(e.target.value)}
+          onKeyDown={handleQuickKey}
+          data-testid="quick-input-date"
+        />
+        <Button
+          size="sm"
+          className="h-7 text-xs px-3 shrink-0"
+          onClick={submitQuick}
+          disabled={!quickAmount || addMutation.isPending}
+          data-testid="quick-input-submit"
+        >
+          {addMutation.isPending ? "추가중..." : "추가"}
+        </Button>
       </div>
 
       {rows.length === 0 ? (
@@ -668,6 +774,18 @@ function TimelineView({
                   </tr>
                 );
               })}
+              <tr>
+                <td colSpan={7} className="py-1.5 px-2 border-t">
+                  <button
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                    onClick={() => quickCompanyRef.current?.focus()}
+                    data-testid="button-add-row"
+                  >
+                    <Plus className="h-3 w-3" />
+                    행 추가
+                  </button>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
