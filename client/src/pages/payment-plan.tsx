@@ -518,12 +518,13 @@ function TimelineView({
   });
 
   const submitQuick = () => {
-    if (!quickAmount || addMutation.isPending) return;
+    const amt = parseInt(quickAmount);
+    if (!quickAmount || isNaN(amt) || amt <= 0 || addMutation.isPending) return;
     addMutation.mutate({
       type: quickType,
       companyName: quickCompany || null,
       description: quickDescription || null,
-      amount: parseInt(quickAmount),
+      amount: amt,
       plannedDate: quickDate || null,
     });
   };
@@ -571,12 +572,13 @@ function TimelineView({
   });
 
   const submitRow = () => {
-    if (!rowAmount || rowMutation.isPending) return;
+    const amt = parseInt(rowAmount);
+    if (!rowAmount || isNaN(amt) || amt <= 0 || rowMutation.isPending) return;
     rowMutation.mutate({
       type: rowType,
       companyName: rowCompany || null,
       description: rowDescription || null,
-      amount: parseInt(rowAmount),
+      amount: amt,
       plannedDate: rowDate || null,
     });
   };
