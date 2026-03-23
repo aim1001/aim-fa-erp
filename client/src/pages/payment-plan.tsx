@@ -722,7 +722,6 @@ export default function PaymentPlan() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/monthly-balances"] });
-      setShowBalanceEdit(false);
       toast({ title: "기초잔액이 저장되었습니다" });
     },
     onError: (err: Error) => {
