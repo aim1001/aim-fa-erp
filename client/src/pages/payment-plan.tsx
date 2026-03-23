@@ -609,6 +609,9 @@ function TimelineView({
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       setEditingCell(prev => (prev?.id === variables.id && prev?.field === variables.field ? null : prev));
     },
     onError: (err: Error, variables) => {
@@ -1059,7 +1062,9 @@ function TimelineView({
                               data-testid={`cell-description-${p.id}`}
                             >
                               {p.description || <span className="opacity-30 italic">내용</span>}
-                              {canEditDesc && <Pencil className="h-2 w-2 opacity-0 group-hover:opacity-30 transition-opacity shrink-0" />}
+                              {canEditDesc
+                                ? <Pencil className="h-2 w-2 opacity-0 group-hover:opacity-30 transition-opacity shrink-0" />
+                                : p.description ? <Lock className="h-2 w-2 opacity-20 shrink-0" /> : null}
                             </div>
                           )}
                         </div>
