@@ -321,12 +321,16 @@ export async function registerRoutes(
       const inquiry = await storage.getInquiry(req.params.id);
       if (!inquiry) return res.status(404).json({ message: "Not found" });
       let customerComplete = false;
+      let resolvedAddress = inquiry.snapshotAddress;
       if (inquiry.customerId) {
         const cust = await storage.getCustomer(inquiry.customerId);
         const contacts = await storage.getCompaniesByCustomerId(inquiry.customerId);
         customerComplete = !!(cust && (cust.businessNumber || contacts.length > 0));
+        if (!resolvedAddress && cust?.address) {
+          resolvedAddress = cust.address;
+        }
       }
-      res.json({ ...inquiry, customerComplete });
+      res.json({ ...inquiry, snapshotAddress: resolvedAddress, customerComplete });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
