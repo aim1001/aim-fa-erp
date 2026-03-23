@@ -1070,7 +1070,6 @@ function TimelineView({
                       onClick={e => {
                         e.stopPropagation();
                         if (canEditAmount && isIncome) startEdit(p.id, "amount", editAmt);
-                        else if (!isIncome) {} // no-op for expense row income cell
                         else onSelectPayment(p.id);
                       }}
                       data-testid={`cell-income-${p.id}`}
@@ -1102,7 +1101,6 @@ function TimelineView({
                       onClick={e => {
                         e.stopPropagation();
                         if (canEditAmount && !isIncome) startEdit(p.id, "amount", editAmt);
-                        else if (isIncome) {} // no-op
                         else onSelectPayment(p.id);
                       }}
                       data-testid={`cell-expense-${p.id}`}
