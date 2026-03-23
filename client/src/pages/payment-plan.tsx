@@ -3,12 +3,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Split, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown, Filter, TrendingUp, Pencil, Lock } from "lucide-react";
-import { useState, useMemo, useRef } from "react";
+import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { useState, useMemo } from "react";
 import { FundOverviewTab } from "./fund-overview-tab";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Payment, MonthlyBalance } from "@shared/schema";
+import type { Payment } from "@shared/schema";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ko } from "date-fns/locale";
@@ -464,714 +464,13 @@ function CalendarView({ payments, year, month, onSelectPayment }: {
   );
 }
 
-function TimelineView({
-  payments,
-  openingBalance,
-  onSelectPayment,
-  onSaveBalance,
-  isSavingBalance,
-}: {
-  payments: EnrichedPayment[];
-  openingBalance: number;
-  onSelectPayment: (id: string) => void;
-  onSaveBalance: (value: number) => void;
-  isSavingBalance?: boolean;
-}) {
-  const { toast } = useToast();
-  const [balanceMode, setBalanceMode] = useState<"actual" | "expected">("expected");
-  const [editingBalance, setEditingBalance] = useState(false);
-  const [balanceInput, setBalanceInput] = useState("");
-
-  const today = new Date().toISOString().split("T")[0];
-  const [quickType, setQuickType] = useState<"income" | "expense">("expense");
-  const [quickCompany, setQuickCompany] = useState("");
-  const [quickDescription, setQuickDescription] = useState("");
-  const [quickAmount, setQuickAmount] = useState("");
-  const [quickDate, setQuickDate] = useState(today);
-  const quickCompanyRef = useRef<HTMLInputElement>(null);
-
-  const resetQuick = () => {
-    setQuickCompany("");
-    setQuickDescription("");
-    setQuickAmount("");
-    setQuickDate(today);
-  };
-
-  const addMutation = useMutation({
-    mutationFn: async (payload: { type: string; companyName: string | null; description: string | null; amount: number | null; plannedDate: string | null }) => {
-      const res = await apiRequest("POST", "/api/payments", {
-        ...payload,
-        status: "planned",
-        paymentMethod: "specific_date",
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      resetQuick();
-      setTimeout(() => quickCompanyRef.current?.focus(), 50);
-      toast({ title: "추가되었습니다" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "추가 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const submitQuick = () => {
-    const amt = parseInt(quickAmount);
-    if (!quickAmount || isNaN(amt) || amt <= 0 || addMutation.isPending) return;
-    addMutation.mutate({
-      type: quickType,
-      companyName: quickCompany || null,
-      description: quickDescription || null,
-      amount: amt,
-      plannedDate: quickDate || null,
-    });
-  };
-
-  const handleQuickKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); submitQuick(); }
-    if (e.key === "Escape") { resetQuick(); }
-  };
-
-  // Inline draft row state
-  const [isAddingRow, setIsAddingRow] = useState(false);
-  const [rowType, setRowType] = useState<"income" | "expense">("expense");
-  const [rowCompany, setRowCompany] = useState("");
-  const [rowDescription, setRowDescription] = useState("");
-  const [rowAmount, setRowAmount] = useState("");
-  const [rowDate, setRowDate] = useState(today);
-  const rowCompanyRef = useRef<HTMLInputElement>(null);
-
-  const resetRow = () => {
-    setIsAddingRow(false);
-    setRowCompany("");
-    setRowDescription("");
-    setRowAmount("");
-    setRowDate(today);
-    setRowType("expense");
-  };
-
-  const rowMutation = useMutation({
-    mutationFn: async (payload: { type: string; companyName: string | null; description: string | null; amount: number | null; plannedDate: string | null }) => {
-      const res = await apiRequest("POST", "/api/payments", {
-        ...payload,
-        status: "planned",
-        paymentMethod: "specific_date",
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      resetRow();
-      toast({ title: "추가되었습니다" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "추가 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const submitRow = () => {
-    const amt = parseInt(rowAmount);
-    if (!rowAmount || isNaN(amt) || amt <= 0 || rowMutation.isPending) return;
-    rowMutation.mutate({
-      type: rowType,
-      companyName: rowCompany || null,
-      description: rowDescription || null,
-      amount: amt,
-      plannedDate: rowDate || null,
-    });
-  };
-
-  const handleRowKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") { e.preventDefault(); submitRow(); }
-    if (e.key === "Escape") { resetRow(); }
-  };
-
-  const openDraftRow = () => {
-    setIsAddingRow(true);
-    setTimeout(() => rowCompanyRef.current?.focus(), 30);
-  };
-
-  // Inline cell editing state
-  type EditField = "date" | "company" | "description" | "amount";
-  const [editingCell, setEditingCell] = useState<{ id: string; field: EditField } | null>(null);
-  const [editValue, setEditValue] = useState("");
-
-  const patchMutation = useMutation({
-    mutationFn: async ({ id, field, patch }: { id: string; field: EditField; patch: Record<string, unknown> }) => {
-      const res = await apiRequest("PATCH", `/api/payments/${id}`, patch);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "저장 실패" }));
-        throw new Error(err.message || "저장 실패");
-      }
-      return res.json();
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      setEditingCell(prev => (prev?.id === variables.id && prev?.field === variables.field ? null : prev));
-    },
-    onError: (err: Error, variables) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-      setEditingCell(prev => (prev?.id === variables.id && prev?.field === variables.field ? null : prev));
-    },
-  });
-
-  const startEdit = (id: string, field: EditField, currentValue: string) => {
-    setEditingCell({ id, field });
-    setEditValue(currentValue);
-  };
-
-  const commitEdit = (payment: EnrichedPayment) => {
-    if (!editingCell) return;
-    const { id, field } = editingCell;
-    const isCompleted = payment.status === "completed";
-    let patch: Record<string, unknown> = {};
-    if (field === "date") {
-      patch = isCompleted ? { actualDate: editValue || null } : { plannedDate: editValue || null };
-    } else if (field === "amount") {
-      const val = parseInt(editValue);
-      if (isNaN(val) || val <= 0) { setEditingCell(null); return; }
-      patch = isCompleted ? { actualAmount: val, amount: val } : { amount: val };
-    } else if (field === "company") {
-      patch = { companyName: editValue || null };
-    } else if (field === "description") {
-      patch = { description: editValue || null };
-    }
-    const currentDate = isCompleted ? (payment.actualDate || payment.plannedDate || "") : (payment.plannedDate || "");
-    const currentAmt = isCompleted ? (payment.actualAmount ?? payment.amount ?? 0) : (payment.amount ?? 0);
-    const currentCompany = payment.companyName || "";
-    const currentDesc = payment.description || "";
-    const unchanged =
-      (field === "date" && editValue === currentDate) ||
-      (field === "amount" && editValue === String(currentAmt)) ||
-      (field === "company" && editValue === currentCompany) ||
-      (field === "description" && editValue === currentDesc);
-    if (unchanged) { setEditingCell(null); return; }
-    patchMutation.mutate({ id, field, patch });
-  };
-
-  const cancelEdit = () => setEditingCell(null);
-
-  const getEditableFields = (payment: EnrichedPayment): EditField[] => {
-    const isLinked = !!(payment.projectId || payment.salesInvoiceId || payment.purchaseInvoiceId);
-    const isCompleted = payment.status === "completed";
-    if (isCompleted) {
-      return isLinked ? ["date"] : ["date", "amount"];
-    }
-    return isLinked ? ["date", "description"] : ["date", "company", "description", "amount"];
-  };
-
-  const handleCellKey = (e: React.KeyboardEvent, payment: EnrichedPayment) => {
-    if (e.key === "Enter") { e.preventDefault(); commitEdit(payment); }
-    if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
-    if (e.key === "Tab" && editingCell) {
-      e.preventDefault();
-      const direction = e.shiftKey ? -1 : 1;
-      const currentField = editingCell.field;
-      const order = getEditableFields(payment);
-      const idx = order.indexOf(currentField);
-      const nextField = order[idx + direction];
-      commitEdit(payment);
-      if (nextField) {
-        const isCompleted = payment.status === "completed";
-        const editDate = isCompleted ? (payment.actualDate || payment.plannedDate || "") : (payment.plannedDate || "");
-        const editAmt = isCompleted ? String(payment.actualAmount ?? payment.amount ?? 0) : String(payment.amount ?? 0);
-        const map: Record<EditField, string> = {
-          date: editDate,
-          company: payment.companyName || "",
-          description: payment.description || "",
-          amount: editAmt,
-        };
-        startEdit(payment.id, nextField, map[nextField]);
-      }
-    }
-  };
-
-  const commitBalance = () => {
-    const val = parseInt(balanceInput);
-    if (!isNaN(val)) onSaveBalance(val);
-    setEditingBalance(false);
-  };
-
-  const rows = useMemo(() => {
-    const sorted = [...payments].sort((a, b) => {
-      const da = (a.status === "completed" ? (a.actualDate || a.plannedDate) : a.plannedDate) || "9999-99-99";
-      const db = (b.status === "completed" ? (b.actualDate || b.plannedDate) : b.plannedDate) || "9999-99-99";
-      return da.localeCompare(db);
-    });
-
-    let running = openingBalance;
-    return sorted.map(p => {
-      const isCompleted = p.status === "completed";
-      const isOverdue = !isCompleted && p.plannedDate && p.plannedDate < new Date().toISOString().split("T")[0];
-      const dateStr = isCompleted ? (p.actualDate || p.plannedDate) : p.plannedDate;
-      const amt = isCompleted ? (p.actualAmount || p.amount || 0) : (p.amount || 0);
-
-      const affectsBalance = balanceMode === "expected" || isCompleted;
-
-      const prevRunning = running;
-      if (affectsBalance) {
-        if (p.type === "income") running += amt;
-        else running -= amt;
-      }
-
-      return { payment: p, isCompleted, isOverdue, dateStr, amt, balance: running, prevBalance: prevRunning, affectsBalance };
-    });
-  }, [payments, openingBalance, balanceMode]);
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">기초잔액</span>
-          {editingBalance ? (
-            <div className="flex items-center gap-1">
-              <Input
-                type="number"
-                className="h-7 w-36 text-sm font-semibold"
-                value={balanceInput}
-                autoFocus
-                onChange={e => setBalanceInput(e.target.value)}
-                onBlur={commitBalance}
-                onKeyDown={e => {
-                  if (e.key === "Enter") commitBalance();
-                  if (e.key === "Escape") setEditingBalance(false);
-                }}
-                data-testid="input-opening-balance-inline"
-              />
-              {isSavingBalance && <span className="text-xs text-muted-foreground">저장중...</span>}
-            </div>
-          ) : (
-            <button
-              className="flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors group"
-              onClick={() => { setBalanceInput(String(openingBalance)); setEditingBalance(true); }}
-              data-testid="button-edit-opening-balance"
-            >
-              <span>{openingBalance.toLocaleString()}원</span>
-              <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-1 border rounded-lg p-0.5">
-          <Button
-            variant={balanceMode === "expected" ? "default" : "ghost"}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setBalanceMode("expected")}
-            data-testid="button-balance-expected"
-          >
-            예상잔액
-          </Button>
-          <Button
-            variant={balanceMode === "actual" ? "default" : "ghost"}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setBalanceMode("actual")}
-            data-testid="button-balance-actual"
-          >
-            실제잔액
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1.5 p-2 bg-muted/20 border border-dashed rounded-lg" data-testid="quick-input-bar">
-        <div className="flex items-center border rounded p-0.5 shrink-0">
-          <button
-            className={`text-[10px] font-medium px-2 py-0.5 rounded transition-colors ${quickType === "income" ? "bg-blue-600 text-white" : "text-muted-foreground hover:text-foreground"}`}
-            onClick={() => setQuickType("income")}
-            data-testid="quick-toggle-income"
-          >입금</button>
-          <button
-            className={`text-[10px] font-medium px-2 py-0.5 rounded transition-colors ${quickType === "expense" ? "bg-red-600 text-white" : "text-muted-foreground hover:text-foreground"}`}
-            onClick={() => setQuickType("expense")}
-            data-testid="quick-toggle-expense"
-          >출금</button>
-        </div>
-        <Input
-          ref={quickCompanyRef}
-          className="h-7 text-xs flex-1 min-w-[80px] max-w-[140px]"
-          placeholder="거래처"
-          value={quickCompany}
-          onChange={e => setQuickCompany(e.target.value)}
-          onKeyDown={handleQuickKey}
-          data-testid="quick-input-company"
-        />
-        <Input
-          className="h-7 text-xs flex-1 min-w-[80px] max-w-[140px]"
-          placeholder="내용"
-          value={quickDescription}
-          onChange={e => setQuickDescription(e.target.value)}
-          onKeyDown={handleQuickKey}
-          data-testid="quick-input-description"
-        />
-        <Input
-          type="number"
-          className="h-7 text-xs w-28 shrink-0"
-          placeholder="금액"
-          value={quickAmount}
-          onChange={e => setQuickAmount(e.target.value)}
-          onKeyDown={handleQuickKey}
-          data-testid="quick-input-amount"
-        />
-        <Input
-          type="date"
-          className="h-7 text-xs w-32 shrink-0"
-          value={quickDate}
-          onChange={e => setQuickDate(e.target.value)}
-          onKeyDown={handleQuickKey}
-          data-testid="quick-input-date"
-        />
-        <Button
-          size="sm"
-          className="h-7 text-xs px-3 shrink-0"
-          onClick={submitQuick}
-          disabled={!quickAmount || addMutation.isPending}
-          data-testid="quick-input-submit"
-        >
-          {addMutation.isPending ? "추가중..." : "추가"}
-        </Button>
-      </div>
-
-      <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              <th className="text-left py-1.5 px-2 font-medium text-xs w-20">날짜</th>
-              <th className="text-left py-1.5 px-2 font-medium text-xs w-12">구분</th>
-              <th className="text-left py-1.5 px-2 font-medium text-xs">거래처 / 내용</th>
-              <th className="text-right py-1.5 px-2 font-medium text-xs text-blue-600 w-28">입금</th>
-              <th className="text-right py-1.5 px-2 font-medium text-xs text-red-600 w-28">출금</th>
-              <th className="text-right py-1.5 px-2 font-medium text-xs w-32">잔액</th>
-              <th className="text-left py-1.5 px-2 font-medium text-xs w-16">상태</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isAddingRow && (
-              <tr className="border-b bg-blue-50/40 dark:bg-blue-950/20" data-testid="draft-row">
-                <td className="py-1 px-1">
-                  <input
-                    type="date"
-                    className="w-full h-6 text-xs border rounded px-1 bg-background"
-                    value={rowDate}
-                    onChange={e => setRowDate(e.target.value)}
-                    onKeyDown={handleRowKey}
-                    data-testid="draft-row-date"
-                  />
-                </td>
-                <td className="py-1 px-1">
-                  <div className="flex items-center border rounded overflow-hidden">
-                    <button
-                      className={`text-[9px] px-1 py-0.5 ${rowType === "income" ? "bg-blue-600 text-white" : "text-muted-foreground"}`}
-                      onClick={() => setRowType("income")}
-                      data-testid="draft-row-toggle-income"
-                    >입</button>
-                    <button
-                      className={`text-[9px] px-1 py-0.5 ${rowType === "expense" ? "bg-red-600 text-white" : "text-muted-foreground"}`}
-                      onClick={() => setRowType("expense")}
-                      data-testid="draft-row-toggle-expense"
-                    >출</button>
-                  </div>
-                </td>
-                <td className="py-1 px-1">
-                  <input
-                    ref={rowCompanyRef}
-                    type="text"
-                    className="w-full h-6 text-xs border rounded px-1 bg-background mb-0.5"
-                    placeholder="거래처"
-                    value={rowCompany}
-                    onChange={e => setRowCompany(e.target.value)}
-                    onKeyDown={handleRowKey}
-                    data-testid="draft-row-company"
-                  />
-                  <input
-                    type="text"
-                    className="w-full h-5 text-[10px] border rounded px-1 bg-background"
-                    placeholder="내용"
-                    value={rowDescription}
-                    onChange={e => setRowDescription(e.target.value)}
-                    onKeyDown={handleRowKey}
-                    data-testid="draft-row-description"
-                  />
-                </td>
-                <td className="py-1 px-1" colSpan={2}>
-                  <input
-                    type="number"
-                    className="w-full h-6 text-xs border rounded px-1 bg-background text-right"
-                    placeholder="금액"
-                    value={rowAmount}
-                    onChange={e => setRowAmount(e.target.value)}
-                    onKeyDown={handleRowKey}
-                    data-testid="draft-row-amount"
-                  />
-                </td>
-                <td className="py-1 px-1" colSpan={2}>
-                  <div className="flex items-center gap-1">
-                    <button
-                      className="text-[10px] px-2 py-0.5 bg-primary text-primary-foreground rounded disabled:opacity-50"
-                      onClick={submitRow}
-                      disabled={!rowAmount || rowMutation.isPending}
-                      data-testid="draft-row-save"
-                    >
-                      {rowMutation.isPending ? "저장중" : "저장"}
-                    </button>
-                    <button
-                      className="text-[10px] px-2 py-0.5 border rounded text-muted-foreground hover:text-foreground"
-                      onClick={resetRow}
-                      data-testid="draft-row-cancel"
-                    >취소</button>
-                  </div>
-                </td>
-              </tr>
-            )}
-            {rows.length === 0 && !isAddingRow && (
-              <tr>
-                <td colSpan={7} className="py-10 text-center text-muted-foreground">
-                  <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-xs">이 달에 등록된 자금 계획이 없습니다.</p>
-                </td>
-              </tr>
-            )}
-              {rows.map(({ payment: p, isCompleted, isOverdue, dateStr, amt, balance, prevBalance, affectsBalance }) => {
-                const isIncome = p.type === "income";
-                const rowBg = isCompleted ? "" : "bg-muted/10";
-                const displayBalance = affectsBalance ? balance : prevBalance;
-                const balanceNeg = displayBalance < 0;
-
-                let statusLabel = "예정";
-                let statusClass = "text-slate-500 bg-slate-50 dark:bg-slate-800/40";
-                if (isCompleted) {
-                  statusLabel = "완료";
-                  statusClass = "text-green-700 bg-green-50 dark:bg-green-900/30";
-                } else if (isOverdue) {
-                  statusLabel = "연체";
-                  statusClass = "text-orange-700 bg-orange-50 dark:bg-orange-900/30";
-                }
-
-                const displayDate = dateStr
-                  ? `${parseInt(dateStr.substring(5, 7))}/${parseInt(dateStr.substring(8, 10))}`
-                  : "-";
-                const isToday = dateStr === today;
-
-                const isLinked = !!(p.projectId || p.salesInvoiceId || p.purchaseInvoiceId);
-                const editableFields = getEditableFields(p);
-                const editingDate = editingCell?.id === p.id && editingCell.field === "date";
-                const editingCompany = editingCell?.id === p.id && editingCell.field === "company";
-                const editingDesc = editingCell?.id === p.id && editingCell.field === "description";
-                const editingAmt = editingCell?.id === p.id && editingCell.field === "amount";
-                const editDate = isCompleted ? (p.actualDate || p.plannedDate || "") : (p.plannedDate || "");
-                const editAmt = isCompleted ? String(p.actualAmount ?? p.amount ?? 0) : String(p.amount ?? 0);
-                const canEditCompany = editableFields.includes("company");
-                const canEditAmount = editableFields.includes("amount");
-                const canEditDesc = editableFields.includes("description");
-
-                return (
-                  <tr
-                    key={p.id}
-                    className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${rowBg} ${editingCell?.id === p.id ? "ring-1 ring-primary/20 bg-primary/5" : ""}`}
-                    onClick={() => { if (!editingCell) onSelectPayment(p.id); }}
-                    data-testid={`timeline-row-${p.id}`}
-                  >
-                    <td
-                      className="py-1 px-2 cursor-text"
-                      onClick={e => { e.stopPropagation(); startEdit(p.id, "date", editDate); }}
-                      data-testid={`cell-date-${p.id}`}
-                    >
-                      {editingDate ? (
-                        <input
-                          type="date"
-                          autoFocus
-                          className="w-full h-6 text-xs border rounded px-1 bg-background"
-                          value={editValue}
-                          onChange={e => setEditValue(e.target.value)}
-                          onBlur={() => commitEdit(p)}
-                          onKeyDown={e => handleCellKey(e, p)}
-                          data-testid={`input-date-${p.id}`}
-                        />
-                      ) : (
-                        <span className={`text-xs font-mono group flex items-center gap-0.5 ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
-                          {displayDate}
-                          {isToday && <span className="text-[9px] text-primary">오늘</span>}
-                          <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-1.5 px-2" onClick={e => e.stopPropagation()}>
-                      <span
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded cursor-pointer ${isIncome ? "text-blue-700 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400" : "text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-400"}`}
-                        onClick={() => onSelectPayment(p.id)}
-                      >
-                        {isIncome ? "입금" : "출금"}
-                      </span>
-                    </td>
-                    <td
-                      className={`py-1 px-2 ${canEditCompany ? "cursor-text" : ""}`}
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (canEditCompany) startEdit(p.id, "company", p.companyName || "");
-                        else onSelectPayment(p.id);
-                      }}
-                      data-testid={`cell-company-${p.id}`}
-                    >
-                      {editingCompany ? (
-                        <div className="flex flex-col gap-0.5">
-                          <input
-                            type="text"
-                            autoFocus
-                            className="w-full h-6 text-xs border rounded px-1 bg-background"
-                            placeholder="거래처"
-                            value={editValue}
-                            onChange={e => setEditValue(e.target.value)}
-                            onBlur={() => commitEdit(p)}
-                            onKeyDown={e => handleCellKey(e, p)}
-                            data-testid={`input-company-${p.id}`}
-                          />
-                        </div>
-                      ) : editingDesc ? (
-                        <div className="flex flex-col gap-0.5">
-                          <div className={`text-xs font-medium truncate max-w-[200px] ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>{p.companyName || "-"}</div>
-                          <input
-                            type="text"
-                            autoFocus
-                            className="w-full h-5 text-[10px] border rounded px-1 bg-background"
-                            placeholder="내용"
-                            value={editValue}
-                            onChange={e => setEditValue(e.target.value)}
-                            onBlur={() => commitEdit(p)}
-                            onKeyDown={e => handleCellKey(e, p)}
-                            data-testid={`input-description-${p.id}`}
-                          />
-                        </div>
-                      ) : (
-                        <div className="group">
-                          <div className={`text-xs font-medium truncate max-w-[200px] flex items-center gap-0.5 ${isCompleted ? "text-foreground" : "text-muted-foreground"}`}>
-                            {p.companyName || "-"}
-                            {(isLinked || isCompleted) && !canEditCompany ? (
-                              <Lock className="h-2.5 w-2.5 opacity-30 shrink-0" />
-                            ) : canEditCompany ? (
-                              <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
-                            ) : null}
-                          </div>
-                          {(p.description || canEditDesc) && (
-                            <div
-                              className={`text-[10px] text-muted-foreground truncate max-w-[200px] flex items-center gap-0.5 ${canEditDesc ? "cursor-text" : ""}`}
-                              onClick={e => { if (canEditDesc) { e.stopPropagation(); startEdit(p.id, "description", p.description || ""); } }}
-                              data-testid={`cell-description-${p.id}`}
-                            >
-                              {p.description || <span className="opacity-30 italic">내용</span>}
-                              {canEditDesc
-                                ? <Pencil className="h-2 w-2 opacity-0 group-hover:opacity-30 transition-opacity shrink-0" />
-                                : p.description ? <Lock className="h-2 w-2 opacity-20 shrink-0" /> : null}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td
-                      className={`py-1 px-2 text-right ${canEditAmount && isIncome ? "cursor-text" : ""}`}
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (canEditAmount && isIncome) startEdit(p.id, "amount", editAmt);
-                        else onSelectPayment(p.id);
-                      }}
-                      data-testid={`cell-income-${p.id}`}
-                    >
-                      {isIncome ? (
-                        editingAmt ? (
-                          <input
-                            type="number"
-                            autoFocus
-                            className="w-full h-6 text-xs border rounded px-1 bg-background text-right"
-                            value={editValue}
-                            onChange={e => setEditValue(e.target.value)}
-                            onBlur={() => commitEdit(p)}
-                            onKeyDown={e => handleCellKey(e, p)}
-                            data-testid={`input-amount-${p.id}`}
-                          />
-                        ) : (
-                          <span className={`text-xs font-bold text-blue-600 dark:text-blue-400 ${!isCompleted ? "opacity-60" : ""} group flex items-center justify-end gap-0.5`}>
-                            {isLinked && <Lock className="h-2.5 w-2.5 opacity-30" />}
-                            {amt.toLocaleString()}
-                          </span>
-                        )
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td
-                      className={`py-1 px-2 text-right ${canEditAmount && !isIncome ? "cursor-text" : ""}`}
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (canEditAmount && !isIncome) startEdit(p.id, "amount", editAmt);
-                        else onSelectPayment(p.id);
-                      }}
-                      data-testid={`cell-expense-${p.id}`}
-                    >
-                      {!isIncome ? (
-                        editingAmt ? (
-                          <input
-                            type="number"
-                            autoFocus
-                            className="w-full h-6 text-xs border rounded px-1 bg-background text-right"
-                            value={editValue}
-                            onChange={e => setEditValue(e.target.value)}
-                            onBlur={() => commitEdit(p)}
-                            onKeyDown={e => handleCellKey(e, p)}
-                            data-testid={`input-amount-${p.id}`}
-                          />
-                        ) : (
-                          <span className={`text-xs font-bold text-red-600 dark:text-red-400 ${!isCompleted ? "opacity-60" : ""} flex items-center justify-end gap-0.5`}>
-                            {isLinked && <Lock className="h-2.5 w-2.5 opacity-30" />}
-                            {amt.toLocaleString()}
-                          </span>
-                        )
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="py-1.5 px-2 text-right" onClick={e => { e.stopPropagation(); onSelectPayment(p.id); }}>
-                      <span className={`text-xs font-bold ${balanceNeg ? "text-red-600 dark:text-red-400" : affectsBalance ? "text-foreground" : "text-muted-foreground/50"}`}>
-                        {balanceNeg ? "▼ " : ""}{displayBalance.toLocaleString()}
-                      </span>
-                    </td>
-                    <td className="py-1.5 px-2" onClick={e => { e.stopPropagation(); onSelectPayment(p.id); }}>
-                      <span className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded ${statusClass}`}>
-                        {statusLabel}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!isAddingRow && (
-                <tr>
-                  <td colSpan={7} className="py-1.5 px-2 border-t">
-                    <button
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
-                      onClick={openDraftRow}
-                      data-testid="button-add-row"
-                    >
-                      <Plus className="h-3 w-3" />
-                      행 추가
-                    </button>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-    </div>
-  );
-}
 
 export default function PaymentPlan() {
   const { toast } = useToast();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund" | "timeline">("timeline");
+  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -1192,30 +491,6 @@ export default function PaymentPlan() {
       setSortDir("asc");
     }
   };
-
-  const { data: monthlyBalance } = useQuery<MonthlyBalance | null>({
-    queryKey: ["/api/monthly-balances", year, month],
-    queryFn: async () => {
-      const res = await fetch(`/api/monthly-balances?year=${year}&month=${month}`);
-      return res.json();
-    },
-  });
-
-  const saveBalance = useMutation({
-    mutationFn: async (openingBalance: number) => {
-      const res = await apiRequest("POST", "/api/monthly-balances", { year, month, openingBalance });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/monthly-balances"] });
-      toast({ title: "기초잔액이 저장되었습니다" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "저장 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const openingBalance = monthlyBalance?.openingBalance ?? 0;
 
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", year, month],
@@ -1376,10 +651,26 @@ export default function PaymentPlan() {
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">자금계획</h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">
+          {viewMode === "fund" ? "자금현황" : "자금계획"}
+        </h1>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
-            <Plus className="h-4 w-4 mr-1" />추가
+          {viewMode !== "fund" && (
+            <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
+              <Plus className="h-4 w-4 mr-1" />추가
+            </Button>
+          )}
+          <Button
+            variant={viewMode === "fund" ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              if (viewMode === "fund") { setViewMode("list"); }
+              else if (fundAuthenticated) { setViewMode("fund"); }
+              else { setShowPasswordDialog(true); setFundPassword(""); setPasswordError(false); }
+            }}
+            data-testid="button-view-fund"
+          >
+            <LayoutDashboard className="h-4 w-4 mr-1" />{viewMode === "fund" ? "자금계획으로" : "자금현황"}
           </Button>
         </div>
       </div>
@@ -1396,48 +687,26 @@ export default function PaymentPlan() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        <div className="flex items-center gap-1 border rounded-lg p-0.5">
-          {viewMode !== "fund" && (
-            <>
-              <Button
-                variant={viewMode === "timeline" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("timeline")}
-                data-testid="button-view-timeline"
-              >
-                <TrendingUp className="h-4 w-4 mr-1" />타임라인
-              </Button>
-              <Button
-                variant={viewMode === "list" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("list")}
-                data-testid="button-view-list"
-              >
-                <List className="h-4 w-4 mr-1" />리스트
-              </Button>
-              <Button
-                variant={viewMode === "calendar" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("calendar")}
-                data-testid="button-view-calendar"
-              >
-                <CalendarIcon className="h-4 w-4 mr-1" />캘린더
-              </Button>
-            </>
-          )}
-          <Button
-            variant={viewMode === "fund" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => {
-              if (viewMode === "fund") { setViewMode("timeline"); }
-              else if (fundAuthenticated) { setViewMode("fund"); }
-              else { setShowPasswordDialog(true); setFundPassword(""); setPasswordError(false); }
-            }}
-            data-testid="button-view-fund"
-          >
-            <LayoutDashboard className="h-4 w-4 mr-1" />{viewMode === "fund" ? "자금계획으로" : "자금현황"}
-          </Button>
-        </div>
+        {viewMode !== "fund" && (
+          <div className="flex items-center gap-1 border rounded-lg p-0.5">
+            <Button
+              variant={viewMode === "list" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("list")}
+              data-testid="button-view-list"
+            >
+              <List className="h-4 w-4 mr-1" />리스트
+            </Button>
+            <Button
+              variant={viewMode === "calendar" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("calendar")}
+              data-testid="button-view-calendar"
+            >
+              <CalendarIcon className="h-4 w-4 mr-1" />캘린더
+            </Button>
+          </div>
+        )}
       </div>
 
       {viewMode !== "fund" && (
@@ -1526,14 +795,6 @@ export default function PaymentPlan() {
 
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
-      ) : viewMode === "timeline" ? (
-        <TimelineView
-          payments={payments || []}
-          openingBalance={openingBalance}
-          onSelectPayment={setSelectedId}
-          onSaveBalance={v => saveBalance.mutate(v)}
-          isSavingBalance={saveBalance.isPending}
-        />
       ) : viewMode === "list" ? (
         sorted.length > 0 ? (
           <div className="border rounded-lg overflow-hidden">
@@ -1732,11 +993,9 @@ export default function PaymentPlan() {
 
       {viewMode !== "fund" && payments && (
         <div className="text-xs text-muted-foreground">
-          {viewMode === "timeline"
-            ? `총 ${payments.length}건`
-            : sorted.length === payments.length
-              ? `총 ${sorted.length}건`
-              : `${sorted.length}건 / 총 ${payments.length}건`}
+          {sorted.length === payments.length
+            ? `총 ${sorted.length}건`
+            : `${sorted.length}건 / 총 ${payments.length}건`}
         </div>
       )}
 
