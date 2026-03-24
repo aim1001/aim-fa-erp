@@ -52,3 +52,7 @@ integrations = ["onedrive:1.0.0", "javascript_database:1.0.0", "google-mail:1.0.
 APP_PASSWORD = "aim1001"
 TELEGRAM_BOT_TOKEN = "8639271825:AAEMV9T7bGO544juRS77iIvXRCvTMY547UI"
 TELEGRAM_CHAT_ID = "-5155596649"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
