@@ -485,7 +485,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
   const adjustmentItems = useMemo(() => items.filter(i => i.isAdjustment), [items]);
 
   const regularSubtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
-  const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
+  const totalCost = items.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
   const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
   const supplyAmount = regularSubtotal + adjTotal;
 
