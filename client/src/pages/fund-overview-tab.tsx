@@ -24,6 +24,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Tooltip, TooltipContent, TooltipTrigger, TooltipProvider,
+} from "@/components/ui/tooltip";
 import { ko } from "date-fns/locale";
 
 type EnrichedPayment = Payment & {
@@ -560,57 +563,75 @@ function TimelineView({
   }, [payments, openingBalance, balanceMode]);
 
   return (
+    <TooltipProvider>
     <div className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">기초잔액</span>
-          {editingBalance ? (
-            <div className="flex items-center gap-1">
-              <Input
-                type="number"
-                className="h-7 w-36 text-sm font-semibold"
-                value={balanceInput}
-                autoFocus
-                onChange={e => setBalanceInput(e.target.value)}
-                onBlur={commitBalance}
-                onKeyDown={e => {
-                  if (e.key === "Enter") commitBalance();
-                  if (e.key === "Escape") setEditingBalance(false);
-                }}
-                data-testid="input-opening-balance-inline"
-              />
-              {isSavingBalance && <span className="text-xs text-muted-foreground">저장중...</span>}
-            </div>
-          ) : (
-            <button
-              className="flex items-center gap-1 text-sm font-semibold text-foreground hover:text-primary transition-colors group"
-              onClick={() => { setBalanceInput(String(openingBalance)); setEditingBalance(true); }}
-              data-testid="button-edit-opening-balance"
-            >
-              <span>{openingBalance.toLocaleString()}원</span>
-              <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-            </button>
-          )}
+        <div className="flex items-center gap-3 bg-muted/40 border rounded-lg px-3 py-2">
+          <div className="flex flex-col">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">이달 기초잔액</span>
+            {editingBalance ? (
+              <div className="flex items-center gap-1 mt-0.5">
+                <Input
+                  type="number"
+                  className="h-7 w-36 text-sm font-semibold"
+                  value={balanceInput}
+                  autoFocus
+                  onChange={e => setBalanceInput(e.target.value)}
+                  onBlur={commitBalance}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") commitBalance();
+                    if (e.key === "Escape") setEditingBalance(false);
+                  }}
+                  data-testid="input-opening-balance-inline"
+                />
+                {isSavingBalance && <span className="text-xs text-muted-foreground">저장중...</span>}
+              </div>
+            ) : (
+              <button
+                className="flex items-center gap-1.5 mt-0.5 text-sm font-bold text-foreground hover:text-primary transition-colors group"
+                onClick={() => { setBalanceInput(String(openingBalance)); setEditingBalance(true); }}
+                data-testid="button-edit-opening-balance"
+                title="클릭하여 수정"
+              >
+                <span>{openingBalance.toLocaleString()}원</span>
+                <Pencil className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
-          <Button
-            variant={balanceMode === "expected" ? "default" : "ghost"}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setBalanceMode("expected")}
-            data-testid="button-balance-expected"
-          >
-            예상잔액
-          </Button>
-          <Button
-            variant={balanceMode === "actual" ? "default" : "ghost"}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setBalanceMode("actual")}
-            data-testid="button-balance-actual"
-          >
-            실제잔액
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={balanceMode === "expected" ? "default" : "ghost"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setBalanceMode("expected")}
+                data-testid="button-balance-expected"
+              >
+                계획잔액
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              예정 + 완료 건 모두 포함하여 잔액 계산
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={balanceMode === "actual" ? "default" : "ghost"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setBalanceMode("actual")}
+                data-testid="button-balance-actual"
+              >
+                확정잔액
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              완료된 건만 반영하여 잔액 계산
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -999,6 +1020,7 @@ function TimelineView({
         </table>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -2202,14 +2224,6 @@ export function FundOverviewTab({ year, month }: { year: number; month: number }
             onSaveBalance={v => saveBalance.mutate(v)}
             isSavingBalance={saveBalance.isPending}
           />
-
-          <CollapsibleSection title="통합 거래 내역" defaultOpen={false}>
-            <UnifiedPaymentTable payments={payments || []} />
-          </CollapsibleSection>
-
-          <CollapsibleSection title="경비 직접 입력" defaultOpen={false}>
-            <AddExpenseForm year={year} month={month} onSuccess={() => {}} />
-          </CollapsibleSection>
 
           <CollapsibleSection title="월 정기 예정금액" defaultOpen={false}>
             <RecurringExpenseSection year={year} month={month} />
