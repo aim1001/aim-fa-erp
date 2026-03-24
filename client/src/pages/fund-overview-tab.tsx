@@ -341,9 +341,11 @@ function TimelineView({
   const currentYm = monthKeys[0];
 
   const todayMarkerRef = useRef<HTMLTableRowElement>(null);
+  const todayPaymentRef = useRef<HTMLTableRowElement>(null);
   useEffect(() => {
     const t = setTimeout(() => {
-      todayMarkerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const target = todayPaymentRef.current || todayMarkerRef.current;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 200);
     return () => clearTimeout(t);
   }, []);
@@ -944,6 +946,7 @@ function TimelineView({
               return (
                 <tr
                   key={p.id}
+                  ref={isToday ? todayPaymentRef : undefined}
                   className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${rowBg} ${editingCell?.id === p.id ? "ring-1 ring-primary/20 bg-primary/5" : ""}`}
                   onClick={() => { if (!editingCell) onSelectPayment(p.id); }}
                   data-testid={`timeline-row-${p.id}`}
