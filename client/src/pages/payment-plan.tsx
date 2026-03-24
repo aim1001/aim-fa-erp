@@ -676,17 +676,20 @@ export default function PaymentPlan() {
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-prev-month">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-lg font-semibold min-w-[120px] text-center" data-testid="text-current-month">
-            {year}년 {month}월
-          </span>
-          <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-next-month">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        {viewMode !== "fund" && (
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-prev-month">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-lg font-semibold min-w-[120px] text-center" data-testid="text-current-month">
+              {year}년 {month}월
+            </span>
+            <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-next-month">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        {viewMode === "fund" && <div />}
         {viewMode !== "fund" && (
           <div className="flex items-center gap-1 border rounded-lg p-0.5">
             <Button

@@ -3728,9 +3728,11 @@ export async function registerRoutes(
   // Payment routes
   app.get("/api/payments", async (req, res) => {
     try {
-      const { year, month } = req.query;
+      const { year, month, startDate, endDate } = req.query;
       let list: any[];
-      if (year && month) {
+      if (startDate && endDate) {
+        list = await storage.getPaymentsByDateRange(startDate as string, endDate as string);
+      } else if (year && month) {
         list = await storage.getPaymentsByMonth(parseInt(year as string), parseInt(month as string));
       } else {
         list = await storage.getPayments();

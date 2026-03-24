@@ -138,6 +138,7 @@ export interface IStorage {
 
   getPayments(): Promise<Payment[]>;
   getPaymentsByMonth(year: number, month: number): Promise<Payment[]>;
+  getPaymentsByDateRange(startDate: string, endDate: string): Promise<Payment[]>;
   getPayment(id: string): Promise<Payment | undefined>;
   getPaymentsByInvoice(type: string, invoiceId: string): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
@@ -766,6 +767,21 @@ export class DatabaseStorage implements IStorage {
     const endMonth = month === 12 ? 1 : month + 1;
     const endYear = month === 12 ? year + 1 : year;
     const endDate = `${endYear}-${String(endMonth).padStart(2, "0")}-01`;
+    return db.select().from(payments)
+      .where(or(
+        and(
+          gte(payments.plannedDate, startDate),
+          lte(payments.plannedDate, endDate)
+        ),
+        and(
+          gte(payments.actualDate, startDate),
+          lte(payments.actualDate, endDate)
+        )
+      ))
+      .orderBy(payments.plannedDate);
+  }
+
+  async getPaymentsByDateRange(startDate: string, endDate: string): Promise<Payment[]> {
     return db.select().from(payments)
       .where(or(
         and(

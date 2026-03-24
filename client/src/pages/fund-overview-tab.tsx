@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Payment, RecurringExpense, MonthlyBalance } from "@shared/schema";
@@ -324,6 +324,30 @@ function TimelineView({
   const [balanceInput, setBalanceInput] = useState("");
 
   const today = new Date().toISOString().split("T")[0];
+
+  const monthKeys = useMemo(() => {
+    const now = new Date();
+    const thisYear = now.getFullYear();
+    const thisMonth = now.getMonth() + 1;
+    const keys: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const totalM = thisMonth + i;
+      const y = thisYear + Math.floor((totalM - 1) / 12);
+      const m = ((totalM - 1) % 12) + 1;
+      keys.push(`${y}-${String(m).padStart(2, "0")}`);
+    }
+    return keys;
+  }, []);
+  const currentYm = monthKeys[0];
+
+  const todayMarkerRef = useRef<HTMLTableRowElement>(null);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      todayMarkerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 200);
+    return () => clearTimeout(t);
+  }, []);
+
   const [quickType, setQuickType] = useState<"income" | "expense">("expense");
   const [quickCompany, setQuickCompany] = useState("");
   const [quickDescription, setQuickDescription] = useState("");
@@ -536,31 +560,76 @@ function TimelineView({
     setEditingBalance(false);
   };
 
-  const rows = useMemo(() => {
-    const sorted = [...payments].sort((a, b) => {
-      const da = (a.status === "completed" ? (a.actualDate || a.plannedDate) : a.plannedDate) || "9999-99-99";
-      const db = (b.status === "completed" ? (b.actualDate || b.plannedDate) : b.plannedDate) || "9999-99-99";
-      return da.localeCompare(db);
+  type RowItem =
+    | { kind: "month-header"; ym: string; isCurrentMonth: boolean; openingBalance: number }
+    | { kind: "today-marker" }
+    | { kind: "payment"; payment: EnrichedPayment; isCompleted: boolean; isOverdue: boolean; dateStr: string | null; amt: number; balance: number; prevBalance: number; affectsBalance: boolean; isToday: boolean }
+    | { kind: "month-summary"; ym: string; totalIncome: number; totalExpense: number; closingBalance: number };
+
+  const rowItems = useMemo<RowItem[]>(() => {
+    const byMonth = new Map<string, EnrichedPayment[]>();
+    for (const ym of monthKeys) byMonth.set(ym, []);
+
+    payments.forEach(p => {
+      const d = (p.status === "completed" ? (p.actualDate || p.plannedDate) : p.plannedDate) || "";
+      const ym = d ? d.substring(0, 7) : null;
+      if (ym && byMonth.has(ym)) byMonth.get(ym)!.push(p);
     });
 
+    for (const [, ps] of byMonth) {
+      ps.sort((a, b) => {
+        const da = (a.status === "completed" ? (a.actualDate || a.plannedDate) : a.plannedDate) || "9999";
+        const db = (b.status === "completed" ? (b.actualDate || b.plannedDate) : b.plannedDate) || "9999";
+        return da.localeCompare(db);
+      });
+    }
+
+    const result: RowItem[] = [];
     let running = openingBalance;
-    return sorted.map(p => {
-      const isCompleted = p.status === "completed";
-      const isOverdue = !isCompleted && p.plannedDate && p.plannedDate < new Date().toISOString().split("T")[0];
-      const dateStr = isCompleted ? (p.actualDate || p.plannedDate) : p.plannedDate;
-      const amt = isCompleted ? (p.actualAmount || p.amount || 0) : (p.amount || 0);
+    let todayBarrierInserted = false;
 
-      const affectsBalance = balanceMode === "expected" || isCompleted;
+    for (const ym of monthKeys) {
+      const monthOpeningBalance = running;
+      result.push({ kind: "month-header", ym, isCurrentMonth: ym === currentYm, openingBalance: monthOpeningBalance });
 
-      const prevRunning = running;
-      if (affectsBalance) {
-        if (p.type === "income") running += amt;
-        else running -= amt;
+      const ps = byMonth.get(ym) || [];
+      let monthIncome = 0, monthExpense = 0;
+
+      for (const p of ps) {
+        const isCompleted = p.status === "completed";
+        const isOverdue = !isCompleted && !!p.plannedDate && p.plannedDate < today;
+        const dateStr = isCompleted ? (p.actualDate || p.plannedDate) : p.plannedDate;
+        const amt = isCompleted ? (p.actualAmount || p.amount || 0) : (p.amount || 0);
+        const affectsBalance = balanceMode === "expected" || isCompleted;
+        const isToday = dateStr === today;
+
+        if (!todayBarrierInserted && dateStr && dateStr >= today && !isCompleted) {
+          result.push({ kind: "today-marker" });
+          todayBarrierInserted = true;
+        }
+
+        const prevRunning = running;
+        if (affectsBalance) {
+          if (p.type === "income") running += amt;
+          else running -= amt;
+        }
+
+        if (p.type === "income") monthIncome += amt;
+        else monthExpense += amt;
+
+        result.push({ kind: "payment", payment: p, isCompleted, isOverdue, dateStr: dateStr || null, amt, balance: running, prevBalance: prevRunning, affectsBalance, isToday });
       }
 
-      return { payment: p, isCompleted, isOverdue, dateStr, amt, balance: running, prevBalance: prevRunning, affectsBalance };
-    });
-  }, [payments, openingBalance, balanceMode]);
+      if (!todayBarrierInserted && ym === currentYm) {
+        result.push({ kind: "today-marker" });
+        todayBarrierInserted = true;
+      }
+
+      result.push({ kind: "month-summary", ym, totalIncome: monthIncome, totalExpense: monthExpense, closingBalance: running });
+    }
+
+    return result;
+  }, [payments, openingBalance, balanceMode, monthKeys, currentYm, today]);
 
   return (
     <TooltipProvider>
@@ -784,17 +853,65 @@ function TimelineView({
                 </td>
               </tr>
             )}
-            {rows.length === 0 && !isAddingRow && (
-              <tr>
-                <td colSpan={7} className="py-10 text-center text-muted-foreground">
-                  <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-xs">이 달에 등록된 자금 계획이 없습니다.</p>
-                </td>
-              </tr>
-            )}
-            {rows.map(({ payment: p, isCompleted, isOverdue, dateStr, amt, balance, prevBalance, affectsBalance }) => {
+            {rowItems.map((item, idx) => {
+              if (item.kind === "month-header") {
+                const [y, m] = item.ym.split("-").map(Number);
+                return (
+                  <tr key={`header-${item.ym}`} className="border-b">
+                    <td colSpan={7} className="px-3 py-2 bg-muted/40">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-foreground tracking-wide">
+                          {y}년 {m}월
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {item.isCurrentMonth ? "이달 기초잔액" : "전월 이월"}: {item.openingBalance.toLocaleString()}원
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }
+
+              if (item.kind === "today-marker") {
+                return (
+                  <tr key={`today-${idx}`} ref={todayMarkerRef} className="border-b">
+                    <td colSpan={7} className="py-1 px-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 border-t-2 border-dashed border-red-400/60" />
+                        <span className="text-[10px] font-bold text-red-500 shrink-0 bg-red-50 dark:bg-red-950/40 px-2 py-0.5 rounded-full">
+                          오늘 {today.substring(5).replace("-", "/")}
+                        </span>
+                        <div className="flex-1 border-t-2 border-dashed border-red-400/60" />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }
+
+              if (item.kind === "month-summary") {
+                const [y, m] = item.ym.split("-").map(Number);
+                const balNeg = item.closingBalance < 0;
+                return (
+                  <tr key={`summary-${item.ym}`} className="border-b border-t-2 border-t-muted/60">
+                    <td colSpan={7} className="px-3 py-2 bg-muted/20">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-[10px] font-semibold text-muted-foreground">{y}년 {m}월 마감</span>
+                        <div className="flex items-center gap-4 text-[11px]">
+                          <span className="text-blue-600">입금 {item.totalIncome.toLocaleString()}원</span>
+                          <span className="text-red-600">출금 {item.totalExpense.toLocaleString()}원</span>
+                          <span className={`font-bold ${balNeg ? "text-red-600" : "text-emerald-600"}`}>
+                            말잔액 {item.closingBalance.toLocaleString()}원
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }
+
+              const { payment: p, isCompleted, isOverdue, dateStr, amt, balance, prevBalance, affectsBalance, isToday } = item;
               const isIncome = p.type === "income";
-              const rowBg = isCompleted ? "" : "bg-muted/10";
+              const rowBg = isToday ? "bg-amber-50/50 dark:bg-amber-950/20" : isCompleted ? "" : "bg-muted/10";
               const displayBalance = affectsBalance ? balance : prevBalance;
               const balanceNeg = displayBalance < 0;
 
@@ -811,7 +928,6 @@ function TimelineView({
               const displayDate = dateStr
                 ? `${parseInt(dateStr.substring(5, 7))}/${parseInt(dateStr.substring(8, 10))}`
                 : "-";
-              const isToday = dateStr === today;
 
               const isLinked = !!(p.projectId || p.salesInvoiceId || p.purchaseInvoiceId);
               const editableFields = getEditableFields(p);
@@ -851,7 +967,7 @@ function TimelineView({
                     ) : (
                       <span className={`text-xs font-mono group flex items-center gap-0.5 ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>
                         {displayDate}
-                        {isToday && <span className="text-[9px] text-primary">오늘</span>}
+                        {isToday && <span className="text-[9px] text-primary ml-0.5">오늘</span>}
                         <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />
                       </span>
                     )}
@@ -2139,17 +2255,27 @@ export function FundOverviewTab({ year, month }: { year: number; month: number }
   const { toast } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const todayObj = new Date();
+  const thisYear = todayObj.getFullYear();
+  const thisMonth = todayObj.getMonth() + 1;
+
+  const endMonthTotal = thisMonth + 3;
+  const endYear = thisYear + Math.floor((endMonthTotal - 1) / 12);
+  const endMonth = ((endMonthTotal - 1) % 12) + 1;
+  const rangeStart = `${thisYear}-${String(thisMonth).padStart(2, "0")}-01`;
+  const rangeEnd = `${endYear}-${String(endMonth).padStart(2, "0")}-${new Date(endYear, endMonth, 0).getDate()}`;
+
   const { data: monthlyBalance } = useQuery<MonthlyBalance | null>({
-    queryKey: ["/api/monthly-balances", year, month],
+    queryKey: ["/api/monthly-balances", thisYear, thisMonth],
     queryFn: async () => {
-      const res = await fetch(`/api/monthly-balances?year=${year}&month=${month}`);
+      const res = await fetch(`/api/monthly-balances?year=${thisYear}&month=${thisMonth}`);
       return res.json();
     },
   });
 
   const saveBalance = useMutation({
     mutationFn: async (openingBalance: number) => {
-      const res = await apiRequest("POST", "/api/monthly-balances", { year, month, openingBalance });
+      const res = await apiRequest("POST", "/api/monthly-balances", { year: thisYear, month: thisMonth, openingBalance });
       return res.json();
     },
     onSuccess: () => {
@@ -2164,9 +2290,9 @@ export function FundOverviewTab({ year, month }: { year: number; month: number }
   const openingBalance = monthlyBalance?.openingBalance ?? 0;
 
   const { data: payments, isLoading } = useQuery<EnrichedPayment[]>({
-    queryKey: ["/api/payments", year, month],
+    queryKey: ["/api/payments", "range", rangeStart, rangeEnd],
     queryFn: async () => {
-      const res = await fetch(`/api/payments?year=${year}&month=${month}`);
+      const res = await fetch(`/api/payments?startDate=${rangeStart}&endDate=${rangeEnd}`);
       return res.json();
     },
   });
