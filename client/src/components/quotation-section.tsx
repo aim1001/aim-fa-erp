@@ -1394,6 +1394,7 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
 
       {selectedId && (
         <QuotationDetailInline
+          key={selectedId}
           quotationId={selectedId}
           inquiryId={inquiryId}
           inquiry={inquiry}
