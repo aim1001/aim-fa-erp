@@ -1281,6 +1281,37 @@ function BatchEmailDialog({ inquiryId, inquiry, quotationList, open, onOpenChang
 
   const { data: companySettings } = useQuery<CompanySettings>({ queryKey: ["/api/company-settings"] });
 
+  const { data: quotationDetails } = useQuery<{ quotation: Quotation; items: QuotationItem[] }[]>({
+    queryKey: ["/api/inquiries", inquiryId, "quotations", "details"],
+    queryFn: async () => {
+      const results = await Promise.all(
+        quotationList.map(q => fetch(`/api/quotations/${q.id}`).then(r => r.json()))
+      );
+      return results;
+    },
+    enabled: open && quotationList.length > 0,
+  });
+
+  const quotationTotals = useMemo(() => {
+    const map = new Map<string, number>();
+    if (quotationDetails) {
+      for (const detail of quotationDetails) {
+        const regularItems = detail.items.filter(i => !i.isAdjustment);
+        const adjItems = detail.items.filter(i => i.isAdjustment);
+        const supply = regularItems.reduce((s, i) => s + (i.amount || 0), 0)
+          + adjItems.reduce((s, i) => s + (i.amount || 0), 0);
+        const dType = detail.quotation.discountType || "amount";
+        const dVal = detail.quotation.discountValue || 0;
+        const dAmt = dVal > 0 ? (dType === "percent" ? Math.round(supply * dVal / 100) : dVal) : 0;
+        const dUnit = parseInt((detail.quotation.discountTruncUnit as string) || "0") || 0;
+        let afterDiscount = supply - dAmt;
+        if (dUnit > 0 && dAmt > 0) afterDiscount = Math.floor(afterDiscount / dUnit) * dUnit;
+        map.set(detail.quotation.id, afterDiscount + Math.round(afterDiscount * 0.1));
+      }
+    }
+    return map;
+  }, [quotationDetails]);
+
   useEffect(() => {
     if (!open) return;
     const allIds = new Set(quotationList.map(q => q.id));
@@ -1359,7 +1390,9 @@ function BatchEmailDialog({ inquiryId, inquiry, quotationList, open, onOpenChang
           <div className="space-y-3">
             <div className="border rounded-md p-3 space-y-2">
               <div className="text-xs font-medium text-muted-foreground">첨부할 견적서 선택</div>
-              {quotationList.map(q => (
+              {quotationList.map(q => {
+                const total = quotationTotals.get(q.id);
+                return (
                 <div key={q.id} className="flex items-center gap-2">
                   <Checkbox
                     id={`batch-check-${q.id}`}
@@ -1373,14 +1406,20 @@ function BatchEmailDialog({ inquiryId, inquiry, quotationList, open, onOpenChang
                     onClick={() => setPreviewId(q.id)}
                   >
                     <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    <span>{q.quoteNumber}</span>
-                    {q.quoteName && <span className="text-muted-foreground"> · {q.quoteName}</span>}
-                    <Badge variant="secondary" className="text-[9px] px-1 ml-auto">
+                    <span className="flex-1">
+                      {q.quoteNumber}
+                      {q.quoteName && <span className="text-muted-foreground"> · {q.quoteName}</span>}
+                    </span>
+                    {total != null && (
+                      <span className="text-muted-foreground text-[10px]">{fmtNum(total)}원</span>
+                    )}
+                    <Badge variant="secondary" className="text-[9px] px-1">
                       {statusLabel[q.status || "draft"] || q.status}
                     </Badge>
                   </label>
                 </div>
-              ))}
+                );
+              })}
               <div className="text-[10px] text-muted-foreground pt-1">
                 {selectedIds.size}개 선택됨 · PDF가 각각 첨부됩니다
               </div>

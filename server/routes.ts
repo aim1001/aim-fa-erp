@@ -2479,7 +2479,10 @@ export async function registerRoutes(
       const pdfBuf = await generateQuotationPDF(req.params.id, inquiry);
 
       const safeNumber = result.quotation.quoteNumber.replace(/[/\\:*?"<>|]/g, "_");
-      const pdfFilename = `견적서_${safeNumber}.pdf`;
+      const safeName = result.quotation.quoteName
+        ? `_${result.quotation.quoteName.replace(/[/\\:*?"<>|]/g, "_")}`
+        : "";
+      const pdfFilename = `견적서_${safeNumber}${safeName}.pdf`;
 
       if (inquiry.onedriveFolderId) {
         try {
@@ -2575,6 +2578,9 @@ export async function registerRoutes(
       for (const qid of quotationIds) {
         const result = await storage.getQuotationWithItems(qid);
         if (!result) continue;
+        if (result.quotation.inquiryId !== req.params.id) {
+          return res.status(403).json({ message: `견적서 ${qid}는 해당 인콰이어리에 속하지 않습니다` });
+        }
         const pdfBuf = await generateQuotationPDF(qid, inquiry);
         const safeNumber = result.quotation.quoteNumber.replace(/[/\\:*?"<>|]/g, "_");
         const safeName = result.quotation.quoteName
@@ -2671,9 +2677,12 @@ export async function registerRoutes(
       const { generateQuotationPDF } = await import("./quotation-export");
       const buf = await generateQuotationPDF(req.params.id, inquiry);
       const safeNumber = result.quotation.quoteNumber.replace(/[/\\:*?"<>|]/g, "_");
+      const safeNamePart = result.quotation.quoteName
+        ? `_${result.quotation.quoteName.replace(/[/\\:*?"<>|]/g, "_")}`
+        : "";
       res.setHeader("Content-Type", "application/pdf");
       const disposition = req.query.inline === "1" ? "inline" : "attachment";
-      res.setHeader("Content-Disposition", `${disposition}; filename="quotation_${safeNumber}.pdf"`);
+      res.setHeader("Content-Disposition", `${disposition}; filename="견적서_${safeNumber}${safeNamePart}.pdf"`);
       res.send(buf);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
