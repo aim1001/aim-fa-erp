@@ -554,6 +554,7 @@ export const quotations = pgTable("quotations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   inquiryId: varchar("inquiry_id").notNull(),
   quoteNumber: text("quote_number").notNull(),
+  quoteName: text("quote_name"),
   quoteDate: text("quote_date").notNull(),
   validUntil: text("valid_until"),
   notes: text("notes"),

@@ -2278,13 +2278,18 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "견적서를 찾을 수 없습니다" });
       const isLocked = existing.quotation.status === "sent" || existing.quotation.status === "accepted";
       if (isLocked) {
-        const allowedKeys = ["status"];
+        const allowedKeys = ["status", "quoteName"];
         const bodyKeys = Object.keys(req.body);
         const hasOnlyAllowed = bodyKeys.every(k => allowedKeys.includes(k));
-        const newStatus = req.body.status;
-        const validTransition = newStatus === "sent" || newStatus === "accepted";
-        if (!hasOnlyAllowed || !validTransition) {
+        if (!hasOnlyAllowed) {
           return res.status(403).json({ message: "발송/수주 상태의 견적서는 상태 변경만 가능합니다" });
+        }
+        if (req.body.status !== undefined) {
+          const newStatus = req.body.status;
+          const validTransition = newStatus === "sent" || newStatus === "accepted";
+          if (!validTransition) {
+            return res.status(403).json({ message: "발송/수주 상태의 견적서는 상태 변경만 가능합니다" });
+          }
         }
       }
       const q = await storage.updateQuotation(req.params.id, req.body);
@@ -2544,6 +2549,115 @@ export async function registerRoutes(
       res.json({ message: `${to}로 견적서가 전송되었습니다`, messageId: emailResult.messageId });
     } catch (err: any) {
       console.error("이메일 전송 오류:", err);
+      res.status(500).json({ message: err.message || "이메일 전송 실패" });
+    }
+  });
+
+  app.post("/api/inquiries/:id/send-batch-email", async (req, res) => {
+    try {
+      const { quotationIds, to, subject, body, cc } = req.body;
+      if (!to) return res.status(400).json({ message: "수신자 이메일이 필요합니다" });
+      if (!quotationIds || !Array.isArray(quotationIds) || quotationIds.length < 1) {
+        return res.status(400).json({ message: "최소 1개 이상의 견적서를 선택하세요" });
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(to)) return res.status(400).json({ message: "올바른 이메일 형식이 아닙니다" });
+
+      const inquiry = await storage.getInquiry(req.params.id);
+      if (!inquiry) return res.status(404).json({ message: "인콰이어리를 찾을 수 없습니다" });
+
+      const companyInfo = await storage.getCompanySettings();
+      const { generateQuotationPDF } = await import("./quotation-export");
+
+      const attachments: { filename: string; content: Buffer; mimeType?: string }[] = [];
+      const processedQuotations: string[] = [];
+
+      for (const qid of quotationIds) {
+        const result = await storage.getQuotationWithItems(qid);
+        if (!result) continue;
+        const pdfBuf = await generateQuotationPDF(qid, inquiry);
+        const safeNumber = result.quotation.quoteNumber.replace(/[/\\:*?"<>|]/g, "_");
+        const safeName = result.quotation.quoteName
+          ? `_${result.quotation.quoteName.replace(/[/\\:*?"<>|]/g, "_")}`
+          : "";
+        const filename = `견적서_${safeNumber}${safeName}.pdf`;
+        attachments.push({ filename, content: pdfBuf });
+        processedQuotations.push(qid);
+
+        if (inquiry.onedriveFolderId) {
+          try {
+            const { uploadFileToFolder } = await import("./onedrive");
+            await uploadFileToFolder(inquiry.onedriveFolderId, filename, pdfBuf);
+          } catch (e: any) {
+            console.log(`OneDrive 저장 실패: ${e.message}`);
+          }
+        }
+      }
+
+      if (attachments.length === 0) {
+        return res.status(400).json({ message: "PDF 생성에 실패했습니다" });
+      }
+
+      const companyName = companyInfo?.companyName || "에이아이엠";
+      const emailSubject = subject || `[견적서] ${inquiry.inquiryNumber} - ${companyName}`;
+      const emailBody = body
+        ? `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">${body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>`
+        : `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">
+          <p>안녕하세요, ${inquiry.snapshotCompanyName || '고객'}님.</p>
+          <p>${companyName}입니다.</p>
+          <br/>
+          <p>요청하신 견적서 ${attachments.length}건을 첨부드립니다.</p>
+          <br/>
+          <p>검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.</p>
+          <br/>
+          <p>감사합니다.</p>
+          <p>${companyName}</p>
+          ${companyInfo?.phone ? `<p>Tel: ${companyInfo.phone}</p>` : ''}
+          ${companyInfo?.email ? `<p>Email: ${companyInfo.email}</p>` : ''}
+        </div>`;
+
+      const ccList: string[] = [];
+      if (cc) ccList.push(...cc.split(',').map((e: string) => e.trim()).filter(Boolean));
+      if (companyInfo?.autoCc) {
+        const autoCcEmails = companyInfo.autoCc.split(',').map((e: string) => e.trim()).filter(Boolean);
+        for (const email of autoCcEmails) {
+          if (!ccList.includes(email)) ccList.push(email);
+        }
+      }
+
+      const { sendEmailWithAttachment } = await import("./gmail");
+      const emailResult = await sendEmailWithAttachment({
+        to,
+        subject: emailSubject,
+        htmlBody: emailBody,
+        attachments,
+        from: companyInfo?.email || undefined,
+        cc: ccList.length > 0 ? ccList.join(', ') : undefined,
+      });
+
+      if (!inquiry.snapshotEmail && to) {
+        await storage.updateInquiry(inquiry.id, { snapshotEmail: to });
+      }
+
+      for (const qid of processedQuotations) {
+        await storage.updateQuotation(qid, { status: "sent" });
+        await syncQuotationTotalsToInquiry(qid);
+      }
+
+      try {
+        const { createQuoteSentEvent } = await import("./google-calendar");
+        const eventDate = new Date().toISOString().split('T')[0];
+        await createQuoteSentEvent(inquiry.inquiryNumber, inquiry.customerName, eventDate);
+      } catch (calErr: any) {
+        console.log(`Google Calendar 등록 실패: ${calErr.message}`);
+      }
+
+      res.json({
+        message: `${to}로 견적서 ${attachments.length}건이 전송되었습니다`,
+        messageId: emailResult.messageId,
+      });
+    } catch (err: any) {
+      console.error("묶음 이메일 전송 오류:", err);
       res.status(500).json({ message: err.message || "이메일 전송 실패" });
     }
   });

@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   FileText, Plus, Trash2, Search, Pencil, Check, X,
   Upload, FileDown, Package, Loader2, Star, Mail, Send, ArrowUpToLine, Copy, Lock,
@@ -893,6 +894,7 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
   const [exporting, setExporting] = useState(false);
   const [quoteDate, setQuoteDate] = useState(quotation.quoteDate);
   const [status, setStatus] = useState(quotation.status || "draft");
+  const [quoteName, setQuoteName] = useState(quotation.quoteName || "");
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailTo, setEmailTo] = useState(inquiry.snapshotEmail || "");
   const [emailCc, setEmailCc] = useState("");
@@ -917,7 +919,12 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
       quoteDate,
       validUntil: addDays(quoteDate, 30),
       status,
+      quoteName: quoteName || null,
     });
+  };
+
+  const handleSaveQuoteName = () => {
+    updateMut.mutate({ quoteName: quoteName || null });
   };
 
   const handleExport = async () => {
@@ -1098,6 +1105,17 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
     </Dialog>
     <div className="flex items-center gap-2 flex-wrap border rounded-md px-3 py-2 bg-muted/30">
       <div className="flex items-center gap-1.5 text-xs">
+        <span className="text-muted-foreground">사양명</span>
+        <Input
+          value={quoteName}
+          onChange={e => setQuoteName(e.target.value)}
+          onBlur={handleSaveQuoteName}
+          placeholder="예: 기본형, 풀옵션..."
+          className="h-7 text-xs w-32"
+          data-testid="input-quote-name"
+        />
+      </div>
+      <div className="flex items-center gap-1.5 text-xs">
         <span className="text-muted-foreground">견적일</span>
         {isLocked ? (
           <span className="text-xs font-medium">{quoteDate}</span>
@@ -1245,9 +1263,186 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
   );
 }
 
+function BatchEmailDialog({ inquiryId, inquiry, quotationList, open, onOpenChange }: {
+  inquiryId: string;
+  inquiry: Inquiry;
+  quotationList: Quotation[];
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [emailTo, setEmailTo] = useState(inquiry.snapshotEmail || "");
+  const [emailCc, setEmailCc] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const { data: companySettings } = useQuery<CompanySettings>({ queryKey: ["/api/company-settings"] });
+
+  useEffect(() => {
+    if (!open) return;
+    const allIds = new Set(quotationList.map(q => q.id));
+    setSelectedIds(allIds);
+    setPreviewId(quotationList[0]?.id || null);
+    setEmailTo(inquiry.snapshotEmail || "");
+    setEmailCc(companySettings?.autoCc || "");
+
+    const names = quotationList.map(q => q.quoteName || q.quoteNumber).join(", ");
+    const subject = `[견적서] ${inquiry.inquiryNumber} - ${names}`;
+    setEmailSubject(subject);
+
+    const companyName = inquiry.snapshotCompanyName || "고객";
+    const contactName = inquiry.snapshotContactName || "";
+    if (companySettings?.emailTemplate) {
+      const body = companySettings.emailTemplate
+        .replace(/\{고객명\}/g, companyName)
+        .replace(/\{이름\}/g, contactName)
+        .replace(/\{견적번호\}/g, inquiry.inquiryNumber || "")
+        .replace(/\{견적이름\}/g, names);
+      setEmailBody(body);
+    } else {
+      setEmailBody(`안녕하세요, ${companyName}님.\n\n요청하신 견적서 ${quotationList.length}건을 첨부드립니다.\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`);
+    }
+  }, [open, inquiry, quotationList, companySettings]);
+
+  const toggleId = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    if (!previewId || !selectedIds.has(id)) setPreviewId(id);
+  };
+
+  const handleSend = async () => {
+    if (!emailTo) {
+      toast({ title: "수신자 이메일을 입력해주세요", variant: "destructive" });
+      return;
+    }
+    if (selectedIds.size === 0) {
+      toast({ title: "최소 1개 이상의 견적서를 선택하세요", variant: "destructive" });
+      return;
+    }
+    setSending(true);
+    try {
+      const res = await apiRequest("POST", `/api/inquiries/${inquiryId}/send-batch-email`, {
+        quotationIds: Array.from(selectedIds),
+        to: emailTo,
+        subject: emailSubject,
+        body: emailBody,
+        cc: emailCc || undefined,
+      });
+      const result = await res.json();
+      toast({ title: "이메일 전송 완료", description: result.message });
+      onOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries", inquiryId, "quotations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
+    } catch (e: any) {
+      toast({ title: "이메일 전송 실패", description: e.message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const statusLabel: Record<string, string> = { draft: "작성중", sent: "발송", accepted: "수주" };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>묶음 견적서 이메일 발송</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
+            <div className="border rounded-md p-3 space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">첨부할 견적서 선택</div>
+              {quotationList.map(q => (
+                <div key={q.id} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`batch-check-${q.id}`}
+                    checked={selectedIds.has(q.id)}
+                    onCheckedChange={() => toggleId(q.id)}
+                    data-testid={`checkbox-batch-${q.id}`}
+                  />
+                  <label
+                    htmlFor={`batch-check-${q.id}`}
+                    className={`text-xs cursor-pointer flex-1 flex items-center gap-1.5 ${previewId === q.id ? "font-medium" : ""}`}
+                    onClick={() => setPreviewId(q.id)}
+                  >
+                    <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span>{q.quoteNumber}</span>
+                    {q.quoteName && <span className="text-muted-foreground"> · {q.quoteName}</span>}
+                    <Badge variant="secondary" className="text-[9px] px-1 ml-auto">
+                      {statusLabel[q.status || "draft"] || q.status}
+                    </Badge>
+                  </label>
+                </div>
+              ))}
+              <div className="text-[10px] text-muted-foreground pt-1">
+                {selectedIds.size}개 선택됨 · PDF가 각각 첨부됩니다
+              </div>
+            </div>
+            {!inquiry.snapshotEmail && (
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-2">
+                <p className="text-xs text-amber-700 dark:text-amber-400">고객 이메일이 등록되어 있지 않습니다.</p>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-xs">수신자 이메일</Label>
+              <Input value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="customer@example.com" className="text-sm" data-testid="input-batch-email-to" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">CC</Label>
+              <Input value={emailCc} onChange={e => setEmailCc(e.target.value)} placeholder="cc@example.com" className="text-sm" data-testid="input-batch-email-cc" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">제목</Label>
+              <Input value={emailSubject} onChange={e => setEmailSubject(e.target.value)} className="text-sm" data-testid="input-batch-email-subject" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">본문</Label>
+              <Textarea value={emailBody} onChange={e => setEmailBody(e.target.value)} rows={6} className="text-sm" data-testid="input-batch-email-body" />
+            </div>
+          </div>
+          <div className="border rounded-md overflow-hidden bg-muted/20">
+            <div className="text-xs font-medium px-2 py-1 bg-muted border-b">
+              견적서 미리보기
+              {previewId && quotationList.find(q => q.id === previewId)?.quoteName
+                ? ` — ${quotationList.find(q => q.id === previewId)?.quoteNumber} · ${quotationList.find(q => q.id === previewId)?.quoteName}`
+                : previewId
+                  ? ` — ${quotationList.find(q => q.id === previewId)?.quoteNumber}`
+                  : ""}
+            </div>
+            {previewId && (
+              <iframe
+                key={previewId}
+                src={`/api/quotations/${previewId}/download/pdf?inline=1&t=${Date.now()}`}
+                className="w-full h-[460px]"
+                title="견적서 미리보기"
+                data-testid="iframe-batch-pdf-preview"
+              />
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-batch-email-cancel">취소</Button>
+          <Button onClick={handleSend} disabled={sending || selectedIds.size === 0} data-testid="button-batch-email-send">
+            {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+            묶음 발송 ({selectedIds.size}건)
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; inquiry: Inquiry }) {
   const { toast } = useToast();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [batchEmailOpen, setBatchEmailOpen] = useState(false);
 
   const { data: quotationList = [], isLoading } = useQuery<Quotation[]>({
     queryKey: ["/api/inquiries", inquiryId, "quotations"],
@@ -1318,6 +1513,13 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
 
   return (
     <div className="space-y-4">
+      <BatchEmailDialog
+        inquiryId={inquiryId}
+        inquiry={inquiry}
+        quotationList={quotationList}
+        open={batchEmailOpen}
+        onOpenChange={setBatchEmailOpen}
+      />
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5 flex-wrap flex-1">
           {isLoading && <span className="text-xs text-muted-foreground">불러오는 중...</span>}
@@ -1334,7 +1536,10 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
               >
                 {qLocked && <Lock className="h-3 w-3 mr-1" />}
                 {!qLocked && <FileText className="h-3 w-3 mr-1" />}
-                {q.quoteNumber}
+                <span>
+                  {q.quoteNumber}
+                  {q.quoteName && <span className="text-muted-foreground"> · {q.quoteName}</span>}
+                </span>
                 <Badge
                   variant={q.status === "accepted" ? "default" : "secondary"}
                   className="text-[9px] ml-1.5 px-1"
@@ -1375,6 +1580,16 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
             );
           })}
         </div>
+        {quotationList.length >= 2 && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setBatchEmailOpen(true)}
+            data-testid="button-batch-email"
+          >
+            <Mail className="h-3 w-3 mr-1" />묶음 발송
+          </Button>
+        )}
         <Button size="sm" onClick={() => createMut.mutate()} disabled={createMut.isPending} data-testid="button-new-quotation">
           <Plus className="h-3 w-3 mr-1" />새 견적서
         </Button>

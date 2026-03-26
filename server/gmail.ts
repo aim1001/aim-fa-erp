@@ -63,12 +63,14 @@ function encodeFilename(filename: string): string {
   return `=?UTF-8?B?${Buffer.from(filename).toString('base64')}?=`;
 }
 
+export type EmailAttachment = { filename: string; content: Buffer; mimeType?: string };
+
 function buildMimeMessage(
   fromEmail: string,
   to: string,
   subject: string,
   htmlBody: string,
-  attachment?: { filename: string; content: Buffer; mimeType?: string },
+  attachments?: EmailAttachment[],
   cc?: string
 ): string {
   const boundary = `boundary_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -87,7 +89,9 @@ function buildMimeMessage(
   message += `Subject: ${mimeSubject}\r\n`;
   message += `MIME-Version: 1.0\r\n`;
 
-  if (attachment) {
+  const hasAttachments = attachments && attachments.length > 0;
+
+  if (hasAttachments) {
     message += `Content-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n`;
 
     message += `--${boundary}\r\n`;
@@ -95,12 +99,15 @@ function buildMimeMessage(
     message += `Content-Transfer-Encoding: base64\r\n\r\n`;
     message += wrapBase64(Buffer.from(htmlBody).toString('base64')) + '\r\n';
 
-    const encodedName = encodeFilename(attachment.filename);
-    message += `--${boundary}\r\n`;
-    message += `Content-Type: ${attachment.mimeType || 'application/pdf'}; name="${encodedName}"\r\n`;
-    message += `Content-Disposition: attachment; filename="${encodedName}"\r\n`;
-    message += `Content-Transfer-Encoding: base64\r\n\r\n`;
-    message += wrapBase64(attachment.content.toString('base64')) + '\r\n';
+    for (const att of attachments) {
+      const encodedName = encodeFilename(att.filename);
+      message += `--${boundary}\r\n`;
+      message += `Content-Type: ${att.mimeType || 'application/pdf'}; name="${encodedName}"\r\n`;
+      message += `Content-Disposition: attachment; filename="${encodedName}"\r\n`;
+      message += `Content-Transfer-Encoding: base64\r\n\r\n`;
+      message += wrapBase64(att.content.toString('base64')) + '\r\n';
+    }
+
     message += `--${boundary}--\r\n`;
   } else {
     message += `Content-Type: text/html; charset="UTF-8"\r\n`;
@@ -115,19 +122,28 @@ export async function sendEmailWithAttachment(options: {
   to: string;
   subject: string;
   htmlBody: string;
-  attachment?: { filename: string; content: Buffer; mimeType?: string };
+  attachment?: EmailAttachment;
+  attachments?: EmailAttachment[];
   from?: string;
   cc?: string;
 }): Promise<{ success: boolean; messageId?: string }> {
   const gmail = await getUncachableGmailClient();
 
   const fromAddress = options.from || 'sales@aim-fa.com';
+
+  const allAttachments: EmailAttachment[] = [];
+  if (options.attachments && options.attachments.length > 0) {
+    allAttachments.push(...options.attachments);
+  } else if (options.attachment) {
+    allAttachments.push(options.attachment);
+  }
+
   const rawMessage = buildMimeMessage(
     fromAddress,
     options.to,
     options.subject,
     options.htmlBody,
-    options.attachment,
+    allAttachments.length > 0 ? allAttachments : undefined,
     options.cc
   );
 

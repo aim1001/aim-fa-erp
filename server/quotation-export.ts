@@ -76,6 +76,10 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     doc.font("Bold").fontSize(22).fillColor("#000").text("견 적 서", PAGE_LEFT, headerTop);
 
+    if (quotation.quoteName) {
+      doc.font("Regular").fontSize(11).fillColor("#555").text(quotation.quoteName, PAGE_LEFT, headerTop + 28);
+    }
+
     let rightBlockBottom = headerTop;
     if (companyInfo) {
       const rightBlockX = 300;
