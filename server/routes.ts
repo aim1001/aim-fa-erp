@@ -2680,9 +2680,10 @@ export async function registerRoutes(
       const safeNamePart = result.quotation.quoteName
         ? `_${result.quotation.quoteName.replace(/[/\\:*?"<>|]/g, "_")}`
         : "";
+      const pdfDisplayName = `견적서_${safeNumber}${safeNamePart}.pdf`;
       res.setHeader("Content-Type", "application/pdf");
       const disposition = req.query.inline === "1" ? "inline" : "attachment";
-      res.setHeader("Content-Disposition", `${disposition}; filename="견적서_${safeNumber}${safeNamePart}.pdf"`);
+      res.setHeader("Content-Disposition", `${disposition}; filename="quotation_${safeNumber}${safeNamePart}.pdf"; filename*=UTF-8''${encodeURIComponent(pdfDisplayName)}`);
       res.send(buf);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
