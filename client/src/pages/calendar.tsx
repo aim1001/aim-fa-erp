@@ -50,12 +50,16 @@ const AREA_CONFIG: { key: AreaFilter; label: string; sourceTypes: string[] }[] =
 
 type ViewMode = "month" | "week" | "list";
 
+type PersonalEvent = { id: string; title: string; date: string; endDate: string | null; startTime: string | null; endTime: string | null; calendarName: string };
+
 const CATEGORY_CONFIG: Record<string, { label: string; dotClass: string; badgeClass: string; activeBtn: string }> = {
   task: { label: "할일", dotClass: "bg-blue-500", badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300", activeBtn: "bg-blue-500 text-white hover:bg-blue-600" },
   delivery: { label: "입고", dotClass: "bg-orange-500", badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300", activeBtn: "bg-orange-500 text-white hover:bg-orange-600" },
   deadline: { label: "납품", dotClass: "bg-red-500", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300", activeBtn: "bg-red-500 text-white hover:bg-red-600" },
   payment: { label: "대금", dotClass: "bg-green-500", badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300", activeBtn: "bg-green-500 text-white hover:bg-green-600" },
   custom: { label: "일정", dotClass: "bg-purple-500", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300", activeBtn: "bg-purple-500 text-white hover:bg-purple-600" },
+  hounshim: { label: "Houn", dotClass: "bg-teal-500", badgeClass: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300", activeBtn: "bg-teal-500 text-white hover:bg-teal-600" },
+  yupsim: { label: "Yup", dotClass: "bg-pink-500", badgeClass: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300", activeBtn: "bg-pink-500 text-white hover:bg-pink-600" },
 };
 
 const COLOR_STYLES: Record<string, { dotClass: string; badgeClass: string }> = {
@@ -123,6 +127,7 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [filters, setFilters] = useState<Record<string, boolean>>({
     task: true, delivery: true, deadline: true, payment: true, custom: true,
+    hounshim: true, yupsim: true,
   });
   const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventItem | null>(null);
@@ -169,16 +174,46 @@ export default function CalendarPage() {
     },
   });
 
+  const { data: personalEventsRaw = [] } = useQuery<PersonalEvent[]>({
+    queryKey: ["/api/google-calendar/personal-events", activeRange.start, activeRange.end],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/google-calendar/personal-events?start=${activeRange.start}&end=${activeRange.end}`, { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch {
+        return [];
+      }
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allEvents = useMemo<CalendarEventItem[]>(() => {
+    const mapped: CalendarEventItem[] = personalEventsRaw.map(e => ({
+      id: e.id,
+      title: e.title,
+      date: e.date,
+      endDate: e.endDate,
+      startTime: e.startTime,
+      endTime: e.endTime,
+      category: e.calendarName === "houn shim" ? "hounshim" : "yupsim",
+      color: e.calendarName === "houn shim" ? "teal" : "pink",
+      sourceType: "personalCalendar",
+    }));
+    return [...events, ...mapped];
+  }, [events, personalEventsRaw]);
+
   const filteredEvents = useMemo(() => {
     const areaSourceTypes = AREA_CONFIG.find(a => a.key === areaFilter)?.sourceTypes || [];
-    return events.filter(e => {
+    return allEvents.filter(e => {
       if (e.category === "task" && e.taskType === "todo") return false;
       if (!filters[e.category]) return false;
       if (areaFilter === "all") return true;
-      if (e.sourceType === "calendarEvent") return true;
+      if (e.sourceType === "calendarEvent" || e.sourceType === "personalCalendar") return true;
       return areaSourceTypes.includes(e.sourceType);
     });
-  }, [events, filters, areaFilter]);
+  }, [allEvents, filters, areaFilter]);
 
   const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarEventItem[]> = {};

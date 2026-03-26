@@ -6915,6 +6915,19 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/google-calendar/personal-events", async (req, res) => {
+    try {
+      const start = req.query.start as string;
+      const end = req.query.end as string;
+      if (!start || !end) return res.status(400).json({ message: "start and end required" });
+      const { fetchPersonalCalendarEvents } = await import("./google-calendar");
+      const events = await fetchPersonalCalendarEvents(start, end);
+      res.json(events);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/monthly-balances", async (req, res) => {
     try {
       const year = parseInt(req.query.year as string);
