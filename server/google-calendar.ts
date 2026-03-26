@@ -151,17 +151,21 @@ export async function fetchPersonalCalendarEvents(start: string, end: string): P
       calendarName: string;
     }> = [];
 
+    const TZ = 'Asia/Seoul';
+
     function extractDate(dt: string): string {
-      if (dt.includes('T')) {
-        const d = new Date(dt);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      }
-      return dt;
+      if (!dt.includes('T')) return dt;
+      return new Date(dt).toLocaleDateString('en-CA', { timeZone: TZ });
     }
     function extractTime(dt: string): string | null {
       if (!dt.includes('T')) return null;
-      const d = new Date(dt);
-      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      return new Date(dt).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+    }
+    function adjustAllDayEnd(endDate: string, startDate: string): string | null {
+      const d = new Date(endDate + 'T00:00:00');
+      d.setDate(d.getDate() - 1);
+      const adjusted = d.toLocaleDateString('en-CA', { timeZone: TZ });
+      return adjusted !== startDate ? adjusted : null;
     }
 
     for (const cal of targetCals) {
@@ -182,17 +186,14 @@ export async function fetchPersonalCalendarEvents(start: string, end: string): P
 
         const date = extractDate(rawStart);
         const startTime = extractTime(rawStart);
-        const endTime = extractTime(rawEnd);
+        const endTime = rawEnd ? extractTime(rawEnd) : null;
         let endDate: string | null = null;
         if (rawEnd) {
           if (rawEnd.includes('T')) {
             const d = extractDate(rawEnd);
             endDate = d !== date ? d : null;
           } else {
-            const d = new Date(rawEnd + 'T00:00:00');
-            d.setDate(d.getDate() - 1);
-            const adjustedEnd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            endDate = adjustedEnd !== date ? adjustedEnd : null;
+            endDate = adjustAllDayEnd(rawEnd, date);
           }
         }
 

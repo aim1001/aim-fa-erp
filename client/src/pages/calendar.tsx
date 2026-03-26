@@ -58,8 +58,8 @@ const CATEGORY_CONFIG: Record<string, { label: string; dotClass: string; badgeCl
   deadline: { label: "납품", dotClass: "bg-red-500", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300", activeBtn: "bg-red-500 text-white hover:bg-red-600" },
   payment: { label: "대금", dotClass: "bg-green-500", badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300", activeBtn: "bg-green-500 text-white hover:bg-green-600" },
   custom: { label: "일정", dotClass: "bg-purple-500", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300", activeBtn: "bg-purple-500 text-white hover:bg-purple-600" },
-  hounshim: { label: "Houn", dotClass: "bg-teal-500", badgeClass: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300", activeBtn: "bg-teal-500 text-white hover:bg-teal-600" },
-  yupsim: { label: "Yup", dotClass: "bg-pink-500", badgeClass: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300", activeBtn: "bg-pink-500 text-white hover:bg-pink-600" },
+  hounshim: { label: "Houn Shim", dotClass: "bg-teal-500", badgeClass: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300", activeBtn: "bg-teal-500 text-white hover:bg-teal-600" },
+  yupsim: { label: "Yup Sim", dotClass: "bg-pink-500", badgeClass: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300", activeBtn: "bg-pink-500 text-white hover:bg-pink-600" },
 };
 
 const COLOR_STYLES: Record<string, { dotClass: string; badgeClass: string }> = {
