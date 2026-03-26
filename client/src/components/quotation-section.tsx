@@ -1249,7 +1249,7 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
       {isLocked && (
         <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2">
           <Lock className="h-3.5 w-3.5 shrink-0" />
-          <span>이 견적서는 {quotation.status === "sent" ? "발송" : "수주"} 상태이므로 편집이 잠겨 있습니다. 수정이 필요하면 복사본을 만들어주세요.</span>
+          <span>이 견적서는 {quotation.status === "sent" ? "발송" : "수주"} 상태이므로 편집이 잠겨 있습니다. 사양명은 수정 가능하며, 내용 수정이 필요하면 복사본을 만들어주세요.</span>
         </div>
       )}
       <QuotationHeaderBar quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} isLocked={isLocked} />
