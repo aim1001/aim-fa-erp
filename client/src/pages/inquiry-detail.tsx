@@ -655,7 +655,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
   const createContactMutation = useMutation({
     mutationFn: async (data: { contactName: string; email: string; phone: string; address?: string }) => {
       const res = await apiRequest("POST", "/api/companies", {
-        companyName: data.contactName,
+        companyName: inquiry.customerName || inquiry.snapshotCompanyName || data.contactName,
         contactName: data.contactName,
         email: data.email,
         phone: data.phone,
