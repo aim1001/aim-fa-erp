@@ -47,6 +47,7 @@ export async function sendEmailWithAttachment(options: {
     subject: options.subject,
     html: options.htmlBody,
     cc: options.cc || undefined,
+    replyTo: options.from || undefined,
     attachments: allAttachments.map(att => ({
       filename: att.filename,
       content: att.content,
