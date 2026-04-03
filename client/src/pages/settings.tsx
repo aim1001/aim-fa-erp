@@ -58,6 +58,7 @@ export default function SettingsPage() {
     poAutoCc: "",
     poEmailTemplate: "",
     poCalendarId: "sales@aim-fa.com",
+    emailSubjectTemplate: "",
   });
 
   const [salesDefaultContactPerson, setSalesDefaultContactPerson] = useState("");
@@ -89,6 +90,7 @@ export default function SettingsPage() {
         poAutoCc: settings.poAutoCc || "",
         poEmailTemplate: settings.poEmailTemplate || "",
         poCalendarId: settings.poCalendarId || "sales@aim-fa.com",
+        emailSubjectTemplate: settings.emailSubjectTemplate || "",
       });
       if (staffList) {
         if (settings.salesDefaultStaffId) {
@@ -483,6 +485,36 @@ export default function SettingsPage() {
                 <p className="text-xs text-muted-foreground mt-1">
                   견적 이메일 발송 시 자동으로 CC에 추가됩니다. 여러 이메일은 쉼표(,)로 구분하세요.
                 </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Mail className="h-4 w-4" />
+                  이메일 제목 템플릿
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Input
+                  value={form.emailSubjectTemplate}
+                  onChange={(e) => updateField("emailSubjectTemplate", e.target.value)}
+                  placeholder="에이아이엠_{견적번호}, {견적이름}"
+                  data-testid="input-emailSubjectTemplate"
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-xs text-muted-foreground">
+                    치환 변수: <code>{"{견적번호}"}</code>, <code>{"{견적이름}"}</code>, <code>{"{고객명}"}</code>. 비워두면 기본값 사용.
+                  </p>
+                  <button
+                    type="button"
+                    className="text-xs text-blue-500 hover:underline"
+                    onClick={() => updateField("emailSubjectTemplate", "에이아이엠_{견적번호}, {견적이름}")}
+                    data-testid="button-reset-email-subject"
+                  >
+                    기본값으로 초기화
+                  </button>
+                </div>
               </CardContent>
             </Card>
 

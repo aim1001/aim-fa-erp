@@ -2494,7 +2494,14 @@ export async function registerRoutes(
       }
 
       const companyName = companyInfo?.companyName || "에이아이엠";
-      const emailSubject = subject || `[견적서] ${result.quotation.quoteNumber} - ${companyName}`;
+      const buildSubject = (template: string | null | undefined, quoteNumber: string, quoteName: string | null | undefined, customerName: string) => {
+        const tpl = template || "에이아이엠_{견적번호}, {견적이름}";
+        return tpl
+          .replace(/\{견적번호\}/g, quoteNumber)
+          .replace(/\{견적이름\}/g, quoteName || "")
+          .replace(/\{고객명\}/g, customerName);
+      };
+      const emailSubject = subject || buildSubject(companyInfo?.emailSubjectTemplate, result.quotation.quoteNumber, result.quotation.quoteName, inquiry.snapshotCompanyName || inquiry.customerName || "");
       const emailBody = body
         ? `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">${body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>`
         : `
@@ -2605,7 +2612,15 @@ export async function registerRoutes(
       }
 
       const companyName = companyInfo?.companyName || "에이아이엠";
-      const emailSubject = subject || `[견적서] ${inquiry.inquiryNumber} - ${companyName}`;
+      const buildBatchSubject = (template: string | null | undefined, inquiryNumber: string, customerName: string) => {
+        const tpl = template || "에이아이엠_{견적번호}, {견적이름}";
+        return tpl
+          .replace(/\{견적번호\}/g, inquiryNumber)
+          .replace(/\{견적이름\}/g, "")
+          .replace(/\{고객명\}/g, customerName)
+          .replace(/,\s*$/, "").trim();
+      };
+      const emailSubject = subject || buildBatchSubject(companyInfo?.emailSubjectTemplate, inquiry.inquiryNumber, inquiry.snapshotCompanyName || inquiry.customerName || "");
       const emailBody = body
         ? `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">${body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>')}</div>`
         : `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">
