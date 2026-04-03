@@ -2499,7 +2499,8 @@ export async function registerRoutes(
         return tpl
           .replace(/\{견적번호\}/g, quoteNumber)
           .replace(/\{견적이름\}/g, quoteName || "")
-          .replace(/\{고객명\}/g, customerName);
+          .replace(/\{고객명\}/g, customerName)
+          .replace(/,\s*$/, "").trim();
       };
       const emailSubject = subject || buildSubject(companyInfo?.emailSubjectTemplate, result.quotation.quoteNumber, result.quotation.quoteName, inquiry.snapshotCompanyName || inquiry.customerName || "");
       const emailBody = body
