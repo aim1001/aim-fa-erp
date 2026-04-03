@@ -5386,7 +5386,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, salesDefaultStaffId, projectDefaultStaffId, poDefaultStaffId, financeDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, salesDefaultStaffId, projectDefaultStaffId, poDefaultStaffId, financeDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId, emailSubjectTemplate } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -5427,6 +5427,7 @@ export async function registerRoutes(
         poAutoCc: poAutoCc === undefined ? undefined : (poAutoCc || null),
         poEmailTemplate: poEmailTemplate === undefined ? undefined : (poEmailTemplate || null),
         poCalendarId: poCalendarId === undefined ? undefined : (poCalendarId || null),
+        emailSubjectTemplate: emailSubjectTemplate === undefined ? undefined : (emailSubjectTemplate || null),
       });
       res.json(settings);
     } catch (err: any) {
