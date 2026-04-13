@@ -726,6 +726,75 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/inquiry-source-stats", async (_req, res) => {
+    try {
+      const allInquiries = await storage.getInquiries();
+      const webInquiries = allInquiries.filter(i => i.isWebInquiry || i.source === "website");
+
+      const sourceCounts: Record<string, number> = {};
+      for (const inq of allInquiries) {
+        const src = (inq.isWebInquiry || inq.source === "website") ? "website"
+          : inq.source === "onedrive" ? "onedrive"
+          : inq.source === "manual" ? "manual"
+          : inq.source || "manual";
+        sourceCounts[src] = (sourceCounts[src] || 0) + 1;
+      }
+      const sourceLabels: Record<string, string> = {
+        website: "홈페이지",
+        onedrive: "OneDrive",
+        manual: "직접입력",
+      };
+      const sourceSummary = Object.entries(sourceCounts).map(([source, count]) => ({
+        source,
+        label: sourceLabels[source] || source,
+        count,
+      }));
+
+      const now = new Date();
+      const monthlyMap: Record<string, number> = {};
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthlyMap[key] = 0;
+      }
+      for (const inq of webInquiries) {
+        const d = inq.createdAt ? new Date(inq.createdAt) : null;
+        if (!d) continue;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (key in monthlyMap) monthlyMap[key]++;
+      }
+      const monthlyTrend = Object.entries(monthlyMap).map(([month, count]) => {
+        const [y, m] = month.split("-");
+        return { month, label: `${m}월`, year: parseInt(y), count };
+      });
+
+      const webTotal = webInquiries.length;
+      const webWon = webInquiries.filter(i => i.status === "won").length;
+      const winRate = webTotal > 0 ? Math.round((webWon / webTotal) * 100) : 0;
+
+      const recentList = [...webInquiries]
+        .sort((a, b) => {
+          const ad = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bd = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bd - ad;
+        })
+        .slice(0, 20)
+        .map(i => ({
+          id: i.id,
+          inquiryNumber: i.inquiryNumber,
+          customerName: i.customerName,
+          productInfo: i.productInfo || null,
+          status: i.status,
+          createdAt: i.createdAt,
+          snapshotContactName: i.snapshotContactName || null,
+        }));
+
+      res.json({ sourceSummary, monthlyTrend, conversionStats: { total: webTotal, won: webWon, winRate }, recentList });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/onedrive/status", async (req, res) => {
     try {
       const status = await checkConnectionStatus(req.get('host'));
