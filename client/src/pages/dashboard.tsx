@@ -70,9 +70,17 @@ type SourceStatsData = {
 const EXCLUDED_BY_DEFAULT = [2020, 2021, 2022, 2023, 2024];
 
 function WebInquirySourceTab({ onInquiryClick }: { onInquiryClick: (id: string) => void }) {
-  const { data, isLoading } = useQuery<SourceStatsData>({
+  const { data, isLoading, isError } = useQuery<SourceStatsData>({
     queryKey: ["/api/inquiry-source-stats"],
   });
+
+  if (isError) {
+    return (
+      <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+        유입 통계를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
