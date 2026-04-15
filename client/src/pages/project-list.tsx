@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, FolderOpen, ExternalLink, X, Plus, Receipt, ReceiptText, Wallet, Settings, FileText, CalendarClock, CalendarDays, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users, Package, Loader2, ListTodo } from "lucide-react";
+import { RefreshCw, FolderOpen, ExternalLink, X, Plus, ReceiptText, Wallet, Settings, FileText, CalendarClock, CalendarDays, Check, Pencil, Trash2, Banknote, AlertTriangle, Undo2, Link2, Unlink, Search, Building2, Users, Package, Loader2, ListTodo } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useSearch, useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -561,7 +561,6 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
     onError: (err: Error) => toast({ title: "예정일 변경 실패", description: err.message, variant: "destructive" }),
   });
 
-  const [showSalesPicker, setShowSalesPicker] = useState(false);
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [stagePicker, setStagePicker] = useState<string | null>(null);
@@ -604,11 +603,6 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
     if (!allSales || !project) return [];
     return allSales.filter(i => !i.projectId && i.companyName?.toLowerCase().includes(stageSearchTerm.toLowerCase()));
   }, [allSales, project, stageSearchTerm]);
-
-  const unlinkedSales = useMemo(() => {
-    if (!allSales || !project) return [];
-    return allSales.filter(i => !i.projectId && i.companyName?.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [allSales, project, searchTerm]);
 
   const unlinkedPurchases = useMemo(() => {
     if (!allPurchases || !project) return [];
@@ -1146,12 +1140,19 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
 
           const linkedTotal = project.salesInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
           const plannedTotal = project.totalAmount!;
-          const diff = plannedTotal - linkedTotal;
+          const totalDiff = plannedTotal - linkedTotal;
+          const stageNames = new Set(stages.map(s => s.name));
+          const today = new Date().toISOString().split("T")[0];
+          const otherInvoices = project.salesInvoices.filter(i => !i.invoiceStage || !stageNames.has(i.invoiceStage));
 
           return (
-            <div className="border rounded-lg p-2.5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" />계산서 발행 계획 <span className="text-[9px] text-muted-foreground font-normal">(공급가액 기준)</span></span>
+            <div className="border rounded-lg overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b">
+                <span className="text-xs font-medium flex items-center gap-1">
+                  <FileText className="h-3 w-3" />계산서 발행 현황
+                  <span className="text-[9px] text-muted-foreground font-normal">(공급가액 기준)</span>
+                </span>
                 <div className="flex items-center gap-1">
                   {project.salesInvoices.length > 0 ? (
                     <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => setShowInvoiceRegenConfirm(true)} disabled={genInvoiceMutation.isPending} data-testid="button-gen-invoice">
@@ -1164,8 +1165,10 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
                   )}
                 </div>
               </div>
+
+              {/* Regen confirm */}
               {showInvoiceRegenConfirm && (
-                <div className="border rounded p-2 bg-orange-50/50 dark:bg-orange-900/10 space-y-1.5">
+                <div className="border-b p-2 bg-orange-50/50 dark:bg-orange-900/10 space-y-1.5">
                   <div className="text-[10px] font-medium text-orange-700 dark:text-orange-400 flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" />계산서 재생성 확인
                   </div>
@@ -1179,209 +1182,164 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
                     })()}
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button size="sm" variant="destructive" className="h-6 text-[10px] px-2" data-testid="button-confirm-invoice-regen"
-                      onClick={() => genInvoiceMutation.mutate(true)}>
-                      재생성
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setShowInvoiceRegenConfirm(false)} data-testid="button-cancel-invoice-regen">
-                      취소
-                    </Button>
+                    <Button size="sm" variant="destructive" className="h-6 text-[10px] px-2" data-testid="button-confirm-invoice-regen" onClick={() => genInvoiceMutation.mutate(true)}>재생성</Button>
+                    <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setShowInvoiceRegenConfirm(false)} data-testid="button-cancel-invoice-regen">취소</Button>
                   </div>
                 </div>
               )}
-              <div className="space-y-1.5">
-                {stages.map(stage => {
-                  const supply = Math.round(plannedTotal * stage.ratio / 100);
-                  const vat = Math.round(supply * 0.1);
-                  const stageInvoices = project.salesInvoices.filter(i => i.invoiceStage === stage.name);
-                  const stageLinkedSupply = stageInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
-                  const stageDiff = supply - stageLinkedSupply;
-                  const isPickerOpen = stagePicker === stage.name;
 
-                  return (
-                    <div key={stage.name} className="border rounded overflow-hidden">
-                      <div className="flex items-center justify-between text-xs py-1.5 px-2 bg-muted/20">
-                        <span className="font-medium">{stage.name} ({stage.ratio}%)</span>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <span>공급 {fmtComma(supply)}</span>
-                          <span>VAT {fmtComma(vat)}</span>
-                          <span className="font-medium text-foreground">{fmtComma(supply + vat)}원</span>
-                          <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1" onClick={() => { setStagePicker(isPickerOpen ? null : stage.name); setStageSearchTerm(""); }} data-testid={`button-link-stage-${stage.name}`}>
-                            <Plus className="h-3 w-3 mr-0.5" />연결
+              {/* Column headers */}
+              <div className="grid grid-cols-[1fr_90px_90px_64px] text-[9px] text-muted-foreground px-3 py-1.5 border-b bg-muted/10">
+                <span>구분</span>
+                <span className="text-right">계획 (공급)</span>
+                <span className="text-right">실적 (공급)</span>
+                <span className="text-right">상태</span>
+              </div>
+
+              {/* Stage rows */}
+              {stages.map(stage => {
+                const supply = Math.round(plannedTotal * stage.ratio / 100);
+                const stageInvoices = project.salesInvoices.filter(i => i.invoiceStage === stage.name);
+                const actualSupply = stageInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
+                const stageDiff = supply - actualSupply;
+                const isPickerOpen = stagePicker === stage.name;
+
+                return (
+                  <div key={stage.name} className="border-b last:border-b-0">
+                    {/* Plan row */}
+                    <div className="grid grid-cols-[1fr_90px_90px_64px] items-center px-3 py-2 bg-muted/5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-medium">{stage.name}</span>
+                        <span className="text-[9px] text-muted-foreground">({stage.ratio}%)</span>
+                        <Button size="sm" variant="ghost" className="h-5 text-[9px] px-1 ml-1" onClick={() => { setStagePicker(isPickerOpen ? null : stage.name); setStageSearchTerm(""); }} data-testid={`button-link-stage-${stage.name}`}>
+                          <Plus className="h-2.5 w-2.5 mr-0.5" />연결
+                        </Button>
+                      </div>
+                      <span className="text-[10px] text-right text-muted-foreground">{fmtComma(supply)}</span>
+                      <span className={`text-[10px] text-right font-medium ${actualSupply > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>
+                        {actualSupply > 0 ? fmtComma(actualSupply) : "-"}
+                      </span>
+                      <div className="text-right">
+                        {stageInvoices.length === 0 ? (
+                          <span className="text-[9px] text-muted-foreground/50">미연결</span>
+                        ) : stageDiff === 0 ? (
+                          <span className="text-[9px] text-green-600 dark:text-green-400 font-medium flex items-center justify-end gap-0.5"><Check className="h-2.5 w-2.5" />일치</span>
+                        ) : stageDiff > 0 ? (
+                          <span className="text-[9px] text-orange-600 dark:text-orange-400 font-medium">미달</span>
+                        ) : (
+                          <span className="text-[9px] text-red-600 dark:text-red-400 font-medium">초과</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Invoice picker */}
+                    {isPickerOpen && (
+                      <div className="px-3 py-2 bg-muted/10 border-t space-y-1">
+                        <Input placeholder="거래처/품목 검색..." value={stageSearchTerm} onChange={e => setStageSearchTerm(e.target.value)} className="h-6 text-xs" data-testid={`input-stage-search-${stage.name}`} />
+                        <div className="max-h-28 overflow-y-auto space-y-0.5">
+                          {stageUnlinkedSales.slice(0, 15).map(inv => (
+                            <div key={inv.id} className="flex items-center justify-between text-[10px] py-1 px-1 hover:bg-muted rounded cursor-pointer" onClick={() => { linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: true, invoiceStage: stage.name }); setStagePicker(null); }} data-testid={`link-stage-${stage.name}-${inv.id}`}>
+                              <span className="truncate">{inv.issueDate || (inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "미발행")} {inv.companyName} {inv.item ? `(${inv.item})` : ""}</span>
+                              <span className="text-blue-600 ml-2 whitespace-nowrap">공급 {fmtComma(inv.supplyAmount || 0)}</span>
+                            </div>
+                          ))}
+                          {stageUnlinkedSales.length === 0 && <div className="text-[10px] text-muted-foreground py-1">연결 가능한 계산서가 없습니다</div>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actual invoices */}
+                    {stageInvoices.map(inv => {
+                      const isIssued = !!inv.issueDate;
+                      const isPastDue = !isIssued && inv.plannedIssueDate && inv.plannedIssueDate < today;
+                      const isEditingDate = editingInvoiceDateId === inv.id;
+                      return (
+                        <div key={inv.id} className={`text-[10px] py-1.5 px-4 border-t flex items-center justify-between gap-2 ${isIssued ? "bg-green-50/40 dark:bg-green-900/10" : isPastDue ? "bg-red-50/40 dark:bg-red-900/10" : "bg-white/20 dark:bg-white/5"}`}>
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span className={`px-1 py-0.5 rounded text-[9px] font-medium whitespace-nowrap ${isIssued ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" : isPastDue ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400"}`}>
+                              {isIssued ? "발행완료" : isPastDue ? "지연" : "미발행"}
+                            </span>
+                            {isIssued ? (
+                              <span className="text-green-700 dark:text-green-400 whitespace-nowrap">{inv.issueDate}</span>
+                            ) : isEditingDate ? (
+                              <div className="flex items-center gap-1">
+                                <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[110px] px-1" data-testid={`input-invoice-date-${inv.id}`} />
+                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-invoice-date-${inv.id}`} onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}><Check className="h-2.5 w-2.5" /></Button>
+                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-invoice-date-${inv.id}`}><X className="h-2.5 w-2.5" /></Button>
+                              </div>
+                            ) : (
+                              <span className={`cursor-pointer hover:underline whitespace-nowrap ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`} onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }} data-testid={`text-invoice-date-${inv.id}`}>
+                                {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정"}
+                              </span>
+                            )}
+                            <span className="truncate text-muted-foreground">{inv.companyName}</span>
+                            {inv.item && <span className="text-muted-foreground/60 truncate hidden md:inline">({inv.item})</span>}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-blue-600 dark:text-blue-400 font-medium whitespace-nowrap">공급 {fmtComma(inv.supplyAmount || 0)}원</span>
+                            <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-stage-${inv.id}`}>
+                              <X className="h-2.5 w-2.5 text-muted-foreground" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {/* 기타: invoices linked to project but no stage */}
+              {otherInvoices.length > 0 && (
+                <div className="border-t">
+                  <div className="px-3 py-1.5 bg-muted/10 text-[9px] text-muted-foreground font-medium">기타 연결 계산서</div>
+                  {otherInvoices.map(inv => {
+                    const isIssued = !!inv.issueDate;
+                    const isPastDue = !isIssued && inv.plannedIssueDate && inv.plannedIssueDate < today;
+                    return (
+                      <div key={inv.id} className={`text-[10px] py-1.5 px-4 border-t flex items-center justify-between gap-2 ${isIssued ? "bg-green-50/40 dark:bg-green-900/10" : isPastDue ? "bg-red-50/40 dark:bg-red-900/10" : "bg-white/20 dark:bg-white/5"}`}>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`px-1 py-0.5 rounded text-[9px] font-medium whitespace-nowrap ${isIssued ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" : isPastDue ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400"}`}>
+                            {isIssued ? "발행완료" : isPastDue ? "지연" : "미발행"}
+                          </span>
+                          <span className="text-muted-foreground whitespace-nowrap">{isIssued ? inv.issueDate : inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정"}</span>
+                          <span className="truncate">{inv.companyName}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-blue-600 dark:text-blue-400 font-medium whitespace-nowrap">공급 {fmtComma(inv.supplyAmount || 0)}원</span>
+                          <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-other-${inv.id}`}>
+                            <X className="h-2.5 w-2.5 text-muted-foreground" />
                           </Button>
                         </div>
                       </div>
-                      {isPickerOpen && (
-                        <div className="p-2 bg-muted/10 border-t space-y-1">
-                          <Input placeholder="거래처/품목 검색..." value={stageSearchTerm} onChange={e => setStageSearchTerm(e.target.value)} className="h-6 text-xs" data-testid={`input-stage-search-${stage.name}`} />
-                          <div className="max-h-28 overflow-y-auto space-y-0.5">
-                            {stageUnlinkedSales.slice(0, 15).map(inv => (
-                              <div key={inv.id} className="flex items-center justify-between text-[10px] py-1 px-1 hover:bg-muted rounded cursor-pointer" onClick={() => { linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: true, invoiceStage: stage.name }); setStagePicker(null); }} data-testid={`link-stage-${stage.name}-${inv.id}`}>
-                                <span className="truncate">{inv.issueDate} {inv.companyName} {inv.item ? `(${inv.item})` : ""}</span>
-                                <span className="text-blue-600 ml-2 whitespace-nowrap">공급 {fmtComma(inv.supplyAmount || 0)}</span>
-                              </div>
-                            ))}
-                            {stageUnlinkedSales.length === 0 && <div className="text-[10px] text-muted-foreground py-1">연결 가능한 계산서가 없습니다</div>}
-                          </div>
-                        </div>
-                      )}
-                      {stageInvoices.length > 0 && (
-                        <div className="border-t">
-                          {stageInvoices.map(inv => {
-                            const isIssued = !!inv.issueDate;
-                            const isPastDue = !isIssued && inv.plannedIssueDate && inv.plannedIssueDate < new Date().toISOString().split("T")[0];
-                            const isEditingDate = editingInvoiceDateId === inv.id;
-                            return (
-                              <div key={inv.id} className={`text-[10px] py-1 px-2 border-b last:border-b-0 ${isIssued ? "bg-green-50/50 dark:bg-green-900/10" : isPastDue ? "bg-red-50/50 dark:bg-red-900/10" : ""}`}>
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className={`text-[9px] px-1 py-0.5 rounded whitespace-nowrap ${isIssued ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : isPastDue ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>
-                                      {isIssued ? "발행완료" : isPastDue ? "미발행(지연)" : "미발행"}
-                                    </span>
-                                    <span className="truncate">{inv.companyName}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-muted-foreground">공급 {fmtComma(inv.supplyAmount || 0)}</span>
-                                    <span className="text-muted-foreground">VAT {fmtComma(inv.taxAmount || 0)}</span>
-                                    <span className="text-blue-600 font-medium">{fmtComma(inv.totalAmount || 0)}원</span>
-                                    <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-stage-${inv.id}`}>
-                                      <X className="h-2.5 w-2.5 text-muted-foreground" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                  {isIssued ? (
-                                    <span className="text-green-700 dark:text-green-400">발행일 {inv.issueDate}</span>
-                                  ) : isEditingDate ? (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-muted-foreground">예정일</span>
-                                      <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-invoice-date-${inv.id}`} />
-                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-invoice-date-${inv.id}`}
-                                        onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}>
-                                        <Check className="h-3 w-3" />
-                                      </Button>
-                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-invoice-date-${inv.id}`}>
-                                        <X className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <span className={`cursor-pointer hover:underline ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
-                                      onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }}
-                                      data-testid={`text-invoice-date-${inv.id}`}>
-                                      {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정 (클릭하여 설정)"}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {stageInvoices.length > 0 && (
-                        <div className="flex items-center justify-end text-[10px] py-1 px-2 bg-muted/10 border-t">
-                          {stageDiff === 0 ? (
-                            <span className="text-green-600 font-medium flex items-center gap-0.5"><Check className="h-2.5 w-2.5" />일치</span>
-                          ) : stageDiff > 0 ? (
-                            <span className="text-orange-600">미발행 공급 {fmtComma(stageDiff)}원</span>
-                          ) : (
-                            <span className="text-red-600">초과 공급 {fmtComma(Math.abs(stageDiff))}원</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Footer totals */}
+              <div className="grid grid-cols-[1fr_90px_90px_64px] items-center px-3 py-2 bg-muted/20 border-t text-[10px]">
+                <span className="text-muted-foreground font-medium">합계</span>
+                <span className="text-right text-muted-foreground">{fmtComma(plannedTotal)}</span>
+                <span className="text-right font-medium">{fmtComma(linkedTotal)}</span>
+                <div className="text-right">
+                  {totalDiff === 0 ? (
+                    <span className="text-green-600 dark:text-green-400 font-medium flex items-center justify-end gap-0.5"><Check className="h-3 w-3" />일치</span>
+                  ) : totalDiff > 0 ? (
+                    <span className="text-orange-600 dark:text-orange-400 font-medium">미달</span>
+                  ) : (
+                    <span className="text-red-600 dark:text-red-400 font-medium">초과</span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center justify-between text-[10px] px-1 pt-1">
-                <span className="text-muted-foreground">연결 합계: 공급 {fmtComma(linkedTotal)} + VAT {fmtComma(Math.round(linkedTotal * 0.1))} = {fmtComma(Math.round(linkedTotal * 1.1))}원</span>
-                {diff === 0 ? (
-                  <span className="text-green-600 font-medium flex items-center gap-0.5"><Check className="h-3 w-3" />일치</span>
-                ) : diff > 0 ? (
-                  <span className="text-orange-600 font-medium">미발행 공급 {fmtComma(diff)}원</span>
-                ) : (
-                  <span className="text-red-600 font-medium">초과 공급 {fmtComma(Math.abs(diff))}원</span>
-                )}
-              </div>
+              {totalDiff !== 0 && (
+                <div className="px-3 pb-2 text-[9px] text-muted-foreground text-right">
+                  {totalDiff > 0 ? `미발행 잔액: 공급 ${fmtComma(totalDiff)}원` : `초과 공급: ${fmtComma(Math.abs(totalDiff))}원`}
+                </div>
+              )}
             </div>
           );
         })()}
 
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium flex items-center gap-1"><Receipt className="h-3 w-3" />매출계산서 ({project.salesInvoices.length})</span>
-            <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => { setShowSalesPicker(!showSalesPicker); setSearchTerm(""); }} data-testid="button-add-sales-invoice">
-              <Plus className="h-3 w-3 mr-0.5" />연결
-            </Button>
-          </div>
-          {showSalesPicker && (
-            <div className="border rounded p-2 mb-2 bg-muted/30 space-y-1">
-              <Input placeholder="거래처 검색..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="h-7 text-xs" data-testid="input-search-sales" />
-              <div className="max-h-32 overflow-y-auto space-y-0.5">
-                {unlinkedSales.slice(0, 20).map(inv => (
-                  <div key={inv.id} className="flex items-center justify-between text-xs py-1 px-1 hover:bg-muted rounded cursor-pointer" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: true })} data-testid={`link-sales-${inv.id}`}>
-                    <span className="truncate">{inv.issueDate} {inv.companyName}</span>
-                    <span className="text-blue-600 ml-2 whitespace-nowrap">{(inv.totalAmount || 0).toLocaleString()}</span>
-                  </div>
-                ))}
-                {unlinkedSales.length === 0 && <div className="text-[10px] text-muted-foreground py-1">연결 가능한 계산서가 없습니다</div>}
-              </div>
-            </div>
-          )}
-          {project.salesInvoices.length > 0 ? (
-            <div className="border rounded overflow-hidden">
-              {project.salesInvoices.map(inv => {
-                const isIssued = !!inv.issueDate;
-                const isPastDue = !isIssued && inv.plannedIssueDate && inv.plannedIssueDate < new Date().toISOString().split("T")[0];
-                const isEditingDate = editingInvoiceDateId === inv.id;
-                return (
-                  <div key={inv.id} className={`text-xs py-1.5 px-2 border-b last:border-b-0 ${isIssued ? "bg-green-50/30 dark:bg-green-900/10" : isPastDue ? "bg-red-50/30 dark:bg-red-900/10" : "hover:bg-muted/30"}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={`text-[9px] px-1 py-0.5 rounded whitespace-nowrap ${isIssued ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : isPastDue ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>
-                          {isIssued ? "발행완료" : isPastDue ? "미발행(지연)" : "미발행"}
-                        </span>
-                        <span className="font-medium truncate">{inv.companyName}</span>
-                        {inv.item && <span className="text-muted-foreground truncate hidden md:inline">({inv.item})</span>}
-                        {inv.invoiceStage && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-600 dark:bg-blue-900/30 whitespace-nowrap">{inv.invoiceStage}</span>}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-blue-600 font-medium whitespace-nowrap">{fmtComma(inv.totalAmount || 0)}원</span>
-                        <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-sales-${inv.id}`}>
-                          <X className="h-3 w-3 text-muted-foreground" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
-                      {isIssued ? (
-                        <span className="text-green-700 dark:text-green-400">발행일 {inv.issueDate}</span>
-                      ) : isEditingDate ? (
-                        <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground">예정일</span>
-                          <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[120px] px-1" data-testid={`input-sales-invoice-date-${inv.id}`} />
-                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-sales-invoice-date-${inv.id}`}
-                            onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}>
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-sales-invoice-date-${inv.id}`}>
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className={`cursor-pointer hover:underline ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
-                          onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }}
-                          data-testid={`text-sales-invoice-date-${inv.id}`}>
-                          {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정 (클릭하여 설정)"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-[10px] text-muted-foreground py-2">연결된 매출계산서가 없습니다</div>
-          )}
-        </div>
 
         <div>
           <div className="flex items-center justify-between mb-1">
