@@ -1,9 +1,9 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -512,6 +512,7 @@ export default function SalesInvoiceList() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [importYear, setImportYear] = useState("");
+  const salesFileInputRef = useRef<HTMLInputElement>(null);
   const [filterYear, setFilterYear] = useState<string>("all");
   const [periodType, setPeriodType] = useState<string>("all");
   const [periodValue, setPeriodValue] = useState<string>("all");
@@ -651,6 +652,30 @@ export default function SalesInvoiceList() {
     },
   });
 
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/sales-invoices/import-upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "업로드 실패");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      toast({ title: "업로드 완료", description: `신규 ${data.imported}건 추가, 중복 ${data.skipped}건 건너뜀 (총 ${data.total}건)` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "업로드 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const data: any = {
@@ -718,6 +743,28 @@ export default function SalesInvoiceList() {
             data-testid="button-open-sales-excel"
           >
             <ExternalLink className="h-4 w-4 mr-1" />엑셀 직접 열기
+          </Button>
+          <input
+            type="file"
+            accept=".xls,.xlsx"
+            ref={salesFileInputRef}
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) uploadMutation.mutate(file);
+              e.target.value = "";
+            }}
+            data-testid="input-upload-sales-excel"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => salesFileInputRef.current?.click()}
+            disabled={uploadMutation.isPending}
+            data-testid="button-upload-sales-excel"
+          >
+            {uploadMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+            {uploadMutation.isPending ? "업로드 중..." : "Excel 업로드"}
           </Button>
           <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-sales-invoice">
             <Plus className="h-4 w-4 mr-1" />추가

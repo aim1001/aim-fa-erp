@@ -22,7 +22,7 @@ import {
   getAuthUrl,
   exchangeCodeForTokens,
 } from "./onedrive";
-import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive } from "./excel-parser";
+import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, parseSalesTaxInvoicesFromBuffer, parsePurchaseTaxInvoicesFromBuffer, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive } from "./excel-parser";
 import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema, insertProjectItemSchema } from "@shared/schema";
 
 declare module "express-session" {
@@ -3754,6 +3754,72 @@ export async function registerRoutes(
     }
   });
 
+  const memUpload = multer({ storage: multer.memoryStorage() });
+
+  app.post("/api/sales-invoices/import-upload", memUpload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "파일을 선택해주세요" });
+
+      const rows = parseSalesTaxInvoicesFromBuffer(req.file.buffer);
+      const allInvoices = await storage.getSalesInvoices();
+
+      const exactKeyMap = new Map<string, typeof allInvoices[0]>();
+      for (const e of allInvoices) {
+        if (e.issueDate) {
+          const key = `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`;
+          exactKeyMap.set(key, e);
+        }
+      }
+
+      const customers = await storage.getCustomers();
+      const customerByBizNum = new Map<string, string>();
+      for (const c of customers) {
+        if (c.businessNumber) {
+          customerByBizNum.set(c.businessNumber.replace(/-/g, ""), c.id);
+        }
+      }
+
+      const processedKeys = new Set<string>();
+      let imported = 0;
+      let skipped = 0;
+
+      for (const row of rows) {
+        if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
+
+        const exactKey = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
+        if (processedKeys.has(exactKey)) { skipped++; continue; }
+        processedKeys.add(exactKey);
+
+        if (exactKeyMap.has(exactKey)) { skipped++; continue; }
+
+        const rowBizClean = row.businessNumber ? row.businessNumber.replace(/-/g, "") : "";
+        const customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
+        const year = row.issueDate ? parseInt(row.issueDate.substring(0, 4)) : null;
+
+        await storage.createSalesInvoice({
+          customerId,
+          issueDate: row.issueDate || null,
+          writeDate: row.writeDate || null,
+          businessNumber: row.businessNumber || null,
+          companyName: row.companyName || null,
+          representative: row.representative || null,
+          address: row.address || null,
+          email1: row.email1 || null,
+          email2: row.email2 || null,
+          year: year || undefined,
+          supplyAmount: row.supplyAmount,
+          taxAmount: row.taxAmount,
+          totalAmount: row.totalAmount,
+        });
+        imported++;
+      }
+
+      res.json({ imported, skipped, total: rows.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/sales-invoices/excel-url", requireAuth, async (req, res) => {
     try {
       const year = req.query.year as string;
@@ -3914,6 +3980,84 @@ export async function registerRoutes(
       }
 
       res.json({ imported, updated, skipped, vendorsCreated, total: rows.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/purchase-invoices/import-upload", memUpload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "파일을 선택해주세요" });
+
+      const rows = parsePurchaseTaxInvoicesFromBuffer(req.file.buffer);
+      const allInvoices = await storage.getPurchaseInvoices();
+
+      const exactKeyMap = new Map<string, typeof allInvoices[0]>();
+      for (const e of allInvoices) {
+        if (e.issueDate) {
+          const key = `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`;
+          exactKeyMap.set(key, e);
+        }
+      }
+
+      const vendors = await storage.getVendors();
+      const vendorByBizNum = new Map<string, string>();
+      for (const v of vendors) {
+        if (v.businessNumber) {
+          vendorByBizNum.set(v.businessNumber.replace(/-/g, ""), v.id);
+        }
+      }
+
+      const processedKeys = new Set<string>();
+      let imported = 0;
+      let skipped = 0;
+      let vendorsCreated = 0;
+
+      for (const row of rows) {
+        if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
+
+        const exactKey = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
+        if (processedKeys.has(exactKey)) { skipped++; continue; }
+        processedKeys.add(exactKey);
+
+        if (exactKeyMap.has(exactKey)) { skipped++; continue; }
+
+        const bizNumClean = row.businessNumber ? row.businessNumber.replace(/-/g, "") : "";
+        let vendorId = bizNumClean ? vendorByBizNum.get(bizNumClean) || null : null;
+
+        if (!vendorId && bizNumClean && row.companyName) {
+          const newVendor = await storage.createVendor({
+            companyName: row.companyName,
+            businessNumber: row.businessNumber || null,
+            representative: row.representative || null,
+            address: row.address || null,
+            contactEmail: row.email1 || null,
+          });
+          vendorId = newVendor.id;
+          vendorByBizNum.set(bizNumClean, newVendor.id);
+          vendorsCreated++;
+        }
+
+        const year = row.issueDate ? parseInt(row.issueDate.substring(0, 4)) : null;
+
+        await storage.createPurchaseInvoice({
+          vendorId,
+          issueDate: row.issueDate || null,
+          writeDate: row.writeDate || null,
+          businessNumber: row.businessNumber || null,
+          companyName: row.companyName || null,
+          representative: row.representative || null,
+          address: row.address || null,
+          email1: row.email1 || null,
+          year: year || undefined,
+          supplyAmount: row.supplyAmount,
+          taxAmount: row.taxAmount,
+          totalAmount: row.totalAmount,
+        });
+        imported++;
+      }
+
+      res.json({ imported, skipped, vendorsCreated, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -231,6 +231,14 @@ function parseInvoiceSheet(
   return results;
 }
 
+export function parseSalesTaxInvoicesFromBuffer(buffer: Buffer): TaxInvoiceRow[] {
+  return parseInvoiceSheet(buffer, parseSalesInvoiceRow);
+}
+
+export function parsePurchaseTaxInvoicesFromBuffer(buffer: Buffer): TaxInvoiceRow[] {
+  return parseInvoiceSheet(buffer, parsePurchaseInvoiceRow);
+}
+
 export async function parseSalesTaxInvoices(year: number): Promise<TaxInvoiceRow[]> {
   const basePath = `4.경영지원/database/${year}`;
   const files = await listFilesByPath(basePath);
