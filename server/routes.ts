@@ -3629,12 +3629,24 @@ export async function registerRoutes(
         customerById.set(c.id, c);
       }
 
+      const allProjects = await storage.getProjects();
+      const activeProjects = allProjects.filter(p => p.status === "active" || p.status === "진행");
+      const projectsByCustomerId = new Map<string, typeof activeProjects>();
+      for (const p of activeProjects) {
+        if (p.customerId) {
+          const existing = projectsByCustomerId.get(p.customerId) || [];
+          existing.push(p);
+          projectsByCustomerId.set(p.customerId, existing);
+        }
+      }
+
       const matchedIds = new Set<string>();
       const processedKeys = new Set<string>();
       let imported = 0;
       let matched = 0;
       let updated = 0;
       let skipped = 0;
+      let autoLinked = 0;
 
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
@@ -3730,8 +3742,18 @@ export async function registerRoutes(
 
         const customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
 
+        let autoProjectId: string | null = null;
+        if (customerId) {
+          const candidateProjects = projectsByCustomerId.get(customerId) || [];
+          if (candidateProjects.length === 1) {
+            autoProjectId = candidateProjects[0].id;
+            autoLinked++;
+          }
+        }
+
         await storage.createSalesInvoice({
           customerId,
+          projectId: autoProjectId || undefined,
           issueDate: row.issueDate || null,
           writeDate: row.writeDate || null,
           businessNumber: row.businessNumber || null,
@@ -3748,7 +3770,7 @@ export async function registerRoutes(
         imported++;
       }
 
-      res.json({ imported, matched, updated, skipped, total: rows.length });
+      res.json({ imported, matched, updated, skipped, autoLinked, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -3800,11 +3822,23 @@ export async function registerRoutes(
         customerById.set(c.id, c);
       }
 
+      const allProjects = await storage.getProjects();
+      const activeProjects = allProjects.filter(p => p.status === "active" || p.status === "진행");
+      const projectsByCustomerId = new Map<string, typeof activeProjects>();
+      for (const p of activeProjects) {
+        if (p.customerId) {
+          const existing = projectsByCustomerId.get(p.customerId) || [];
+          existing.push(p);
+          projectsByCustomerId.set(p.customerId, existing);
+        }
+      }
+
       const matchedIds = new Set<string>();
       const processedKeys = new Set<string>();
       let imported = 0;
       let matched = 0;
       let skipped = 0;
+      let autoLinked = 0;
 
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
@@ -3873,8 +3907,18 @@ export async function registerRoutes(
         const customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
         const year = row.issueDate ? parseInt(row.issueDate.substring(0, 4)) : null;
 
+        let autoProjectId: string | null = null;
+        if (customerId) {
+          const candidateProjects = projectsByCustomerId.get(customerId) || [];
+          if (candidateProjects.length === 1) {
+            autoProjectId = candidateProjects[0].id;
+            autoLinked++;
+          }
+        }
+
         await storage.createSalesInvoice({
           customerId,
+          projectId: autoProjectId || undefined,
           issueDate: row.issueDate || null,
           writeDate: row.writeDate || null,
           businessNumber: row.businessNumber || null,
@@ -3891,7 +3935,7 @@ export async function registerRoutes(
         imported++;
       }
 
-      res.json({ imported, matched, skipped, total: rows.length });
+      res.json({ imported, matched, skipped, autoLinked, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
