@@ -3612,7 +3612,7 @@ export async function registerRoutes(
       const exactKeyMap = new Map<string, typeof existing[0]>();
       for (const e of existing) {
         if (e.issueDate) {
-          const key = `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`;
+          const key = `${e.issueDate}|${(e.businessNumber || "").replace(/-/g, "")}|${e.supplyAmount}`;
           exactKeyMap.set(key, e);
         }
       }
@@ -3639,7 +3639,7 @@ export async function registerRoutes(
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
 
-        const exactKey = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
+        const exactKey = `${row.issueDate}|${(row.businessNumber || "").replace(/-/g, "")}|${row.supplyAmount}`;
         if (processedKeys.has(exactKey)) { skipped++; continue; }
         processedKeys.add(exactKey);
 
@@ -3783,33 +3783,93 @@ export async function registerRoutes(
       const exactKeyMap = new Map<string, typeof allInvoices[0]>();
       for (const e of allInvoices) {
         if (e.issueDate) {
-          const key = `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`;
+          const key = `${e.issueDate}|${(e.businessNumber || "").replace(/-/g, "")}|${e.supplyAmount}`;
           exactKeyMap.set(key, e);
         }
       }
 
+      const pendingInvoices = allInvoices.filter(e => !e.issueDate && e.projectId);
+
       const customers = await storage.getCustomers();
       const customerByBizNum = new Map<string, string>();
+      const customerById = new Map<string, typeof customers[0]>();
       for (const c of customers) {
         if (c.businessNumber) {
           customerByBizNum.set(c.businessNumber.replace(/-/g, ""), c.id);
         }
+        customerById.set(c.id, c);
       }
 
+      const matchedIds = new Set<string>();
       const processedKeys = new Set<string>();
       let imported = 0;
+      let matched = 0;
       let skipped = 0;
 
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
 
-        const exactKey = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
+        const rowBizClean = (row.businessNumber || "").replace(/-/g, "");
+        const exactKey = `${row.issueDate}|${rowBizClean}|${row.supplyAmount}`;
+
         if (processedKeys.has(exactKey)) { skipped++; continue; }
         processedKeys.add(exactKey);
 
-        if (exactKeyMap.has(exactKey)) { skipped++; continue; }
+        const exactMatch = exactKeyMap.get(exactKey);
+        if (exactMatch && !matchedIds.has(exactMatch.id)) {
+          matchedIds.add(exactMatch.id);
+          skipped++;
+          continue;
+        }
 
-        const rowBizClean = row.businessNumber ? row.businessNumber.replace(/-/g, "") : "";
+        const rowCompanyLower = (row.companyName || "").toLowerCase().trim();
+
+        const pendingCandidates = pendingInvoices.filter(p => {
+          if (matchedIds.has(p.id)) return false;
+          const pBizClean = (p.businessNumber || "").replace(/-/g, "");
+          const pCompanyLower = (p.companyName || "").toLowerCase().trim();
+
+          let custBizClean = "";
+          if (p.customerId) {
+            const cust = customerById.get(p.customerId);
+            if (cust?.businessNumber) custBizClean = cust.businessNumber.replace(/-/g, "");
+          }
+
+          const bizMatch = rowBizClean && (pBizClean === rowBizClean || custBizClean === rowBizClean);
+          const nameMatch = rowCompanyLower && pCompanyLower && pCompanyLower === rowCompanyLower;
+          if (!bizMatch && !nameMatch) return false;
+
+          const amountDiff = Math.abs((p.supplyAmount || 0) - row.supplyAmount);
+          const threshold = Math.abs(row.supplyAmount) * 0.05;
+          return amountDiff <= threshold;
+        });
+
+        if (pendingCandidates.length >= 1) {
+          const best = pendingCandidates.length === 1
+            ? pendingCandidates[0]
+            : pendingCandidates.reduce((a, b) => {
+                const diffA = Math.abs((a.supplyAmount || 0) - row.supplyAmount);
+                const diffB = Math.abs((b.supplyAmount || 0) - row.supplyAmount);
+                return diffB < diffA ? b : a;
+              });
+          matchedIds.add(best.id);
+          await storage.updateSalesInvoice(best.id, {
+            issueDate: row.issueDate || null,
+            writeDate: row.writeDate || null,
+            businessNumber: row.businessNumber || null,
+            companyName: row.companyName || null,
+            representative: row.representative || null,
+            address: row.address || null,
+            email1: row.email1 || null,
+            email2: row.email2 || null,
+            supplyAmount: row.supplyAmount,
+            taxAmount: row.taxAmount,
+            totalAmount: row.totalAmount,
+          });
+          matched++;
+          continue;
+        }
+
         const customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
         const year = row.issueDate ? parseInt(row.issueDate.substring(0, 4)) : null;
 
@@ -3831,7 +3891,7 @@ export async function registerRoutes(
         imported++;
       }
 
-      res.json({ imported, skipped, total: rows.length });
+      res.json({ imported, matched, skipped, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -3863,10 +3923,11 @@ export async function registerRoutes(
       const exactKeyMap = new Map<string, typeof existing[0]>();
       const partialKeyMap = new Map<string, typeof existing[0][]>();
       for (const e of existing) {
-        const exactKey = `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`;
+        const bizClean = (e.businessNumber || "").replace(/-/g, "");
+        const exactKey = `${e.issueDate}|${bizClean}|${e.supplyAmount}`;
         exactKeyMap.set(exactKey, e);
 
-        const partialKey = `${e.issueDate}|${e.businessNumber}`;
+        const partialKey = `${e.issueDate}|${bizClean}`;
         if (!partialKeyMap.has(partialKey)) partialKeyMap.set(partialKey, []);
         partialKeyMap.get(partialKey)!.push(e);
       }
@@ -3888,7 +3949,8 @@ export async function registerRoutes(
       const processedExactKeys = new Set<string>();
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
-        const exactKey = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
+        const rowBizClean = (row.businessNumber || "").replace(/-/g, "");
+        const exactKey = `${row.issueDate}|${rowBizClean}|${row.supplyAmount}`;
 
         if (processedExactKeys.has(exactKey)) { skipped++; continue; }
         processedExactKeys.add(exactKey);
@@ -3921,7 +3983,7 @@ export async function registerRoutes(
           continue;
         }
 
-        const partialKey = `${row.issueDate}|${row.businessNumber}`;
+        const partialKey = `${row.issueDate}|${rowBizClean}`;
         const candidates = partialKeyMap.get(partialKey) || [];
         const unmatched = candidates.filter(c => !matchedIds.has(c.id));
 
@@ -4017,7 +4079,7 @@ export async function registerRoutes(
       const exactKeyMap = new Map<string, typeof allInvoices[0]>();
       for (const e of allInvoices) {
         if (e.issueDate) {
-          const key = `${e.issueDate}|${e.businessNumber}|${e.supplyAmount}`;
+          const key = `${e.issueDate}|${(e.businessNumber || "").replace(/-/g, "")}|${e.supplyAmount}`;
           exactKeyMap.set(key, e);
         }
       }
@@ -4038,13 +4100,13 @@ export async function registerRoutes(
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
 
-        const exactKey = `${row.issueDate}|${row.businessNumber}|${row.supplyAmount}`;
+        const bizNumClean = (row.businessNumber || "").replace(/-/g, "");
+        const exactKey = `${row.issueDate}|${bizNumClean}|${row.supplyAmount}`;
         if (processedKeys.has(exactKey)) { skipped++; continue; }
         processedKeys.add(exactKey);
 
         if (exactKeyMap.has(exactKey)) { skipped++; continue; }
 
-        const bizNumClean = row.businessNumber ? row.businessNumber.replace(/-/g, "") : "";
         let vendorId = bizNumClean ? vendorByBizNum.get(bizNumClean) || null : null;
 
         if (!vendorId && bizNumClean && row.companyName) {

@@ -541,6 +541,16 @@ export default function SalesInvoiceList() {
     return map;
   }, [allProjects]);
 
+  const projectInvoiceSums = useMemo(() => {
+    const sums = new Map<string, number>();
+    invoices?.forEach(inv => {
+      if (inv.projectId) {
+        sums.set(inv.projectId, (sums.get(inv.projectId) || 0) + (inv.totalAmount || 0));
+      }
+    });
+    return sums;
+  }, [invoices]);
+
   const customerMap = useMemo(() => {
     const map = new Map<string, string>();
     customers?.forEach(c => map.set(c.id, c.companyName));
@@ -669,7 +679,10 @@ export default function SalesInvoiceList() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
-      toast({ title: "업로드 완료", description: `신규 ${data.imported}건 추가, 중복 ${data.skipped}건 건너뜀 (총 ${data.total}건)` });
+      const parts = [`신규 ${data.imported}건 추가`];
+      if (data.matched > 0) parts.push(`${data.matched}건 미발행→발행 매칭`);
+      parts.push(`중복 ${data.skipped}건 건너뜀`);
+      toast({ title: "업로드 완료", description: `${parts.join(", ")} (총 ${data.total}건)` });
     },
     onError: (err: Error) => {
       toast({ title: "업로드 실패", description: err.message, variant: "destructive" });
@@ -924,11 +937,34 @@ export default function SalesInvoiceList() {
                     ) : <span className="text-muted-foreground/50">-</span>}
                   </td>
                   <td className="py-2.5 px-4 hidden md:table-cell">
-                    {inv.projectId && projectMap.get(inv.projectId) ? (
-                      <span className="text-xs font-medium text-muted-foreground" data-testid={`text-project-${inv.id}`}>
-                        {projectMap.get(inv.projectId)!.projectNumber} {projectMap.get(inv.projectId)!.customerName}
-                      </span>
-                    ) : <span className="text-xs text-muted-foreground/50">-</span>}
+                    {inv.projectId && projectMap.get(inv.projectId) ? (() => {
+                      const proj = projectMap.get(inv.projectId)!;
+                      const contractAmt = proj.totalAmount || 0;
+                      const invoicedAmt = projectInvoiceSums.get(inv.projectId) || 0;
+                      const diff = contractAmt > 0 ? invoicedAmt - contractAmt : null;
+                      return (
+                        <div className="flex flex-col gap-0.5" data-testid={`text-project-${inv.id}`}>
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {proj.projectNumber} {proj.customerName}
+                          </span>
+                          {contractAmt > 0 && (
+                            <span className={`text-[10px] ${
+                              diff === null ? "text-muted-foreground" :
+                              diff === 0 ? "text-green-600 dark:text-green-400" :
+                              diff > 0 ? "text-orange-600 dark:text-orange-400" :
+                              "text-blue-600 dark:text-blue-400"
+                            }`}>
+                              계약 {contractAmt.toLocaleString()}원
+                              {diff !== null && diff !== 0 && (
+                                <span className="ml-1">
+                                  ({diff > 0 ? "+" : ""}{diff.toLocaleString()})
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })() : <span className="text-xs text-muted-foreground/50">-</span>}
                   </td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{inv.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.supplyAmount)}</td>
