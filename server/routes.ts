@@ -3754,9 +3754,26 @@ export async function registerRoutes(
     }
   });
 
-  const memUpload = multer({ storage: multer.memoryStorage() });
+  const memUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = [".xls", ".xlsx"];
+      const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf("."));
+      if (allowed.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error("xls 또는 xlsx 파일만 업로드 가능합니다"));
+      }
+    },
+  });
 
-  app.post("/api/sales-invoices/import-upload", memUpload.single("file"), async (req, res) => {
+  app.post("/api/sales-invoices/import-upload", (req, res, next) => {
+    memUpload.single("file")(req, res, (err) => {
+      if (err) return res.status(400).json({ message: err.message });
+      next();
+    });
+  }, async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "파일을 선택해주세요" });
 
@@ -3985,7 +4002,12 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/purchase-invoices/import-upload", memUpload.single("file"), async (req, res) => {
+  app.post("/api/purchase-invoices/import-upload", (req, res, next) => {
+    memUpload.single("file")(req, res, (err) => {
+      if (err) return res.status(400).json({ message: err.message });
+      next();
+    });
+  }, async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "파일을 선택해주세요" });
 
