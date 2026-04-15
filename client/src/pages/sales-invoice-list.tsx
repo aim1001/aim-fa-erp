@@ -948,16 +948,17 @@ export default function SalesInvoiceList() {
                             {proj.projectNumber} {proj.customerName}
                           </span>
                           {contractAmt > 0 && (
-                            <span className={`text-[10px] ${
-                              diff === null ? "text-muted-foreground" :
-                              diff === 0 ? "text-green-600 dark:text-green-400" :
-                              diff > 0 ? "text-orange-600 dark:text-orange-400" :
-                              "text-blue-600 dark:text-blue-400"
-                            }`}>
+                            <span className="text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
                               계약 {contractAmt.toLocaleString()}원
-                              {diff !== null && diff !== 0 && (
-                                <span className="ml-1">
-                                  ({diff > 0 ? "+" : ""}{diff.toLocaleString()})
+                              {diff !== null && (
+                                <span className={`px-1 py-0.5 rounded font-medium ${
+                                  diff === 0
+                                    ? "bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400"
+                                    : diff > 0
+                                    ? "bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                                    : "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                                }`}>
+                                  {diff === 0 ? "일치" : diff > 0 ? `초과 +${diff.toLocaleString()}` : `미달 ${diff.toLocaleString()}`}
                                 </span>
                               )}
                             </span>
