@@ -413,7 +413,7 @@ export function BankTransactionsTab() {
               {transactions.map(tx => (
                 <Fragment key={tx.id}>
                   <tr
-                    className="hover:bg-muted/30 cursor-pointer transition-colors"
+                    className="group hover:bg-muted/30 cursor-pointer transition-colors"
                     onClick={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
                     data-testid={`tx-row-${tx.id}`}
                   >

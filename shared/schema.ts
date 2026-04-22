@@ -822,7 +822,7 @@ export type BankAccount = typeof bankAccounts.$inferSelect;
 
 export const bankTransactions = pgTable("bank_transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  accountId: varchar("account_id"),
+  accountId: varchar("account_id").notNull().references(() => bankAccounts.id),
   txDate: text("tx_date").notNull(),
   txTime: text("tx_time"),
   description: text("description"),

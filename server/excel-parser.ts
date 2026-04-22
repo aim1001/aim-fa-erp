@@ -781,6 +781,7 @@ export function parseKBBankStatementFromBuffer(buffer: Buffer): KBBankTransactio
   let headerRow = -1;
   let dateCol = -1, timeCol = -1, descCol = -1, counterpartyCol = -1;
   let debitCol = -1, creditCol = -1, balanceCol = -1;
+  let directionCol = -1, amountCol = -1;
 
   for (let r = range.s.r; r <= Math.min(range.s.r + 10, range.e.r); r++) {
     const rowVals: string[] = [];
@@ -794,13 +795,15 @@ export function parseKBBankStatementFromBuffer(buffer: Buffer): KBBankTransactio
         const h = rowVals[c - range.s.c];
         if (h.includes("거래일") || h === "날짜") dateCol = c;
         else if (h.includes("시각") || h.includes("시간") || h === "거래시각") timeCol = c;
-        else if (h.includes("찾으신") || h.includes("출금") || h === "출금액" || h === "지급금액") debitCol = c;
-        else if (h.includes("맡기신") || h.includes("입금") || h === "입금액" || h === "수취금액") creditCol = c;
+        else if (h === "입출금구분" || h === "구분") directionCol = c;
+        else if (h.includes("찾으신") || (h.includes("출금") && !h.includes("입출금"))) debitCol = c;
+        else if (h.includes("맡기신") || (h.includes("입금") && !h.includes("입출금"))) creditCol = c;
+        else if (h === "거래금액" || h === "금액" || h === "거래액") amountCol = c;
         else if (h.includes("잔액") || h.includes("잔고")) balanceCol = c;
         else if (h.includes("기재내용") || h.includes("내용") || h.includes("메모") || h.includes("이름")) {
           if (counterpartyCol === -1) counterpartyCol = c;
         }
-        else if (h.includes("적요") || h.includes("거래내용") || h.includes("구분")) {
+        else if (h.includes("적요") || h.includes("거래내용")) {
           if (descCol === -1) descCol = c;
         }
       }
@@ -815,7 +818,7 @@ export function parseKBBankStatementFromBuffer(buffer: Buffer): KBBankTransactio
 
   if (descCol === -1 && counterpartyCol === -1) {
     for (let c = range.s.c; c <= range.e.c; c++) {
-      if (c !== dateCol && c !== timeCol && c !== debitCol && c !== creditCol && c !== balanceCol) {
+      if (c !== dateCol && c !== timeCol && c !== debitCol && c !== creditCol && c !== balanceCol && c !== directionCol && c !== amountCol) {
         if (descCol === -1) { descCol = c; continue; }
         if (counterpartyCol === -1) { counterpartyCol = c; break; }
       }
@@ -832,8 +835,21 @@ export function parseKBBankStatementFromBuffer(buffer: Buffer): KBBankTransactio
     const txTime = timeCol >= 0 ? (getCellStr(r, timeCol) || null) : null;
     const description = descCol >= 0 ? (getCellStr(r, descCol) || null) : null;
     const counterparty = counterpartyCol >= 0 ? (getCellStr(r, counterpartyCol) || null) : null;
-    const debitAmount = debitCol >= 0 ? normalizeBankAmount(getCell(r, debitCol)) : 0;
-    const creditAmount = creditCol >= 0 ? normalizeBankAmount(getCell(r, creditCol)) : 0;
+
+    let debitAmount = 0, creditAmount = 0;
+    if (debitCol >= 0 || creditCol >= 0) {
+      debitAmount = debitCol >= 0 ? normalizeBankAmount(getCell(r, debitCol)) : 0;
+      creditAmount = creditCol >= 0 ? normalizeBankAmount(getCell(r, creditCol)) : 0;
+    } else if (directionCol >= 0 && amountCol >= 0) {
+      const direction = getCellStr(r, directionCol);
+      const amount = normalizeBankAmount(getCell(r, amountCol));
+      if (direction.includes("입금") || direction === "입") {
+        creditAmount = amount;
+      } else if (direction.includes("출금") || direction === "출") {
+        debitAmount = amount;
+      }
+    }
+
     const balance = balanceCol >= 0 ? normalizeBankAmount(getCell(r, balanceCol)) : null;
 
     if (debitAmount === 0 && creditAmount === 0) continue;
