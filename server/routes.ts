@@ -22,7 +22,7 @@ import {
   getAuthUrl,
   exchangeCodeForTokens,
 } from "./onedrive";
-import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, parseSalesTaxInvoicesFromBuffer, parsePurchaseTaxInvoicesFromBuffer, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive, parseKBBankStatementFromBuffer } from "./excel-parser";
+import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, parseSalesTaxInvoicesFromBuffer, parsePurchaseTaxInvoicesFromBuffer, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive, parseKBBankStatementFromBuffer, parseKBBankAccountInfo } from "./excel-parser";
 import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema, insertProjectItemSchema } from "@shared/schema";
 
 declare module "express-session" {
@@ -7699,6 +7699,80 @@ export async function registerRoutes(
       res.json({ total: parsed.length, inserted: inserted.length, skipped: parsed.length - inserted.length });
     } catch (err: any) {
       console.error("[bank import]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-transactions/import-auto", bankUpload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "파일이 필요합니다" });
+
+      // 1. Parse account info from file header
+      const accountInfo = parseKBBankAccountInfo(req.file.buffer);
+
+      // 2. Find matching existing account by account number or create new one
+      const accounts = await storage.getBankAccounts();
+      let account = accounts.find(a =>
+        accountInfo.accountNumber &&
+        a.accountNumber &&
+        a.accountNumber.replace(/-/g, "") === accountInfo.accountNumber.replace(/-/g, "")
+      );
+      let isNew = false;
+      if (!account) {
+        account = await storage.createBankAccount({
+          bankName: accountInfo.bankName,
+          accountNumber: accountInfo.accountNumber,
+          accountAlias: accountInfo.accountAlias,
+          isActive: true,
+        });
+        isNew = true;
+      }
+
+      // 3. Parse and import transactions
+      const parsed = parseKBBankStatementFromBuffer(req.file.buffer);
+      if (parsed.length === 0) {
+        return res.json({ accountId: account.id, accountAlias: account.accountAlias, isNew, total: 0, inserted: 0, skipped: 0 });
+      }
+
+      const seenHashes = new Set<string>();
+      const uniqueParsed = parsed.filter(r => {
+        if (seenHashes.has(r.importHash)) return false;
+        seenHashes.add(r.importHash);
+        return true;
+      });
+
+      const hashes = uniqueParsed.map(r => r.importHash);
+      const existing = await storage.getBankTransactionsByHash(account.id, hashes);
+      const existingHashes = new Set(existing.map(e => e.importHash));
+
+      const importBatch = new Date().toISOString().slice(0, 19).replace("T", " ");
+      const toInsert = uniqueParsed
+        .filter(r => !existingHashes.has(r.importHash))
+        .map(r => ({
+          accountId: account!.id,
+          txDate: r.txDate,
+          txTime: r.txTime,
+          description: r.description,
+          counterparty: r.counterparty,
+          debitAmount: r.debitAmount,
+          creditAmount: r.creditAmount,
+          balance: r.balance,
+          importHash: r.importHash,
+          importBatch,
+          matchStatus: "unmatched",
+        }));
+
+      const inserted = await storage.createBankTransactions(toInsert);
+      res.json({
+        accountId: account.id,
+        accountAlias: account.accountAlias,
+        isNew,
+        total: parsed.length,
+        inserted: inserted.length,
+        skipped: uniqueParsed.length - inserted.length,
+      });
+    } catch (err: any) {
+      console.error("[bank import-auto]", err);
       res.status(500).json({ message: err.message });
     }
   });

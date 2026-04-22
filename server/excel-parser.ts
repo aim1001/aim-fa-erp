@@ -759,6 +759,71 @@ function makeImportHash(txDate: string, debit: number, credit: number, descripti
   return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 32);
 }
 
+export interface KBBankAccountInfo {
+  bankName: string;
+  accountNumber: string | null;
+  accountAlias: string;
+}
+
+export function parseKBBankAccountInfo(buffer: Buffer): KBBankAccountInfo {
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false, raw: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const result: KBBankAccountInfo = { bankName: "KB국민은행", accountNumber: null, accountAlias: "KB국민은행" };
+  if (!sheet) return result;
+
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  const scanRows = Math.min(range.s.r + 15, range.e.r);
+
+  for (let r = range.s.r; r <= scanRows; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      if (!cell || cell.v === undefined) continue;
+      const val = String(cell.v).trim();
+
+      // Account number patterns: "계좌번호", "계좌", digits with dashes
+      if (/계좌번호/.test(val) || /계좌\s*:/.test(val)) {
+        // Look for account number in same cell or adjacent cells
+        const numMatch = val.match(/[\d]{3,4}[-\s][\d]{2,4}[-\s][\d]{4,}/);
+        if (numMatch) { result.accountNumber = numMatch[0].replace(/\s+/g, "-"); continue; }
+        // Check next cell
+        for (let nc = c + 1; nc <= Math.min(c + 3, range.e.c); nc++) {
+          const nc_cell = sheet[XLSX.utils.encode_cell({ r, c: nc })];
+          if (nc_cell && nc_cell.v !== undefined) {
+            const nv = String(nc_cell.v).trim();
+            const nm = nv.match(/[\d]{3,4}[-\s][\d]{2,4}[-\s][\d]{4,}/);
+            if (nm) { result.accountNumber = nm[0].replace(/\s+/g, "-"); break; }
+          }
+        }
+      }
+      // Bank name detection
+      if (/국민은행|KB/.test(val) && !result.bankName.includes("국민")) {
+        result.bankName = "KB국민은행";
+      }
+      // Account alias from 예금주/명의 or 계좌명 patterns
+      if (/예금주|명의|계좌명/.test(val)) {
+        for (let nc = c + 1; nc <= Math.min(c + 2, range.e.c); nc++) {
+          const nc_cell = sheet[XLSX.utils.encode_cell({ r, c: nc })];
+          if (nc_cell && nc_cell.v !== undefined) {
+            const nv = String(nc_cell.v).trim();
+            if (nv && nv.length > 1 && nv.length < 30) {
+              result.accountAlias = nv;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Build a readable alias if not found
+  if (result.accountAlias === "KB국민은행" && result.accountNumber) {
+    const last4 = result.accountNumber.replace(/-/g, "").slice(-4);
+    result.accountAlias = `KB국민은행 (${last4})`;
+  }
+
+  return result;
+}
+
 export function parseKBBankStatementFromBuffer(buffer: Buffer): KBBankTransactionRow[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false, raw: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];

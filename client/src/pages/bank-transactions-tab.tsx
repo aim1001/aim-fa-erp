@@ -228,6 +228,110 @@ function ImportDialog({ accountId, accountAlias, open, onOpenChange }: {
   );
 }
 
+function QuickImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<{ accountAlias: string; isNew: boolean; inserted: number; skipped: number; total: number } | null>(null);
+
+  const handleClose = () => {
+    setSelectedFile(null);
+    setResult(null);
+    onOpenChange(false);
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile) return;
+    setImporting(true);
+    setResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      const res = await fetch("/api/bank-transactions/import-auto", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Import failed");
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      setResult(data);
+    } catch (err: any) {
+      toast({ title: "가져오기 실패", description: err.message, variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader><DialogTitle>파일로 바로 가져오기</DialogTitle></DialogHeader>
+        {result ? (
+          <div className="space-y-3">
+            <div className="rounded-lg bg-muted/50 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                <span>{result.accountAlias}</span>
+                {result.isNew && <Badge variant="outline" className="text-xs">신규 계좌</Badge>}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <span className="text-foreground font-medium">{result.inserted}건</span> 추가됨
+                {result.skipped > 0 && <span className="ml-2 text-xs">(중복 {result.skipped}건 제외)</span>}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground">
+              KB국민은행 거래내역 파일을 선택하면 계좌를 자동으로 인식하고 거래내역을 가져옵니다.
+            </div>
+            <div
+              className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <div className="text-sm text-muted-foreground mb-2">
+                Excel(.xlsx, .xls) 또는 CSV 파일
+              </div>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={e => setSelectedFile(e.target.files?.[0] ?? null)}
+                data-testid="input-quick-bank-file"
+              />
+              <Button variant="outline" size="sm" onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}>
+                파일 선택
+              </Button>
+              {selectedFile && (
+                <div className="mt-2 text-sm font-medium text-foreground truncate">{selectedFile.name}</div>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 space-y-1">
+              <div>• 계좌번호가 파일에 있으면 자동 인식합니다</div>
+              <div>• 이미 등록된 계좌이면 해당 계좌로 추가됩니다</div>
+              <div>• 중복 거래내역은 자동으로 건너뜁니다</div>
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          {result ? (
+            <Button onClick={handleClose} data-testid="button-quick-import-done">확인</Button>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={handleClose}>취소</Button>
+              <Button onClick={handleImport} disabled={!selectedFile || importing} data-testid="button-confirm-quick-import">
+                {importing ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+                가져오기
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function BankTransactionsTab() {
   const { toast } = useToast();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
@@ -236,6 +340,7 @@ export function BankTransactionsTab() {
   const [txType, setTxType] = useState<"all" | "credit" | "debit">("all");
   const [showAccountManager, setShowAccountManager] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showQuickImport, setShowQuickImport] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<BankAccount[]>({
@@ -348,12 +453,15 @@ export function BankTransactionsTab() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowQuickImport(true)} data-testid="button-quick-import">
+            <Upload className="h-4 w-4 mr-1" /> 파일로 바로 가져오기
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowAccountManager(true)} data-testid="button-manage-accounts">
             <Building2 className="h-4 w-4 mr-1" /> 계좌 관리
           </Button>
           {selectedAccountId && (
             <Button size="sm" onClick={() => setShowImport(true)} data-testid="button-import-transactions">
-              <Upload className="h-4 w-4 mr-1" /> 거래내역 가져오기
+              <Upload className="h-4 w-4 mr-1" /> 가져오기
             </Button>
           )}
         </div>
@@ -378,9 +486,12 @@ export function BankTransactionsTab() {
 
       {!selectedAccountId ? (
         <div className="text-center py-16 text-muted-foreground">
-          <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <div className="text-sm">계좌를 선택하세요</div>
-          <div className="text-xs mt-1">계좌가 없으면 "계좌 관리"에서 먼저 추가하세요</div>
+          <Upload className="h-12 w-12 mx-auto mb-3 opacity-30" />
+          <div className="text-sm font-medium text-foreground">거래내역 파일을 바로 가져오세요</div>
+          <div className="text-xs mt-1 mb-4">"파일로 바로 가져오기"를 클릭하면 계좌가 자동으로 등록됩니다</div>
+          <Button size="sm" onClick={() => setShowQuickImport(true)} data-testid="button-empty-quick-import">
+            <Upload className="h-4 w-4 mr-1" /> 파일로 바로 가져오기
+          </Button>
         </div>
       ) : txLoading ? (
         <div className="space-y-2">
@@ -500,7 +611,8 @@ export function BankTransactionsTab() {
         </div>
       )}
 
-      <AccountManagerDialog open={showAccountManager} onOpenChange={setShowAccountManager} />
+      <AccountManagerDialog open={showAccountManager} onOpenChange={v => { setShowAccountManager(v); if (!v) queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] }); }} />
+      <QuickImportDialog open={showQuickImport} onOpenChange={setShowQuickImport} />
       {selectedAccountId && selectedAccount && (
         <ImportDialog
           accountId={selectedAccountId}
