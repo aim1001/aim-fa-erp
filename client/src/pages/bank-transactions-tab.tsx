@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useRef } from "react";
+import { useState, useRef, Fragment } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -411,9 +411,8 @@ export function BankTransactionsTab() {
             </thead>
             <tbody className="divide-y">
               {transactions.map(tx => (
-                <>
+                <Fragment key={tx.id}>
                   <tr
-                    key={tx.id}
                     className="hover:bg-muted/30 cursor-pointer transition-colors"
                     onClick={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
                     data-testid={`tx-row-${tx.id}`}
@@ -494,7 +493,7 @@ export function BankTransactionsTab() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

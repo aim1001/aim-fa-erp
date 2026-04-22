@@ -7617,7 +7617,7 @@ export async function registerRoutes(
       if (parsed.length === 0) return res.status(400).json({ message: "파싱된 거래내역이 없습니다. 파일 형식을 확인해주세요." });
 
       const hashes = parsed.map(r => r.importHash);
-      const existing = await storage.getBankTransactionsByHash(hashes);
+      const existing = await storage.getBankTransactionsByHash(accountId, hashes);
       const existingHashes = new Set(existing.map(e => e.importHash));
 
       const importBatch = new Date().toISOString().slice(0, 19).replace("T", " ");

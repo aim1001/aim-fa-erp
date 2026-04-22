@@ -302,7 +302,7 @@ export interface IStorage {
   deleteBankAccount(id: string): Promise<void>;
 
   getBankTransactions(filters?: { accountId?: string; startDate?: string; endDate?: string; txType?: "credit" | "debit"; limit?: number; offset?: number }): Promise<BankTransaction[]>;
-  getBankTransactionsByHash(hashes: string[]): Promise<BankTransaction[]>;
+  getBankTransactionsByHash(accountId: string, hashes: string[]): Promise<BankTransaction[]>;
   createBankTransactions(rows: InsertBankTransaction[]): Promise<BankTransaction[]>;
   updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined>;
   deleteBankTransaction(id: string): Promise<void>;
@@ -1649,10 +1649,15 @@ export class DatabaseStorage implements IStorage {
       .offset(filters?.offset ?? 0);
   }
 
-  async getBankTransactionsByHash(hashes: string[]): Promise<BankTransaction[]> {
+  async getBankTransactionsByHash(accountId: string, hashes: string[]): Promise<BankTransaction[]> {
     if (hashes.length === 0) return [];
     const { inArray } = await import("drizzle-orm");
-    return db.select().from(bankTransactions).where(inArray(bankTransactions.importHash, hashes));
+    return db.select().from(bankTransactions).where(
+      and(
+        eq(bankTransactions.accountId, accountId),
+        inArray(bankTransactions.importHash, hashes)
+      )
+    );
   }
 
   async createBankTransactions(rows: InsertBankTransaction[]): Promise<BankTransaction[]> {
