@@ -4547,6 +4547,48 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/projects/unlinked-suggestions", async (_req, res) => {
+    try {
+      const allProjects = await storage.getProjects();
+      const allCustomers = await storage.getCustomers();
+      const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, "");
+
+      const unlinked = allProjects.filter(p => !p.customerId && p.customerName);
+
+      const result = unlinked.map(project => {
+        const pNorm = norm(project.customerName!);
+        const candidates = allCustomers
+          .map(c => {
+            const cNorm = norm(c.companyName);
+            let score = 0;
+            if (cNorm === pNorm) score = 100;
+            else if (cNorm.includes(pNorm) || pNorm.includes(cNorm)) score = 80;
+            else {
+              // partial token overlap
+              const overlap = [...pNorm].filter(ch => cNorm.includes(ch)).length;
+              score = Math.round((overlap / Math.max(pNorm.length, cNorm.length)) * 60);
+            }
+            return { id: c.id, companyName: c.companyName, businessNumber: c.businessNumber, score };
+          })
+          .filter(c => c.score >= 50)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+
+        return {
+          id: project.id,
+          projectNumber: project.projectNumber,
+          customerName: project.customerName,
+          year: project.year,
+          candidates,
+        };
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/projects/auto-match-customers", async (req, res) => {
     try {
       const allProjects = await storage.getProjects();
@@ -4554,6 +4596,7 @@ export async function registerRoutes(
       let matched = 0;
       let alreadyLinked = 0;
       const unmatched: string[] = [];
+      const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, "");
 
       for (const project of allProjects) {
         if (project.customerId) {
@@ -4564,10 +4607,17 @@ export async function registerRoutes(
           unmatched.push(project.projectNumber || project.id);
           continue;
         }
-        const normalizedName = project.customerName.trim().toLowerCase().replace(/\s+/g, "");
-        const match = allCustomers.find(c =>
-          c.companyName.trim().toLowerCase().replace(/\s+/g, "") === normalizedName
-        );
+        const pNorm = norm(project.customerName);
+        // Exact match first
+        let match = allCustomers.find(c => norm(c.companyName) === pNorm);
+        // Substring match only when exactly one candidate — avoids false positives
+        if (!match) {
+          const substringMatches = allCustomers.filter(c => {
+            const cNorm = norm(c.companyName);
+            return cNorm.includes(pNorm) || pNorm.includes(cNorm);
+          });
+          if (substringMatches.length === 1) match = substringMatches[0];
+        }
         if (match) {
           await storage.updateProject(project.id, { customerId: match.id, customerName: match.companyName });
           matched++;

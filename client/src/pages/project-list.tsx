@@ -1706,6 +1706,208 @@ function ProjectTaskSection({ projectId }: { projectId: string }) {
   );
 }
 
+type UnlinkedSuggestion = {
+  id: string;
+  projectNumber: string | null;
+  customerName: string | null;
+  year: number | null;
+  candidates: { id: string; companyName: string; businessNumber: string | null; score: number }[];
+};
+
+function BulkMatchDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { toast } = useToast();
+  const [selections, setSelections] = useState<Record<string, string | null>>({});
+  const [customerSearches, setCustomerSearches] = useState<Record<string, string>>({});
+  const [expandedSearch, setExpandedSearch] = useState<string | null>(null);
+
+  const { data: suggestions, isLoading, refetch } = useQuery<UnlinkedSuggestion[]>({
+    queryKey: ["/api/projects/unlinked-suggestions"],
+    enabled: open,
+    queryFn: async () => {
+      const res = await fetch("/api/projects/unlinked-suggestions");
+      return res.json();
+    },
+  });
+
+  const { data: allCustomers } = useQuery<Customer[]>({
+    queryKey: ["/api/customers"],
+    enabled: open,
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      const pairs = Object.entries(selections).filter(([, cid]) => cid);
+      for (const [projectId, customerId] of pairs) {
+        await apiRequest("PATCH", `/api/projects/${projectId}`, { customerId });
+      }
+      return pairs.length;
+    },
+    onSuccess: (count) => {
+      toast({ title: `${count}건 거래처 연결 완료` });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects/unlinked-suggestions"] });
+      setSelections({});
+      refetch();
+    },
+    onError: (err: Error) => toast({ title: "연결 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const filteredForSearch = (projectId: string) => {
+    if (!allCustomers) return [];
+    const q = (customerSearches[projectId] || "").toLowerCase();
+    if (!q) return allCustomers.slice(0, 8);
+    return allCustomers.filter(c =>
+      c.companyName.toLowerCase().includes(q) || (c.businessNumber && c.businessNumber.includes(q))
+    ).slice(0, 8);
+  };
+
+  const selectedCount = Object.values(selections).filter(Boolean).length;
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-bulk-match">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            거래처 일괄 매칭
+          </DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-16" />)}
+          </div>
+        ) : !suggestions || suggestions.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Check className="h-10 w-10 mx-auto mb-2 text-green-500 opacity-70" />
+            <p className="text-sm">모든 프로젝트가 거래처에 연결되어 있습니다.</p>
+          </div>
+        ) : (
+          <>
+            <div className="text-xs text-muted-foreground mb-2">
+              거래처 미연결 프로젝트 {suggestions.length}건 — 각 프로젝트에 연결할 거래처를 선택하세요.
+            </div>
+            <div className="space-y-2">
+              {suggestions.map(proj => {
+                const selectedCid = selections[proj.id];
+                const selectedCustomer = allCustomers?.find(c => c.id === selectedCid);
+                const isExpanded = expandedSearch === proj.id;
+
+                return (
+                  <div key={proj.id} className={`border rounded-lg p-2.5 text-xs transition-colors ${selectedCid ? "border-green-300 bg-green-50/40 dark:bg-green-900/10" : ""}`} data-testid={`row-bulk-match-${proj.id}`}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-muted-foreground">{proj.projectNumber || "-"}</span>
+                        <span className="font-semibold">{proj.customerName}</span>
+                        {proj.year && <span className="text-muted-foreground">({proj.year}년)</span>}
+                      </div>
+                      {selectedCid ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 text-[10px] px-1.5 text-muted-foreground hover:text-destructive"
+                          onClick={() => setSelections(s => { const n = { ...s }; delete n[proj.id]; return n; })}
+                          data-testid={`button-clear-selection-${proj.id}`}
+                        >
+                          <X className="h-3 w-3 mr-0.5" />해제
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    {selectedCustomer ? (
+                      <div className="flex items-center gap-1.5 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 rounded px-2 py-1">
+                        <Check className="h-3 w-3 shrink-0" />
+                        <span className="font-medium">{selectedCustomer.companyName}</span>
+                        {selectedCustomer.businessNumber && <span className="text-muted-foreground">{selectedCustomer.businessNumber}</span>}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {proj.candidates.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {proj.candidates.map(c => (
+                              <button
+                                key={c.id}
+                                className="inline-flex items-center gap-1 border rounded px-1.5 py-0.5 hover:bg-blue-50 hover:border-blue-300 dark:hover:bg-blue-900/20 text-[10px] transition-colors"
+                                onClick={() => { setSelections(s => ({ ...s, [proj.id]: c.id })); setExpandedSearch(null); }}
+                                data-testid={`button-candidate-${proj.id}-${c.id}`}
+                              >
+                                <span className="font-medium">{c.companyName}</span>
+                                {c.businessNumber && <span className="text-muted-foreground">{c.businessNumber}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {isExpanded ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <Input
+                                className="h-6 text-xs"
+                                placeholder="거래처 검색..."
+                                value={customerSearches[proj.id] || ""}
+                                onChange={e => setCustomerSearches(s => ({ ...s, [proj.id]: e.target.value }))}
+                                autoFocus
+                                data-testid={`input-customer-search-${proj.id}`}
+                              />
+                              <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => setExpandedSearch(null)}>
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <div className="border rounded max-h-28 overflow-y-auto">
+                              {filteredForSearch(proj.id).map(c => (
+                                <div
+                                  key={c.id}
+                                  className="flex items-center justify-between px-2 py-1 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
+                                  onClick={() => { setSelections(s => ({ ...s, [proj.id]: c.id })); setExpandedSearch(null); setCustomerSearches(s => ({ ...s, [proj.id]: "" })); }}
+                                  data-testid={`option-search-${proj.id}-${c.id}`}
+                                >
+                                  <span className="font-medium">{c.companyName}</span>
+                                  {c.businessNumber && <span className="text-muted-foreground ml-2">{c.businessNumber}</span>}
+                                </div>
+                              ))}
+                              {filteredForSearch(proj.id).length === 0 && (
+                                <div className="text-center text-muted-foreground py-2 text-[10px]">검색 결과 없음</div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-5 text-[10px] px-1.5 text-muted-foreground"
+                            onClick={() => setExpandedSearch(proj.id)}
+                            data-testid={`button-search-customer-${proj.id}`}
+                          >
+                            <Search className="h-3 w-3 mr-0.5" />직접 검색
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t">
+              <span className="text-xs text-muted-foreground">{selectedCount}건 선택됨</span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={onClose} data-testid="button-bulk-match-cancel">취소</Button>
+                <Button
+                  size="sm"
+                  disabled={selectedCount === 0 || applyMutation.isPending}
+                  onClick={() => applyMutation.mutate()}
+                  data-testid="button-bulk-match-apply"
+                >
+                  {applyMutation.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Check className="h-3 w-3 mr-1" />}
+                  {selectedCount}건 연결 적용
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ProjectList() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -1722,6 +1924,7 @@ export default function ProjectList() {
 
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showBulkMatch, setShowBulkMatch] = useState(false);
 
   const queryYear = viewFilter === "current" ? currentYear : (yearFilter !== "all" ? parseInt(yearFilter) : undefined);
 
@@ -1863,12 +2066,21 @@ export default function ProjectList() {
           <Button
             size="sm"
             variant="outline"
+            onClick={() => setShowBulkMatch(true)}
+            data-testid="button-bulk-match"
+          >
+            <Users className="h-4 w-4 mr-1" />
+            일괄 매칭
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => autoMatchMutation.mutate()}
             disabled={autoMatchMutation.isPending}
             data-testid="button-auto-match"
           >
             <Users className={`h-4 w-4 mr-1 ${autoMatchMutation.isPending ? "animate-spin" : ""}`} />
-            거래처 매칭
+            자동 매칭
           </Button>
           <Button
             size="sm"
@@ -2069,6 +2281,8 @@ export default function ProjectList() {
       <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null); }}>
         {selectedId && <ProjectDetailModal projectId={selectedId} onClose={() => setSelectedId(null)} />}
       </Dialog>
+
+      <BulkMatchDialog open={showBulkMatch} onClose={() => setShowBulkMatch(false)} />
     </div>
   );
 }
