@@ -7561,6 +7561,7 @@ export async function registerRoutes(
 
   app.delete("/api/bank-accounts/:id", async (req, res) => {
     try {
+      await storage.deleteAllBankTransactionsByAccount(req.params.id);
       await storage.deleteBankAccount(req.params.id);
       res.json({ ok: true });
     } catch (err: any) {
@@ -7570,11 +7571,12 @@ export async function registerRoutes(
 
   app.get("/api/bank-transactions", async (req, res) => {
     try {
-      const { accountId, startDate, endDate, limit, offset } = req.query;
+      const { accountId, startDate, endDate, txType, limit, offset } = req.query;
       const transactions = await storage.getBankTransactions({
         accountId: accountId as string | undefined,
         startDate: startDate as string | undefined,
         endDate: endDate as string | undefined,
+        txType: txType === "credit" || txType === "debit" ? txType : undefined,
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
       });
@@ -7643,7 +7645,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/cleanup-corrupt-payments", async (req, res) => {
+  app.post("/api/admin/cleanup-corrupt-payments", requireAuth, async (req, res) => {
     try {
       const result = await pool.query(
         `DELETE FROM payments WHERE actual_date < '1901-01-01' RETURNING id`

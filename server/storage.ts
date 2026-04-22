@@ -301,7 +301,7 @@ export interface IStorage {
   updateBankAccount(id: string, data: Partial<InsertBankAccount>): Promise<BankAccount | undefined>;
   deleteBankAccount(id: string): Promise<void>;
 
-  getBankTransactions(filters?: { accountId?: string; startDate?: string; endDate?: string; limit?: number; offset?: number }): Promise<BankTransaction[]>;
+  getBankTransactions(filters?: { accountId?: string; startDate?: string; endDate?: string; txType?: "credit" | "debit"; limit?: number; offset?: number }): Promise<BankTransaction[]>;
   getBankTransactionsByHash(hashes: string[]): Promise<BankTransaction[]>;
   createBankTransactions(rows: InsertBankTransaction[]): Promise<BankTransaction[]>;
   updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined>;
@@ -1634,21 +1634,19 @@ export class DatabaseStorage implements IStorage {
     await db.delete(bankAccounts).where(eq(bankAccounts.id, id));
   }
 
-  async getBankTransactions(filters?: { accountId?: string; startDate?: string; endDate?: string; limit?: number; offset?: number }): Promise<BankTransaction[]> {
+  async getBankTransactions(filters?: { accountId?: string; startDate?: string; endDate?: string; txType?: "credit" | "debit"; limit?: number; offset?: number }): Promise<BankTransaction[]> {
     const conditions = [];
     if (filters?.accountId) conditions.push(eq(bankTransactions.accountId, filters.accountId));
     if (filters?.startDate) conditions.push(gte(bankTransactions.txDate, filters.startDate));
     if (filters?.endDate) conditions.push(lte(bankTransactions.txDate, filters.endDate));
+    if (filters?.txType === "credit") conditions.push(gte(bankTransactions.creditAmount, 1));
+    if (filters?.txType === "debit") conditions.push(gte(bankTransactions.debitAmount, 1));
 
-    const q = db.select().from(bankTransactions)
+    return db.select().from(bankTransactions)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(bankTransactions.txDate), desc(bankTransactions.createdAt));
-
-    if (filters?.limit) {
-      const offset = filters.offset ?? 0;
-      return (q as any).limit(filters.limit).offset(offset);
-    }
-    return q;
+      .orderBy(desc(bankTransactions.txDate), desc(bankTransactions.createdAt))
+      .limit(filters?.limit ?? 100000)
+      .offset(filters?.offset ?? 0);
   }
 
   async getBankTransactionsByHash(hashes: string[]): Promise<BankTransaction[]> {

@@ -233,6 +233,7 @@ export function BankTransactionsTab() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [txType, setTxType] = useState<"all" | "credit" | "debit">("all");
   const [showAccountManager, setShowAccountManager] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -244,12 +245,13 @@ export function BankTransactionsTab() {
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
   const { data: transactions = [], isLoading: txLoading } = useQuery<BankTransaction[]>({
-    queryKey: ["/api/bank-transactions", selectedAccountId, startDate, endDate],
+    queryKey: ["/api/bank-transactions", selectedAccountId, startDate, endDate, txType],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedAccountId) params.set("accountId", selectedAccountId);
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
+      if (txType !== "all") params.set("txType", txType);
       const res = await fetch(`/api/bank-transactions?${params}`);
       return res.json();
     },
@@ -308,8 +310,38 @@ export function BankTransactionsTab() {
             />
           </div>
 
-          {(startDate || endDate) && (
-            <Button variant="ghost" size="sm" onClick={() => { setStartDate(""); setEndDate(""); }}>
+          <div className="flex items-center gap-1 border rounded-lg p-0.5">
+            <Button
+              variant={txType === "all" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setTxType("all")}
+              data-testid="filter-tx-all"
+            >
+              전체
+            </Button>
+            <Button
+              variant={txType === "credit" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setTxType("credit")}
+              data-testid="filter-tx-credit"
+            >
+              입금
+            </Button>
+            <Button
+              variant={txType === "debit" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setTxType("debit")}
+              data-testid="filter-tx-debit"
+            >
+              출금
+            </Button>
+          </div>
+
+          {(startDate || endDate || txType !== "all") && (
+            <Button variant="ghost" size="sm" onClick={() => { setStartDate(""); setEndDate(""); setTxType("all"); }}>
               필터 초기화
             </Button>
           )}
