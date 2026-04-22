@@ -4588,6 +4588,96 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/invoice-match-preview", async (_req, res) => {
+    try {
+      const allInvoices = await storage.getSalesInvoices();
+      const allProjects = await storage.getProjects();
+      const allCustomers = await storage.getCustomers();
+
+      const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, "");
+
+      const customerById = new Map(allCustomers.map(c => [c.id, c]));
+
+      const unlinked = allInvoices.filter(i => !i.projectId && !!i.issueDate);
+
+      const groupMap = new Map<string, { invoiceCount: number; totalAmount: number; invoiceIds: string[] }>();
+      for (const inv of unlinked) {
+        const key = inv.companyName || "(거래처 없음)";
+        if (!groupMap.has(key)) groupMap.set(key, { invoiceCount: 0, totalAmount: 0, invoiceIds: [] });
+        const g = groupMap.get(key)!;
+        g.invoiceCount++;
+        g.totalAmount += inv.supplyAmount || 0;
+        g.invoiceIds.push(inv.id);
+      }
+
+      const groups = Array.from(groupMap.entries()).map(([companyName, data]) => {
+        const norm = normalize(companyName);
+        const candidates = allProjects.filter(p => {
+          const pNorm = normalize(p.customerName || "");
+          if (pNorm === norm) return true;
+          if (p.customerId) {
+            const cust = customerById.get(p.customerId);
+            if (cust && normalize(cust.companyName) === norm) return true;
+          }
+          return false;
+        }).map(p => ({ id: p.id, projectNumber: p.projectNumber, customerName: p.customerName, year: p.year, description: p.description }));
+
+        return { companyName, invoiceCount: data.invoiceCount, totalAmount: data.totalAmount, candidates };
+      });
+
+      groups.sort((a, b) => b.invoiceCount - a.invoiceCount);
+
+      res.json({ groups, totalUnlinked: unlinked.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/retroactive-invoice-match", async (req, res) => {
+    try {
+      const { mappings } = req.body as { mappings: { companyName: string; projectId: string }[] };
+      if (!Array.isArray(mappings) || mappings.length === 0) {
+        return res.status(400).json({ message: "mappings 배열이 필요합니다" });
+      }
+
+      const seen = new Set<string>();
+      const dedupedMappings: { companyName: string; projectId: string }[] = [];
+      for (const m of mappings) {
+        if (!m.companyName || !m.projectId || typeof m.companyName !== "string" || typeof m.projectId !== "string") {
+          return res.status(400).json({ message: "각 매핑은 companyName과 projectId가 필요합니다" });
+        }
+        if (!seen.has(m.companyName)) {
+          seen.add(m.companyName);
+          dedupedMappings.push(m);
+        }
+      }
+
+      const allProjects = await storage.getProjects();
+      const projectIds = new Set(allProjects.map(p => p.id));
+      const invalidIds = dedupedMappings.filter(m => !projectIds.has(m.projectId)).map(m => m.projectId);
+      if (invalidIds.length > 0) {
+        return res.status(400).json({ message: `존재하지 않는 프로젝트 ID: ${[...new Set(invalidIds)].join(", ")}` });
+      }
+
+      const allInvoices = await storage.getSalesInvoices();
+      let matched = 0;
+      const details: { companyName: string; count: number }[] = [];
+
+      for (const { companyName, projectId } of dedupedMappings) {
+        const toLink = allInvoices.filter(i => !i.projectId && !!i.issueDate && i.companyName === companyName);
+        for (const inv of toLink) {
+          await storage.updateSalesInvoice(inv.id, { projectId });
+          matched++;
+        }
+        details.push({ companyName, count: toLink.length });
+      }
+
+      res.json({ matched, message: `${matched}건의 계산서가 프로젝트에 연결되었습니다.`, details });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/projects/sync", async (req, res) => {
     try {
       const year = parseInt(req.query.year as string || req.body.year);

@@ -9,7 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays, Send, CheckCircle, XCircle, Loader2, Users } from "lucide-react";
+import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays, Send, CheckCircle, XCircle, Loader2, Users, Wrench, RefreshCw, Link2, ChevronDown, ChevronUp } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import type { CompanySettings, Staff } from "@shared/schema";
 import StaffSearchPopover from "@/components/staff-search-popover";
 
@@ -236,7 +238,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="company" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="company" data-testid="tab-company-info">
               <Building2 className="h-4 w-4 mr-2" />
               회사 정보
@@ -256,6 +258,10 @@ export default function SettingsPage() {
             <TabsTrigger value="telegram" data-testid="tab-telegram-settings">
               <Send className="h-4 w-4 mr-2" />
               텔레그램
+            </TabsTrigger>
+            <TabsTrigger value="admin-tools" data-testid="tab-admin-tools">
+              <Wrench className="h-4 w-4 mr-2" />
+              관리도구
             </TabsTrigger>
           </TabsList>
 
@@ -751,6 +757,10 @@ export default function SettingsPage() {
           <TabsContent value="telegram" className="space-y-6 mt-6">
             <TelegramSettings />
           </TabsContent>
+
+          <TabsContent value="admin-tools" className="space-y-6 mt-6">
+            <AdminToolsSettings />
+          </TabsContent>
         </Tabs>
       </div>
     </div>
@@ -920,6 +930,267 @@ function TelegramSettings() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+interface InvoiceMatchGroup {
+  companyName: string;
+  invoiceCount: number;
+  totalAmount: number;
+  candidates: { id: string; projectNumber: string | null; customerName: string | null; year: number | null; description: string | null }[];
+}
+
+interface InvoiceMatchPreview {
+  groups: InvoiceMatchGroup[];
+  totalUnlinked: number;
+}
+
+function AdminToolsSettings() {
+  const { toast } = useToast();
+  const [previewData, setPreviewData] = useState<InvoiceMatchPreview | null>(null);
+  const [selectedMappings, setSelectedMappings] = useState<Record<string, string>>({});
+  const [autoMatchResult, setAutoMatchResult] = useState<{ matched: number; alreadyLinked: number; unmatchedCount: number; unmatched: string[] } | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const autoMatchMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/projects/auto-match-customers");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setAutoMatchResult(data);
+      toast({ title: "자동 매칭 완료", description: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "오류", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const previewMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/invoice-match-preview", { credentials: "include" });
+      if (!res.ok) throw new Error("미리보기 로드 실패");
+      return res.json() as Promise<InvoiceMatchPreview>;
+    },
+    onSuccess: (data) => {
+      setPreviewData(data);
+      const autoMap: Record<string, string> = {};
+      for (const g of data.groups) {
+        if (g.candidates.length === 1) {
+          autoMap[g.companyName] = g.candidates[0].id;
+        }
+      }
+      setSelectedMappings(autoMap);
+      toast({ title: "미리보기 로드 완료", description: `미연결 계산서 ${data.totalUnlinked}건 확인됨` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "오류", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const applyMutation = useMutation({
+    mutationFn: async () => {
+      const mappings = Object.entries(selectedMappings)
+        .filter(([, projectId]) => !!projectId && projectId !== "none")
+        .map(([companyName, projectId]) => ({ companyName, projectId }));
+      if (mappings.length === 0) throw new Error("연결할 항목이 없습니다");
+      const res = await apiRequest("POST", "/api/admin/retroactive-invoice-match", { mappings });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "연결 완료", description: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      previewMutation.mutate();
+    },
+    onError: (err: Error) => {
+      toast({ title: "오류", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const fmtComma = (n: number) => n.toLocaleString("ko-KR");
+  const selectedCount = Object.values(selectedMappings).filter(v => !!v && v !== "none").length;
+
+  const toggleGroup = (name: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-6 pb-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Link2 className="h-4 w-4" />
+            1단계: 프로젝트 ↔ 거래처 자동 연결
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            프로젝트의 거래처명과 거래처 목록의 상호명을 비교하여 동일한 경우 자동으로 연결합니다.
+            이 단계를 먼저 실행하면 2단계에서 더 정확한 후보가 제안됩니다.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => autoMatchMutation.mutate()}
+            disabled={autoMatchMutation.isPending}
+            data-testid="button-auto-match-customers"
+          >
+            {autoMatchMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            프로젝트-거래처 자동 연결 실행
+          </Button>
+          {autoMatchResult && (
+            <div className="rounded-lg border p-3 space-y-1 bg-muted/30">
+              <p className="text-sm font-medium">실행 결과</p>
+              <div className="flex flex-wrap gap-3 text-sm">
+                <span className="text-green-600 dark:text-green-400">신규 연결: <strong>{autoMatchResult.matched}건</strong></span>
+                <span className="text-muted-foreground">기연결: {autoMatchResult.alreadyLinked}건</span>
+                <span className="text-orange-600 dark:text-orange-400">미매칭: {autoMatchResult.unmatchedCount}건</span>
+              </div>
+              {autoMatchResult.unmatched.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground mb-1">미매칭 거래처명:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {autoMatchResult.unmatched.map(name => (
+                      <Badge key={name} variant="outline" className="text-xs">{name}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText className="h-4 w-4" />
+            2단계: 미연결 계산서 소급 연결
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            발행은 됐지만 프로젝트에 연결되지 않은 계산서를 거래처명 기준으로 그룹화하고, 각 그룹에 연결할 프로젝트를 지정합니다.
+            후보가 1건인 경우 자동 선택됩니다.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => previewMutation.mutate()}
+            disabled={previewMutation.isPending}
+            data-testid="button-load-invoice-preview"
+          >
+            {previewMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            미연결 계산서 현황 불러오기
+          </Button>
+
+          {previewData && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium" data-testid="text-unlinked-total">
+                  미연결 계산서 총 <strong>{previewData.totalUnlinked}건</strong> ({previewData.groups.length}개 거래처)
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{selectedCount}개 거래처 선택됨</span>
+                  <Button
+                    size="sm"
+                    onClick={() => applyMutation.mutate()}
+                    disabled={applyMutation.isPending || selectedCount === 0}
+                    data-testid="button-apply-invoice-match"
+                  >
+                    {applyMutation.isPending ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <Link2 className="h-3 w-3 mr-1" />
+                    )}
+                    선택 항목 일괄 연결
+                  </Button>
+                </div>
+              </div>
+
+              {previewData.totalUnlinked === 0 ? (
+                <div className="text-center py-6 text-sm text-muted-foreground" data-testid="text-all-linked">
+                  <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                  모든 발행 계산서가 프로젝트에 연결되어 있습니다.
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden divide-y" data-testid="invoice-match-groups">
+                  {previewData.groups.map(group => {
+                    const isExpanded = expandedGroups.has(group.companyName);
+                    const selectedProjectId = selectedMappings[group.companyName] || "";
+                    return (
+                      <div key={group.companyName} className="bg-card" data-testid={`group-${group.companyName}`}>
+                        <div className="flex items-center gap-2 px-3 py-2">
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => toggleGroup(group.companyName)}
+                            data-testid={`toggle-group-${group.companyName}`}
+                          >
+                            {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          </button>
+                          <span className="text-sm font-medium flex-1 truncate" data-testid={`text-group-company-${group.companyName}`}>{group.companyName}</span>
+                          <Badge variant="secondary" className="text-xs shrink-0" data-testid={`badge-count-${group.companyName}`}>
+                            {group.invoiceCount}건 / {fmtComma(group.totalAmount)}원
+                          </Badge>
+                          <div className="w-56 shrink-0">
+                            {group.candidates.length === 0 ? (
+                              <span className="text-xs text-muted-foreground px-2" data-testid={`text-no-candidate-${group.companyName}`}>후보 없음</span>
+                            ) : (
+                              <Select
+                                value={selectedProjectId}
+                                onValueChange={v => setSelectedMappings(prev => ({ ...prev, [group.companyName]: v }))}
+                              >
+                                <SelectTrigger className="h-7 text-xs" data-testid={`trigger-select-project-${group.companyName}`}>
+                                  <SelectValue placeholder="프로젝트 선택..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">선택 안 함</SelectItem>
+                                  {group.candidates.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                      {c.projectNumber} {c.customerName}{c.description ? ` - ${c.description}` : ""} {c.year ? `(${c.year})` : ""}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="px-8 pb-2 space-y-0.5 bg-muted/20">
+                            {group.candidates.length === 0 ? (
+                              <p className="text-xs text-muted-foreground py-1">
+                                거래처명과 일치하는 프로젝트가 없습니다. 프로젝트에서 직접 연결하거나 거래처명을 확인하세요.
+                              </p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground py-1">
+                                후보 프로젝트 {group.candidates.length}건: {group.candidates.map(c => `${c.projectNumber || "-"} ${c.customerName || ""}`).join(", ")}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
