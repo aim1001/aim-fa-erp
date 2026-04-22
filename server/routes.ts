@@ -3621,10 +3621,20 @@ export async function registerRoutes(
 
       const customers = await storage.getCustomers();
       const customerByBizNum = new Map<string, string>();
+      const customerByCompanyName = new Map<string, string>();
+      const ambiguousCompanyNames = new Set<string>();
       const customerById = new Map<string, typeof customers[0]>();
       for (const c of customers) {
         if (c.businessNumber) {
           customerByBizNum.set(c.businessNumber.replace(/-/g, ""), c.id);
+        }
+        if (c.companyName) {
+          const nameKey = c.companyName.toLowerCase().trim();
+          if (customerByCompanyName.has(nameKey)) {
+            ambiguousCompanyNames.add(nameKey);
+          } else {
+            customerByCompanyName.set(nameKey, c.id);
+          }
         }
         customerById.set(c.id, c);
       }
@@ -3740,7 +3750,10 @@ export async function registerRoutes(
           continue;
         }
 
-        const customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
+        let customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
+        if (!customerId && rowCompanyLower && !ambiguousCompanyNames.has(rowCompanyLower)) {
+          customerId = customerByCompanyName.get(rowCompanyLower) || null;
+        }
 
         let autoProjectId: string | null = null;
         if (customerId) {
@@ -3814,10 +3827,20 @@ export async function registerRoutes(
 
       const customers = await storage.getCustomers();
       const customerByBizNum = new Map<string, string>();
+      const customerByCompanyName = new Map<string, string>();
+      const ambiguousCompanyNames = new Set<string>();
       const customerById = new Map<string, typeof customers[0]>();
       for (const c of customers) {
         if (c.businessNumber) {
           customerByBizNum.set(c.businessNumber.replace(/-/g, ""), c.id);
+        }
+        if (c.companyName) {
+          const nameKey = c.companyName.toLowerCase().trim();
+          if (customerByCompanyName.has(nameKey)) {
+            ambiguousCompanyNames.add(nameKey);
+          } else {
+            customerByCompanyName.set(nameKey, c.id);
+          }
         }
         customerById.set(c.id, c);
       }
@@ -3904,7 +3927,10 @@ export async function registerRoutes(
           continue;
         }
 
-        const customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
+        let customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
+        if (!customerId && rowCompanyLower && !ambiguousCompanyNames.has(rowCompanyLower)) {
+          customerId = customerByCompanyName.get(rowCompanyLower) || null;
+        }
         const year = row.issueDate ? parseInt(row.issueDate.substring(0, 4)) : null;
 
         let autoProjectId: string | null = null;
