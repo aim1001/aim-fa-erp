@@ -806,3 +806,41 @@ export const calendarEvents = pgTable("calendar_events", {
 export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true });
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
+
+export const bankAccounts = pgTable("bank_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bankName: text("bank_name").notNull().default("KB국민은행"),
+  accountNumber: text("account_number"),
+  accountAlias: text("account_alias").notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBankAccountSchema = createInsertSchema(bankAccounts).omit({ id: true, createdAt: true });
+export type InsertBankAccount = z.infer<typeof insertBankAccountSchema>;
+export type BankAccount = typeof bankAccounts.$inferSelect;
+
+export const bankTransactions = pgTable("bank_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  accountId: varchar("account_id"),
+  txDate: text("tx_date").notNull(),
+  txTime: text("tx_time"),
+  description: text("description"),
+  counterparty: text("counterparty"),
+  debitAmount: integer("debit_amount").default(0),
+  creditAmount: integer("credit_amount").default(0),
+  balance: integer("balance"),
+  txCategory: text("tx_category"),
+  matchStatus: text("match_status").default("unmatched"),
+  matchedPaymentId: varchar("matched_payment_id"),
+  matchedProjectId: varchar("matched_project_id"),
+  matchedSalesInvoiceId: varchar("matched_sales_invoice_id"),
+  importBatch: text("import_batch"),
+  importHash: text("import_hash"),
+  memo: text("memo"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBankTransactionSchema = createInsertSchema(bankTransactions).omit({ id: true, createdAt: true });
+export type InsertBankTransaction = z.infer<typeof insertBankTransactionSchema>;
+export type BankTransaction = typeof bankTransactions.$inferSelect;

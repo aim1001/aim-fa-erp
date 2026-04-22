@@ -22,7 +22,7 @@ import {
   getAuthUrl,
   exchangeCodeForTokens,
 } from "./onedrive";
-import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, parseSalesTaxInvoicesFromBuffer, parsePurchaseTaxInvoicesFromBuffer, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive } from "./excel-parser";
+import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, parseSalesTaxInvoicesFromBuffer, parsePurchaseTaxInvoicesFromBuffer, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive, parseKBBankStatementFromBuffer } from "./excel-parser";
 import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema, insertProjectItemSchema } from "@shared/schema";
 
 declare module "express-session" {
@@ -7524,6 +7524,131 @@ export async function registerRoutes(
       }
       const balance = await storage.upsertMonthlyBalance(year, month, openingBalance);
       res.json(balance);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bank-accounts", async (req, res) => {
+    try {
+      const accounts = await storage.getBankAccounts();
+      res.json(accounts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-accounts", async (req, res) => {
+    try {
+      const { bankName, accountNumber, accountAlias, isActive } = req.body;
+      if (!accountAlias) return res.status(400).json({ message: "accountAlias is required" });
+      const account = await storage.createBankAccount({ bankName: bankName || "KB국민은행", accountNumber, accountAlias, isActive: isActive !== false });
+      res.json(account);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/bank-accounts/:id", async (req, res) => {
+    try {
+      const account = await storage.updateBankAccount(req.params.id, req.body);
+      if (!account) return res.status(404).json({ message: "Account not found" });
+      res.json(account);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/bank-accounts/:id", async (req, res) => {
+    try {
+      await storage.deleteBankAccount(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/bank-transactions", async (req, res) => {
+    try {
+      const { accountId, startDate, endDate, limit, offset } = req.query;
+      const transactions = await storage.getBankTransactions({
+        accountId: accountId as string | undefined,
+        startDate: startDate as string | undefined,
+        endDate: endDate as string | undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+        offset: offset ? parseInt(offset as string) : undefined,
+      });
+      res.json(transactions);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/bank-transactions/:id", async (req, res) => {
+    try {
+      const tx = await storage.updateBankTransaction(req.params.id, req.body);
+      if (!tx) return res.status(404).json({ message: "Transaction not found" });
+      res.json(tx);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/bank-transactions/:id", async (req, res) => {
+    try {
+      await storage.deleteBankTransaction(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const bankUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+  app.post("/api/bank-transactions/import", bankUpload.single("file"), async (req, res) => {
+    try {
+      const accountId = req.body.accountId as string;
+      if (!accountId) return res.status(400).json({ message: "accountId is required" });
+      if (!req.file) return res.status(400).json({ message: "파일이 필요합니다" });
+
+      const parsed = parseKBBankStatementFromBuffer(req.file.buffer);
+      if (parsed.length === 0) return res.status(400).json({ message: "파싱된 거래내역이 없습니다. 파일 형식을 확인해주세요." });
+
+      const hashes = parsed.map(r => r.importHash);
+      const existing = await storage.getBankTransactionsByHash(hashes);
+      const existingHashes = new Set(existing.map(e => e.importHash));
+
+      const importBatch = new Date().toISOString().slice(0, 19).replace("T", " ");
+      const toInsert = parsed
+        .filter(r => !existingHashes.has(r.importHash))
+        .map(r => ({
+          accountId,
+          txDate: r.txDate,
+          txTime: r.txTime,
+          description: r.description,
+          counterparty: r.counterparty,
+          debitAmount: r.debitAmount,
+          creditAmount: r.creditAmount,
+          balance: r.balance,
+          importHash: r.importHash,
+          importBatch,
+          matchStatus: "unmatched",
+        }));
+
+      const inserted = await storage.createBankTransactions(toInsert);
+      res.json({ total: parsed.length, inserted: inserted.length, skipped: parsed.length - inserted.length });
+    } catch (err: any) {
+      console.error("[bank import]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/cleanup-corrupt-payments", async (req, res) => {
+    try {
+      const result = await pool.query(
+        `DELETE FROM payments WHERE actual_date < '1901-01-01' RETURNING id`
+      );
+      res.json({ deleted: result.rowCount });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

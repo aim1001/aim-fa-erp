@@ -708,3 +708,149 @@ export async function getAvailableInvoiceYears(): Promise<number[]> {
     return [];
   }
 }
+
+export interface KBBankTransactionRow {
+  txDate: string;
+  txTime: string | null;
+  description: string | null;
+  counterparty: string | null;
+  debitAmount: number;
+  creditAmount: number;
+  balance: number | null;
+  importHash: string;
+}
+
+function normalizeBankDate(raw: any): string | null {
+  if (!raw && raw !== 0) return null;
+  if (typeof raw === "number") {
+    if (raw > 100000000) {
+      const s = String(Math.floor(raw));
+      if (s.length === 8) {
+        return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+      }
+    }
+    const excelEpoch = new Date(1899, 11, 30);
+    const jsDate = new Date(excelEpoch.getTime() + raw * 86400000);
+    const y = jsDate.getFullYear();
+    if (y < 2000 || y > 2100) return null;
+    return `${y}-${String(jsDate.getMonth() + 1).padStart(2, "0")}-${String(jsDate.getDate()).padStart(2, "0")}`;
+  }
+  const s = String(raw).trim().replace(/\./g, "/");
+  const m1 = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m1) return `${m1[1]}-${m1[2].padStart(2, "0")}-${m1[3].padStart(2, "0")}`;
+  const m2 = s.match(/^(\d{8})$/);
+  if (m2) return `${m2[1].slice(0, 4)}-${m2[1].slice(4, 6)}-${m2[1].slice(6, 8)}`;
+  return null;
+}
+
+function normalizeBankAmount(raw: any): number {
+  if (raw === null || raw === undefined || raw === "") return 0;
+  if (typeof raw === "number") return Math.abs(Math.round(raw));
+  const s = String(raw).replace(/,/g, "").trim();
+  if (!s || s === "-" || s === "0" || s === "") return 0;
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : Math.abs(Math.round(n));
+}
+
+function makeImportHash(txDate: string, debit: number, credit: number, description: string | null, counterparty: string | null): string {
+  const crypto = require("crypto");
+  const raw = `${txDate}|${debit}|${credit}|${description ?? ""}|${counterparty ?? ""}`;
+  return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 32);
+}
+
+export function parseKBBankStatementFromBuffer(buffer: Buffer): KBBankTransactionRow[] {
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false, raw: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) return [];
+
+  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
+  const results: KBBankTransactionRow[] = [];
+
+  const getCell = (r: number, c: number): any => {
+    const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+    if (!cell) return null;
+    return cell.v !== undefined ? cell.v : null;
+  };
+
+  const getCellStr = (r: number, c: number): string => {
+    const v = getCell(r, c);
+    return v !== null && v !== undefined ? String(v).trim() : "";
+  };
+
+  let headerRow = -1;
+  let dateCol = -1, timeCol = -1, descCol = -1, counterpartyCol = -1;
+  let debitCol = -1, creditCol = -1, balanceCol = -1;
+
+  for (let r = range.s.r; r <= Math.min(range.s.r + 10, range.e.r); r++) {
+    const rowVals: string[] = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      rowVals.push(getCellStr(r, c).replace(/\s+/g, ""));
+    }
+    const joined = rowVals.join("|");
+    if (joined.includes("거래일자") || joined.includes("거래일시") || joined.includes("날짜")) {
+      headerRow = r;
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const h = rowVals[c - range.s.c];
+        if (h.includes("거래일") || h === "날짜") dateCol = c;
+        else if (h.includes("시각") || h.includes("시간") || h === "거래시각") timeCol = c;
+        else if (h.includes("찾으신") || h.includes("출금") || h === "출금액" || h === "지급금액") debitCol = c;
+        else if (h.includes("맡기신") || h.includes("입금") || h === "입금액" || h === "수취금액") creditCol = c;
+        else if (h.includes("잔액") || h.includes("잔고")) balanceCol = c;
+        else if (h.includes("기재내용") || h.includes("내용") || h.includes("메모") || h.includes("이름")) {
+          if (counterpartyCol === -1) counterpartyCol = c;
+        }
+        else if (h.includes("적요") || h.includes("거래내용") || h.includes("구분")) {
+          if (descCol === -1) descCol = c;
+        }
+      }
+      break;
+    }
+  }
+
+  if (headerRow === -1 || dateCol === -1) {
+    console.warn("[KB parser] 헤더를 찾을 수 없습니다");
+    return [];
+  }
+
+  if (descCol === -1 && counterpartyCol === -1) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      if (c !== dateCol && c !== timeCol && c !== debitCol && c !== creditCol && c !== balanceCol) {
+        if (descCol === -1) { descCol = c; continue; }
+        if (counterpartyCol === -1) { counterpartyCol = c; break; }
+      }
+    }
+  }
+
+  for (let r = headerRow + 1; r <= range.e.r; r++) {
+    const rawDate = getCell(r, dateCol);
+    if (rawDate === null || rawDate === undefined || rawDate === "") continue;
+
+    const txDate = normalizeBankDate(rawDate);
+    if (!txDate) continue;
+
+    const txTime = timeCol >= 0 ? (getCellStr(r, timeCol) || null) : null;
+    const description = descCol >= 0 ? (getCellStr(r, descCol) || null) : null;
+    const counterparty = counterpartyCol >= 0 ? (getCellStr(r, counterpartyCol) || null) : null;
+    const debitAmount = debitCol >= 0 ? normalizeBankAmount(getCell(r, debitCol)) : 0;
+    const creditAmount = creditCol >= 0 ? normalizeBankAmount(getCell(r, creditCol)) : 0;
+    const balance = balanceCol >= 0 ? normalizeBankAmount(getCell(r, balanceCol)) : null;
+
+    if (debitAmount === 0 && creditAmount === 0) continue;
+
+    const importHash = makeImportHash(txDate, debitAmount, creditAmount, description, counterparty);
+
+    results.push({
+      txDate,
+      txTime,
+      description,
+      counterparty,
+      debitAmount,
+      creditAmount,
+      balance: balance !== null ? balance : null,
+      importHash,
+    });
+  }
+
+  console.log(`[KB parser] ${results.length}건 파싱 완료`);
+  return results;
+}

@@ -3,9 +3,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Calendar as CalendarIcon, List, Plus, Check, Clock, AlertTriangle, ChevronLeft, ChevronRight, Trash2, X, Banknote, Undo2, LayoutDashboard, ArrowUpDown, ArrowUp, ArrowDown, Landmark } from "lucide-react";
 import { useState, useMemo } from "react";
 import { FundOverviewTab } from "./fund-overview-tab";
+import { BankTransactionsTab } from "./bank-transactions-tab";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Payment } from "@shared/schema";
@@ -470,7 +471,7 @@ export default function PaymentPlan() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund">("list");
+  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund" | "bank">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -652,14 +653,22 @@ export default function PaymentPlan() {
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">
-          {viewMode === "fund" ? "자금현황" : "자금계획"}
+          {viewMode === "fund" ? "자금현황" : viewMode === "bank" ? "은행 거래내역" : "자금계획"}
         </h1>
         <div className="flex items-center gap-2">
-          {viewMode !== "fund" && (
+          {viewMode !== "fund" && viewMode !== "bank" && (
             <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
               <Plus className="h-4 w-4 mr-1" />추가
             </Button>
           )}
+          <Button
+            variant={viewMode === "bank" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode(viewMode === "bank" ? "list" : "bank")}
+            data-testid="button-view-bank"
+          >
+            <Landmark className="h-4 w-4 mr-1" />{viewMode === "bank" ? "자금계획으로" : "은행내역"}
+          </Button>
           <Button
             variant={viewMode === "fund" ? "default" : "outline"}
             size="sm"
@@ -676,7 +685,7 @@ export default function PaymentPlan() {
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2">
-        {viewMode !== "fund" && (
+        {viewMode !== "fund" && viewMode !== "bank" && (
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-prev-month">
               <ChevronLeft className="h-4 w-4" />
@@ -689,8 +698,8 @@ export default function PaymentPlan() {
             </Button>
           </div>
         )}
-        {viewMode === "fund" && <div />}
-        {viewMode !== "fund" && (
+        {(viewMode === "fund" || viewMode === "bank") && <div />}
+        {viewMode !== "fund" && viewMode !== "bank" && (
           <div className="flex items-center gap-1 border rounded-lg p-0.5">
             <Button
               variant={viewMode === "list" ? "default" : "ghost"}
@@ -712,7 +721,9 @@ export default function PaymentPlan() {
         )}
       </div>
 
-      {viewMode !== "fund" && (
+      {viewMode === "bank" && <BankTransactionsTab />}
+
+      {viewMode !== "fund" && viewMode !== "bank" && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="border rounded-lg p-3 bg-blue-50/50">
             <div className="text-xs text-muted-foreground">예정 입금</div>
@@ -733,7 +744,7 @@ export default function PaymentPlan() {
         </div>
       )}
 
-      {viewMode === "list" && (
+      {viewMode === "list" && viewMode !== "bank" && (
         <div className="flex items-center gap-2 flex-wrap" data-testid="section-payment-filters">
           <div className="flex items-center gap-1 border rounded-lg p-0.5">
             <Button

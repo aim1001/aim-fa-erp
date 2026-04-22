@@ -42,6 +42,8 @@ Example projects: `2.공사/2026/26-1_엘로이텍_PLC통신_피더호퍼조명1
 - **purchase_invoices** 테이블: 매입계산서 (vendorId 참조, 계산서번호, 발행일, 품목, 수량, 단가, 공급가액, 세액, 합계)
 - **payments** 테이블: 결제 계획 (유형, 계산서 참조, projectId 참조, 거래처명, 금액, 결제방법, 예정일/실제일, 분할 정보(splitIndex/splitTotal), category, recurringExpenseId(정기지출 원본 ID))
 - **recurring_expenses** 테이블: 정기지출 (category, description, companyName, amount, frequency(weekly/monthly/yearly), paymentDay(결제일), weekday(주간용 0-6), paymentMonth(연간용 1-12), isActive, totalInstallments(총횟수), startInstallment(시작회차 default 1)) — "자금현황" 모달에서 관리, 주간/월간/연간 주기별 payments 일괄 생성, 인라인 수정 가능, 기간/횟수 방식 선택 가능
+- **bank_accounts** 테이블: 은행 계좌 (bankName, accountNumber, accountAlias, isActive) — 거래내역 가져오기를 위한 계좌 등록
+- **bank_transactions** 테이블: 은행 거래 원장 (accountId FK→bank_accounts, txDate, txTime, description 적요, counterparty 거래처명, debitAmount 출금, creditAmount 입금, balance 잔액, importHash SHA256 중복방지, matchStatus 연결상태) — KB국민은행 Excel/CSV에서 가져온 거래내역 원장
 - **projects** 테이블: 프로젝트 (프로젝트번호, 고객사명, 내용, 연도, OneDrive 폴더 정보, 상태, inquiryId 원본인콰이어리, warrantyTerms 보증조건, contractClauses 계약특약)
 - **project_items** 테이블: 프로젝트 품목 (projectId FK→projects, itemCode, itemName, spec, quantity, costPrice, unitPrice, amount, category1, category2, sortOrder) — 인콰이어리→프로젝트 전환 시 견적 품목 복사, 독립적 수정 가능
 - **item_master** 테이블: 판매제품 마스터 (카테고리, 품목코드(unique), 품목명, 사양, 원가, 판매가, 활성여부, 제품유형, isFavorite 즐겨찾기)

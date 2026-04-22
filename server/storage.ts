@@ -33,13 +33,15 @@ import {
   type TelegramMemo, type InsertTelegramMemo,
   type CalendarEvent, type InsertCalendarEvent,
   type MonthlyBalance, type InsertMonthlyBalance,
+  type BankAccount, type InsertBankAccount,
+  type BankTransaction, type InsertBankTransaction,
   inquiries, inquiryFiles, companies, customers, productImages,
   vendors, salesInvoices, purchaseInvoices, payments, projects,
   onedriveTokens, itemMaster, itemInventory, itemDocument, purchaseItems,
   inquiryMemos, inquiryTasks, projectTasks, quotations, quotationItems, contractTemplates, companySettings, staff,
   purchaseOrders, purchaseOrderItems, vendorContacts, recurringExpenses,
   purchaseOrderTasks, financeTasks, projectItems, telegramMemos, itemComponents,
-  calendarEvents, monthlyBalances,
+  calendarEvents, monthlyBalances, bankAccounts, bankTransactions,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
@@ -292,6 +294,19 @@ export interface IStorage {
 
   getMonthlyBalance(year: number, month: number): Promise<MonthlyBalance | undefined>;
   upsertMonthlyBalance(year: number, month: number, openingBalance: number): Promise<MonthlyBalance>;
+
+  getBankAccounts(): Promise<BankAccount[]>;
+  getBankAccount(id: string): Promise<BankAccount | undefined>;
+  createBankAccount(data: InsertBankAccount): Promise<BankAccount>;
+  updateBankAccount(id: string, data: Partial<InsertBankAccount>): Promise<BankAccount | undefined>;
+  deleteBankAccount(id: string): Promise<void>;
+
+  getBankTransactions(filters?: { accountId?: string; startDate?: string; endDate?: string; limit?: number; offset?: number }): Promise<BankTransaction[]>;
+  getBankTransactionsByHash(hashes: string[]): Promise<BankTransaction[]>;
+  createBankTransactions(rows: InsertBankTransaction[]): Promise<BankTransaction[]>;
+  updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined>;
+  deleteBankTransaction(id: string): Promise<void>;
+  deleteAllBankTransactionsByAccount(accountId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1594,6 +1609,70 @@ export class DatabaseStorage implements IStorage {
       const [row] = await db.insert(monthlyBalances).values({ year, month, openingBalance }).returning();
       return row;
     }
+  }
+
+  async getBankAccounts(): Promise<BankAccount[]> {
+    return db.select().from(bankAccounts).orderBy(bankAccounts.createdAt);
+  }
+
+  async getBankAccount(id: string): Promise<BankAccount | undefined> {
+    const [row] = await db.select().from(bankAccounts).where(eq(bankAccounts.id, id));
+    return row;
+  }
+
+  async createBankAccount(data: InsertBankAccount): Promise<BankAccount> {
+    const [row] = await db.insert(bankAccounts).values(data).returning();
+    return row;
+  }
+
+  async updateBankAccount(id: string, data: Partial<InsertBankAccount>): Promise<BankAccount | undefined> {
+    const [row] = await db.update(bankAccounts).set(data).where(eq(bankAccounts.id, id)).returning();
+    return row;
+  }
+
+  async deleteBankAccount(id: string): Promise<void> {
+    await db.delete(bankAccounts).where(eq(bankAccounts.id, id));
+  }
+
+  async getBankTransactions(filters?: { accountId?: string; startDate?: string; endDate?: string; limit?: number; offset?: number }): Promise<BankTransaction[]> {
+    const conditions = [];
+    if (filters?.accountId) conditions.push(eq(bankTransactions.accountId, filters.accountId));
+    if (filters?.startDate) conditions.push(gte(bankTransactions.txDate, filters.startDate));
+    if (filters?.endDate) conditions.push(lte(bankTransactions.txDate, filters.endDate));
+
+    const q = db.select().from(bankTransactions)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(bankTransactions.txDate), desc(bankTransactions.createdAt));
+
+    if (filters?.limit) {
+      const offset = filters.offset ?? 0;
+      return (q as any).limit(filters.limit).offset(offset);
+    }
+    return q;
+  }
+
+  async getBankTransactionsByHash(hashes: string[]): Promise<BankTransaction[]> {
+    if (hashes.length === 0) return [];
+    const { inArray } = await import("drizzle-orm");
+    return db.select().from(bankTransactions).where(inArray(bankTransactions.importHash, hashes));
+  }
+
+  async createBankTransactions(rows: InsertBankTransaction[]): Promise<BankTransaction[]> {
+    if (rows.length === 0) return [];
+    return db.insert(bankTransactions).values(rows).returning();
+  }
+
+  async updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined> {
+    const [row] = await db.update(bankTransactions).set(data).where(eq(bankTransactions.id, id)).returning();
+    return row;
+  }
+
+  async deleteBankTransaction(id: string): Promise<void> {
+    await db.delete(bankTransactions).where(eq(bankTransactions.id, id));
+  }
+
+  async deleteAllBankTransactionsByAccount(accountId: string): Promise<void> {
+    await db.delete(bankTransactions).where(eq(bankTransactions.accountId, accountId));
   }
 }
 
