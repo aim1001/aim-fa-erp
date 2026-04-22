@@ -1662,7 +1662,7 @@ export class DatabaseStorage implements IStorage {
 
   async createBankTransactions(rows: InsertBankTransaction[]): Promise<BankTransaction[]> {
     if (rows.length === 0) return [];
-    return db.insert(bankTransactions).values(rows).returning();
+    return db.insert(bankTransactions).values(rows).onConflictDoNothing().returning();
   }
 
   async updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined> {

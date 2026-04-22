@@ -7616,12 +7616,20 @@ export async function registerRoutes(
       const parsed = parseKBBankStatementFromBuffer(req.file.buffer);
       if (parsed.length === 0) return res.status(400).json({ message: "파싱된 거래내역이 없습니다. 파일 형식을 확인해주세요." });
 
-      const hashes = parsed.map(r => r.importHash);
+      // Deduplicate rows within the same file
+      const seenHashes = new Set<string>();
+      const uniqueParsed = parsed.filter(r => {
+        if (seenHashes.has(r.importHash)) return false;
+        seenHashes.add(r.importHash);
+        return true;
+      });
+
+      const hashes = uniqueParsed.map(r => r.importHash);
       const existing = await storage.getBankTransactionsByHash(accountId, hashes);
       const existingHashes = new Set(existing.map(e => e.importHash));
 
       const importBatch = new Date().toISOString().slice(0, 19).replace("T", " ");
-      const toInsert = parsed
+      const toInsert = uniqueParsed
         .filter(r => !existingHashes.has(r.importHash))
         .map(r => ({
           accountId,
