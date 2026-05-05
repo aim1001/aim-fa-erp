@@ -518,6 +518,7 @@ export default function SalesInvoiceList() {
   const [periodValue, setPeriodValue] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [issueStatusFilter, setIssueStatusFilter] = useState<string>("all");
+  const [unlinkFilter, setUnlinkFilter] = useState<boolean>(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [newInvoice, setNewInvoice] = useState({ customerId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
@@ -621,6 +622,10 @@ export default function SalesInvoiceList() {
       list = list.filter(inv => inv.paymentStatus === paymentFilter);
     }
 
+    if (unlinkFilter) {
+      list = list.filter(inv => !inv.projectId);
+    }
+
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(inv =>
@@ -634,7 +639,7 @@ export default function SalesInvoiceList() {
     }
 
     return list;
-  }, [invoices, search, customerMap, filterYear, periodType, periodValue, paymentFilter, issueStatusFilter, dateFrom, dateTo]);
+  }, [invoices, search, customerMap, filterYear, periodType, periodValue, paymentFilter, issueStatusFilter, unlinkFilter, dateFrom, dateTo]);
 
   const totals = useMemo(() => {
     let supply = 0, tax = 0, total = 0;
@@ -931,6 +936,15 @@ export default function SalesInvoiceList() {
             </Button>
           ))}
         </div>
+        <Button
+          variant={unlinkFilter ? "default" : "outline"}
+          size="sm"
+          className={`text-xs ${unlinkFilter ? "" : "border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-950/30"}`}
+          onClick={() => setUnlinkFilter(v => !v)}
+          data-testid="filter-unlinked-sales"
+        >
+          <Link2 className="h-3 w-3 mr-1" />미연결
+        </Button>
       </div>
 
       {isLoading ? (
