@@ -32,6 +32,7 @@ import OpticsCalculatorPage from "@/pages/optics-calculator";
 import CalendarPage from "@/pages/calendar";
 import Login from "@/pages/login";
 import { getQueryFn } from "@/lib/queryClient";
+import { FinanceGuard } from "@/components/finance-guard";
 
 function Router() {
   return (
@@ -44,11 +45,11 @@ function Router() {
       <Route path="/companies" component={CompanyList} />
       <Route path="/companies/:id" component={CompanyDetail} />
       <Route path="/vendors" component={VendorList} />
-      <Route path="/sales-invoices" component={SalesInvoiceList} />
-      <Route path="/purchase-invoices" component={PurchaseInvoiceList} />
-      <Route path="/payment-plan" component={PaymentPlan} />
+      <Route path="/sales-invoices" component={() => <FinanceGuard><SalesInvoiceList /></FinanceGuard>} />
+      <Route path="/purchase-invoices" component={() => <FinanceGuard><PurchaseInvoiceList /></FinanceGuard>} />
+      <Route path="/payment-plan" component={() => <FinanceGuard><PaymentPlan /></FinanceGuard>} />
       <Route path="/projects" component={ProjectList} />
-      <Route path="/management" component={ManagementDashboard} />
+      <Route path="/management" component={() => <FinanceGuard><ManagementDashboard /></FinanceGuard>} />
       <Route path="/items" component={ItemList} />
       <Route path="/purchase-items" component={PurchaseItemList} />
       <Route path="/purchase-orders" component={PurchaseOrderList} />

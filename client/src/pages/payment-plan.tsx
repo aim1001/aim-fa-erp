@@ -474,11 +474,6 @@ export default function PaymentPlan() {
   const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund" | "bank">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [fundPassword, setFundPassword] = useState("");
-  const [passwordError, setPasswordError] = useState(false);
-  const [fundAuthenticated, setFundAuthenticated] = useState(false);
-
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "completed">("pending");
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
   const [sortKey, setSortKey] = useState<"status" | "type" | "plannedDate" | "invoiceIssueDate" | "companyName">("plannedDate");
@@ -672,11 +667,7 @@ export default function PaymentPlan() {
           <Button
             variant={viewMode === "fund" ? "default" : "outline"}
             size="sm"
-            onClick={() => {
-              if (viewMode === "fund") { setViewMode("list"); }
-              else if (fundAuthenticated) { setViewMode("fund"); }
-              else { setShowPasswordDialog(true); setFundPassword(""); setPasswordError(false); }
-            }}
+            onClick={() => setViewMode(viewMode === "fund" ? "list" : "fund")}
             data-testid="button-view-fund"
           >
             <LayoutDashboard className="h-4 w-4 mr-1" />{viewMode === "fund" ? "자금계획으로" : "자금현황"}
@@ -1018,32 +1009,6 @@ export default function PaymentPlan() {
       </Dialog>
 
       <AddPaymentDialog open={showAdd} onOpenChange={setShowAdd} />
-      <Dialog open={showPasswordDialog} onOpenChange={open => { if (!open) setShowPasswordDialog(false); }}>
-        <DialogContent className="max-w-xs">
-          <DialogHeader><DialogTitle>비밀번호 입력</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <Input
-              type="password"
-              placeholder="비밀번호를 입력하세요"
-              value={fundPassword}
-              onChange={e => { setFundPassword(e.target.value); setPasswordError(false); }}
-              onKeyDown={e => {
-                if (e.key === "Enter") {
-                  if (fundPassword === "6937") { setShowPasswordDialog(false); setFundAuthenticated(true); setViewMode("fund"); }
-                  else setPasswordError(true);
-                }
-              }}
-              autoFocus
-              data-testid="input-fund-password"
-            />
-            {passwordError && <p className="text-xs text-red-500">비밀번호가 올바르지 않습니다.</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setShowPasswordDialog(false)}>취소</Button>
-            <Button onClick={() => { if (fundPassword === "6937") { setShowPasswordDialog(false); setFundAuthenticated(true); setViewMode("fund"); } else setPasswordError(true); }} data-testid="button-confirm-fund-password">확인</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={showRemainderPicker} onOpenChange={open => { if (!open) { setShowRemainderPicker(false); setRemainderInfo(null); setRemainderDate(undefined); } }}>
         <DialogContent className="max-w-sm" data-testid="modal-remainder-date">
