@@ -4128,7 +4128,7 @@ export async function registerRoutes(
         imported++;
       }
 
-      res.json({ imported, updated, skipped, vendorsCreated, total: rows.length });
+      res.json({ imported, updated, skipped, vendorsCreated, autoLinked: 0, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -4211,7 +4211,7 @@ export async function registerRoutes(
         imported++;
       }
 
-      res.json({ imported, skipped, vendorsCreated, total: rows.length });
+      res.json({ imported, skipped, vendorsCreated, autoLinked: 0, total: rows.length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

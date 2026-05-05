@@ -676,11 +676,15 @@ export default function PurchaseInvoiceList() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      if (data.autoLinked > 0) queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       const parts = [`${data.imported}건 추가`];
       if (data.updated > 0) parts.push(`${data.updated}건 업데이트`);
       parts.push(`${data.skipped}건 변경없음`);
       if (data.vendorsCreated > 0) parts.push(`공급업체 ${data.vendorsCreated}개 신규 등록`);
-      toast({ title: "가져오기 완료", description: `${parts.join(", ")} (총 ${data.total}건)` });
+      const autoLinkedMsg = data.autoLinked > 0
+        ? `${data.autoLinked}건 자동 프로젝트 연결됨`
+        : "자동 프로젝트 연결 0건";
+      toast({ title: "가져오기 완료", description: `${parts.join(", ")} (총 ${data.total}건) · ${autoLinkedMsg}` });
     },
     onError: (err: Error) => {
       toast({ title: "가져오기 실패", description: err.message, variant: "destructive" });
@@ -705,9 +709,13 @@ export default function PurchaseInvoiceList() {
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      if (data.autoLinked > 0) queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       const parts = [`신규 ${data.imported}건 추가`, `중복 ${data.skipped}건 건너뜀`];
       if (data.vendorsCreated > 0) parts.push(`공급업체 ${data.vendorsCreated}개 신규 등록`);
-      toast({ title: "업로드 완료", description: `${parts.join(", ")} (총 ${data.total}건)` });
+      const autoLinkedMsg = data.autoLinked > 0
+        ? `${data.autoLinked}건 자동 프로젝트 연결됨`
+        : "자동 프로젝트 연결 0건";
+      toast({ title: "업로드 완료", description: `${parts.join(", ")} (총 ${data.total}건) · ${autoLinkedMsg}` });
     },
     onError: (err: Error) => {
       toast({ title: "업로드 실패", description: err.message, variant: "destructive" });
