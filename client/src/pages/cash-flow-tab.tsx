@@ -5,6 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -13,9 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   ChevronLeft, ChevronRight, Landmark, ClipboardList,
-  Link2, Link2Off, AlertCircle, RefreshCw, AlertTriangle, Clock, Check,
+  Link2, Link2Off, AlertCircle, RefreshCw, AlertTriangle, Clock, Check, Plus,
 } from "lucide-react";
 import type { BankAccount, BankTransaction, MonthlyBalance, Payment } from "@shared/schema";
+import { PaymentDetailModal } from "./fund-overview-tab";
 
 type EnrichedPayment = Payment & {
   invoiceIssueDate: string | null;
@@ -190,6 +193,124 @@ function MatchDialog({ tx, onClose }: { tx: BankTransaction; onClose: () => void
   );
 }
 
+function AddPaymentDialog({ defaultYear, defaultMonth, onClose }: {
+  defaultYear: number;
+  defaultMonth: number;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const today = new Date().toISOString().split("T")[0];
+  const defaultDate = `${defaultYear}-${String(defaultMonth).padStart(2, "0")}-01`;
+
+  const [type, setType] = useState<"income" | "expense">("expense");
+  const [companyName, setCompanyName] = useState("");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [plannedDate, setPlannedDate] = useState(defaultDate);
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const amt = parseInt(amount);
+      if (!amount || isNaN(amt) || amt <= 0) throw new Error("금액을 올바르게 입력해주세요");
+      const res = await apiRequest("POST", "/api/payments", {
+        type,
+        companyName: companyName || null,
+        description: description || null,
+        amount: amt,
+        plannedDate: plannedDate || null,
+        status: "planned",
+        paymentMethod: "specific_date",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: "자금계획이 추가되었습니다" });
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "추가 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>자금계획 추가</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex items-center gap-1 border rounded-lg p-0.5 w-fit">
+            <Button
+              variant={type === "expense" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setType("expense")}
+              data-testid="button-add-payment-expense"
+            >출금</Button>
+            <Button
+              variant={type === "income" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setType("income")}
+              data-testid="button-add-payment-income"
+            >입금</Button>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">거래처</Label>
+            <Input
+              value={companyName}
+              onChange={e => setCompanyName(e.target.value)}
+              placeholder="거래처명"
+              className="h-8 text-sm"
+              data-testid="input-add-payment-company"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">설명</Label>
+            <Input
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="내용"
+              className="h-8 text-sm"
+              data-testid="input-add-payment-description"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">금액 <span className="text-red-500">*</span></Label>
+            <Input
+              type="number"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder="0"
+              className="h-8 text-sm"
+              onKeyDown={e => { if (e.key === "Enter") addMutation.mutate(); }}
+              data-testid="input-add-payment-amount"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">예정일</Label>
+            <Input
+              type="date"
+              value={plannedDate}
+              onChange={e => setPlannedDate(e.target.value)}
+              className="h-8 text-sm"
+              data-testid="input-add-payment-date"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose} disabled={addMutation.isPending}>취소</Button>
+          <Button onClick={() => addMutation.mutate()} disabled={!amount || addMutation.isPending} data-testid="button-add-payment-confirm">
+            {addMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+            추가
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PaymentStatusBadge({ payment }: { payment: EnrichedPayment }) {
   const today = new Date().toISOString().split("T")[0];
   if (payment.status === "completed") {
@@ -212,6 +333,8 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [matchDialogTx, setMatchDialogTx] = useState<BankTransaction | null>(null);
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -423,6 +546,12 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
             <AlertTriangle className="h-3 w-3 mr-1" />연체
           </Button>
         </div>
+
+        <div className="ml-auto">
+          <Button size="sm" className="h-8 text-xs" onClick={() => setShowAddDialog(true)} data-testid="button-cf-add-payment">
+            <Plus className="h-3.5 w-3.5 mr-1" />추가
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -568,59 +697,45 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                 } else {
                   const p = row.payment;
                   const rowKey = `payment-${p.id}`;
-                  const isExpanded = expandedId === rowKey;
                   const today = new Date().toISOString().split("T")[0];
                   const isOverdue = p.status !== "completed" && p.plannedDate && p.plannedDate < today;
                   const date = p.actualDate || p.plannedDate || "";
                   return (
-                    <Fragment key={rowKey}>
-                      <tr
-                        className={`group cursor-pointer transition-colors ${isOverdue ? "bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50/50" : "bg-blue-50/10 dark:bg-blue-950/5 hover:bg-muted/20"}`}
-                        onClick={() => setExpandedId(isExpanded ? null : rowKey)}
-                        data-testid={`cf-payment-row-${p.id}`}
-                      >
-                        <td className="px-3 py-2 text-xs text-muted-foreground italic whitespace-nowrap">{date || "-"}</td>
-                        <td className="px-1 py-2 text-center">
-                          <ClipboardList className="h-3 w-3 text-muted-foreground/60" />
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="min-w-0">
-                            <div className="text-xs italic text-muted-foreground truncate">
-                              {p.description || p.companyName || p.projectCustomerName || "내용 없음"}
-                            </div>
+                    <tr
+                      key={rowKey}
+                      className={`group cursor-pointer transition-colors ${isOverdue ? "bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50/50" : "bg-blue-50/10 dark:bg-blue-950/5 hover:bg-muted/20"}`}
+                      onClick={() => setSelectedPaymentId(p.id)}
+                      data-testid={`cf-payment-row-${p.id}`}
+                    >
+                      <td className="px-3 py-2 text-xs text-muted-foreground italic whitespace-nowrap">{date || "-"}</td>
+                      <td className="px-1 py-2 text-center">
+                        <ClipboardList className="h-3 w-3 text-muted-foreground/60" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="text-xs italic text-muted-foreground truncate">
+                            {p.description || p.companyName || p.projectCustomerName || "내용 없음"}
                           </div>
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-xs">
-                          {p.type === "expense" && p.amount ? (
-                            <span className="text-red-400 italic">{p.amount.toLocaleString()}</span>
-                          ) : <span className="text-muted-foreground">-</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-xs">
-                          {p.type === "income" && p.amount ? (
-                            <span className="text-blue-400 italic">{p.amount.toLocaleString()}</span>
-                          ) : <span className="text-muted-foreground">-</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground italic">
-                          {row.estimatedBalance != null ? `~${row.estimatedBalance.toLocaleString()}` : "-"}
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <PaymentStatusBadge payment={p} />
-                        </td>
-                        <td className="px-1"></td>
-                      </tr>
-                      {isExpanded && (
-                        <tr key={`${rowKey}-detail`} className="bg-muted/10">
-                          <td colSpan={8} className="px-4 py-2.5">
-                            <div className="text-xs grid grid-cols-2 gap-x-6 gap-y-1 flex-1">
-                              {p.companyName && <><span className="text-muted-foreground">거래처</span><span>{p.companyName}</span></>}
-                              {p.description && <><span className="text-muted-foreground">설명</span><span>{p.description}</span></>}
-                              <span className="text-muted-foreground">예정금액</span><span>{formatAmount(p.amount)}</span>
-                              <span className="text-muted-foreground">유형</span><span>{p.type === "income" ? "입금" : "출금"}</span>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        {p.type === "expense" && p.amount ? (
+                          <span className="text-red-400 italic">{p.amount.toLocaleString()}</span>
+                        ) : <span className="text-muted-foreground">-</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs">
+                        {p.type === "income" && p.amount ? (
+                          <span className="text-blue-400 italic">{p.amount.toLocaleString()}</span>
+                        ) : <span className="text-muted-foreground">-</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground italic">
+                        {row.estimatedBalance != null ? `~${row.estimatedBalance.toLocaleString()}` : "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <PaymentStatusBadge payment={p} />
+                      </td>
+                      <td className="px-1"></td>
+                    </tr>
                   );
                 }
               })}
@@ -631,6 +746,20 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
 
       {matchDialogTx && (
         <MatchDialog tx={matchDialogTx} onClose={() => setMatchDialogTx(null)} />
+      )}
+
+      {selectedPaymentId && (
+        <Dialog open onOpenChange={v => { if (!v) setSelectedPaymentId(null); }}>
+          <PaymentDetailModal paymentId={selectedPaymentId} onClose={() => setSelectedPaymentId(null)} />
+        </Dialog>
+      )}
+
+      {showAddDialog && (
+        <AddPaymentDialog
+          defaultYear={year}
+          defaultMonth={month}
+          onClose={() => setShowAddDialog(false)}
+        />
       )}
     </div>
   );

@@ -130,7 +130,7 @@ function getStatusInfo(payment: Payment) {
   return { label: "예정", icon: Clock, className: "text-blue-600 bg-blue-50" };
 }
 
-function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose: () => void }) {
+export function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose: () => void }) {
   const { toast } = useToast();
   const { data: payment } = useQuery<EnrichedPayment>({
     queryKey: ["/api/payments", paymentId],
@@ -142,6 +142,9 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
 
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [showSplit, setShowSplit] = useState(false);
+  const [splitCount, setSplitCount] = useState(2);
+  const [splitDates, setSplitDates] = useState<string[]>([]);
 
   const updateMutation = useMutation({
     mutationFn: async (patch: Record<string, any>) => {
@@ -172,6 +175,68 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
       onClose();
     },
   });
+
+  const splitMutation = useMutation({
+    mutationFn: async ({ count, dates }: { count: number; dates: string[] }) => {
+      if (!payment) throw new Error("결제 정보를 찾을 수 없습니다");
+      const totalAmount = payment.amount || 0;
+      const perAmount = Math.floor(totalAmount / count);
+      const remainder = totalAmount - perAmount * count;
+      const creates = Array.from({ length: count }, (_, i) => {
+        const amt = i === count - 1 ? perAmount + remainder : perAmount;
+        return apiRequest("POST", "/api/payments", {
+          type: payment.type,
+          companyName: payment.companyName || null,
+          description: payment.description || null,
+          amount: amt,
+          plannedDate: dates[i] || null,
+          status: "planned",
+          paymentMethod: "specific_date",
+          splitIndex: i + 1,
+          splitTotal: count,
+        });
+      });
+      await Promise.all(creates);
+      await apiRequest("DELETE", `/api/payments/${paymentId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: `${splitCount}회 분할 완료` });
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "분할 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const openSplit = () => {
+    const base = payment?.plannedDate || new Date().toISOString().split("T")[0];
+    const [y, m] = base.split("-").map(Number);
+    const dates = Array.from({ length: splitCount }, (_, i) => {
+      const totalM = m + i;
+      const ny = y + Math.floor((totalM - 1) / 12);
+      const nm = ((totalM - 1) % 12) + 1;
+      return `${ny}-${String(nm).padStart(2, "0")}-${base.split("-")[2] || "01"}`;
+    });
+    setSplitDates(dates);
+    setShowSplit(true);
+  };
+
+  const handleSplitCountChange = (count: number) => {
+    setSplitCount(count);
+    const base = payment?.plannedDate || new Date().toISOString().split("T")[0];
+    const [y, m] = base.split("-").map(Number);
+    const dates = Array.from({ length: count }, (_, i) => {
+      const totalM = m + i;
+      const ny = y + Math.floor((totalM - 1) / 12);
+      const nm = ((totalM - 1) % 12) + 1;
+      return `${ny}-${String(nm).padStart(2, "0")}-${base.split("-")[2] || "01"}`;
+    });
+    setSplitDates(dates);
+  };
 
   const handleSave = (field: string) => {
     if (!payment) return;
@@ -225,6 +290,7 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
   }
 
   const statusInfo = getStatusInfo(payment);
+  const canSplit = payment.status !== "completed" && !!(payment.amount && payment.amount > 0);
 
   return (
     <DialogContent className="max-w-lg" data-testid="modal-payment-detail">
@@ -292,15 +358,94 @@ function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; onClose
           </>
         )}
       </div>
-      {payment.status !== "completed" ? (
-        <Button size="sm" className="mt-2" onClick={markCompleted} data-testid="button-mark-completed">
-          <Check className="h-4 w-4 mr-1" />결제 완료 처리
-        </Button>
-      ) : (
-        <Button size="sm" variant="outline" className="mt-2 text-orange-600 border-orange-300" onClick={undoCompleted} data-testid="button-undo-completed">
-          <Undo2 className="h-4 w-4 mr-1" />완료 취소
-        </Button>
+
+      {showSplit && (
+        <div className="border rounded-lg p-3 space-y-3 bg-muted/20 mt-1" data-testid="section-split-config">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">분할 입금 설정</span>
+            <span className="text-xs text-muted-foreground">총 {(payment.amount || 0).toLocaleString()}원</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs shrink-0">분할 횟수</Label>
+            <Select value={String(splitCount)} onValueChange={v => handleSplitCountChange(Number(v))}>
+              <SelectTrigger className="h-7 w-20 text-xs" data-testid="select-split-count">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
+                  <SelectItem key={n} value={String(n)}>{n}회</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">
+              (각 {Math.floor((payment.amount || 0) / splitCount).toLocaleString()}원)
+            </span>
+          </div>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+            {splitDates.map((d, i) => {
+              const amt = i === splitCount - 1
+                ? (payment.amount || 0) - Math.floor((payment.amount || 0) / splitCount) * (splitCount - 1)
+                : Math.floor((payment.amount || 0) / splitCount);
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-8 shrink-0">{i + 1}회차</span>
+                  <Input
+                    type="date"
+                    className="h-7 text-xs flex-1"
+                    value={d}
+                    onChange={e => {
+                      const next = [...splitDates];
+                      next[i] = e.target.value;
+                      setSplitDates(next);
+                    }}
+                    data-testid={`input-split-date-${i}`}
+                  />
+                  <span className="text-xs text-muted-foreground shrink-0 w-20 text-right">{amt.toLocaleString()}원</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => splitMutation.mutate({ count: splitCount, dates: splitDates })}
+              disabled={splitMutation.isPending}
+              data-testid="button-confirm-split"
+            >
+              {splitMutation.isPending ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <Check className="h-3 w-3 mr-1" />}
+              분할 확인
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => setShowSplit(false)}
+              disabled={splitMutation.isPending}
+              data-testid="button-cancel-split"
+            >
+              취소
+            </Button>
+          </div>
+        </div>
       )}
+
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {payment.status !== "completed" ? (
+          <Button size="sm" onClick={markCompleted} data-testid="button-mark-completed">
+            <Check className="h-4 w-4 mr-1" />결제 완료 처리
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" className="text-orange-600 border-orange-300" onClick={undoCompleted} data-testid="button-undo-completed">
+            <Undo2 className="h-4 w-4 mr-1" />완료 취소
+          </Button>
+        )}
+        {canSplit && !showSplit && (
+          <Button size="sm" variant="outline" onClick={openSplit} data-testid="button-split-payment">
+            <TrendingUp className="h-4 w-4 mr-1" />분할 입금
+          </Button>
+        )}
+      </div>
     </DialogContent>
   );
 }
