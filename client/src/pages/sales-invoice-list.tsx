@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink, Upload } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink, Upload, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
@@ -521,6 +521,9 @@ export default function SalesInvoiceList() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [newInvoice, setNewInvoice] = useState({ customerId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
+  const [inlineCustomerId, setInlineCustomerId] = useState<string>("");
+  const [inlineProjectId, setInlineProjectId] = useState<string>("");
 
   const { data: invoices, isLoading } = useQuery<SalesInvoiceWithPayment[]>({
     queryKey: ["/api/sales-invoices-with-payments"],
@@ -690,6 +693,25 @@ export default function SalesInvoiceList() {
     },
     onError: (err: Error) => {
       toast({ title: "업로드 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const inlineLinkMutation = useMutation({
+    mutationFn: async ({ id, customerId, projectId }: { id: string; customerId: string | null; projectId: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, { customerId: customerId || null, projectId: projectId || null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setInlineEditId(null);
+      setInlineCustomerId("");
+      setInlineProjectId("");
+      toast({ title: "연결 저장됨" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -924,8 +946,13 @@ export default function SalesInvoiceList() {
             <tbody>
               {filtered.map(inv => {
                 const isUnissued = !inv.issueDate;
+                const isUnlinked = !inv.projectId;
+                const isInlineEditing = inlineEditId === inv.id;
+                const inlineFilteredProjects = inlineCustomerId
+                  ? (allProjects || []).filter(p => p.customerId === inlineCustomerId)
+                  : (allProjects || []);
                 return (
-                <tr key={inv.id} className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${isUnissued ? "bg-amber-50/50 dark:bg-amber-950/10" : ""}`} onClick={() => setSelectedId(inv.id)} data-testid={`row-sales-invoice-${inv.id}`}>
+                <tr key={inv.id} className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${isUnissued ? "bg-amber-50/50 dark:bg-amber-950/10" : ""} ${isUnlinked ? "border-l-2 border-l-orange-300 dark:border-l-orange-700" : ""}`} onClick={() => { if (!isInlineEditing) setSelectedId(inv.id); }} data-testid={`row-sales-invoice-${inv.id}`}>
                   <td className="py-2.5 px-4">
                     {isUnissued ? (
                       <div className="flex flex-col gap-0.5">
@@ -941,7 +968,50 @@ export default function SalesInvoiceList() {
                     ) : <span className="text-muted-foreground/50">-</span>}
                   </td>
                   <td className="py-2.5 px-4 hidden md:table-cell">
-                    {inv.projectId && projectMap.get(inv.projectId) ? (() => {
+                    {isInlineEditing ? (
+                      <div className="flex flex-col gap-1.5" onClick={e => e.stopPropagation()} data-testid={`inline-link-form-${inv.id}`}>
+                        <Select value={inlineCustomerId} onValueChange={val => { setInlineCustomerId(val); setInlineProjectId(""); }}>
+                          <SelectTrigger className="h-7 text-xs w-full" data-testid={`select-inline-customer-${inv.id}`}>
+                            <SelectValue placeholder="거래처 선택" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(customers || []).map(c => (
+                              <SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={inlineProjectId} onValueChange={setInlineProjectId} disabled={!inlineCustomerId}>
+                          <SelectTrigger className="h-7 text-xs w-full" data-testid={`select-inline-project-${inv.id}`}>
+                            <SelectValue placeholder={inlineCustomerId ? "프로젝트 선택" : "거래처 먼저 선택"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {inlineFilteredProjects.map(p => (
+                              <SelectItem key={p.id} value={p.id}>{p.projectNumber} {p.customerName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs flex-1"
+                            disabled={!inlineProjectId || inlineLinkMutation.isPending}
+                            onClick={() => inlineLinkMutation.mutate({ id: inv.id, customerId: inlineCustomerId || null, projectId: inlineProjectId || null })}
+                            data-testid={`button-inline-save-${inv.id}`}
+                          >
+                            <Save className="h-3 w-3 mr-1" />저장
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-xs"
+                            onClick={() => { setInlineEditId(null); setInlineCustomerId(""); setInlineProjectId(""); }}
+                            data-testid={`button-inline-cancel-${inv.id}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : inv.projectId && projectMap.get(inv.projectId) ? (() => {
                       const proj = projectMap.get(inv.projectId)!;
                       const contractAmt = proj.totalAmount || 0;
                       const invoicedAmt = projectInvoiceSums.get(inv.projectId) || 0;
@@ -969,7 +1039,22 @@ export default function SalesInvoiceList() {
                           )}
                         </div>
                       );
-                    })() : <span className="text-xs text-muted-foreground/50">-</span>}
+                    })() : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 px-1.5"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setInlineEditId(inv.id);
+                          setInlineCustomerId(inv.customerId || "");
+                          setInlineProjectId("");
+                        }}
+                        data-testid={`button-link-project-${inv.id}`}
+                      >
+                        <Link2 className="h-3 w-3 mr-1" />거래처/프로젝트 연결
+                      </Button>
+                    )}
                   </td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{inv.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.supplyAmount)}</td>
