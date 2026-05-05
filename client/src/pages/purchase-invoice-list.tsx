@@ -582,6 +582,7 @@ export default function PurchaseInvoiceList() {
   const [periodType, setPeriodType] = useState<string>("all");
   const [periodValue, setPeriodValue] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  const [showUnlinked, setShowUnlinked] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [newInvoice, setNewInvoice] = useState({ vendorId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
@@ -643,6 +644,10 @@ export default function PurchaseInvoiceList() {
       list = list.filter(inv => inv.paymentStatus === paymentFilter);
     }
 
+    if (showUnlinked) {
+      list = list.filter(inv => !inv.projectId);
+    }
+
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(inv =>
@@ -655,7 +660,7 @@ export default function PurchaseInvoiceList() {
     }
 
     return list;
-  }, [invoices, search, vendorMap, filterYear, periodType, periodValue, paymentFilter, dateFrom, dateTo]);
+  }, [invoices, search, vendorMap, filterYear, periodType, periodValue, paymentFilter, showUnlinked, dateFrom, dateTo]);
 
   const totals = useMemo(() => {
     let supply = 0, tax = 0, total = 0;
@@ -907,6 +912,16 @@ export default function PurchaseInvoiceList() {
             {opt.label}
           </Button>
         ))}
+        <div className="w-px h-5 bg-border mx-0.5" />
+        <Button
+          variant={showUnlinked ? "default" : "outline"}
+          size="sm"
+          className="text-xs"
+          onClick={() => setShowUnlinked(v => !v)}
+          data-testid="filter-unlinked-purchase"
+        >
+          미연결
+        </Button>
       </div>
 
       {isLoading ? (
