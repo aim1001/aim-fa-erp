@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -16,6 +17,7 @@ import {
 import {
   ChevronLeft, ChevronRight, Landmark, ClipboardList,
   Link2, Link2Off, AlertCircle, RefreshCw, AlertTriangle, Clock, Check, Plus,
+  ArrowUp, ArrowDown, CalendarDays, X,
 } from "lucide-react";
 import type { BankAccount, BankTransaction, MonthlyBalance, Payment } from "@shared/schema";
 import { PaymentDetailModal } from "./fund-overview-tab";
@@ -27,6 +29,8 @@ type EnrichedPayment = Payment & {
   invoiceItem: string | null;
   invoicePaidAmount: number;
   invoiceRemainingAmount: number;
+  invoiceSupplyAmount: number | null;
+  invoiceTaxAmount: number | null;
   projectNumber: string | null;
   projectCustomerName: string | null;
 };
@@ -48,9 +52,14 @@ type CashFlowRow =
 
 type FilterStatus = "all" | "matched" | "unmatched" | "planned" | "overdue";
 
-function formatAmount(n: number | null | undefined) {
-  if (n == null) return "-";
-  return n.toLocaleString() + "원";
+function shiftDate(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  const ny = dt.getFullYear();
+  const nm = String(dt.getMonth() + 1).padStart(2, "0");
+  const nd = String(dt.getDate()).padStart(2, "0");
+  return `${ny}-${nm}-${nd}`;
 }
 
 function MatchDialog({ tx, onClose }: { tx: BankTransaction; onClose: () => void }) {
@@ -199,7 +208,6 @@ function AddPaymentDialog({ defaultYear, defaultMonth, onClose }: {
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const today = new Date().toISOString().split("T")[0];
   const defaultDate = `${defaultYear}-${String(defaultMonth).padStart(2, "0")}-01`;
 
   const [type, setType] = useState<"income" | "expense">("expense");
@@ -328,6 +336,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   onPrevMonth: () => void;
   onNextMonth: () => void;
 }) {
+  const { toast } = useToast();
   const [filterAccount, setFilterAccount] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "credit" | "debit">("all");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
@@ -335,6 +344,10 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const [matchDialogTx, setMatchDialogTx] = useState<BankTransaction | null>(null);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
+
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDate, setBulkDate] = useState("");
 
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -387,6 +400,40 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
     },
   });
 
+  // Shift a single payment's plannedDate by ±1 day
+  const shiftDateMutation = useMutation({
+    mutationFn: async ({ id, delta }: { id: string; delta: number }) => {
+      const payment = payments.find(p => p.id === id);
+      if (!payment?.plannedDate) throw new Error("날짜 없음");
+      const newDate = shiftDate(payment.plannedDate, delta);
+      const res = await apiRequest("PATCH", `/api/payments/${id}`, { plannedDate: newDate });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "날짜 변경 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Bulk date change
+  const bulkDateMutation = useMutation({
+    mutationFn: async ({ ids, plannedDate }: { ids: string[]; plannedDate: string }) => {
+      const res = await apiRequest("POST", "/api/payments/bulk-date", { ids, plannedDate });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: `${data.updated}건 날짜 변경 완료` });
+      setSelectedIds(new Set());
+      setBulkDate("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "일괄 변경 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const matchedPaymentIds = useMemo(() => {
     const ids = new Set<string>();
     bankTxs.forEach(tx => {
@@ -425,15 +472,9 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
       return da.localeCompare(db);
     });
 
-    // Seed the running balance from the monthly opening balance (if available),
-    // otherwise use the first bank transaction's balance minus its effect.
-    // For multi-account view we compute a running delta from the opening balance.
-    // For single-account view we use tx.balance directly (bank provides the authoritative value).
     const openingBalance = monthlyBalance?.openingBalance ?? null;
 
     if (filterAccount !== "all") {
-      // Single-account mode: tx.balance is authoritative; use opening balance as fallback seed.
-      // Payment rows chain: each estimated balance becomes the cursor for the next row.
       let cursor: number | null = openingBalance;
       return all.map(row => {
         if (row.kind === "bank") {
@@ -444,16 +485,12 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
           if (cursor != null) {
             const amt = row.payment.amount || 0;
             estimated = row.payment.type === "income" ? cursor + amt : cursor - amt;
-            cursor = estimated; // chain: next planned row builds on this estimate
+            cursor = estimated;
           }
           return { ...row, estimatedBalance: estimated };
         }
       });
     } else {
-      // Multi-account mode: track per-account latest balance; sum = total across known accounts.
-      // When tx.balance is null, apply credit/debit delta only to runningTotal (don't store a
-      // global total into accountBalances, which would distort future per-account sums).
-      // Payment rows chain the same way as single-account mode.
       const accountBalances = new Map<string, number>();
       let cursor: number | null = openingBalance;
 
@@ -464,8 +501,6 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
             accountBalances.set(tx.accountId, tx.balance);
             cursor = Array.from(accountBalances.values()).reduce((s, v) => s + v, 0);
           } else if (cursor != null) {
-            // Fallback delta: update running total only — do NOT write to accountBalances
-            // to avoid polluting per-account slots with a global figure.
             cursor = cursor + (tx.creditAmount || 0) - (tx.debitAmount || 0);
           }
           return { ...row, runningBalance: cursor };
@@ -474,7 +509,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
           if (cursor != null) {
             const amt = row.payment.amount || 0;
             estimated = row.payment.type === "income" ? cursor + amt : cursor - amt;
-            cursor = estimated; // chain consecutive planned rows
+            cursor = estimated;
           }
           return { ...row, estimatedBalance: estimated };
         }
@@ -490,7 +525,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
         const isMatched = row.tx.matchStatus === "manual" || row.tx.matchStatus === "auto";
         if (filterStatus === "matched") return isMatched;
         if (filterStatus === "unmatched") return !isMatched;
-        return false; // "planned" or "overdue" — bank rows not shown
+        return false;
       } else {
         if (filterStatus === "matched" || filterStatus === "unmatched") return false;
         const isOverdue = row.payment.status !== "completed" && row.payment.plannedDate && row.payment.plannedDate < today;
@@ -500,6 +535,34 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
       }
     });
   }, [rows, filterStatus]);
+
+  // Selectable payment rows (only payment rows, not completed)
+  const selectablePaymentIds = useMemo(() =>
+    visibleRows
+      .filter(r => r.kind === "payment" && r.payment.status !== "completed")
+      .map(r => (r as { kind: "payment"; payment: EnrichedPayment; estimatedBalance: number | null }).payment.id),
+    [visibleRows]
+  );
+
+  const allSelected = selectablePaymentIds.length > 0 && selectablePaymentIds.every(id => selectedIds.has(id));
+  const someSelected = selectedIds.size > 0;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectablePaymentIds));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const totalCredit = bankTxs.reduce((s, t) => s + (t.creditAmount ?? 0), 0);
   const totalDebit = bankTxs.reduce((s, t) => s + (t.debitAmount ?? 0), 0);
@@ -600,6 +663,44 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
         </div>
       </div>
 
+      {/* Floating bulk action toolbar */}
+      {someSelected && (
+        <div className="sticky top-2 z-20 flex items-center gap-3 bg-primary text-primary-foreground rounded-lg px-4 py-2.5 shadow-lg" data-testid="bulk-action-toolbar">
+          <span className="text-sm font-medium">{selectedIds.size}건 선택됨</span>
+          <div className="h-4 w-px bg-primary-foreground/30" />
+          <CalendarDays className="h-4 w-4 opacity-70" />
+          <Input
+            type="date"
+            value={bulkDate}
+            onChange={e => setBulkDate(e.target.value)}
+            className="h-7 w-36 text-xs bg-primary-foreground text-foreground border-0"
+            data-testid="input-bulk-date"
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-7 text-xs"
+            disabled={!bulkDate || bulkDateMutation.isPending}
+            onClick={() => {
+              if (bulkDate) bulkDateMutation.mutate({ ids: Array.from(selectedIds), plannedDate: bulkDate });
+            }}
+            data-testid="button-bulk-date-apply"
+          >
+            {bulkDateMutation.isPending ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : null}
+            일괄 적용
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 p-0 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={() => { setSelectedIds(new Set()); setBulkDate(""); }}
+            data-testid="button-bulk-cancel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-10" />)}</div>
       ) : visibleRows.length === 0 ? (
@@ -612,16 +713,24 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs">
               <tr>
+                <th className="px-2 py-2 w-8">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="전체 선택"
+                    data-testid="checkbox-select-all"
+                  />
+                </th>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground w-24">날짜</th>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground w-6"></th>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground">내용</th>
-                <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">출금</th>
-                <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">입금</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground w-32">출금</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground w-32">입금</th>
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">
                   잔액{filterAccount === "all" && accounts.length > 1 && <span className="text-[9px] ml-0.5">(합산)</span>}
                 </th>
                 <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">상태</th>
-                <th className="w-8"></th>
+                <th className="w-16"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -639,6 +748,9 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                         onClick={() => setExpandedId(isExpanded ? null : rowKey)}
                         data-testid={`cf-bank-row-${tx.id}`}
                       >
+                        <td className="px-2 py-2 w-8">
+                          {/* bank rows not selectable */}
+                        </td>
                         <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{tx.txDate}</td>
                         <td className="px-1 py-2 text-center">
                           <Landmark className="h-3 w-3 text-muted-foreground" />
@@ -697,7 +809,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                       </tr>
                       {isExpanded && (
                         <tr key={`${rowKey}-detail`} className="bg-muted/10">
-                          <td colSpan={8} className="px-4 py-2.5">
+                          <td colSpan={9} className="px-4 py-2.5">
                             <div className="flex items-center justify-between gap-4">
                               <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs flex-1">
                                 {tx.txTime && <><span className="text-muted-foreground">거래시각</span><span>{tx.txTime}</span></>}
@@ -727,32 +839,81 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                   const today = new Date().toISOString().split("T")[0];
                   const isOverdue = p.status !== "completed" && p.plannedDate && p.plannedDate < today;
                   const date = p.actualDate || p.plannedDate || "";
+                  const isSelectable = p.status !== "completed";
+                  const isSelected = selectedIds.has(p.id);
+
+                  // Supply/tax info from linked invoice
+                  const hasInvoiceBreakdown = p.invoiceSupplyAmount != null && p.invoiceTaxAmount != null;
+
                   return (
                     <tr
                       key={rowKey}
-                      className={`group cursor-pointer transition-colors ${isOverdue ? "bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50/50" : "bg-blue-50/10 dark:bg-blue-950/5 hover:bg-muted/20"}`}
+                      className={`group cursor-pointer transition-colors ${
+                        isSelected ? "bg-primary/5 dark:bg-primary/10" :
+                        isOverdue ? "bg-red-50/30 dark:bg-red-950/10 hover:bg-red-50/50" :
+                        "bg-blue-50/10 dark:bg-blue-950/5 hover:bg-muted/20"
+                      }`}
                       onClick={() => setSelectedPaymentId(p.id)}
                       data-testid={`cf-payment-row-${p.id}`}
                     >
+                      <td
+                        className="px-2 py-2 w-8"
+                        onClick={e => { e.stopPropagation(); if (isSelectable) toggleSelect(p.id); }}
+                      >
+                        {isSelectable && (
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelect(p.id)}
+                            aria-label="선택"
+                            data-testid={`checkbox-payment-${p.id}`}
+                          />
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground italic whitespace-nowrap">{date || "-"}</td>
                       <td className="px-1 py-2 text-center">
                         <ClipboardList className="h-3 w-3 text-muted-foreground/60" />
                       </td>
                       <td className="px-3 py-2">
-                        <div className="min-w-0">
-                          <div className="text-xs italic text-muted-foreground truncate">
-                            {p.description || p.companyName || p.projectCustomerName || "내용 없음"}
+                        <div className="min-w-0 flex items-start gap-1.5 flex-wrap">
+                          {p.projectNumber && (
+                            <span className="shrink-0 inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                              {p.projectNumber}
+                            </span>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs italic text-muted-foreground truncate">
+                              {p.description || p.companyName || p.projectCustomerName || "내용 없음"}
+                            </div>
+                            {p.invoiceNumber && (
+                              <div className="text-[10px] text-muted-foreground/70 truncate">No.{p.invoiceNumber}</div>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-xs">
                         {p.type === "expense" && p.amount ? (
-                          <span className="text-red-400 italic">{p.amount.toLocaleString()}</span>
+                          <div>
+                            <div className="text-red-400 italic font-medium">{p.amount.toLocaleString()}</div>
+                            {hasInvoiceBreakdown && (
+                              <div className="text-[10px] text-muted-foreground/70 space-x-1">
+                                <span>{p.invoiceSupplyAmount!.toLocaleString()}</span>
+                                <span>+{p.invoiceTaxAmount!.toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
                         ) : <span className="text-muted-foreground">-</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-xs">
                         {p.type === "income" && p.amount ? (
-                          <span className="text-blue-400 italic">{p.amount.toLocaleString()}</span>
+                          <div>
+                            <div className="text-blue-400 italic font-medium">{p.amount.toLocaleString()}</div>
+                            {hasInvoiceBreakdown && (
+                              <div className="text-[10px] text-muted-foreground/70 space-x-1">
+                                <span>{p.invoiceSupplyAmount!.toLocaleString()}</span>
+                                <span>+{p.invoiceTaxAmount!.toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
                         ) : <span className="text-muted-foreground">-</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground italic">
@@ -761,7 +922,38 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                       <td className="px-3 py-2 text-center">
                         <PaymentStatusBadge payment={p} />
                       </td>
-                      <td className="px-1"></td>
+                      <td className="px-1">
+                        {/* ▲▼ date shift buttons — only for non-completed payments with plannedDate */}
+                        {p.status !== "completed" && p.plannedDate && (
+                          <div
+                            className="flex flex-col items-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-6 text-muted-foreground hover:text-primary"
+                              onClick={() => shiftDateMutation.mutate({ id: p.id, delta: -1 })}
+                              disabled={shiftDateMutation.isPending}
+                              title="-1일"
+                              data-testid={`button-date-up-${p.id}`}
+                            >
+                              <ArrowUp className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-6 text-muted-foreground hover:text-primary"
+                              onClick={() => shiftDateMutation.mutate({ id: p.id, delta: 1 })}
+                              disabled={shiftDateMutation.isPending}
+                              title="+1일"
+                              data-testid={`button-date-down-${p.id}`}
+                            >
+                              <ArrowDown className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   );
                 }

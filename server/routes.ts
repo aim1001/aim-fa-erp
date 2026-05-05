@@ -4289,10 +4289,22 @@ export async function registerRoutes(
           invoicePaidAmount = paidByPurchaseInvoice.get(p.purchaseInvoiceId) || 0;
           invoiceRemainingAmount = Math.max((invoiceTotalAmount || 0) - invoicePaidAmount, 0);
         }
+        let invoiceSupplyAmount: number | null = null;
+        let invoiceTaxAmount: number | null = null;
+        if (p.salesInvoiceId && salesMap.has(p.salesInvoiceId)) {
+          const inv = salesMap.get(p.salesInvoiceId)!;
+          invoiceSupplyAmount = inv.supplyAmount ?? null;
+          invoiceTaxAmount = inv.taxAmount ?? null;
+        } else if (p.purchaseInvoiceId && purchaseMap.has(p.purchaseInvoiceId)) {
+          const inv = purchaseMap.get(p.purchaseInvoiceId)!;
+          invoiceSupplyAmount = inv.supplyAmount ?? null;
+          invoiceTaxAmount = inv.taxAmount ?? null;
+        }
         const proj = p.projectId ? projectMap.get(p.projectId) : null;
         return {
           ...p,
           invoiceIssueDate, invoiceNumber, invoiceTotalAmount, invoiceItem, invoicePaidAmount, invoiceRemainingAmount,
+          invoiceSupplyAmount, invoiceTaxAmount,
           projectNumber: proj?.projectNumber || null,
           projectCustomerName: proj?.customerName || null,
         };
@@ -4333,6 +4345,21 @@ export async function registerRoutes(
       const updated = await storage.updatePayment(req.params.id, patch);
       if (!updated) return res.status(404).json({ message: "not found" });
       res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/payments/bulk-date", async (req, res) => {
+    try {
+      const { ids, plannedDate } = req.body;
+      if (!Array.isArray(ids) || !ids.length || !plannedDate) {
+        return res.status(400).json({ message: "ids 배열과 plannedDate 필수" });
+      }
+      const results = await Promise.all(
+        ids.map((id: string) => storage.updatePayment(id, { plannedDate }))
+      );
+      res.json({ updated: results.filter(Boolean).length });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
