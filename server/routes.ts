@@ -4253,6 +4253,11 @@ export async function registerRoutes(
       const projects = await storage.getProjects();
       const projectMap = new Map(projects.map(p => [p.id, p]));
 
+      const allOrders = await storage.getPurchaseOrders();
+      const orderByPaymentId = new Map(
+        allOrders.filter(o => o.paymentId).map(o => [o.paymentId!, o.orderNumber || null])
+      );
+
       const allPayments = await storage.getPayments();
       const paidBySalesInvoice = new Map<string, number>();
       const paidByPurchaseInvoice = new Map<string, number>();
@@ -4307,6 +4312,7 @@ export async function registerRoutes(
           invoiceSupplyAmount, invoiceTaxAmount,
           projectNumber: proj?.projectNumber || null,
           projectCustomerName: proj?.customerName || null,
+          purchaseOrderNumber: orderByPaymentId.get(p.id) || null,
         };
       });
 

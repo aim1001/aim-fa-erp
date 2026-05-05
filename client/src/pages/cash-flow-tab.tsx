@@ -33,6 +33,7 @@ type EnrichedPayment = Payment & {
   invoiceTaxAmount: number | null;
   projectNumber: string | null;
   projectCustomerName: string | null;
+  purchaseOrderNumber: string | null;
 };
 
 type MatchCandidate = {
@@ -863,7 +864,6 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                         {isSelectable && (
                           <Checkbox
                             checked={isSelected}
-                            onCheckedChange={() => toggleSelect(p.id)}
                             aria-label="선택"
                             data-testid={`checkbox-payment-${p.id}`}
                           />
@@ -878,6 +878,11 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                           {p.projectNumber && (
                             <span className="shrink-0 inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                               {p.projectNumber}
+                            </span>
+                          )}
+                          {p.purchaseOrderNumber && (
+                            <span className="shrink-0 inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-700">
+                              {p.purchaseOrderNumber}
                             </span>
                           )}
                           <div className="min-w-0 flex-1">
