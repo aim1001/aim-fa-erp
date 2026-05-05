@@ -7681,6 +7681,100 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bank-transactions/:id/candidates", async (req, res) => {
+    try {
+      const allTx = await storage.getBankTransactions({});
+      const tx = allTx.find((t: any) => t.id === req.params.id);
+      if (!tx) return res.status(404).json({ message: "Transaction not found" });
+
+      const isCredit = !!(tx.creditAmount && tx.creditAmount > 0);
+      const amount = tx.creditAmount || tx.debitAmount || 0;
+      const txDateMs = tx.txDate ? new Date(tx.txDate).getTime() : 0;
+      const dayMs = 86400000;
+
+      const payments = await storage.getPayments();
+      const projects = await storage.getProjects();
+      const projectMap = new Map(projects.map((p: any) => [p.id, p]));
+
+      const candidates = payments
+        .filter((p: any) => {
+          if (p.status === "completed") return false;
+          if (p.type !== (isCredit ? "income" : "expense")) return false;
+          const pAmt = p.amount || 0;
+          if (amount > 0 && pAmt > 0) {
+            if (Math.abs(pAmt - amount) / Math.max(amount, pAmt) > 0.2) return false;
+          }
+          if (p.plannedDate && txDateMs > 0) {
+            if (Math.abs(new Date(p.plannedDate).getTime() - txDateMs) > 30 * dayMs) return false;
+          }
+          return true;
+        })
+        .map((p: any) => {
+          const proj = p.projectId ? projectMap.get(p.projectId) : null;
+          return { ...p, projectNumber: proj?.projectNumber || null, projectCustomerName: proj?.customerName || null };
+        })
+        .sort((a: any, b: any) => {
+          if (a.plannedDate && b.plannedDate && txDateMs > 0) {
+            return Math.abs(new Date(a.plannedDate).getTime() - txDateMs) -
+                   Math.abs(new Date(b.plannedDate).getTime() - txDateMs);
+          }
+          return 0;
+        });
+
+      res.json(candidates);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-transactions/:id/match", async (req, res) => {
+    try {
+      const txId = req.params.id;
+      const { paymentId, noMatch } = req.body;
+      const allTx = await storage.getBankTransactions({});
+      const tx = allTx.find((t: any) => t.id === txId);
+      if (!tx) return res.status(404).json({ message: "Transaction not found" });
+
+      if (noMatch) {
+        await storage.updateBankTransaction(txId, { matchStatus: "ignored", matchedPaymentId: null });
+      } else {
+        if (!paymentId) return res.status(400).json({ message: "paymentId required" });
+        await storage.updateBankTransaction(txId, { matchStatus: "manual", matchedPaymentId: paymentId });
+        const actualAmount = tx.creditAmount || tx.debitAmount || 0;
+        await storage.updatePayment(paymentId, {
+          status: "completed",
+          actualDate: tx.txDate || undefined,
+          actualAmount: actualAmount || undefined,
+        });
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/bank-transactions/:id/match", async (req, res) => {
+    try {
+      const txId = req.params.id;
+      const allTx = await storage.getBankTransactions({});
+      const tx = allTx.find((t: any) => t.id === txId);
+      if (!tx) return res.status(404).json({ message: "Transaction not found" });
+
+      const prevPaymentId = tx.matchedPaymentId;
+      await storage.updateBankTransaction(txId, { matchStatus: "unmatched", matchedPaymentId: null });
+      if (prevPaymentId) {
+        await storage.updatePayment(prevPaymentId, {
+          status: "planned",
+          actualDate: null,
+          actualAmount: null,
+        });
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   const bankUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
   app.post("/api/bank-transactions/import", bankUpload.single("file"), async (req, res) => {

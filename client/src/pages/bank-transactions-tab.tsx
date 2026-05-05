@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Plus, Upload, Trash2, Building2, ArrowDownCircle, ArrowUpCircle, RefreshCw,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Link2, Link2Off, AlertCircle,
 } from "lucide-react";
 import type { BankAccount, BankTransaction } from "@shared/schema";
 
@@ -332,16 +332,171 @@ function QuickImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   );
 }
 
+type MatchCandidate = {
+  id: string;
+  type: string;
+  status: string;
+  description: string | null;
+  amount: number | null;
+  plannedDate: string | null;
+  projectCustomerName: string | null;
+  projectNumber: string | null;
+};
+
+function MatchDialog({ tx, onClose }: { tx: BankTransaction; onClose: () => void }) {
+  const { toast } = useToast();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const isCredit = !!(tx.creditAmount && tx.creditAmount > 0);
+  const amount = tx.creditAmount || tx.debitAmount || 0;
+
+  const { data: candidates = [], isLoading } = useQuery<MatchCandidate[]>({
+    queryKey: ["/api/bank-transactions", tx.id, "candidates"],
+    queryFn: async () => {
+      const res = await fetch(`/api/bank-transactions/${tx.id}/candidates`);
+      return res.json();
+    },
+  });
+
+  const matchMutation = useMutation({
+    mutationFn: async (data: { paymentId?: string; noMatch?: boolean }) => {
+      const res = await apiRequest("POST", `/api/bank-transactions/${tx.id}/match`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: "처리가 완료되었습니다" });
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>자금계획 연결</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-muted/40 rounded-lg px-3 py-2.5 text-sm space-y-1">
+            <div className="text-xs text-muted-foreground font-medium">은행 거래</div>
+            <div className="flex items-center justify-between">
+              <div className="font-medium">{tx.counterparty || tx.description || "내용 없음"}</div>
+              <div className={isCredit ? "text-blue-600 font-semibold" : "text-red-600 font-semibold"}>
+                {isCredit ? "+" : "-"}{amount.toLocaleString()}원
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground">{tx.txDate}</div>
+          </div>
+
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-2">
+              연결 가능한 자금계획
+              {!isLoading && <span className="ml-1 font-normal">({candidates.length}건 — 날짜 ±30일, 금액 ±20%)</span>}
+            </div>
+            {isLoading ? (
+              <div className="space-y-2">
+                {[1, 2].map(i => <Skeleton key={i} className="h-14" />)}
+              </div>
+            ) : candidates.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-6 bg-muted/20 rounded-lg">
+                <AlertCircle className="h-5 w-5 mx-auto mb-1.5 opacity-40" />
+                날짜·금액이 유사한 자금계획 항목이 없습니다
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
+                {candidates.map(c => {
+                  const diff = tx.txDate && c.plannedDate
+                    ? Math.round((new Date(tx.txDate).getTime() - new Date(c.plannedDate).getTime()) / 86400000)
+                    : null;
+                  const amtDiff = c.amount && amount ? Math.round(Math.abs(c.amount - amount) / amount * 100) : 0;
+                  return (
+                    <div
+                      key={c.id}
+                      className={`border rounded-lg px-3 py-2.5 cursor-pointer transition-colors text-sm ${
+                        selectedId === c.id ? "border-primary bg-primary/5" : "hover:border-primary/40 hover:bg-muted/30"
+                      }`}
+                      onClick={() => setSelectedId(selectedId === c.id ? null : c.id)}
+                      data-testid={`candidate-${c.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{c.description || c.projectCustomerName || "내용 없음"}</div>
+                          <div className="text-xs text-muted-foreground flex items-center gap-2">
+                            <span>{c.plannedDate || "날짜 미정"}</span>
+                            {diff !== null && (
+                              <span className={Math.abs(diff) <= 3 ? "text-green-600 font-medium" : "text-orange-500"}>
+                                {diff === 0 ? "당일" : diff > 0 ? `D+${diff}` : `D${diff}`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className={c.type === "income" ? "text-blue-600 font-medium" : "text-red-600 font-medium"}>
+                            {(c.amount || 0).toLocaleString()}원
+                          </div>
+                          {amtDiff > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              {amtDiff > 0 ? `차이 ${amtDiff}%` : "금액 일치"}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-3 flex items-center justify-between">
+            <div>
+              <div className="text-xs text-muted-foreground mb-1.5">해당하는 계획이 없는 거래라면</div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={() => matchMutation.mutate({ noMatch: true })}
+                disabled={matchMutation.isPending}
+                data-testid="button-no-match"
+              >
+                계획없음으로 표시
+              </Button>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose} disabled={matchMutation.isPending}>취소</Button>
+          <Button
+            onClick={() => { if (selectedId) matchMutation.mutate({ paymentId: selectedId }); }}
+            disabled={!selectedId || matchMutation.isPending}
+            data-testid="button-confirm-match"
+          >
+            {matchMutation.isPending
+              ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+              : <Link2 className="h-4 w-4 mr-1" />}
+            연결하기
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function BankTransactionsTab() {
   const { toast } = useToast();
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [txType, setTxType] = useState<"all" | "credit" | "debit">("all");
+  const [matchFilter, setMatchFilter] = useState<"all" | "matched" | "unmatched" | "ignored">("all");
   const [showAccountManager, setShowAccountManager] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showQuickImport, setShowQuickImport] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [matchDialogTx, setMatchDialogTx] = useState<BankTransaction | null>(null);
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<BankAccount[]>({
     queryKey: ["/api/bank-accounts"],
@@ -373,8 +528,34 @@ export function BankTransactionsTab() {
     },
   });
 
+  const unmatchMutation = useMutation({
+    mutationFn: async (txId: string) => {
+      const res = await apiRequest("DELETE", `/api/bank-transactions/${txId}/match`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: "연결이 해제되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "해제 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const totalCredit = transactions.reduce((s, t) => s + (t.creditAmount ?? 0), 0);
   const totalDebit = transactions.reduce((s, t) => s + (t.debitAmount ?? 0), 0);
+
+  const matchedCount = transactions.filter(t => t.matchStatus === "manual" || t.matchStatus === "auto").length;
+  const unmatchedCount = transactions.filter(t => !t.matchStatus || t.matchStatus === "unmatched").length;
+  const ignoredCount = transactions.filter(t => t.matchStatus === "ignored").length;
+
+  const filteredTransactions = matchFilter === "all" ? transactions : transactions.filter(t => {
+    if (matchFilter === "matched") return t.matchStatus === "manual" || t.matchStatus === "auto";
+    if (matchFilter === "unmatched") return !t.matchStatus || t.matchStatus === "unmatched";
+    if (matchFilter === "ignored") return t.matchStatus === "ignored";
+    return true;
+  });
 
   return (
     <div className="space-y-4" data-testid="bank-transactions-tab">
@@ -445,8 +626,47 @@ export function BankTransactionsTab() {
             </Button>
           </div>
 
-          {(startDate || endDate || txType !== "all") && (
-            <Button variant="ghost" size="sm" onClick={() => { setStartDate(""); setEndDate(""); setTxType("all"); }}>
+          <div className="flex items-center gap-1 border rounded-lg p-0.5">
+            <Button
+              variant={matchFilter === "all" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setMatchFilter("all")}
+              data-testid="filter-match-all"
+            >
+              전체 {transactions.length > 0 && <span className="ml-1 opacity-60">{transactions.length}</span>}
+            </Button>
+            <Button
+              variant={matchFilter === "matched" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setMatchFilter("matched")}
+              data-testid="filter-match-matched"
+            >
+              연결됨 {matchedCount > 0 && <span className="ml-1 text-green-600 opacity-80">{matchedCount}</span>}
+            </Button>
+            <Button
+              variant={matchFilter === "unmatched" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setMatchFilter("unmatched")}
+              data-testid="filter-match-unmatched"
+            >
+              미연결 {unmatchedCount > 0 && <span className="ml-1 text-orange-500 opacity-80">{unmatchedCount}</span>}
+            </Button>
+            <Button
+              variant={matchFilter === "ignored" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setMatchFilter("ignored")}
+              data-testid="filter-match-ignored"
+            >
+              계획없음 {ignoredCount > 0 && <span className="ml-1 opacity-60">{ignoredCount}</span>}
+            </Button>
+          </div>
+
+          {(startDate || endDate || txType !== "all" || matchFilter !== "all") && (
+            <Button variant="ghost" size="sm" onClick={() => { setStartDate(""); setEndDate(""); setTxType("all"); setMatchFilter("all"); }}>
               필터 초기화
             </Button>
           )}
@@ -468,7 +688,7 @@ export function BankTransactionsTab() {
       </div>
 
       {selectedAccountId && transactions.length > 0 && (
-        <div className="flex items-center gap-4 text-sm bg-muted/30 rounded-lg px-4 py-2 border">
+        <div className="flex items-center gap-4 text-sm bg-muted/30 rounded-lg px-4 py-2 border flex-wrap">
           <span className="text-muted-foreground">{transactions.length}건</span>
           <span className="flex items-center gap-1 text-blue-600">
             <ArrowDownCircle className="h-3.5 w-3.5" />
@@ -478,6 +698,18 @@ export function BankTransactionsTab() {
             <ArrowUpCircle className="h-3.5 w-3.5" />
             출금 {totalDebit.toLocaleString()}원
           </span>
+          <span className="h-4 w-px bg-border mx-1" />
+          <span className="flex items-center gap-1 text-green-600 text-xs">
+            <Link2 className="h-3 w-3" />
+            연결됨 {matchedCount}
+          </span>
+          <span className="flex items-center gap-1 text-orange-500 text-xs">
+            <AlertCircle className="h-3 w-3" />
+            미연결 {unmatchedCount}
+          </span>
+          {ignoredCount > 0 && (
+            <span className="text-xs text-muted-foreground">계획없음 {ignoredCount}</span>
+          )}
           <span className="text-muted-foreground ml-auto text-xs">
             {selectedAccount?.bankName} · {selectedAccount?.accountAlias}
           </span>
@@ -521,91 +753,159 @@ export function BankTransactionsTab() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {transactions.map(tx => (
-                <Fragment key={tx.id}>
-                  <tr
-                    className="group hover:bg-muted/30 cursor-pointer transition-colors"
-                    onClick={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
-                    data-testid={`tx-row-${tx.id}`}
-                  >
-                    <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                      {formatDate(tx.txDate)}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {expandedId === tx.id ? <ChevronUp className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
-                        <div className="min-w-0">
-                          {tx.counterparty && (
-                            <div className="font-medium truncate">{tx.counterparty}</div>
-                          )}
-                          {tx.description && (
-                            <div className="text-xs text-muted-foreground truncate">{tx.description}</div>
-                          )}
-                          {!tx.counterparty && !tx.description && (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {tx.debitAmount ? (
-                        <span className="text-red-600 font-medium">{tx.debitAmount.toLocaleString()}</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {tx.creditAmount ? (
-                        <span className="text-blue-600 font-medium">{tx.creditAmount.toLocaleString()}</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">
-                      {tx.balance != null ? tx.balance.toLocaleString() : "-"}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <MatchStatusBadge status={tx.matchStatus} />
-                    </td>
-                    <td className="px-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
-                        onClick={e => {
-                          e.stopPropagation();
-                          if (confirm("삭제하시겠습니까?")) deleteTxMutation.mutate(tx.id);
-                        }}
-                        data-testid={`button-delete-tx-${tx.id}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </td>
-                  </tr>
-                  {expandedId === tx.id && (
-                    <tr key={`${tx.id}-detail`} className="bg-muted/10">
-                      <td colSpan={7} className="px-4 py-3">
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs">
-                          {tx.txTime && <><span className="text-muted-foreground">거래시각</span><span>{tx.txTime}</span></>}
-                          {tx.txCategory && <><span className="text-muted-foreground">거래구분</span><span>{tx.txCategory}</span></>}
-                          {tx.importBatch && <><span className="text-muted-foreground">가져오기 일시</span><span>{tx.importBatch}</span></>}
-                          <span className="text-muted-foreground">거래 ID</span><span className="font-mono text-muted-foreground">{tx.id}</span>
-                          <div className="col-span-2 pt-1 flex justify-end">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-xs text-destructive hover:text-destructive"
-                              onClick={() => { if (confirm("삭제하시겠습니까?")) deleteTxMutation.mutate(tx.id); }}
-                            >
-                              <Trash2 className="h-3 w-3 mr-1" /> 삭제
-                            </Button>
+              {filteredTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
+                    해당 조건의 거래내역이 없습니다
+                  </td>
+                </tr>
+              ) : filteredTransactions.map(tx => {
+                const isMatched = tx.matchStatus === "manual" || tx.matchStatus === "auto";
+                const isIgnored = tx.matchStatus === "ignored";
+                return (
+                  <Fragment key={tx.id}>
+                    <tr
+                      className={`group hover:bg-muted/30 cursor-pointer transition-colors ${isMatched ? "bg-green-50/40 dark:bg-green-950/10" : ""}`}
+                      onClick={() => setExpandedId(expandedId === tx.id ? null : tx.id)}
+                      data-testid={`tx-row-${tx.id}`}
+                    >
+                      <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDate(tx.txDate)}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {expandedId === tx.id ? <ChevronUp className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
+                          <div className="min-w-0">
+                            {tx.counterparty && (
+                              <div className="font-medium truncate">{tx.counterparty}</div>
+                            )}
+                            {tx.description && (
+                              <div className="text-xs text-muted-foreground truncate">{tx.description}</div>
+                            )}
+                            {!tx.counterparty && !tx.description && (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </div>
                         </div>
                       </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {tx.debitAmount ? (
+                          <span className="text-red-600 font-medium">{tx.debitAmount.toLocaleString()}</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {tx.creditAmount ? (
+                          <span className="text-blue-600 font-medium">{tx.creditAmount.toLocaleString()}</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">
+                        {tx.balance != null ? tx.balance.toLocaleString() : "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <MatchStatusBadge status={tx.matchStatus} />
+                      </td>
+                      <td className="px-1 text-right">
+                        <div className="flex items-center justify-end gap-0.5">
+                          {!isMatched && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100"
+                              title={isIgnored ? "다시 연결 시도" : "자금계획 연결"}
+                              onClick={e => { e.stopPropagation(); setMatchDialogTx(tx); }}
+                              data-testid={`button-match-tx-${tx.id}`}
+                            >
+                              <Link2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {isMatched && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-green-600 hover:text-orange-500 opacity-0 group-hover:opacity-100"
+                              title="연결 해제"
+                              onClick={e => { e.stopPropagation(); if (confirm("연결을 해제하시겠습니까?\n자금계획 항목이 '예정' 상태로 돌아갑니다.")) unmatchMutation.mutate(tx.id); }}
+                              data-testid={`button-unmatch-tx-${tx.id}`}
+                            >
+                              <Link2Off className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (confirm("삭제하시겠습니까?")) deleteTxMutation.mutate(tx.id);
+                            }}
+                            data-testid={`button-delete-tx-${tx.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
-                  )}
-                </Fragment>
-              ))}
+                    {expandedId === tx.id && (
+                      <tr key={`${tx.id}-detail`} className="bg-muted/10">
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs flex-1">
+                              {tx.txTime && <><span className="text-muted-foreground">거래시각</span><span>{tx.txTime}</span></>}
+                              {tx.txCategory && <><span className="text-muted-foreground">거래구분</span><span>{tx.txCategory}</span></>}
+                              {tx.importBatch && <><span className="text-muted-foreground">가져오기 일시</span><span>{tx.importBatch}</span></>}
+                              <span className="text-muted-foreground">거래 ID</span><span className="font-mono text-muted-foreground">{tx.id}</span>
+                              {isMatched && tx.matchedPaymentId && (
+                                <>
+                                  <span className="text-muted-foreground">연결된 계획</span>
+                                  <span className="text-green-700 font-medium flex items-center gap-1">
+                                    <Link2 className="h-3 w-3" /> 자금계획 연결됨
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {!isMatched ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={e => { e.stopPropagation(); setMatchDialogTx(tx); }}
+                                  data-testid={`button-match-detail-${tx.id}`}
+                                >
+                                  <Link2 className="h-3 w-3 mr-1" />
+                                  {isIgnored ? "다시 연결" : "연결하기"}
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
+                                  onClick={e => { e.stopPropagation(); if (confirm("연결을 해제하시겠습니까?")) unmatchMutation.mutate(tx.id); }}
+                                  data-testid={`button-unmatch-detail-${tx.id}`}
+                                >
+                                  <Link2Off className="h-3 w-3 mr-1" /> 연결 해제
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs text-destructive hover:text-destructive"
+                                onClick={e => { e.stopPropagation(); if (confirm("삭제하시겠습니까?")) deleteTxMutation.mutate(tx.id); }}
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" /> 삭제
+                              </Button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -620,6 +920,9 @@ export function BankTransactionsTab() {
           open={showImport}
           onOpenChange={setShowImport}
         />
+      )}
+      {matchDialogTx && (
+        <MatchDialog tx={matchDialogTx} onClose={() => setMatchDialogTx(null)} />
       )}
 
       <DataCleanupSection />
@@ -680,10 +983,10 @@ function DataCleanupSection() {
 
 function MatchStatusBadge({ status }: { status: string | null }) {
   if (status === "auto" || status === "manual") {
-    return <Badge variant="outline" className="text-[10px] text-green-600 bg-green-50 border-green-200">연결됨</Badge>;
+    return <Badge variant="outline" className="text-[10px] text-green-600 bg-green-50 border-green-200 dark:bg-green-950/30">연결됨</Badge>;
   }
   if (status === "ignored") {
-    return <Badge variant="outline" className="text-[10px] text-muted-foreground">무시</Badge>;
+    return <Badge variant="outline" className="text-[10px] text-muted-foreground bg-muted/40 border-muted-foreground/20">계획없음</Badge>;
   }
-  return <Badge variant="outline" className="text-[10px] text-orange-600 bg-orange-50 border-orange-200">미연결</Badge>;
+  return <Badge variant="outline" className="text-[10px] text-orange-500 bg-orange-50 border-orange-200 dark:bg-orange-950/20">미연결</Badge>;
 }
