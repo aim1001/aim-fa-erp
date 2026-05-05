@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink, Upload, Link2 } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink, Upload, Link2, Unlink2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
@@ -730,6 +730,22 @@ export default function SalesInvoiceList() {
     },
   });
 
+  const inlineUnlinkMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, { projectId: null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: "프로젝트 연결이 해제되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 해제 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const data: any = {
@@ -1041,26 +1057,42 @@ export default function SalesInvoiceList() {
                       const invoicedAmt = projectInvoiceSums.get(inv.projectId) || 0;
                       const diff = contractAmt > 0 ? invoicedAmt - contractAmt : null;
                       return (
-                        <div className="flex flex-col gap-0.5" data-testid={`text-project-${inv.id}`}>
-                          <span className="text-xs font-medium text-muted-foreground">
-                            {proj.projectNumber} {proj.customerName}
-                          </span>
-                          {contractAmt > 0 && (
-                            <span className="text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
-                              계약 {contractAmt.toLocaleString()}원
-                              {diff !== null && (
-                                <span className={`px-1 py-0.5 rounded font-medium ${
-                                  diff === 0
-                                    ? "bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400"
-                                    : diff > 0
-                                    ? "bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
-                                    : "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
-                                }`}>
-                                  {diff === 0 ? "일치" : diff > 0 ? `초과 +${diff.toLocaleString()}` : `미달 ${diff.toLocaleString()}`}
-                                </span>
-                              )}
+                        <div className="group flex items-start gap-1" data-testid={`text-project-${inv.id}`}>
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {proj.projectNumber} {proj.customerName}
                             </span>
-                          )}
+                            {contractAmt > 0 && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
+                                계약 {contractAmt.toLocaleString()}원
+                                {diff !== null && (
+                                  <span className={`px-1 py-0.5 rounded font-medium ${
+                                    diff === 0
+                                      ? "bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400"
+                                      : diff > 0
+                                      ? "bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                                      : "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                                  }`}>
+                                    {diff === 0 ? "일치" : diff > 0 ? `초과 +${diff.toLocaleString()}` : `미달 ${diff.toLocaleString()}`}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={e => {
+                              e.stopPropagation();
+                              inlineUnlinkMutation.mutate(inv.id);
+                            }}
+                            disabled={inlineUnlinkMutation.isPending}
+                            title="프로젝트 연결 해제"
+                            data-testid={`button-unlink-project-${inv.id}`}
+                          >
+                            <Unlink2 className="h-3 w-3" />
+                          </Button>
                         </div>
                       );
                     })() : (
