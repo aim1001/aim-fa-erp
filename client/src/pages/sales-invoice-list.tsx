@@ -657,10 +657,15 @@ export default function SalesInvoiceList() {
       if (data.autoLinked > 0) queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       const parts = [`${data.imported}건 추가`];
       if (data.matched > 0) parts.push(`${data.matched}건 예정→발행 매칭`);
-      if (data.autoLinked > 0) parts.push(`${data.autoLinked}건 프로젝트 자동 연결`);
       if (data.updated > 0) parts.push(`${data.updated}건 업데이트`);
       parts.push(`${data.skipped}건 변경없음`);
-      toast({ title: "가져오기 완료", description: `${parts.join(", ")} (총 ${data.total}건)` });
+      const autoLinkedMsg = data.autoLinked > 0
+        ? `${data.autoLinked}건 자동 프로젝트 연결됨`
+        : "자동 프로젝트 연결 0건";
+      toast({
+        title: "가져오기 완료",
+        description: `${parts.join(", ")} (총 ${data.total}건) · ${autoLinkedMsg}`,
+      });
     },
     onError: (err: Error) => {
       toast({ title: "가져오기 실패", description: err.message, variant: "destructive" });
@@ -687,9 +692,14 @@ export default function SalesInvoiceList() {
       if (data.autoLinked > 0) queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       const parts = [`신규 ${data.imported}건 추가`];
       if (data.matched > 0) parts.push(`${data.matched}건 미발행→발행 매칭`);
-      if (data.autoLinked > 0) parts.push(`${data.autoLinked}건 프로젝트 자동 연결`);
       parts.push(`중복 ${data.skipped}건 건너뜀`);
-      toast({ title: "업로드 완료", description: `${parts.join(", ")} (총 ${data.total}건)` });
+      const autoLinkedMsg = data.autoLinked > 0
+        ? `${data.autoLinked}건 자동 프로젝트 연결됨`
+        : "자동 프로젝트 연결 0건";
+      toast({
+        title: "업로드 완료",
+        description: `${parts.join(", ")} (총 ${data.total}건) · ${autoLinkedMsg}`,
+      });
     },
     onError: (err: Error) => {
       toast({ title: "업로드 실패", description: err.message, variant: "destructive" });
