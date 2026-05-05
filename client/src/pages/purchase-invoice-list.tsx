@@ -586,6 +586,8 @@ export default function PurchaseInvoiceList() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [newInvoice, setNewInvoice] = useState({ vendorId: "", invoiceNumber: "", issueDate: "", item: "", supplyAmount: "", taxAmount: "" });
+  const [inlineEditId, setInlineEditId] = useState<string | null>(null);
+  const [inlineProjectId, setInlineProjectId] = useState<string>("");
 
   const { data: invoices, isLoading } = useQuery<PurchaseInvoiceWithPayment[]>({
     queryKey: ["/api/purchase-invoices-with-payments"],
@@ -793,6 +795,24 @@ export default function PurchaseInvoiceList() {
     },
   });
 
+  const inlineLinkMutation = useMutation({
+    mutationFn: async ({ id, projectId }: { id: string; projectId: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/purchase-invoices/${id}`, { projectId: projectId || null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setInlineEditId(null);
+      setInlineProjectId("");
+      toast({ title: "프로젝트 연결이 저장되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -984,12 +1004,43 @@ export default function PurchaseInvoiceList() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(inv => (
-                <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(inv.id)} data-testid={`row-purchase-invoice-${inv.id}`}>
+              {filtered.map(inv => {
+                const isInlineEditing = inlineEditId === inv.id;
+                return (
+                <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => { if (!isInlineEditing) setSelectedId(inv.id); }} data-testid={`row-purchase-invoice-${inv.id}`}>
                   <td className="py-2.5 px-4">{inv.writeDate || inv.issueDate || "-"}</td>
                   <td className="py-2.5 px-4">{inv.companyName || (inv.vendorId ? vendorMap.get(inv.vendorId) : "-") || "-"}</td>
                   <td className="py-2.5 px-4 hidden lg:table-cell">
-                    {inv.projectId ? (() => {
+                    {isInlineEditing ? (
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()} data-testid={`inline-link-form-${inv.id}`}>
+                        <Select
+                          value={inlineProjectId}
+                          onValueChange={val => {
+                            setInlineProjectId(val);
+                            inlineLinkMutation.mutate({ id: inv.id, projectId: val || null });
+                          }}
+                          disabled={inlineLinkMutation.isPending}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-full" data-testid={`select-inline-project-${inv.id}`}>
+                            <SelectValue placeholder="프로젝트 선택" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(projects || []).map(p => (
+                              <SelectItem key={p.id} value={p.id}>{p.projectNumber} {p.customerName}{p.description ? ` - ${p.description}` : ""}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 shrink-0"
+                          onClick={() => { setInlineEditId(null); setInlineProjectId(""); }}
+                          data-testid={`button-inline-cancel-${inv.id}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : inv.projectId ? (() => {
                       const proj = projectMap.get(inv.projectId);
                       return (
                         <div className="group flex items-center gap-1" data-testid={`text-project-${inv.id}`}>
@@ -1027,7 +1078,8 @@ export default function PurchaseInvoiceList() {
                               className="h-5 text-[10px] text-muted-foreground hover:text-foreground px-1"
                               onClick={e => {
                                 e.stopPropagation();
-                                setSelectedId(inv.id);
+                                setInlineEditId(inv.id);
+                                setInlineProjectId(inv.projectId || "");
                               }}
                               data-testid={`button-link-project-${inv.id}`}
                             >
@@ -1055,7 +1107,8 @@ export default function PurchaseInvoiceList() {
                     {inv.paymentCount > 0 ? <span className={inv.remainingAmount > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}>{inv.remainingAmount.toLocaleString()}원</span> : <span className="text-muted-foreground">-</span>}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
