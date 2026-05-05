@@ -301,50 +301,49 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
     const openingBalance = monthlyBalance?.openingBalance ?? null;
 
     if (filterAccount !== "all") {
-      // Single-account mode: tx.balance is authoritative; use opening balance as fallback seed
-      let lastKnownBalance: number | null = openingBalance;
+      // Single-account mode: tx.balance is authoritative; use opening balance as fallback seed.
+      // Payment rows chain: each estimated balance becomes the cursor for the next row.
+      let cursor: number | null = openingBalance;
       return all.map(row => {
         if (row.kind === "bank") {
-          if (row.tx.balance != null) lastKnownBalance = row.tx.balance;
-          return { ...row, runningBalance: row.tx.balance ?? lastKnownBalance };
+          if (row.tx.balance != null) cursor = row.tx.balance;
+          return { ...row, runningBalance: cursor };
         } else {
           let estimated: number | null = null;
-          if (lastKnownBalance != null) {
+          if (cursor != null) {
             const amt = row.payment.amount || 0;
-            estimated = row.payment.type === "income"
-              ? lastKnownBalance + amt
-              : lastKnownBalance - amt;
+            estimated = row.payment.type === "income" ? cursor + amt : cursor - amt;
+            cursor = estimated; // chain: next planned row builds on this estimate
           }
           return { ...row, estimatedBalance: estimated };
         }
       });
     } else {
-      // Multi-account mode: track per-account latest balance, sum = total across all accounts.
-      // Seed from opening balance; apply credit/debit deltas as transactions arrive.
+      // Multi-account mode: track per-account latest balance; sum = total across known accounts.
+      // When tx.balance is null, apply credit/debit delta only to runningTotal (don't store a
+      // global total into accountBalances, which would distort future per-account sums).
+      // Payment rows chain the same way as single-account mode.
       const accountBalances = new Map<string, number>();
-      let runningTotal: number | null = openingBalance;
+      let cursor: number | null = openingBalance;
 
       return all.map(row => {
         if (row.kind === "bank") {
           const tx = row.tx;
-          // Update this account's balance
           if (tx.balance != null) {
             accountBalances.set(tx.accountId, tx.balance);
-            // Recompute total from all known account balances
-            runningTotal = Array.from(accountBalances.values()).reduce((s, v) => s + v, 0);
-          } else if (runningTotal != null) {
-            // Fallback: apply delta to running total
-            runningTotal = runningTotal + (tx.creditAmount || 0) - (tx.debitAmount || 0);
-            accountBalances.set(tx.accountId, runningTotal);
+            cursor = Array.from(accountBalances.values()).reduce((s, v) => s + v, 0);
+          } else if (cursor != null) {
+            // Fallback delta: update running total only — do NOT write to accountBalances
+            // to avoid polluting per-account slots with a global figure.
+            cursor = cursor + (tx.creditAmount || 0) - (tx.debitAmount || 0);
           }
-          return { ...row, runningBalance: runningTotal };
+          return { ...row, runningBalance: cursor };
         } else {
           let estimated: number | null = null;
-          if (runningTotal != null) {
+          if (cursor != null) {
             const amt = row.payment.amount || 0;
-            estimated = row.payment.type === "income"
-              ? runningTotal + amt
-              : runningTotal - amt;
+            estimated = row.payment.type === "income" ? cursor + amt : cursor - amt;
+            cursor = estimated; // chain consecutive planned rows
           }
           return { ...row, estimatedBalance: estimated };
         }
