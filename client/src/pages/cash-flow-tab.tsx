@@ -363,7 +363,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
       } else {
         if (filterStatus === "matched" || filterStatus === "unmatched") return false;
         const isOverdue = row.payment.status !== "completed" && row.payment.plannedDate && row.payment.plannedDate < today;
-        if (filterStatus === "planned") return !isOverdue;
+        if (filterStatus === "planned") return row.payment.status !== "completed" && !isOverdue;
         if (filterStatus === "overdue") return !!isOverdue;
         return true;
       }
