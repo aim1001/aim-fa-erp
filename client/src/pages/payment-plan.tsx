@@ -471,7 +471,7 @@ export default function PaymentPlan() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund" | "bank">("list");
+  const [viewMode, setViewMode] = useState<"list" | "calendar" | "fund" | "bank">("fund");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "completed">("pending");
@@ -647,70 +647,43 @@ export default function PaymentPlan() {
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">
-          {viewMode === "fund" ? "자금현황" : viewMode === "bank" ? "은행 거래내역" : "자금계획"}
-        </h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">자금계획</h1>
         <div className="flex items-center gap-2">
-          {viewMode !== "fund" && viewMode !== "bank" && (
+          {(viewMode === "list" || viewMode === "calendar") && (
             <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-payment">
               <Plus className="h-4 w-4 mr-1" />추가
             </Button>
           )}
-          <Button
-            variant={viewMode === "bank" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode(viewMode === "bank" ? "list" : "bank")}
-            data-testid="button-view-bank"
-          >
-            <Landmark className="h-4 w-4 mr-1" />{viewMode === "bank" ? "자금계획으로" : "은행내역"}
-          </Button>
-          <Button
-            variant={viewMode === "fund" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode(viewMode === "fund" ? "list" : "fund")}
-            data-testid="button-view-fund"
-          >
-            <LayoutDashboard className="h-4 w-4 mr-1" />{viewMode === "fund" ? "자금계획으로" : "자금현황"}
-          </Button>
+          <div className="flex items-center gap-1 border rounded-lg p-0.5">
+            <Button variant={viewMode === "fund" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("fund")} data-testid="button-view-fund">
+              <LayoutDashboard className="h-4 w-4 mr-1" />자금현황
+            </Button>
+            <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("list")} data-testid="button-view-list">
+              <List className="h-4 w-4 mr-1" />목록
+            </Button>
+            <Button variant={viewMode === "calendar" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("calendar")} data-testid="button-view-calendar">
+              <CalendarIcon className="h-4 w-4 mr-1" />캘린더
+            </Button>
+            <Button variant={viewMode === "bank" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("bank")} data-testid="button-view-bank">
+              <Landmark className="h-4 w-4 mr-1" />은행거래
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        {viewMode !== "fund" && viewMode !== "bank" && (
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-prev-month">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-lg font-semibold min-w-[120px] text-center" data-testid="text-current-month">
-              {year}년 {month}월
-            </span>
-            <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-next-month">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-        {(viewMode === "fund" || viewMode === "bank") && <div />}
-        {viewMode !== "fund" && viewMode !== "bank" && (
-          <div className="flex items-center gap-1 border rounded-lg p-0.5">
-            <Button
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("list")}
-              data-testid="button-view-list"
-            >
-              <List className="h-4 w-4 mr-1" />리스트
-            </Button>
-            <Button
-              variant={viewMode === "calendar" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("calendar")}
-              data-testid="button-view-calendar"
-            >
-              <CalendarIcon className="h-4 w-4 mr-1" />캘린더
-            </Button>
-          </div>
-        )}
-      </div>
+      {(viewMode === "list" || viewMode === "calendar") && (
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-prev-month">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-lg font-semibold min-w-[120px] text-center" data-testid="text-current-month">
+            {year}년 {month}월
+          </span>
+          <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-next-month">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       {viewMode === "bank" && <BankTransactionsTab />}
 
