@@ -612,6 +612,20 @@ export default function PurchaseInvoiceList() {
     return map;
   }, [projects]);
 
+  const vendorSuggestedProjectMap = useMemo(() => {
+    if (!invoices) return new Map<string, string>();
+    const map = new Map<string, string>();
+    const linked = invoices
+      .filter(inv => inv.vendorId && inv.projectId && inv.issueDate)
+      .sort((a, b) => (b.issueDate || "").localeCompare(a.issueDate || ""));
+    for (const inv of linked) {
+      if (inv.vendorId && !map.has(inv.vendorId)) {
+        map.set(inv.vendorId, inv.projectId!);
+      }
+    }
+    return map;
+  }, [invoices]);
+
   const availableYears = useMemo(() => {
     if (!invoices) return [];
     const years = new Set<number>();
@@ -958,7 +972,7 @@ export default function PurchaseInvoiceList() {
               <tr className="border-b bg-muted/50">
                 <th className="text-left py-2.5 px-4 font-medium">발급일</th>
                 <th className="text-left py-2.5 px-4 font-medium">상호</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">프로젝트</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">프로젝트</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자번호</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">공급가액</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">세액</th>
@@ -973,7 +987,7 @@ export default function PurchaseInvoiceList() {
                 <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(inv.id)} data-testid={`row-purchase-invoice-${inv.id}`}>
                   <td className="py-2.5 px-4">{inv.issueDate || "-"}</td>
                   <td className="py-2.5 px-4">{inv.companyName || (inv.vendorId ? vendorMap.get(inv.vendorId) : "-") || "-"}</td>
-                  <td className="py-2.5 px-4 hidden xl:table-cell">
+                  <td className="py-2.5 px-4 hidden lg:table-cell">
                     {inv.projectId ? (() => {
                       const proj = projectMap.get(inv.projectId);
                       return (
@@ -997,20 +1011,36 @@ export default function PurchaseInvoiceList() {
                           </Button>
                         </div>
                       );
-                    })() : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-xs text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 px-1.5"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setSelectedId(inv.id);
-                        }}
-                        data-testid={`button-link-project-${inv.id}`}
-                      >
-                        <Link2 className="h-3 w-3 mr-1" />연결
-                      </Button>
-                    )}
+                    })() : (() => {
+                      const suggestedProjectId = inv.vendorId ? vendorSuggestedProjectMap.get(inv.vendorId) : undefined;
+                      const suggestedProject = suggestedProjectId ? projectMap.get(suggestedProjectId) : undefined;
+                      return (
+                        <div className="flex flex-col gap-0.5" data-testid={`text-project-unlinked-${inv.id}`}>
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-orange-600 dark:text-orange-400 border-orange-300 dark:border-orange-600 bg-orange-50 dark:bg-orange-950/30">
+                              미연결
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 text-[10px] text-muted-foreground hover:text-foreground px-1"
+                              onClick={e => {
+                                e.stopPropagation();
+                                setSelectedId(inv.id);
+                              }}
+                              data-testid={`button-link-project-${inv.id}`}
+                            >
+                              <Link2 className="h-3 w-3 mr-0.5" />연결
+                            </Button>
+                          </div>
+                          {suggestedProject && (
+                            <span className="text-[10px] text-muted-foreground truncate max-w-[160px]" title={`추천: ${suggestedProject.projectNumber} ${suggestedProject.customerName}`} data-testid={`text-suggested-project-${inv.id}`}>
+                              추천: {suggestedProject.projectNumber} {suggestedProject.customerName}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{inv.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.supplyAmount)}</td>
