@@ -16,6 +16,54 @@ import {
   Landmark, Home, Wallet, X, Power, PowerOff,
 } from "lucide-react";
 
+type RecurringForm = {
+  category: string;
+  companyName: string;
+  description: string;
+  amount: string;
+  frequency: string;
+  paymentDay: string;
+  weekday: string;
+  paymentMonth: string;
+  startDate: string;
+  endDate: string;
+  mode: "period" | "installment";
+  totalInstallments: string;
+  startInstallment: string;
+};
+
+type RecurringPayload = {
+  category: string;
+  companyName: string | null;
+  description: string | null;
+  amount: number;
+  frequency: string;
+  paymentDay: number;
+  isActive?: string;
+  startDate: string | null;
+  endDate: string | null;
+  totalInstallments: number | null;
+  startInstallment: number;
+  weekday?: number;
+  paymentMonth?: number;
+};
+
+const DEFAULT_FORM: RecurringForm = {
+  category: "정기결제",
+  companyName: "",
+  description: "",
+  amount: "",
+  frequency: "monthly",
+  paymentDay: "25",
+  weekday: "1",
+  paymentMonth: "1",
+  startDate: "",
+  endDate: "",
+  mode: "period",
+  totalInstallments: "",
+  startInstallment: "1",
+};
+
 const EXPENSE_CATEGORIES = [
   { value: "카드사용", label: "카드사용", icon: CreditCard },
   { value: "정기결제", label: "정기결제", icon: RefreshCw },
@@ -43,15 +91,15 @@ function getCategoryIcon(category: string | null) {
 }
 
 function getScheduleLabel(r: RecurringExpense) {
-  const freq = (r as any).frequency || "monthly";
+  const freq = r.frequency ?? "monthly";
   const dayLabel = r.paymentDay === 0 ? "월말" : `${r.paymentDay}일`;
   if (freq === "weekly") {
-    const wd = (r as any).weekday;
+    const wd = r.weekday;
     return `매주 ${WEEKDAY_NAMES[wd != null && wd >= 0 && wd <= 6 ? wd : 1]}요일`;
   }
   if (freq === "yearly") {
-    const pm = (r as any).paymentMonth;
-    return `매년 ${pm >= 1 && pm <= 12 ? pm : 1}월 ${dayLabel}`;
+    const pm = r.paymentMonth;
+    return `매년 ${pm != null && pm >= 1 && pm <= 12 ? pm : 1}월 ${dayLabel}`;
   }
   return `매월 ${dayLabel}`;
 }
@@ -74,22 +122,8 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
 
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<any>({});
-  const [form, setForm] = useState({
-    category: "정기결제",
-    companyName: "",
-    description: "",
-    amount: "",
-    frequency: "monthly",
-    paymentDay: "25",
-    weekday: "1",
-    paymentMonth: "1",
-    startDate: "",
-    endDate: "",
-    mode: "period" as "period" | "installment",
-    totalInstallments: "",
-    startInstallment: "1",
-  });
+  const [editForm, setEditForm] = useState<RecurringForm>(DEFAULT_FORM);
+  const [form, setForm] = useState<RecurringForm>(DEFAULT_FORM);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -104,7 +138,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
         const si = parseInt(form.startInstallment) || 1;
         if (si > ti) throw new Error("시작 회차는 총 횟수보다 클 수 없습니다");
       }
-      const payload: any = {
+      const payload: RecurringPayload = {
         category: form.category,
         companyName: form.companyName || null,
         description: form.description || null,
@@ -126,7 +160,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/recurring-expenses"] });
-      setForm({ category: "정기결제", companyName: "", description: "", amount: "", frequency: "monthly", paymentDay: "25", weekday: "1", paymentMonth: "1", startDate: "", endDate: "", mode: "period", totalInstallments: "", startInstallment: "1" });
+      setForm(DEFAULT_FORM);
       setShowAdd(false);
       toast({ title: "정기지출이 등록되었습니다" });
     },
@@ -136,7 +170,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: RecurringPayload }) => {
       const res = await apiRequest("PATCH", `/api/recurring-expenses/${id}`, data);
       return res.json();
     },
@@ -195,15 +229,15 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
       companyName: r.companyName || "",
       description: r.description || "",
       amount: String(r.amount),
-      frequency: (r as any).frequency || "monthly",
+      frequency: r.frequency ?? "monthly",
       paymentDay: String(r.paymentDay),
-      weekday: String((r as any).weekday ?? 1),
-      paymentMonth: String((r as any).paymentMonth ?? 1),
+      weekday: String(r.weekday ?? 1),
+      paymentMonth: String(r.paymentMonth ?? 1),
       startDate: r.startDate || "",
       endDate: r.endDate || "",
-      mode: (r as any).totalInstallments ? "installment" : "period",
-      totalInstallments: (r as any).totalInstallments ? String((r as any).totalInstallments) : "",
-      startInstallment: String((r as any).startInstallment ?? 1),
+      mode: r.totalInstallments ? "installment" : "period",
+      totalInstallments: r.totalInstallments ? String(r.totalInstallments) : "",
+      startInstallment: String(r.startInstallment ?? 1),
     });
   };
 
@@ -218,7 +252,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
       const si = parseInt(editForm.startInstallment) || 1;
       if (si > ti) { toast({ title: "시작 회차는 총 횟수보다 클 수 없습니다", variant: "destructive" }); return; }
     }
-    const data: any = {
+    const data: RecurringPayload = {
       category: editForm.category,
       companyName: editForm.companyName || null,
       description: editForm.description || null,
@@ -230,6 +264,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
         : (editForm.endDate || null),
       totalInstallments: editForm.mode === "installment" ? (parseInt(editForm.totalInstallments) || null) : null,
       startInstallment: editForm.mode === "installment" ? (parseInt(editForm.startInstallment) || 1) : 1,
+      paymentDay: 1,
     };
     if (editForm.frequency === "weekly") {
       data.weekday = parseInt(editForm.weekday) || 1;
@@ -418,7 +453,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                         <div className="grid grid-cols-2 md:grid-cols-7 gap-2 items-end">
                           <div>
                             <Label className="text-[10px]">분류</Label>
-                            <Select value={editForm.category} onValueChange={val => setEditForm((p: any) => ({ ...p, category: val }))}>
+                            <Select value={editForm.category} onValueChange={val => setEditForm(p => ({ ...p, category: val }))}>
                               <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 {EXPENSE_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
@@ -427,19 +462,19 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                           </div>
                           <div>
                             <Label className="text-[10px]">거래처</Label>
-                            <Input className="h-7 text-xs" value={editForm.companyName} onChange={e => setEditForm((p: any) => ({ ...p, companyName: e.target.value }))} />
+                            <Input className="h-7 text-xs" value={editForm.companyName} onChange={e => setEditForm(p => ({ ...p, companyName: e.target.value }))} />
                           </div>
                           <div>
                             <Label className="text-[10px]">설명</Label>
-                            <Input className="h-7 text-xs" value={editForm.description} onChange={e => setEditForm((p: any) => ({ ...p, description: e.target.value }))} />
+                            <Input className="h-7 text-xs" value={editForm.description} onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))} />
                           </div>
                           <div>
                             <Label className="text-[10px]">금액</Label>
-                            <Input className="h-7 text-xs" type="number" value={editForm.amount} onChange={e => setEditForm((p: any) => ({ ...p, amount: e.target.value }))} />
+                            <Input className="h-7 text-xs" type="number" value={editForm.amount} onChange={e => setEditForm(p => ({ ...p, amount: e.target.value }))} />
                           </div>
                           <div>
                             <Label className="text-[10px]">주기</Label>
-                            <Select value={editForm.frequency} onValueChange={val => setEditForm((p: any) => ({ ...p, frequency: val }))}>
+                            <Select value={editForm.frequency} onValueChange={val => setEditForm(p => ({ ...p, frequency: val }))}>
                               <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="weekly">매주</SelectItem>
@@ -452,7 +487,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                             {editForm.frequency === "weekly" ? (
                               <>
                                 <Label className="text-[10px]">요일</Label>
-                                <Select value={editForm.weekday} onValueChange={val => setEditForm((p: any) => ({ ...p, weekday: val }))}>
+                                <Select value={editForm.weekday} onValueChange={val => setEditForm(p => ({ ...p, weekday: val }))}>
                                   <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     {WEEKDAY_NAMES.map((name, i) => <SelectItem key={i} value={String(i)}>{name}</SelectItem>)}
@@ -463,11 +498,11 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                               <div className="flex gap-1">
                                 <div className="flex-1">
                                   <Label className="text-[10px]">월</Label>
-                                  <Input className="h-7 text-xs" type="number" min="1" max="12" value={editForm.paymentMonth} onChange={e => setEditForm((p: any) => ({ ...p, paymentMonth: e.target.value }))} />
+                                  <Input className="h-7 text-xs" type="number" min="1" max="12" value={editForm.paymentMonth} onChange={e => setEditForm(p => ({ ...p, paymentMonth: e.target.value }))} />
                                 </div>
                                 <div className="flex-1">
                                   <Label className="text-[10px]">일</Label>
-                                  <Select value={editForm.paymentDay} onValueChange={val => setEditForm((p: any) => ({ ...p, paymentDay: val }))}>
+                                  <Select value={editForm.paymentDay} onValueChange={val => setEditForm(p => ({ ...p, paymentDay: val }))}>
                                     <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                       {Array.from({ length: 31 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}일</SelectItem>)}
@@ -479,7 +514,7 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                             ) : (
                               <>
                                 <Label className="text-[10px]">결제일</Label>
-                                <Select value={editForm.paymentDay} onValueChange={val => setEditForm((p: any) => ({ ...p, paymentDay: val }))}>
+                                <Select value={editForm.paymentDay} onValueChange={val => setEditForm(p => ({ ...p, paymentDay: val }))}>
                                   <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     {Array.from({ length: 31 }, (_, i) => <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}일</SelectItem>)}
@@ -493,34 +528,34 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                             <div className="flex items-center gap-2">
                               <Label className="text-[10px]">방식</Label>
                               <div className="flex items-center gap-0.5 border rounded-md p-0.5">
-                                <Button variant={editForm.mode === "period" ? "default" : "ghost"} size="sm" className="h-5 text-[10px] px-1.5" onClick={() => setEditForm((p: any) => ({ ...p, mode: "period" }))} data-testid="button-edit-mode-period">기간 지정</Button>
-                                <Button variant={editForm.mode === "installment" ? "default" : "ghost"} size="sm" className="h-5 text-[10px] px-1.5" onClick={() => setEditForm((p: any) => ({ ...p, mode: "installment" }))} data-testid="button-edit-mode-installment">횟수 지정</Button>
+                                <Button variant={editForm.mode === "period" ? "default" : "ghost"} size="sm" className="h-5 text-[10px] px-1.5" onClick={() => setEditForm(p => ({ ...p, mode: "period" }))} data-testid="button-edit-mode-period">기간 지정</Button>
+                                <Button variant={editForm.mode === "installment" ? "default" : "ghost"} size="sm" className="h-5 text-[10px] px-1.5" onClick={() => setEditForm(p => ({ ...p, mode: "installment" }))} data-testid="button-edit-mode-installment">횟수 지정</Button>
                               </div>
                             </div>
                             {editForm.mode === "period" ? (
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
                                 <div>
                                   <Label className="text-[10px]">시작기간</Label>
-                                  <Input className="h-7 text-xs" type="month" value={editForm.startDate} onChange={e => setEditForm((p: any) => ({ ...p, startDate: e.target.value }))} />
+                                  <Input className="h-7 text-xs" type="month" value={editForm.startDate} onChange={e => setEditForm(p => ({ ...p, startDate: e.target.value }))} />
                                 </div>
                                 <div>
                                   <Label className="text-[10px]">완료기간</Label>
-                                  <Input className="h-7 text-xs" type="month" value={editForm.endDate} onChange={e => setEditForm((p: any) => ({ ...p, endDate: e.target.value }))} />
+                                  <Input className="h-7 text-xs" type="month" value={editForm.endDate} onChange={e => setEditForm(p => ({ ...p, endDate: e.target.value }))} />
                                 </div>
                               </div>
                             ) : (
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
                                 <div>
                                   <Label className="text-[10px]">시작기간 <span className="text-red-500">*</span></Label>
-                                  <Input className="h-7 text-xs" type="month" value={editForm.startDate} onChange={e => setEditForm((p: any) => ({ ...p, startDate: e.target.value }))} />
+                                  <Input className="h-7 text-xs" type="month" value={editForm.startDate} onChange={e => setEditForm(p => ({ ...p, startDate: e.target.value }))} />
                                 </div>
                                 <div>
                                   <Label className="text-[10px]">총 횟수 <span className="text-red-500">*</span></Label>
-                                  <Input className="h-7 text-xs" type="number" min="1" value={editForm.totalInstallments} onChange={e => setEditForm((p: any) => ({ ...p, totalInstallments: e.target.value }))} />
+                                  <Input className="h-7 text-xs" type="number" min="1" value={editForm.totalInstallments} onChange={e => setEditForm(p => ({ ...p, totalInstallments: e.target.value }))} />
                                 </div>
                                 <div>
                                   <Label className="text-[10px]">시작 회차</Label>
-                                  <Input className="h-7 text-xs" type="number" min="1" value={editForm.startInstallment} onChange={e => setEditForm((p: any) => ({ ...p, startInstallment: e.target.value }))} />
+                                  <Input className="h-7 text-xs" type="number" min="1" value={editForm.startInstallment} onChange={e => setEditForm(p => ({ ...p, startInstallment: e.target.value }))} />
                                 </div>
                                 <div>
                                   <Label className="text-[10px]">완료기간 (자동)</Label>
@@ -567,12 +602,12 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
                     <td className="py-1.5 px-2 text-xs text-muted-foreground">{r.description || "-"}</td>
                     <td className="py-1.5 px-2 text-right text-xs font-medium text-red-600">
                       {formatAmount(r.amount)}
-                      <span className="text-[9px] text-muted-foreground ml-0.5">/{freqLabel((r as any).frequency || "monthly")}</span>
+                      <span className="text-[9px] text-muted-foreground ml-0.5">/{freqLabel(r.frequency ?? "monthly")}</span>
                     </td>
                     <td className="py-1.5 px-2 text-center text-xs">{getScheduleLabel(r)}</td>
                     <td className="py-1.5 px-2 text-center text-[10px] text-muted-foreground">
-                      {(r as any).totalInstallments ? (
-                        <span>{(r as any).totalInstallments}회{(r as any).startInstallment > 1 && ` (${(r as any).startInstallment}회차부터)`}</span>
+                      {r.totalInstallments ? (
+                        <span>{r.totalInstallments}회{(r.startInstallment ?? 1) > 1 && ` (${r.startInstallment}회차부터)`}</span>
                       ) : r.startDate || r.endDate ? (
                         <span>{r.startDate || "~"} ~ {r.endDate || ""}</span>
                       ) : "-"}
@@ -593,13 +628,13 @@ function RecurringExpenseSection({ year, month }: { year: number; month: number 
           </table>
           <div className="mt-2 px-2 text-xs text-muted-foreground">
             월 고정지출 합계: <span className="font-medium text-red-600">
-              {formatAmount(recurring.filter(r => r.isActive === "true" && ((r as any).frequency || "monthly") === "monthly").reduce((sum, r) => sum + r.amount, 0))}
+              {formatAmount(recurring.filter(r => r.isActive === "true" && (r.frequency ?? "monthly") === "monthly").reduce((sum, r) => sum + r.amount, 0))}
             </span>
-            {recurring.some(r => r.isActive === "true" && (r as any).frequency === "weekly") && (
-              <span className="ml-3">주간: <span className="font-medium text-red-600">{formatAmount(recurring.filter(r => r.isActive === "true" && (r as any).frequency === "weekly").reduce((sum, r) => sum + r.amount, 0))}/주</span></span>
+            {recurring.some(r => r.isActive === "true" && r.frequency === "weekly") && (
+              <span className="ml-3">주간: <span className="font-medium text-red-600">{formatAmount(recurring.filter(r => r.isActive === "true" && r.frequency === "weekly").reduce((sum, r) => sum + r.amount, 0))}/주</span></span>
             )}
-            {recurring.some(r => r.isActive === "true" && (r as any).frequency === "yearly") && (
-              <span className="ml-3">연간: <span className="font-medium text-red-600">{formatAmount(recurring.filter(r => r.isActive === "true" && (r as any).frequency === "yearly").reduce((sum, r) => sum + r.amount, 0))}/년</span></span>
+            {recurring.some(r => r.isActive === "true" && r.frequency === "yearly") && (
+              <span className="ml-3">연간: <span className="font-medium text-red-600">{formatAmount(recurring.filter(r => r.isActive === "true" && r.frequency === "yearly").reduce((sum, r) => sum + r.amount, 0))}/년</span></span>
             )}
           </div>
         </div>

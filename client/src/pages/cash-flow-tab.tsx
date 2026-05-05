@@ -15,7 +15,7 @@ import {
   ChevronLeft, ChevronRight, Landmark, ClipboardList,
   Link2, Link2Off, AlertCircle, RefreshCw, AlertTriangle, Clock, Check,
 } from "lucide-react";
-import type { BankAccount, BankTransaction, Payment } from "@shared/schema";
+import type { BankAccount, BankTransaction, MonthlyBalance, Payment } from "@shared/schema";
 
 type EnrichedPayment = Payment & {
   invoiceIssueDate: string | null;
@@ -40,8 +40,10 @@ type MatchCandidate = {
 };
 
 type CashFlowRow =
-  | { kind: "bank"; tx: BankTransaction; estimatedBalance?: never }
-  | { kind: "payment"; payment: EnrichedPayment; estimatedBalance: number | null };
+  | { kind: "bank"; tx: BankTransaction; runningBalance: number | null; estimatedBalance?: never }
+  | { kind: "payment"; payment: EnrichedPayment; runningBalance?: never; estimatedBalance: number | null };
+
+type FilterStatus = "all" | "matched" | "unmatched" | "planned" | "overdue";
 
 function formatAmount(n: number | null | undefined) {
   if (n == null) return "-";
@@ -207,7 +209,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
 }) {
   const [filterAccount, setFilterAccount] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "credit" | "debit">("all");
-  const [filterSource, setFilterSource] = useState<"all" | "bank" | "planned">("all");
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [matchDialogTx, setMatchDialogTx] = useState<BankTransaction | null>(null);
 
@@ -216,6 +218,14 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
   const { data: accounts = [] } = useQuery<BankAccount[]>({ queryKey: ["/api/bank-accounts"] });
+
+  const { data: monthlyBalance } = useQuery<MonthlyBalance | null>({
+    queryKey: ["/api/monthly-balances", year, month],
+    queryFn: async () => {
+      const res = await fetch(`/api/monthly-balances?year=${year}&month=${month}`);
+      return res.json();
+    },
+  });
 
   const { data: bankTxs = [], isLoading: txLoading } = useQuery<BankTransaction[]>({
     queryKey: ["/api/bank-transactions", "cashflow", filterAccount, startDate, endDate],
@@ -255,13 +265,15 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   }, [bankTxs]);
 
   const rows = useMemo((): CashFlowRow[] => {
+    const today = new Date().toISOString().split("T")[0];
+
     const bankRows: CashFlowRow[] = bankTxs
       .filter(tx => {
         if (filterType === "credit" && !(tx.creditAmount && tx.creditAmount > 0)) return false;
         if (filterType === "debit" && !(tx.debitAmount && tx.debitAmount > 0)) return false;
         return true;
       })
-      .map(tx => ({ kind: "bank" as const, tx }));
+      .map(tx => ({ kind: "bank" as const, tx, runningBalance: null }));
 
     const unmatched = payments.filter(p => !matchedPaymentIds.has(p.id));
     const planRows: CashFlowRow[] = unmatched
@@ -270,7 +282,10 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
         if (filterType === "debit" && p.type !== "expense") return false;
         return true;
       })
-      .map(p => ({ kind: "payment" as const, payment: p, estimatedBalance: null }));
+      .map(p => {
+        const isOverdue = p.status !== "completed" && p.plannedDate && p.plannedDate < today;
+        return { kind: "payment" as const, payment: p, estimatedBalance: null, isOverdue: !!isOverdue };
+      });
 
     const all: CashFlowRow[] = [...bankRows, ...planRows];
     all.sort((a, b) => {
@@ -279,29 +294,82 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
       return da.localeCompare(db);
     });
 
-    let lastKnownBalance: number | null = null;
-    return all.map(row => {
-      if (row.kind === "bank") {
-        if (row.tx.balance != null) lastKnownBalance = row.tx.balance;
-        return row;
-      } else {
-        let estimated: number | null = null;
-        if (lastKnownBalance != null) {
-          const amt = row.payment.amount || 0;
-          estimated = row.payment.type === "income"
-            ? lastKnownBalance + amt
-            : lastKnownBalance - amt;
+    // Seed the running balance from the monthly opening balance (if available),
+    // otherwise use the first bank transaction's balance minus its effect.
+    // For multi-account view we compute a running delta from the opening balance.
+    // For single-account view we use tx.balance directly (bank provides the authoritative value).
+    const openingBalance = monthlyBalance?.openingBalance ?? null;
+
+    if (filterAccount !== "all") {
+      // Single-account mode: tx.balance is authoritative; use opening balance as fallback seed
+      let lastKnownBalance: number | null = openingBalance;
+      return all.map(row => {
+        if (row.kind === "bank") {
+          if (row.tx.balance != null) lastKnownBalance = row.tx.balance;
+          return { ...row, runningBalance: row.tx.balance ?? lastKnownBalance };
+        } else {
+          let estimated: number | null = null;
+          if (lastKnownBalance != null) {
+            const amt = row.payment.amount || 0;
+            estimated = row.payment.type === "income"
+              ? lastKnownBalance + amt
+              : lastKnownBalance - amt;
+          }
+          return { ...row, estimatedBalance: estimated };
         }
-        return { ...row, estimatedBalance: estimated };
-      }
-    });
-  }, [bankTxs, payments, matchedPaymentIds, filterType]);
+      });
+    } else {
+      // Multi-account mode: track per-account latest balance, sum = total across all accounts.
+      // Seed from opening balance; apply credit/debit deltas as transactions arrive.
+      const accountBalances = new Map<string, number>();
+      let runningTotal: number | null = openingBalance;
+
+      return all.map(row => {
+        if (row.kind === "bank") {
+          const tx = row.tx;
+          // Update this account's balance
+          if (tx.balance != null) {
+            accountBalances.set(tx.accountId, tx.balance);
+            // Recompute total from all known account balances
+            runningTotal = Array.from(accountBalances.values()).reduce((s, v) => s + v, 0);
+          } else if (runningTotal != null) {
+            // Fallback: apply delta to running total
+            runningTotal = runningTotal + (tx.creditAmount || 0) - (tx.debitAmount || 0);
+            accountBalances.set(tx.accountId, runningTotal);
+          }
+          return { ...row, runningBalance: runningTotal };
+        } else {
+          let estimated: number | null = null;
+          if (runningTotal != null) {
+            const amt = row.payment.amount || 0;
+            estimated = row.payment.type === "income"
+              ? runningTotal + amt
+              : runningTotal - amt;
+          }
+          return { ...row, estimatedBalance: estimated };
+        }
+      });
+    }
+  }, [bankTxs, payments, matchedPaymentIds, filterType, filterAccount, monthlyBalance]);
 
   const visibleRows = useMemo(() => {
-    if (filterSource === "bank") return rows.filter(r => r.kind === "bank");
-    if (filterSource === "planned") return rows.filter(r => r.kind === "payment");
-    return rows;
-  }, [rows, filterSource]);
+    const today = new Date().toISOString().split("T")[0];
+    if (filterStatus === "all") return rows;
+    return rows.filter(row => {
+      if (row.kind === "bank") {
+        const isMatched = row.tx.matchStatus === "manual" || row.tx.matchStatus === "auto";
+        if (filterStatus === "matched") return isMatched;
+        if (filterStatus === "unmatched") return !isMatched;
+        return false; // "planned" or "overdue" — bank rows not shown
+      } else {
+        if (filterStatus === "matched" || filterStatus === "unmatched") return false;
+        const isOverdue = row.payment.status !== "completed" && row.payment.plannedDate && row.payment.plannedDate < today;
+        if (filterStatus === "planned") return !isOverdue;
+        if (filterStatus === "overdue") return !!isOverdue;
+        return true;
+      }
+    });
+  }, [rows, filterStatus]);
 
   const totalCredit = bankTxs.reduce((s, t) => s + (t.creditAmount ?? 0), 0);
   const totalDebit = bankTxs.reduce((s, t) => s + (t.debitAmount ?? 0), 0);
@@ -344,12 +412,16 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
         </div>
 
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
-          <Button variant={filterSource === "all" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setFilterSource("all")} data-testid="filter-cf-source-all">전체</Button>
-          <Button variant={filterSource === "bank" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setFilterSource("bank")} data-testid="filter-cf-source-bank">
-            <Landmark className="h-3 w-3 mr-1" />은행
+          <Button variant={filterStatus === "all" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setFilterStatus("all")} data-testid="filter-status-all">전체</Button>
+          <Button variant={filterStatus === "matched" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-green-700" onClick={() => setFilterStatus("matched")} data-testid="filter-status-matched">
+            <Link2 className="h-3 w-3 mr-1" />연결됨
           </Button>
-          <Button variant={filterSource === "planned" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setFilterSource("planned")} data-testid="filter-cf-source-planned">
-            <ClipboardList className="h-3 w-3 mr-1" />예정
+          <Button variant={filterStatus === "unmatched" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-orange-600" onClick={() => setFilterStatus("unmatched")} data-testid="filter-status-unmatched">미연결</Button>
+          <Button variant={filterStatus === "planned" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-blue-600" onClick={() => setFilterStatus("planned")} data-testid="filter-status-planned">
+            <Clock className="h-3 w-3 mr-1" />예정
+          </Button>
+          <Button variant={filterStatus === "overdue" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-red-600" onClick={() => setFilterStatus("overdue")} data-testid="filter-status-overdue">
+            <AlertTriangle className="h-3 w-3 mr-1" />연체
           </Button>
         </div>
       </div>
@@ -390,13 +462,15 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground">내용</th>
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">출금</th>
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">입금</th>
-                <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">잔액</th>
+                <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">
+                  잔액{filterAccount === "all" && accounts.length > 1 && <span className="text-[9px] ml-0.5">(합산)</span>}
+                </th>
                 <th className="text-center px-3 py-2 font-medium text-muted-foreground w-20">상태</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {visibleRows.map((row, idx) => {
+              {visibleRows.map((row) => {
                 if (row.kind === "bank") {
                   const tx = row.tx;
                   const isMatched = tx.matchStatus === "manual" || tx.matchStatus === "auto";
@@ -428,7 +502,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                           {tx.creditAmount ? <span className="text-blue-600 font-medium">{tx.creditAmount.toLocaleString()}</span> : <span className="text-muted-foreground">-</span>}
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">
-                          {tx.balance != null ? tx.balance.toLocaleString() : "-"}
+                          {row.runningBalance != null ? row.runningBalance.toLocaleString() : "-"}
                         </td>
                         <td className="px-3 py-2 text-center">
                           {isMatched ? (
