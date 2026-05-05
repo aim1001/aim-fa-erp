@@ -7605,6 +7605,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bank-accounts/balances", async (req, res) => {
+    try {
+      const balances = await storage.getAccountLatestBalances();
+      const total = balances.reduce((s, r) => s + r.balance, 0);
+      res.json({ balances, total });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/bank-accounts", async (req, res) => {
     try {
       const accounts = await storage.getBankAccounts();

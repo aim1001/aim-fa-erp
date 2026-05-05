@@ -57,6 +57,7 @@ function AccountManagerDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts/balances"] });
       toast({ title: "계좌가 삭제되었습니다" });
     },
     onError: (err: Error) => {
@@ -173,6 +174,7 @@ function ImportDialog({ accountId, accountAlias, open, onOpenChange }: {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Import failed");
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts/balances"] });
       toast({ title: `가져오기 완료`, description: `${data.inserted}건 추가, ${data.skipped}건 중복 제외 (전체 ${data.total}건)` });
       setSelectedFile(null);
       onOpenChange(false);
@@ -253,6 +255,7 @@ function QuickImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       if (!res.ok) throw new Error(data.message || "Import failed");
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts/balances"] });
       setResult(data);
     } catch (err: any) {
       toast({ title: "가져오기 실패", description: err.message, variant: "destructive" });
@@ -524,6 +527,7 @@ export function BankTransactionsTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts/balances"] });
       toast({ title: "삭제되었습니다" });
     },
   });

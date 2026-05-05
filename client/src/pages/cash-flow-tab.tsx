@@ -342,6 +342,14 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
 
   const { data: accounts = [] } = useQuery<BankAccount[]>({ queryKey: ["/api/bank-accounts"] });
 
+  const { data: accountBalanceSummary } = useQuery<{ balances: { accountId: string; balance: number }[]; total: number }>({
+    queryKey: ["/api/bank-accounts/balances"],
+    queryFn: async () => {
+      const res = await fetch("/api/bank-accounts/balances");
+      return res.json();
+    },
+  });
+
   const { data: monthlyBalance } = useQuery<MonthlyBalance | null>({
     queryKey: ["/api/monthly-balances", year, month],
     queryFn: async () => {
@@ -498,6 +506,17 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const plannedIncome = payments.filter(p => p.type === "income" && !matchedPaymentIds.has(p.id)).reduce((s, p) => s + (p.amount || 0), 0);
   const plannedExpense = payments.filter(p => p.type === "expense" && !matchedPaymentIds.has(p.id)).reduce((s, p) => s + (p.amount || 0), 0);
 
+  const currentCashBalance = useMemo(() => {
+    if (filterAccount === "all") {
+      if (accountBalanceSummary == null) return null;
+      return accountBalanceSummary.total;
+    } else {
+      const acctBalances = accountBalanceSummary?.balances ?? [];
+      const entry = acctBalances.find(b => b.accountId === filterAccount);
+      return entry?.balance ?? null;
+    }
+  }, [filterAccount, accountBalanceSummary]);
+
   const isLoading = txLoading || paymentsLoading;
 
   return (
@@ -554,7 +573,15 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="border-2 rounded-lg px-3 py-2 bg-green-50/50 dark:bg-green-900/10 border-green-200 dark:border-green-800">
+          <div className="text-[10px] text-muted-foreground">
+            {filterAccount === "all" && accounts.length > 1 ? "현재 잔액 (전계좌 합산)" : "현재 잔액"}
+          </div>
+          <div className="text-sm font-semibold text-green-700 dark:text-green-400" data-testid="text-cf-current-balance">
+            {currentCashBalance != null ? currentCashBalance.toLocaleString() + "원" : "-"}
+          </div>
+        </div>
         <div className="border rounded-lg px-3 py-2 bg-blue-50/40 dark:bg-blue-900/10">
           <div className="text-[10px] text-muted-foreground">실제 입금 (은행)</div>
           <div className="text-sm font-semibold text-blue-600" data-testid="text-cf-total-credit">+{totalCredit.toLocaleString()}원</div>

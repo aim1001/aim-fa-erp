@@ -303,6 +303,7 @@ export interface IStorage {
 
   getBankTransactions(filters?: { accountId?: string; startDate?: string; endDate?: string; txType?: "credit" | "debit"; limit?: number; offset?: number }): Promise<BankTransaction[]>;
   getBankTransactionsByHash(accountId: string, hashes: string[]): Promise<BankTransaction[]>;
+  getAccountLatestBalances(): Promise<{ accountId: string; balance: number }[]>;
   createBankTransactions(rows: InsertBankTransaction[]): Promise<BankTransaction[]>;
   updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined>;
   deleteBankTransaction(id: string): Promise<void>;
@@ -1676,6 +1677,16 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAllBankTransactionsByAccount(accountId: string): Promise<void> {
     await db.delete(bankTransactions).where(eq(bankTransactions.accountId, accountId));
+  }
+
+  async getAccountLatestBalances(): Promise<{ accountId: string; balance: number }[]> {
+    const rows = await db.execute(sql`
+      SELECT DISTINCT ON (account_id) account_id AS "accountId", balance
+      FROM bank_transactions
+      WHERE balance IS NOT NULL
+      ORDER BY account_id, tx_date DESC, created_at DESC
+    `);
+    return (rows.rows as { accountId: string; balance: number }[]).filter(r => r.balance != null);
   }
 }
 
