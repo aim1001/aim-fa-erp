@@ -538,7 +538,7 @@ export class DatabaseStorage implements IStorage {
   async getCustomerLastTransactionDates(): Promise<Map<string, string>> {
     const rows = await db.select({
       customerId: salesInvoices.customerId,
-      lastDate: sql<string>`max(${salesInvoices.issueDate})`,
+      lastDate: sql<string>`max(${salesInvoices.writeDate})`,
     })
       .from(salesInvoices)
       .where(sql`${salesInvoices.customerId} is not null`)
@@ -553,7 +553,7 @@ export class DatabaseStorage implements IStorage {
   async getVendorLastTransactionDates(): Promise<Map<string, string>> {
     const rows = await db.select({
       vendorId: purchaseInvoices.vendorId,
-      lastDate: sql<string>`max(${purchaseInvoices.issueDate})`,
+      lastDate: sql<string>`max(${purchaseInvoices.writeDate})`,
     })
       .from(purchaseInvoices)
       .where(sql`${purchaseInvoices.vendorId} is not null`)
@@ -721,7 +721,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSalesInvoices(): Promise<SalesInvoice[]> {
-    return db.select().from(salesInvoices).orderBy(desc(salesInvoices.issueDate));
+    return db.select().from(salesInvoices).orderBy(desc(salesInvoices.writeDate));
   }
 
   async getSalesInvoice(id: string): Promise<SalesInvoice | undefined> {
@@ -744,7 +744,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPurchaseInvoices(): Promise<PurchaseInvoice[]> {
-    return db.select().from(purchaseInvoices).orderBy(desc(purchaseInvoices.issueDate));
+    return db.select().from(purchaseInvoices).orderBy(desc(purchaseInvoices.writeDate));
   }
 
   async getPurchaseInvoice(id: string): Promise<PurchaseInvoice | undefined> {

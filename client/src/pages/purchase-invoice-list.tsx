@@ -616,8 +616,8 @@ export default function PurchaseInvoiceList() {
     if (!invoices) return new Map<string, string>();
     const map = new Map<string, string>();
     const linked = invoices
-      .filter(inv => inv.vendorId && inv.projectId && inv.issueDate)
-      .sort((a, b) => (b.issueDate || "").localeCompare(a.issueDate || ""));
+      .filter(inv => inv.vendorId && inv.projectId && (inv.writeDate || inv.issueDate))
+      .sort((a, b) => (b.writeDate || b.issueDate || "").localeCompare(a.writeDate || a.issueDate || ""));
     for (const inv of linked) {
       if (inv.vendorId && !map.has(inv.vendorId)) {
         map.set(inv.vendorId, inv.projectId!);
@@ -630,8 +630,9 @@ export default function PurchaseInvoiceList() {
     if (!invoices) return [];
     const years = new Set<number>();
     invoices.forEach(inv => {
-      if (inv.issueDate) {
-        const y = parseInt(inv.issueDate.substring(0, 4));
+      const d = inv.writeDate || inv.issueDate;
+      if (d) {
+        const y = parseInt(d.substring(0, 4));
         if (!isNaN(y)) years.add(y);
       }
     });
@@ -643,21 +644,21 @@ export default function PurchaseInvoiceList() {
     let list = invoices;
 
     if (dateFrom || dateTo) {
-      if (dateFrom) list = list.filter(inv => inv.issueDate && inv.issueDate >= dateFrom);
-      if (dateTo) list = list.filter(inv => inv.issueDate && inv.issueDate <= dateTo);
+      if (dateFrom) list = list.filter(inv => (inv.writeDate || inv.issueDate) && (inv.writeDate || inv.issueDate)! >= dateFrom);
+      if (dateTo) list = list.filter(inv => (inv.writeDate || inv.issueDate) && (inv.writeDate || inv.issueDate)! <= dateTo);
     } else if (filterYear !== "all") {
       const y = filterYear;
-      list = list.filter(inv => inv.issueDate?.startsWith(y));
+      list = list.filter(inv => (inv.writeDate || inv.issueDate)?.startsWith(y));
 
       if (periodType === "monthly" && periodValue !== "all") {
         const m = periodValue.padStart(2, "0");
-        list = list.filter(inv => inv.issueDate?.substring(5, 7) === m);
+        list = list.filter(inv => (inv.writeDate || inv.issueDate)?.substring(5, 7) === m);
       } else if (periodType === "quarterly" && periodValue !== "all") {
         const q = parseInt(periodValue);
         const startMonth = (q - 1) * 3 + 1;
         const endMonth = startMonth + 2;
         list = list.filter(inv => {
-          const month = parseInt(inv.issueDate?.substring(5, 7) || "0");
+          const month = parseInt((inv.writeDate || inv.issueDate)?.substring(5, 7) || "0");
           return month >= startMonth && month <= endMonth;
         });
       }
@@ -970,7 +971,7 @@ export default function PurchaseInvoiceList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="text-left py-2.5 px-4 font-medium">발급일</th>
+                <th className="text-left py-2.5 px-4 font-medium">작성일</th>
                 <th className="text-left py-2.5 px-4 font-medium">상호</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">프로젝트</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자번호</th>
@@ -985,7 +986,7 @@ export default function PurchaseInvoiceList() {
             <tbody>
               {filtered.map(inv => (
                 <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(inv.id)} data-testid={`row-purchase-invoice-${inv.id}`}>
-                  <td className="py-2.5 px-4">{inv.issueDate || "-"}</td>
+                  <td className="py-2.5 px-4">{inv.writeDate || inv.issueDate || "-"}</td>
                   <td className="py-2.5 px-4">{inv.companyName || (inv.vendorId ? vendorMap.get(inv.vendorId) : "-") || "-"}</td>
                   <td className="py-2.5 px-4 hidden lg:table-cell">
                     {inv.projectId ? (() => {

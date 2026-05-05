@@ -4279,7 +4279,7 @@ export async function registerRoutes(
         let invoiceRemainingAmount = 0;
         if (p.salesInvoiceId && salesMap.has(p.salesInvoiceId)) {
           const inv = salesMap.get(p.salesInvoiceId)!;
-          invoiceIssueDate = inv.issueDate || null;
+          invoiceIssueDate = inv.writeDate || inv.issueDate || null;
           invoiceNumber = inv.invoiceNumber || null;
           invoiceTotalAmount = inv.totalAmount || 0;
           invoiceItem = inv.item || null;
@@ -4287,7 +4287,7 @@ export async function registerRoutes(
           invoiceRemainingAmount = Math.max((invoiceTotalAmount || 0) - invoicePaidAmount, 0);
         } else if (p.purchaseInvoiceId && purchaseMap.has(p.purchaseInvoiceId)) {
           const inv = purchaseMap.get(p.purchaseInvoiceId)!;
-          invoiceIssueDate = inv.issueDate || null;
+          invoiceIssueDate = inv.writeDate || inv.issueDate || null;
           invoiceNumber = inv.invoiceNumber || null;
           invoiceTotalAmount = inv.totalAmount || 0;
           invoiceItem = inv.item || null;
@@ -4497,13 +4497,13 @@ export async function registerRoutes(
         const amount = amounts?.[i] || Math.round(total / splits);
         let plannedDate = plannedDates?.[i] || null;
 
-        if (!plannedDate && invoice.issueDate && paymentMethod !== "specific_date") {
-          const issueDate = new Date(invoice.issueDate);
+        if (!plannedDate && (invoice.writeDate || invoice.issueDate) && paymentMethod !== "specific_date") {
+          const baseDate = new Date(invoice.writeDate || invoice.issueDate!);
           if (paymentMethod === "end_of_next_month") {
-            const nextMonth = new Date(issueDate.getFullYear(), issueDate.getMonth() + 2, 0);
+            const nextMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + 2, 0);
             plannedDate = nextMonth.toISOString().split("T")[0];
           } else if (paymentMethod === "end_of_month") {
-            const endOfMonth = new Date(issueDate.getFullYear(), issueDate.getMonth() + 1, 0);
+            const endOfMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
             plannedDate = endOfMonth.toISOString().split("T")[0];
           }
         }

@@ -317,7 +317,7 @@ export function PaymentDetailModal({ paymentId, onClose }: { paymentId: string; 
           )}
           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
             {payment.invoiceNumber && <span>No. {payment.invoiceNumber}</span>}
-            {payment.invoiceIssueDate && <span>발급일 {payment.invoiceIssueDate}</span>}
+            {payment.invoiceIssueDate && <span>작성일 {payment.invoiceIssueDate}</span>}
           </div>
           {payment.invoiceTotalAmount != null && (
             <div className="flex items-center gap-4 text-xs mt-1">

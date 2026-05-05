@@ -565,7 +565,7 @@ export default function SalesInvoiceList() {
     if (!invoices) return [];
     const years = new Set<number>();
     invoices.forEach(inv => {
-      const d = inv.issueDate || inv.plannedIssueDate;
+      const d = inv.writeDate || inv.issueDate || inv.plannedIssueDate;
       if (d) {
         const y = parseInt(d.substring(0, 4));
         if (!isNaN(y)) years.add(y);
@@ -587,7 +587,7 @@ export default function SalesInvoiceList() {
 
     if (dateFrom || dateTo) {
       list = list.filter(inv => {
-        const d = inv.issueDate || inv.plannedIssueDate;
+        const d = inv.writeDate || inv.issueDate || inv.plannedIssueDate;
         if (!d) return false;
         if (dateFrom && d < dateFrom) return false;
         if (dateTo && d > dateTo) return false;
@@ -596,14 +596,14 @@ export default function SalesInvoiceList() {
     } else if (filterYear !== "all") {
       const y = filterYear;
       list = list.filter(inv => {
-        const d = inv.issueDate || inv.plannedIssueDate;
+        const d = inv.writeDate || inv.issueDate || inv.plannedIssueDate;
         return d?.startsWith(y) || (inv.year && String(inv.year) === y);
       });
 
       if (periodType === "monthly" && periodValue !== "all") {
         const m = periodValue.padStart(2, "0");
         list = list.filter(inv => {
-          const d = inv.issueDate || inv.plannedIssueDate;
+          const d = inv.writeDate || inv.issueDate || inv.plannedIssueDate;
           return d?.substring(5, 7) === m;
         });
       } else if (periodType === "quarterly" && periodValue !== "all") {
@@ -611,7 +611,7 @@ export default function SalesInvoiceList() {
         const startMonth = (q - 1) * 3 + 1;
         const endMonth = startMonth + 2;
         list = list.filter(inv => {
-          const d = inv.issueDate || inv.plannedIssueDate;
+          const d = inv.writeDate || inv.issueDate || inv.plannedIssueDate;
           const month = parseInt(d?.substring(5, 7) || "0");
           return month >= startMonth && month <= endMonth;
         });
@@ -970,7 +970,7 @@ export default function SalesInvoiceList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="text-left py-2.5 px-4 font-medium">발급일</th>
+                <th className="text-left py-2.5 px-4 font-medium">작성일</th>
                 <th className="text-left py-2.5 px-4 font-medium">상호</th>
                 <th className="text-center py-2.5 px-4 font-medium hidden md:table-cell">구분</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">프로젝트</th>
@@ -999,7 +999,7 @@ export default function SalesInvoiceList() {
                         <Badge variant="outline" className="text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700 text-[10px] w-fit" data-testid={`badge-unissued-${inv.id}`}>미발행</Badge>
                         {inv.plannedIssueDate && <span className="text-[10px] text-muted-foreground">예정 {inv.plannedIssueDate}</span>}
                       </div>
-                    ) : inv.issueDate}
+                    ) : (inv.writeDate || inv.issueDate)}
                   </td>
                   <td className="py-2.5 px-4">{inv.companyName || (inv.customerId ? customerMap.get(inv.customerId) : "-") || "-"}</td>
                   <td className="py-2.5 px-4 text-center hidden md:table-cell">
