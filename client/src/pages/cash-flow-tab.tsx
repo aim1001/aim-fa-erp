@@ -350,6 +350,14 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDate, setBulkDate] = useState("");
 
+  // Clear selection when month or filters change
+  const clearSelection = () => { setSelectedIds(new Set()); setBulkDate(""); };
+  const handlePrevMonth = () => { clearSelection(); onPrevMonth(); };
+  const handleNextMonth = () => { clearSelection(); onNextMonth(); };
+  const handleFilterAccount = (v: string) => { clearSelection(); setFilterAccount(v); };
+  const handleFilterType = (v: "all" | "credit" | "debit") => { clearSelection(); setFilterType(v); };
+  const handleFilterStatus = (v: FilterStatus) => { clearSelection(); setFilterStatus(v); };
+
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
@@ -586,19 +594,19 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   return (
     <div className="space-y-3" data-testid="cash-flow-tab">
       <div className="flex items-center gap-2 flex-wrap">
-        <Button variant="ghost" size="icon" onClick={onPrevMonth} data-testid="button-cf-prev-month">
+        <Button variant="ghost" size="icon" onClick={handlePrevMonth} data-testid="button-cf-prev-month">
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <span className="text-base font-semibold min-w-[100px] text-center" data-testid="text-cf-month">
           {year}년 {month}월
         </span>
-        <Button variant="ghost" size="icon" onClick={onNextMonth} data-testid="button-cf-next-month">
+        <Button variant="ghost" size="icon" onClick={handleNextMonth} data-testid="button-cf-next-month">
           <ChevronRight className="h-4 w-4" />
         </Button>
 
         <div className="h-5 w-px bg-border mx-1" />
 
-        <Select value={filterAccount} onValueChange={setFilterAccount}>
+        <Select value={filterAccount} onValueChange={handleFilterAccount}>
           <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-cf-account">
             <SelectValue placeholder="전체 계좌" />
           </SelectTrigger>
@@ -611,21 +619,21 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
         </Select>
 
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
-          <Button variant={filterType === "all" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setFilterType("all")} data-testid="filter-cf-all">전체</Button>
-          <Button variant={filterType === "credit" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setFilterType("credit")} data-testid="filter-cf-credit">입금</Button>
-          <Button variant={filterType === "debit" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setFilterType("debit")} data-testid="filter-cf-debit">출금</Button>
+          <Button variant={filterType === "all" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => handleFilterType("all")} data-testid="filter-cf-all">전체</Button>
+          <Button variant={filterType === "credit" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => handleFilterType("credit")} data-testid="filter-cf-credit">입금</Button>
+          <Button variant={filterType === "debit" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => handleFilterType("debit")} data-testid="filter-cf-debit">출금</Button>
         </div>
 
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
-          <Button variant={filterStatus === "all" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setFilterStatus("all")} data-testid="filter-status-all">전체</Button>
-          <Button variant={filterStatus === "matched" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-green-700" onClick={() => setFilterStatus("matched")} data-testid="filter-status-matched">
+          <Button variant={filterStatus === "all" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => handleFilterStatus("all")} data-testid="filter-status-all">전체</Button>
+          <Button variant={filterStatus === "matched" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-green-700" onClick={() => handleFilterStatus("matched")} data-testid="filter-status-matched">
             <Link2 className="h-3 w-3 mr-1" />연결됨
           </Button>
-          <Button variant={filterStatus === "unmatched" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-orange-600" onClick={() => setFilterStatus("unmatched")} data-testid="filter-status-unmatched">미연결</Button>
-          <Button variant={filterStatus === "planned" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-blue-600" onClick={() => setFilterStatus("planned")} data-testid="filter-status-planned">
+          <Button variant={filterStatus === "unmatched" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-orange-600" onClick={() => handleFilterStatus("unmatched")} data-testid="filter-status-unmatched">미연결</Button>
+          <Button variant={filterStatus === "planned" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-blue-600" onClick={() => handleFilterStatus("planned")} data-testid="filter-status-planned">
             <Clock className="h-3 w-3 mr-1" />예정
           </Button>
-          <Button variant={filterStatus === "overdue" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-red-600" onClick={() => setFilterStatus("overdue")} data-testid="filter-status-overdue">
+          <Button variant={filterStatus === "overdue" ? "default" : "ghost"} size="sm" className="h-7 text-xs text-red-600" onClick={() => handleFilterStatus("overdue")} data-testid="filter-status-overdue">
             <AlertTriangle className="h-3 w-3 mr-1" />연체
           </Button>
         </div>

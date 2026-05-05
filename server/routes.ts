@@ -4359,11 +4359,22 @@ export async function registerRoutes(
   app.post("/api/payments/bulk-date", async (req, res) => {
     try {
       const { ids, plannedDate } = req.body;
-      if (!Array.isArray(ids) || !ids.length || !plannedDate) {
-        return res.status(400).json({ message: "ids 배열과 plannedDate 필수" });
+      if (!Array.isArray(ids) || !ids.length) {
+        return res.status(400).json({ message: "ids 배열 필수" });
       }
+      if (!plannedDate || typeof plannedDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) {
+        return res.status(400).json({ message: "plannedDate는 YYYY-MM-DD 형식이어야 합니다" });
+      }
+      if (!ids.every((id: unknown) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "ids 배열의 모든 항목은 문자열이어야 합니다" });
+      }
+      // Only update non-completed payments
+      const allPayments = await storage.getPayments();
+      const validIds = (ids as string[]).filter(id =>
+        allPayments.some(p => p.id === id && p.status !== "completed")
+      );
       const results = await Promise.all(
-        ids.map((id: string) => storage.updatePayment(id, { plannedDate }))
+        validIds.map((id: string) => storage.updatePayment(id, { plannedDate }))
       );
       res.json({ updated: results.filter(Boolean).length });
     } catch (err: any) {
