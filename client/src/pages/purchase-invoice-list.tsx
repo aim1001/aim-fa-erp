@@ -1,13 +1,13 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, XCircle, Package, ExternalLink, Upload } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, XCircle, Package, ExternalLink, Upload, Unlink2, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { PurchaseInvoice, Vendor, Payment, PurchaseOrder } from "@shared/schema";
+import type { PurchaseInvoice, Vendor, Payment, PurchaseOrder, Project } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -596,12 +596,21 @@ export default function PurchaseInvoiceList() {
   const { data: invoiceYears } = useQuery<number[]>({
     queryKey: ["/api/invoice-years"],
   });
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
 
   const vendorMap = useMemo(() => {
     const map = new Map<string, string>();
     vendorList?.forEach(v => map.set(v.id, v.companyName));
     return map;
   }, [vendorList]);
+
+  const projectMap = useMemo(() => {
+    const map = new Map<string, Project>();
+    projects?.forEach(p => map.set(p.id, p));
+    return map;
+  }, [projects]);
 
   const availableYears = useMemo(() => {
     if (!invoices) return [];
@@ -750,6 +759,22 @@ export default function PurchaseInvoiceList() {
     },
     onError: (err: Error) => {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const inlineUnlinkMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("PATCH", `/api/purchase-invoices/${id}`, { projectId: null });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({ title: "프로젝트 연결이 해제되었습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 해제 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -933,6 +958,7 @@ export default function PurchaseInvoiceList() {
               <tr className="border-b bg-muted/50">
                 <th className="text-left py-2.5 px-4 font-medium">발급일</th>
                 <th className="text-left py-2.5 px-4 font-medium">상호</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">프로젝트</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자번호</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">공급가액</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">세액</th>
@@ -947,6 +973,45 @@ export default function PurchaseInvoiceList() {
                 <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => setSelectedId(inv.id)} data-testid={`row-purchase-invoice-${inv.id}`}>
                   <td className="py-2.5 px-4">{inv.issueDate || "-"}</td>
                   <td className="py-2.5 px-4">{inv.companyName || (inv.vendorId ? vendorMap.get(inv.vendorId) : "-") || "-"}</td>
+                  <td className="py-2.5 px-4 hidden xl:table-cell">
+                    {inv.projectId ? (() => {
+                      const proj = projectMap.get(inv.projectId);
+                      return (
+                        <div className="group flex items-center gap-1" data-testid={`text-project-${inv.id}`}>
+                          <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                            {proj ? `${proj.projectNumber} ${proj.customerName}` : inv.projectId}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={e => {
+                              e.stopPropagation();
+                              inlineUnlinkMutation.mutate(inv.id);
+                            }}
+                            disabled={inlineUnlinkMutation.isPending}
+                            title="프로젝트 연결 해제"
+                            data-testid={`button-unlink-project-${inv.id}`}
+                          >
+                            <Unlink2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      );
+                    })() : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs text-orange-600 dark:text-orange-400 hover:text-orange-700 dark:hover:text-orange-300 px-1.5"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setSelectedId(inv.id);
+                        }}
+                        data-testid={`button-link-project-${inv.id}`}
+                      >
+                        <Link2 className="h-3 w-3 mr-1" />연결
+                      </Button>
+                    )}
+                  </td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{inv.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.supplyAmount)}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.taxAmount)}</td>
