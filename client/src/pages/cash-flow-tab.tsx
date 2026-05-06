@@ -382,9 +382,9 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-  // When search is active, use search date range; if only non-date search, use wide range
+  // When search is active, use search date range; if only non-date search, use unbounded range
   const effectiveStartDate = isSearchActive
-    ? (searchDateFrom || "2020-01-01")
+    ? (searchDateFrom || "1900-01-01")
     : startDate;
   const effectiveEndDate = isSearchActive
     ? (searchDateTo || new Date().toISOString().split("T")[0])
