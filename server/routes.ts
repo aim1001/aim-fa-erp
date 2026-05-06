@@ -4374,6 +4374,48 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/payments/bulk-complete", async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || !ids.length) {
+        return res.status(400).json({ message: "ids 배열 필수" });
+      }
+      if (!ids.every((id: unknown) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "ids 배열의 모든 항목은 문자열이어야 합니다" });
+      }
+
+      const allPayments = await storage.getPayments();
+      const salesInvoices = await storage.getSalesInvoices();
+      const purchaseInvoices = await storage.getPurchaseInvoices();
+      const salesMap = new Map(salesInvoices.map(i => [i.id, i]));
+      const purchaseMap = new Map(purchaseInvoices.map(i => [i.id, i]));
+
+      const targetPayments = allPayments.filter(p => (ids as string[]).includes(p.id) && p.status !== "completed");
+
+      const results = await Promise.all(
+        targetPayments.map(p => {
+          let actualDate: string | null = p.plannedDate || null;
+          if (p.salesInvoiceId && salesMap.has(p.salesInvoiceId)) {
+            const inv = salesMap.get(p.salesInvoiceId)!;
+            actualDate = inv.writeDate || inv.issueDate || actualDate;
+          } else if (p.purchaseInvoiceId && purchaseMap.has(p.purchaseInvoiceId)) {
+            const inv = purchaseMap.get(p.purchaseInvoiceId)!;
+            actualDate = inv.writeDate || inv.issueDate || actualDate;
+          }
+          return storage.updatePayment(p.id, {
+            status: "completed",
+            actualDate: actualDate || undefined,
+            actualAmount: p.amount || undefined,
+          });
+        })
+      );
+
+      res.json({ updated: results.filter(Boolean).length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/payments/bulk-date", async (req, res) => {
     try {
       const { ids, plannedDate } = req.body;

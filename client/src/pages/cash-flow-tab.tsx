@@ -17,7 +17,7 @@ import {
 import {
   ChevronLeft, ChevronRight, Landmark, ClipboardList,
   Link2, Link2Off, AlertCircle, RefreshCw, AlertTriangle, Clock, Check, Plus,
-  ArrowUp, ArrowDown, CalendarDays, X, Search, SlidersHorizontal,
+  ArrowUp, ArrowDown, CalendarDays, X, Search, SlidersHorizontal, CheckCircle2,
 } from "lucide-react";
 import type { BankAccount, BankTransaction, MonthlyBalance, Payment } from "@shared/schema";
 import { PaymentDetailModal } from "./fund-overview-tab";
@@ -500,6 +500,24 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
     },
   });
 
+  // Bulk complete
+  const bulkCompleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", "/api/payments/bulk-complete", { ids });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      toast({ title: `${data.updated}건 완료 처리됨`, description: "계산서 일자 기준으로 실제일이 설정됐습니다" });
+      setSelectedIds(new Set());
+      setBulkDate("");
+    },
+    onError: (err: Error) => {
+      toast({ title: "완료 처리 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Bulk date change
   const bulkDateMutation = useMutation({
     mutationFn: async ({ ids, plannedDate }: { ids: string[]; plannedDate: string }) => {
@@ -861,7 +879,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
 
       {/* Floating bulk action toolbar */}
       {someSelected && (
-        <div className="sticky top-2 z-20 flex items-center gap-3 bg-primary text-primary-foreground rounded-lg px-4 py-2.5 shadow-lg" data-testid="bulk-action-toolbar">
+        <div className="sticky top-2 z-20 flex items-center gap-3 bg-primary text-primary-foreground rounded-lg px-4 py-2.5 shadow-lg flex-wrap" data-testid="bulk-action-toolbar">
           <span className="text-sm font-medium">{selectedIds.size}건 선택됨</span>
           <div className="h-4 w-px bg-primary-foreground/30" />
           <CalendarDays className="h-4 w-4 opacity-70" />
@@ -883,7 +901,25 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
             data-testid="button-bulk-date-apply"
           >
             {bulkDateMutation.isPending ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : null}
-            일괄 적용
+            날짜 적용
+          </Button>
+          <div className="h-4 w-px bg-primary-foreground/30" />
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white border-0"
+            disabled={bulkCompleteMutation.isPending}
+            onClick={() => {
+              if (confirm(`선택한 ${selectedIds.size}건을 완료 처리할까요?\n계산서가 연결된 항목은 계산서 작성일이 실제일로 설정됩니다.`)) {
+                bulkCompleteMutation.mutate(Array.from(selectedIds));
+              }
+            }}
+            data-testid="button-bulk-complete"
+          >
+            {bulkCompleteMutation.isPending
+              ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+              : <CheckCircle2 className="h-3 w-3 mr-1" />}
+            완료 처리
           </Button>
           <Button
             size="sm"
