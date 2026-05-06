@@ -8074,7 +8074,7 @@ export async function registerRoutes(
           taxAmount: inv.taxAmount,
           status: inv.status,
           collectedAmount: inv.status === 'paid'
-            ? Math.max(txInfo?.collected ?? 0, inv.totalAmount ?? 0)
+            ? (txInfo?.txCount ? (txInfo.collected ?? 0) : (inv.totalAmount ?? 0))
             : (txInfo?.collected ?? 0),
           linkedTxCount: txInfo?.txCount ?? 0,
           linkedTxIds: txInfo?.txIds ?? [],
