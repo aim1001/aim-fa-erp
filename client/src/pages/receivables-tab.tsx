@@ -6,6 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronDown, ChevronRight, Search, Link2, Link2Off, CheckCircle2, AlertCircle, Filter } from "lucide-react";
 
@@ -58,22 +63,27 @@ function formatDate(d: string | null | undefined) {
   return d.slice(0, 10);
 }
 
-const YEARS = [2025, 2024, 2023, 2022];
+type YearFilter = "all" | "2026" | "2025" | "before2025";
 
 export function ReceivablesTab() {
   const { toast } = useToast();
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [yearFilter, setYearFilter] = useState<YearFilter>("all");
   const [showOutstandingOnly, setShowOutstandingOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
   const [linkDialogInvoice, setLinkDialogInvoice] = useState<ReceivableInvoice | null>(null);
   const [txSearch, setTxSearch] = useState("");
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+
+  const apiYear = yearFilter === "all" ? undefined
+    : yearFilter === "before2025" ? undefined
+    : parseInt(yearFilter);
 
   const { data: receivablesData, isLoading } = useQuery<ReceivablesData>({
-    queryKey: ["/api/receivables", selectedYear],
+    queryKey: ["/api/receivables", yearFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (selectedYear) params.set("year", String(selectedYear));
+      if (apiYear) params.set("year", String(apiYear));
       const res = await fetch(`/api/receivables?${params}`);
       if (!res.ok) throw new Error("Failed to fetch receivables");
       return res.json();
@@ -113,18 +123,27 @@ export function ReceivablesTab() {
   });
 
   const bulkCompleteMutation = useMutation({
-    mutationFn: async (year: number) =>
-      apiRequest("POST", "/api/receivables/bulk-complete", { beforeYear: year + 1 }),
+    mutationFn: async () =>
+      apiRequest("POST", "/api/receivables/bulk-complete", { beforeYear: 2025 }),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      toast({ title: `일괄 완료 처리`, description: `${data.updatedInvoices}건 계산서, ${data.updatedPayments}건 자금계획 완료 처리됨` });
+      toast({ title: "일괄 완료 처리 완료", description: `계산서 ${data.updatedInvoices}건, 자금계획 ${data.updatedPayments}건 완료 처리됨` });
     },
     onError: (e: any) => toast({ title: "처리 실패", description: e.message, variant: "destructive" }),
   });
 
-  const invoices = receivablesData?.invoices ?? [];
+  const allInvoices = receivablesData?.invoices ?? [];
   const summary = receivablesData?.summary;
+
+  const invoices = useMemo(() => {
+    if (yearFilter !== "before2025") return allInvoices;
+    return allInvoices.filter(inv => {
+      const d = inv.writeDate || inv.issueDate;
+      if (!d) return false;
+      return new Date(d).getFullYear() < 2025;
+    });
+  }, [allInvoices, yearFilter]);
 
   const filtered = useMemo(() => {
     return invoices.filter(inv => {
@@ -143,6 +162,12 @@ export function ReceivablesTab() {
       return true;
     });
   }, [invoices, showOutstandingOnly, search]);
+
+  const filteredSummary = useMemo(() => {
+    const totalBilled = filtered.reduce((s, i) => s + (i.totalAmount ?? 0), 0);
+    const totalCollected = filtered.reduce((s, i) => s + i.collectedAmount, 0);
+    return { totalBilled, totalCollected, totalOutstanding: totalBilled - totalCollected, invoiceCount: filtered.length };
+  }, [filtered]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, { customerName: string; invoices: ReceivableInvoice[]; totalBilled: number; totalCollected: number }>();
@@ -172,13 +197,14 @@ export function ReceivablesTab() {
   const availableTxForLink = useMemo(() => {
     if (!bankTxData || !linkDialogInvoice) return [];
     const q = txSearch.toLowerCase();
+    const custName = (linkDialogInvoice.companyName ?? "").toLowerCase();
     return bankTxData.filter(tx => {
       if (tx.matchedSalesInvoiceId && tx.matchedSalesInvoiceId !== linkDialogInvoice.id) return false;
-      if (q) {
-        if (!(tx.description ?? "").toLowerCase().includes(q) &&
-            !(tx.counterparty ?? "").toLowerCase().includes(q) &&
-            !(tx.txDate ?? "").includes(q)) return false;
-      }
+      const counterparty = (tx.counterparty ?? "").toLowerCase();
+      const desc = (tx.description ?? "").toLowerCase();
+      const isCustMatch = custName && (counterparty.includes(custName) || custName.includes(counterparty) || desc.includes(custName));
+      if (!isCustMatch && !tx.matchedSalesInvoiceId && !txSearch) return false;
+      if (q && !desc.includes(q) && !counterparty.includes(q) && !(tx.txDate ?? "").includes(q)) return false;
       return true;
     }).sort((a, b) => {
       if (a.matchedSalesInvoiceId === linkDialogInvoice.id) return -1;
@@ -197,20 +223,29 @@ export function ReceivablesTab() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
           <Button
-            variant={selectedYear === null ? "default" : "ghost"}
+            variant={yearFilter === "all" ? "default" : "ghost"}
             size="sm"
-            onClick={() => setSelectedYear(null)}
+            onClick={() => setYearFilter("all")}
             data-testid="button-year-all"
           >전체</Button>
-          {YEARS.map(y => (
-            <Button
-              key={y}
-              variant={selectedYear === y ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setSelectedYear(y)}
-              data-testid={`button-year-${y}`}
-            >{y}년</Button>
-          ))}
+          <Button
+            variant={yearFilter === "2026" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setYearFilter("2026")}
+            data-testid="button-year-2026"
+          >2026년</Button>
+          <Button
+            variant={yearFilter === "2025" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setYearFilter("2025")}
+            data-testid="button-year-2025"
+          >2025년</Button>
+          <Button
+            variant={yearFilter === "before2025" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setYearFilter("before2025")}
+            data-testid="button-year-before2025"
+          >2024년 이전</Button>
         </div>
 
         <Button
@@ -236,7 +271,7 @@ export function ReceivablesTab() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => bulkCompleteMutation.mutate(2024)}
+          onClick={() => setBulkConfirmOpen(true)}
           disabled={bulkCompleteMutation.isPending}
           data-testid="button-bulk-complete-2024"
         >
@@ -246,34 +281,32 @@ export function ReceivablesTab() {
       </div>
 
       {/* Summary */}
-      {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="border rounded-lg p-3 bg-background">
-            <div className="text-xs text-muted-foreground">총 발행금액</div>
-            <div className="text-base font-semibold mt-0.5" data-testid="text-total-billed">
-              {formatAmount(summary.totalBilled)}원
-            </div>
-          </div>
-          <div className="border rounded-lg p-3 bg-background">
-            <div className="text-xs text-muted-foreground">수금 완료</div>
-            <div className="text-base font-semibold mt-0.5 text-green-600 dark:text-green-400" data-testid="text-total-collected">
-              {formatAmount(summary.totalCollected)}원
-            </div>
-          </div>
-          <div className="border rounded-lg p-3 bg-background">
-            <div className="text-xs text-muted-foreground">미수금</div>
-            <div className="text-base font-semibold mt-0.5 text-red-600 dark:text-red-400" data-testid="text-total-outstanding">
-              {formatAmount(summary.totalOutstanding)}원
-            </div>
-          </div>
-          <div className="border rounded-lg p-3 bg-background">
-            <div className="text-xs text-muted-foreground">계산서 수</div>
-            <div className="text-base font-semibold mt-0.5" data-testid="text-invoice-count">
-              {summary.invoiceCount}건
-            </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="border rounded-lg p-3 bg-background">
+          <div className="text-xs text-muted-foreground">총 발행금액</div>
+          <div className="text-base font-semibold mt-0.5" data-testid="text-total-billed">
+            {formatAmount(filteredSummary.totalBilled)}원
           </div>
         </div>
-      )}
+        <div className="border rounded-lg p-3 bg-background">
+          <div className="text-xs text-muted-foreground">수금 완료</div>
+          <div className="text-base font-semibold mt-0.5 text-green-600 dark:text-green-400" data-testid="text-total-collected">
+            {formatAmount(filteredSummary.totalCollected)}원
+          </div>
+        </div>
+        <div className="border rounded-lg p-3 bg-background">
+          <div className="text-xs text-muted-foreground">미수금</div>
+          <div className="text-base font-semibold mt-0.5 text-red-600 dark:text-red-400" data-testid="text-total-outstanding">
+            {formatAmount(filteredSummary.totalOutstanding)}원
+          </div>
+        </div>
+        <div className="border rounded-lg p-3 bg-background">
+          <div className="text-xs text-muted-foreground">계산서 수</div>
+          <div className="text-base font-semibold mt-0.5" data-testid="text-invoice-count">
+            {filteredSummary.invoiceCount}건
+          </div>
+        </div>
+      </div>
 
       {/* Grouped customer sections */}
       <div className="space-y-2">
@@ -400,6 +433,29 @@ export function ReceivablesTab() {
         })}
       </div>
 
+      {/* Bulk complete confirmation dialog */}
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>2024년 이전 일괄 완료 처리</AlertDialogTitle>
+            <AlertDialogDescription>
+              2024년 12월 31일 이전 발행된 매출계산서와 해당 계산서에 연결된 자금계획을 모두 <strong>완료 처리</strong>합니다.
+              <br /><br />
+              이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setBulkConfirmOpen(false); bulkCompleteMutation.mutate(); }}
+              data-testid="button-bulk-complete-confirm"
+            >
+              완료 처리
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Link bank transaction dialog */}
       <Dialog open={!!linkDialogInvoice} onOpenChange={open => !open && setLinkDialogInvoice(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
@@ -417,7 +473,7 @@ export function ReceivablesTab() {
           <div className="relative mb-2">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="날짜/설명/거래처 검색"
+              placeholder="날짜/설명/거래처 검색 (검색 시 모든 입금거래 표시)"
               value={txSearch}
               onChange={e => setTxSearch(e.target.value)}
               className="pl-8 h-8 text-sm"
@@ -426,7 +482,9 @@ export function ReceivablesTab() {
           </div>
           <div className="overflow-y-auto flex-1 border rounded-lg">
             {availableTxForLink.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">입금 거래내역이 없습니다</div>
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                {txSearch ? "검색 결과가 없습니다" : `${linkDialogInvoice?.companyName} 관련 입금 거래가 없습니다`}
+              </div>
             ) : (
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-background border-b">

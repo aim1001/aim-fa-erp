@@ -8052,18 +8052,24 @@ export async function registerRoutes(
         [cutoffDate]
       );
 
-      const pmtResult = await pool.query(
-        `UPDATE payments SET status = 'completed'
-         WHERE type = 'income'
-           AND status != 'completed'
-           AND (planned_date < $1 OR (planned_date IS NULL AND actual_date < $1))
-         RETURNING id`,
-        [cutoffDate]
-      );
+      const invoiceIds = invResult.rows.map((r: any) => r.id);
+
+      let updatedPayments = 0;
+      if (invoiceIds.length > 0) {
+        const pmtResult = await pool.query(
+          `UPDATE payments SET status = 'completed'
+           WHERE type = 'income'
+             AND status != 'completed'
+             AND sales_invoice_id = ANY($1::varchar[])
+           RETURNING id`,
+          [invoiceIds]
+        );
+        updatedPayments = pmtResult.rowCount ?? 0;
+      }
 
       res.json({
         updatedInvoices: invResult.rowCount ?? 0,
-        updatedPayments: pmtResult.rowCount ?? 0,
+        updatedPayments,
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
