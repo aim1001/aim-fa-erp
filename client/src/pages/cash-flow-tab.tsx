@@ -17,7 +17,7 @@ import {
 import {
   ChevronLeft, ChevronRight, Landmark, ClipboardList,
   Link2, Link2Off, AlertCircle, RefreshCw, AlertTriangle, Clock, Check, Plus,
-  ArrowUp, ArrowDown, CalendarDays, X,
+  ArrowUp, ArrowDown, CalendarDays, X, Search, SlidersHorizontal,
 } from "lucide-react";
 import type { BankAccount, BankTransaction, MonthlyBalance, Payment } from "@shared/schema";
 import { PaymentDetailModal } from "./fund-overview-tab";
@@ -350,6 +350,26 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDate, setBulkDate] = useState("");
 
+  // Search/filter state
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMinAmount, setSearchMinAmount] = useState("");
+  const [searchMaxAmount, setSearchMaxAmount] = useState("");
+  const [searchDateFrom, setSearchDateFrom] = useState("");
+  const [searchDateTo, setSearchDateTo] = useState("");
+
+  const isSearchActive = !!(searchQuery || searchMinAmount || searchMaxAmount || searchDateFrom || searchDateTo);
+
+  const resetSearch = () => {
+    setSearchQuery("");
+    setSearchMinAmount("");
+    setSearchMaxAmount("");
+    setSearchDateFrom("");
+    setSearchDateTo("");
+    setSelectedIds(new Set());
+    setBulkDate("");
+  };
+
   // Clear selection when month or filters change
   const clearSelection = () => { setSelectedIds(new Set()); setBulkDate(""); };
   const handlePrevMonth = () => { clearSelection(); onPrevMonth(); };
@@ -361,6 +381,10 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  // When search is active, use search date range; otherwise use month range
+  const effectiveStartDate = isSearchActive && searchDateFrom ? searchDateFrom : startDate;
+  const effectiveEndDate = isSearchActive && searchDateTo ? searchDateTo : endDate;
 
   const { data: accounts = [] } = useQuery<BankAccount[]>({ queryKey: ["/api/bank-accounts"] });
 
@@ -381,18 +405,44 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   });
 
   const { data: bankTxs = [], isLoading: txLoading } = useQuery<BankTransaction[]>({
-    queryKey: ["/api/bank-transactions", "cashflow", filterAccount, startDate, endDate],
+    queryKey: ["/api/bank-transactions", "cashflow", filterAccount, effectiveStartDate, effectiveEndDate, isSearchActive, searchQuery],
     queryFn: async () => {
-      const params = new URLSearchParams({ startDate, endDate });
+      const params = new URLSearchParams({ startDate: effectiveStartDate, endDate: effectiveEndDate });
       if (filterAccount !== "all") params.set("accountId", filterAccount);
       const res = await fetch(`/api/bank-transactions?${params}`);
-      return res.json();
+      const txList: BankTransaction[] = await res.json();
+      if (isSearchActive && searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return txList.filter(tx =>
+          (tx.counterparty && tx.counterparty.toLowerCase().includes(q)) ||
+          (tx.description && tx.description.toLowerCase().includes(q))
+        );
+      }
+      return txList;
     },
   });
 
   const { data: payments = [], isLoading: paymentsLoading } = useQuery<EnrichedPayment[]>({
-    queryKey: ["/api/payments", year, month],
+    queryKey: ["/api/payments", isSearchActive ? "search" : year, isSearchActive ? "search" : month, searchQuery, searchMinAmount, searchMaxAmount, searchDateFrom, searchDateTo],
     queryFn: async () => {
+      if (isSearchActive) {
+        const params = new URLSearchParams();
+        if (searchDateFrom && searchDateTo) {
+          params.set("dateFrom", searchDateFrom);
+          params.set("dateTo", searchDateTo);
+        } else if (searchDateFrom) {
+          params.set("dateFrom", searchDateFrom);
+          params.set("dateTo", new Date().toISOString().split("T")[0]);
+        } else if (searchDateTo) {
+          params.set("dateFrom", "2020-01-01");
+          params.set("dateTo", searchDateTo);
+        }
+        if (searchQuery) params.set("companyName", searchQuery);
+        if (searchMinAmount) params.set("minAmount", searchMinAmount);
+        if (searchMaxAmount) params.set("maxAmount", searchMaxAmount);
+        const res = await fetch(`/api/payments?${params}`);
+        return res.json();
+      }
       const res = await fetch(`/api/payments?year=${year}&month=${month}`);
       return res.json();
     },
@@ -594,13 +644,27 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   return (
     <div className="space-y-3" data-testid="cash-flow-tab">
       <div className="flex items-center gap-2 flex-wrap">
-        <Button variant="ghost" size="icon" onClick={handlePrevMonth} data-testid="button-cf-prev-month">
+        <Button
+          variant="ghost" size="icon"
+          onClick={handlePrevMonth}
+          disabled={isSearchActive}
+          data-testid="button-cf-prev-month"
+        >
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <span className="text-base font-semibold min-w-[100px] text-center" data-testid="text-cf-month">
-          {year}년 {month}월
+          {isSearchActive ? (
+            <span className="text-sm text-muted-foreground font-normal">검색 결과</span>
+          ) : (
+            `${year}년 ${month}월`
+          )}
         </span>
-        <Button variant="ghost" size="icon" onClick={handleNextMonth} data-testid="button-cf-next-month">
+        <Button
+          variant="ghost" size="icon"
+          onClick={handleNextMonth}
+          disabled={isSearchActive}
+          data-testid="button-cf-next-month"
+        >
           <ChevronRight className="h-4 w-4" />
         </Button>
 
@@ -638,12 +702,111 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
           </Button>
         </div>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            variant={showSearch || isSearchActive ? "secondary" : "ghost"}
+            size="sm"
+            className={`h-8 text-xs ${isSearchActive ? "text-primary font-medium" : ""}`}
+            onClick={() => setShowSearch(v => !v)}
+            data-testid="button-cf-search-toggle"
+          >
+            <Search className="h-3.5 w-3.5 mr-1" />
+            검색
+            {isSearchActive && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-primary inline-block" />}
+          </Button>
+          {isSearchActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+              onClick={resetSearch}
+              data-testid="button-cf-search-reset"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button size="sm" className="h-8 text-xs" onClick={() => setShowAddDialog(true)} data-testid="button-cf-add-payment">
             <Plus className="h-3.5 w-3.5 mr-1" />추가
           </Button>
         </div>
       </div>
+
+      {/* Search panel */}
+      {showSearch && (
+        <div className="border rounded-lg p-3 bg-muted/20 space-y-3" data-testid="cf-search-panel">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            검색 / 필터
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">업체명</Label>
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="업체명 또는 내용"
+                  className="h-8 text-xs pl-7"
+                  data-testid="input-cf-search-query"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">금액 범위</Label>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  value={searchMinAmount}
+                  onChange={e => setSearchMinAmount(e.target.value)}
+                  placeholder="최소"
+                  className="h-8 text-xs"
+                  data-testid="input-cf-search-min-amount"
+                />
+                <span className="text-muted-foreground text-xs">~</span>
+                <Input
+                  type="number"
+                  value={searchMaxAmount}
+                  onChange={e => setSearchMaxAmount(e.target.value)}
+                  placeholder="최대"
+                  className="h-8 text-xs"
+                  data-testid="input-cf-search-max-amount"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">기간</Label>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="date"
+                  value={searchDateFrom}
+                  onChange={e => setSearchDateFrom(e.target.value)}
+                  className="h-8 text-xs"
+                  data-testid="input-cf-search-date-from"
+                />
+                <span className="text-muted-foreground text-xs">~</span>
+                <Input
+                  type="date"
+                  value={searchDateTo}
+                  onChange={e => setSearchDateTo(e.target.value)}
+                  className="h-8 text-xs"
+                  data-testid="input-cf-search-date-to"
+                />
+              </div>
+            </div>
+          </div>
+          {isSearchActive && (
+            <div className="flex items-center justify-between pt-1 border-t">
+              <div className="text-xs text-muted-foreground">
+                검색 조건이 적용됐습니다. 월 네비게이션이 비활성화됩니다.
+              </div>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={resetSearch} data-testid="button-cf-search-clear">
+                <X className="h-3 w-3 mr-1" />초기화
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="border-2 rounded-lg px-3 py-2 bg-green-50/50 dark:bg-green-900/10 border-green-200 dark:border-green-800">
@@ -714,8 +877,18 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
         <div className="space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-10" />)}</div>
       ) : visibleRows.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground text-sm border rounded-lg">
-          <Landmark className="h-10 w-10 mx-auto mb-3 opacity-20" />
-          이 월의 거래내역이 없습니다
+          <Search className="h-10 w-10 mx-auto mb-3 opacity-20" />
+          {isSearchActive
+            ? "검색 조건에 맞는 항목이 없습니다"
+            : "이 월의 거래내역이 없습니다"
+          }
+          {isSearchActive && (
+            <div className="mt-2">
+              <Button variant="ghost" size="sm" className="text-xs h-7" onClick={resetSearch} data-testid="button-cf-empty-reset">
+                <X className="h-3 w-3 mr-1" />검색 초기화
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="border rounded-lg overflow-hidden" data-testid="cashflow-table">

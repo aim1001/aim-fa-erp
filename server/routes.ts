@@ -4235,14 +4235,32 @@ export async function registerRoutes(
   // Payment routes
   app.get("/api/payments", async (req, res) => {
     try {
-      const { year, month, startDate, endDate } = req.query;
+      const { year, month, startDate, endDate, companyName, minAmount, maxAmount, dateFrom, dateTo } = req.query;
       let list: any[];
-      if (startDate && endDate) {
+      if (dateFrom && dateTo) {
+        list = await storage.getPaymentsByDateRange(dateFrom as string, dateTo as string);
+      } else if (startDate && endDate) {
         list = await storage.getPaymentsByDateRange(startDate as string, endDate as string);
       } else if (year && month) {
         list = await storage.getPaymentsByMonth(parseInt(year as string), parseInt(month as string));
       } else {
         list = await storage.getPayments();
+      }
+
+      if (companyName) {
+        const q = (companyName as string).toLowerCase();
+        list = list.filter(p =>
+          (p.companyName && p.companyName.toLowerCase().includes(q)) ||
+          (p.description && p.description.toLowerCase().includes(q))
+        );
+      }
+      if (minAmount) {
+        const min = parseInt(minAmount as string);
+        if (!isNaN(min)) list = list.filter(p => (p.amount || 0) >= min);
+      }
+      if (maxAmount) {
+        const max = parseInt(maxAmount as string);
+        if (!isNaN(max)) list = list.filter(p => (p.amount || 0) <= max);
       }
 
       const salesInvoices = await storage.getSalesInvoices();
