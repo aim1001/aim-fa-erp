@@ -7962,5 +7962,144 @@ export async function registerRoutes(
     }
   });
 
+  // ===== 수금관리 (미수금) API =====
+
+  app.get("/api/receivables", async (req, res) => {
+    try {
+      const { year } = req.query;
+      const yearNum = year ? parseInt(year as string) : undefined;
+
+      const invoices = await storage.getSalesInvoices();
+      const projects = await storage.getProjects();
+      const projectMap = new Map(projects.map((p: any) => [p.id, p]));
+
+      const allTx = await pool.query(
+        `SELECT matched_sales_invoice_id, SUM(credit_amount) as collected, COUNT(*) as tx_count, array_agg(id) as tx_ids
+         FROM bank_transactions
+         WHERE matched_sales_invoice_id IS NOT NULL
+         GROUP BY matched_sales_invoice_id`
+      );
+      const txByInvoice = new Map<string, { collected: number; txCount: number; txIds: string[] }>();
+      for (const row of allTx.rows) {
+        txByInvoice.set(row.matched_sales_invoice_id, {
+          collected: Number(row.collected || 0),
+          txCount: Number(row.tx_count || 0),
+          txIds: row.tx_ids || [],
+        });
+      }
+
+      let filtered = invoices;
+      if (yearNum) {
+        filtered = invoices.filter((inv: any) => {
+          const d = inv.writeDate || inv.issueDate;
+          if (!d) return inv.year === yearNum;
+          return new Date(d).getFullYear() === yearNum;
+        });
+      }
+
+      const enriched = filtered.map((inv: any) => {
+        const proj = inv.projectId ? projectMap.get(inv.projectId) : null;
+        const txInfo = txByInvoice.get(inv.id);
+        return {
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          companyName: inv.companyName,
+          customerId: inv.customerId,
+          projectId: inv.projectId,
+          projectNumber: proj?.projectNumber ?? null,
+          writeDate: inv.writeDate,
+          issueDate: inv.issueDate,
+          totalAmount: inv.totalAmount ?? 0,
+          supplyAmount: inv.supplyAmount,
+          taxAmount: inv.taxAmount,
+          status: inv.status,
+          collectedAmount: txInfo?.collected ?? 0,
+          linkedTxCount: txInfo?.txCount ?? 0,
+          linkedTxIds: txInfo?.txIds ?? [],
+        };
+      });
+
+      const totalBilled = enriched.reduce((s: number, i: any) => s + (i.totalAmount ?? 0), 0);
+      const totalCollected = enriched.reduce((s: number, i: any) => s + i.collectedAmount, 0);
+
+      res.json({
+        invoices: enriched,
+        summary: {
+          totalBilled,
+          totalCollected,
+          totalOutstanding: totalBilled - totalCollected,
+          invoiceCount: enriched.length,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/receivables/bulk-complete", async (req, res) => {
+    try {
+      const { beforeYear } = req.body;
+      if (!beforeYear || isNaN(Number(beforeYear))) {
+        return res.status(400).json({ message: "beforeYear is required" });
+      }
+      const cutoffDate = `${Number(beforeYear)}-01-01`;
+
+      const invResult = await pool.query(
+        `UPDATE sales_invoices SET status = 'paid'
+         WHERE (write_date < $1 OR (write_date IS NULL AND issue_date < $1))
+           AND status != 'paid'
+         RETURNING id`,
+        [cutoffDate]
+      );
+
+      const pmtResult = await pool.query(
+        `UPDATE payments SET status = 'completed'
+         WHERE type = 'income'
+           AND status != 'completed'
+           AND (planned_date < $1 OR (planned_date IS NULL AND actual_date < $1))
+         RETURNING id`,
+        [cutoffDate]
+      );
+
+      res.json({
+        updatedInvoices: invResult.rowCount ?? 0,
+        updatedPayments: pmtResult.rowCount ?? 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bank-transactions/:id/link-invoice", async (req, res) => {
+    try {
+      const txId = req.params.id;
+      const { invoiceId } = req.body;
+      if (!invoiceId) return res.status(400).json({ message: "invoiceId is required" });
+
+      const tx = await storage.updateBankTransaction(txId, {
+        matchedSalesInvoiceId: invoiceId,
+        matchStatus: "manual",
+      });
+      if (!tx) return res.status(404).json({ message: "Transaction not found" });
+      res.json(tx);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/bank-transactions/:id/link-invoice", async (req, res) => {
+    try {
+      const txId = req.params.id;
+      const tx = await storage.updateBankTransaction(txId, {
+        matchedSalesInvoiceId: null,
+        matchStatus: "unmatched",
+      });
+      if (!tx) return res.status(404).json({ message: "Transaction not found" });
+      res.json(tx);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
