@@ -8082,6 +8082,16 @@ export async function registerRoutes(
       const { invoiceId } = req.body;
       if (!invoiceId) return res.status(400).json({ message: "invoiceId is required" });
 
+      const invoice = await storage.getSalesInvoice(invoiceId);
+      if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+
+      const allTx = await storage.getBankTransactions({});
+      const targetTx = allTx.find((t: any) => t.id === txId);
+      if (!targetTx) return res.status(404).json({ message: "Transaction not found" });
+      if (!targetTx.creditAmount || targetTx.creditAmount <= 0) {
+        return res.status(400).json({ message: "입금 거래만 계산서에 연결할 수 있습니다" });
+      }
+
       const tx = await storage.updateBankTransaction(txId, {
         matchedSalesInvoiceId: invoiceId,
         matchStatus: "manual",

@@ -123,8 +123,10 @@ export function ReceivablesTab() {
   });
 
   const bulkCompleteMutation = useMutation({
-    mutationFn: async () =>
-      apiRequest("POST", "/api/receivables/bulk-complete", { beforeYear: 2025 }),
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/receivables/bulk-complete", { beforeYear: 2025 });
+      return res.json();
+    },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
@@ -268,16 +270,18 @@ export function ReceivablesTab() {
           />
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setBulkConfirmOpen(true)}
-          disabled={bulkCompleteMutation.isPending}
-          data-testid="button-bulk-complete-2024"
-        >
-          <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-          2024년 이전 일괄완료
-        </Button>
+        {(yearFilter === "before2025" || yearFilter === "all") && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setBulkConfirmOpen(true)}
+            disabled={bulkCompleteMutation.isPending}
+            data-testid="button-bulk-complete-2024"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+            2024년 이전 일괄완료
+          </Button>
+        )}
       </div>
 
       {/* Summary */}
