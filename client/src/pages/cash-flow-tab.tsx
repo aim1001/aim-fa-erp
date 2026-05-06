@@ -382,9 +382,13 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-  // When search is active, use search date range; otherwise use month range
-  const effectiveStartDate = isSearchActive && searchDateFrom ? searchDateFrom : startDate;
-  const effectiveEndDate = isSearchActive && searchDateTo ? searchDateTo : endDate;
+  // When search is active, use search date range; if only non-date search, use wide range
+  const effectiveStartDate = isSearchActive
+    ? (searchDateFrom || "2020-01-01")
+    : startDate;
+  const effectiveEndDate = isSearchActive
+    ? (searchDateTo || new Date().toISOString().split("T")[0])
+    : endDate;
 
   const { data: accounts = [] } = useQuery<BankAccount[]>({ queryKey: ["/api/bank-accounts"] });
 
@@ -405,18 +409,38 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   });
 
   const { data: bankTxs = [], isLoading: txLoading } = useQuery<BankTransaction[]>({
-    queryKey: ["/api/bank-transactions", "cashflow", filterAccount, effectiveStartDate, effectiveEndDate, isSearchActive, searchQuery],
+    queryKey: ["/api/bank-transactions", "cashflow", filterAccount, effectiveStartDate, effectiveEndDate, searchQuery, searchMinAmount, searchMaxAmount],
     queryFn: async () => {
       const params = new URLSearchParams({ startDate: effectiveStartDate, endDate: effectiveEndDate });
       if (filterAccount !== "all") params.set("accountId", filterAccount);
       const res = await fetch(`/api/bank-transactions?${params}`);
-      const txList: BankTransaction[] = await res.json();
-      if (isSearchActive && searchQuery) {
-        const q = searchQuery.toLowerCase();
-        return txList.filter(tx =>
-          (tx.counterparty && tx.counterparty.toLowerCase().includes(q)) ||
-          (tx.description && tx.description.toLowerCase().includes(q))
-        );
+      let txList: BankTransaction[] = await res.json();
+      if (isSearchActive) {
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          txList = txList.filter(tx =>
+            (tx.counterparty && tx.counterparty.toLowerCase().includes(q)) ||
+            (tx.description && tx.description.toLowerCase().includes(q))
+          );
+        }
+        if (searchMinAmount) {
+          const min = parseInt(searchMinAmount);
+          if (!isNaN(min)) {
+            txList = txList.filter(tx => {
+              const amt = (tx.creditAmount || 0) + (tx.debitAmount || 0);
+              return amt >= min;
+            });
+          }
+        }
+        if (searchMaxAmount) {
+          const max = parseInt(searchMaxAmount);
+          if (!isNaN(max)) {
+            txList = txList.filter(tx => {
+              const amt = (tx.creditAmount || 0) + (tx.debitAmount || 0);
+              return amt <= max;
+            });
+          }
+        }
       }
       return txList;
     },
