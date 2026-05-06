@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -12,7 +13,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronDown, ChevronRight, Search, Link2, Link2Off, CheckCircle2, AlertCircle, Filter } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, Link2, Link2Off, CheckCircle2, AlertCircle, Filter, X, RefreshCw } from "lucide-react";
 
 interface ReceivableInvoice {
   id: string;
@@ -75,6 +76,10 @@ export function ReceivablesTab() {
   const [txSearch, setTxSearch] = useState("");
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
+
   const apiYear = yearFilter === "all" ? undefined
     : yearFilter === "before2025" ? undefined
     : parseInt(yearFilter);
@@ -131,6 +136,23 @@ export function ReceivablesTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({ title: "일괄 완료 처리 완료", description: `계산서 ${data.updatedInvoices}건, 자금계획 ${data.updatedPayments}건 완료 처리됨` });
+    },
+    onError: (e: any) => toast({ title: "처리 실패", description: e.message, variant: "destructive" }),
+  });
+
+  const completeInvoicesMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", "/api/receivables/complete-invoices", { ids });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      setSelectedIds(new Set());
+      toast({
+        title: "완료 처리됨",
+        description: `계산서 ${data.updatedInvoices}건, 자금계획 ${data.updatedPayments}건 완료 처리됨`,
+      });
     },
     onError: (e: any) => toast({ title: "처리 실패", description: e.message, variant: "destructive" }),
   });
@@ -196,6 +218,31 @@ export function ReceivablesTab() {
     });
   };
 
+  const toggleInvoice = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleGroupSelect = (groupInvoices: ReceivableInvoice[]) => {
+    const unpaidIds = groupInvoices
+      .filter(inv => inv.status !== "paid" && (inv.totalAmount ?? 0) - inv.collectedAmount > 0)
+      .map(inv => inv.id);
+    const allSelected = unpaidIds.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        unpaidIds.forEach(id => next.delete(id));
+      } else {
+        unpaidIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
   const availableTxForLink = useMemo(() => {
     if (!bankTxData || !linkDialogInvoice) return [];
     const q = txSearch.toLowerCase();
@@ -218,6 +265,8 @@ export function ReceivablesTab() {
   if (isLoading) {
     return <div className="flex items-center justify-center h-48 text-muted-foreground">로딩 중...</div>;
   }
+
+  const someSelected = selectedIds.size > 0;
 
   return (
     <div className="space-y-4">
@@ -312,6 +361,36 @@ export function ReceivablesTab() {
         </div>
       </div>
 
+      {/* Floating bulk action toolbar */}
+      {someSelected && (
+        <div className="sticky top-2 z-20 flex items-center gap-3 bg-primary text-primary-foreground rounded-lg px-4 py-2.5 shadow-lg" data-testid="receivables-bulk-toolbar">
+          <span className="text-sm font-medium">{selectedIds.size}건 선택됨</span>
+          <div className="h-4 w-px bg-primary-foreground/30" />
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white border-0"
+            disabled={completeInvoicesMutation.isPending}
+            onClick={() => setCompleteConfirmOpen(true)}
+            data-testid="button-selected-complete"
+          >
+            {completeInvoicesMutation.isPending
+              ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+              : <CheckCircle2 className="h-3 w-3 mr-1" />}
+            완료 처리
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 p-0 text-primary-foreground hover:bg-primary-foreground/20"
+            onClick={() => setSelectedIds(new Set())}
+            data-testid="button-selected-cancel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
       {/* Grouped customer sections */}
       <div className="space-y-2">
         {grouped.length === 0 && (
@@ -320,6 +399,12 @@ export function ReceivablesTab() {
         {grouped.map(group => {
           const outstanding = group.totalBilled - group.totalCollected;
           const isExpanded = expandedCustomers.has(group.key);
+          const unpaidInGroup = group.invoices.filter(inv =>
+            inv.status !== "paid" && (inv.totalAmount ?? 0) - inv.collectedAmount > 0
+          );
+          const groupSelectedCount = unpaidInGroup.filter(inv => selectedIds.has(inv.id)).length;
+          const groupAllSelected = unpaidInGroup.length > 0 && groupSelectedCount === unpaidInGroup.length;
+
           return (
             <Collapsible key={group.key} open={isExpanded} onOpenChange={() => toggleCustomer(group.key)}>
               <CollapsibleTrigger asChild>
@@ -336,13 +421,27 @@ export function ReceivablesTab() {
                         <AlertCircle className="h-3 w-3 mr-0.5" />미수금
                       </Badge>
                     )}
+                    {groupSelectedCount > 0 && (
+                      <Badge className="text-xs bg-primary">{groupSelectedCount}건 선택됨</Badge>
+                    )}
                   </div>
-                  <div className="flex items-center gap-4 text-sm">
+                  <div className="flex items-center gap-3 text-sm">
                     <span className="text-muted-foreground hidden sm:inline">발행 <span className="text-foreground font-medium">{formatAmount(group.totalBilled)}</span></span>
                     <span className="text-green-600 dark:text-green-400 hidden sm:inline">수금 <span className="font-medium">{formatAmount(group.totalCollected)}</span></span>
                     <span className={outstanding > 0 ? "text-red-600 dark:text-red-400 font-semibold" : "text-muted-foreground"}>
                       미수금 {formatAmount(outstanding)}원
                     </span>
+                    {unpaidInGroup.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs"
+                        onClick={e => { e.stopPropagation(); toggleGroupSelect(group.invoices); }}
+                        data-testid={`button-group-select-${group.key}`}
+                      >
+                        {groupAllSelected ? "선택해제" : `${unpaidInGroup.length}건 선택`}
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CollapsibleTrigger>
@@ -351,6 +450,7 @@ export function ReceivablesTab() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/20 text-muted-foreground text-xs">
+                        <th className="px-2 py-2 w-8"></th>
                         <th className="px-3 py-2 text-left font-medium">계산서번호</th>
                         <th className="px-3 py-2 text-left font-medium">작성일</th>
                         <th className="px-3 py-2 text-left font-medium">PO/프로젝트</th>
@@ -359,18 +459,32 @@ export function ReceivablesTab() {
                         <th className="px-3 py-2 text-right font-medium">미수금</th>
                         <th className="px-3 py-2 text-center font-medium">상태</th>
                         <th className="px-3 py-2 text-center font-medium">은행연결</th>
+                        <th className="px-3 py-2 text-center font-medium">완료</th>
                       </tr>
                     </thead>
                     <tbody>
                       {group.invoices.map(inv => {
                         const invOutstanding = (inv.totalAmount ?? 0) - inv.collectedAmount;
                         const isPaid = invOutstanding <= 0 || inv.status === "paid";
+                        const isSelected = selectedIds.has(inv.id);
                         return (
                           <tr
                             key={inv.id}
-                            className="border-b last:border-0 hover:bg-muted/20"
+                            className={`border-b last:border-0 hover:bg-muted/20 ${isSelected ? "bg-primary/5" : ""}`}
                             data-testid={`row-invoice-${inv.id}`}
                           >
+                            <td
+                              className="px-2 py-2 w-8"
+                              onClick={e => { e.stopPropagation(); if (!isPaid) toggleInvoice(inv.id); }}
+                            >
+                              {!isPaid && (
+                                <Checkbox
+                                  checked={isSelected}
+                                  aria-label="선택"
+                                  data-testid={`checkbox-invoice-${inv.id}`}
+                                />
+                              )}
+                            </td>
                             <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                               {inv.invoiceNumber ?? "-"}
                             </td>
@@ -425,6 +539,26 @@ export function ReceivablesTab() {
                                 <span className="text-xs text-blue-500 ml-0.5">{inv.linkedTxCount}</span>
                               )}
                             </td>
+                            <td className="px-3 py-2 text-center">
+                              {!isPaid ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs text-green-700 hover:text-green-800 hover:bg-green-50 dark:hover:bg-green-950"
+                                  disabled={completeInvoicesMutation.isPending}
+                                  onClick={() => {
+                                    if (confirm(`"${inv.invoiceNumber ?? inv.companyName}" 계산서를 완료 처리할까요?`)) {
+                                      completeInvoicesMutation.mutate([inv.id]);
+                                    }
+                                  }}
+                                  data-testid={`button-complete-invoice-${inv.id}`}
+                                >
+                                  <CheckCircle2 className="h-3 w-3 mr-0.5" />완료
+                                </Button>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">-</span>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}
@@ -436,6 +570,32 @@ export function ReceivablesTab() {
           );
         })}
       </div>
+
+      {/* Selected invoices complete confirmation */}
+      <AlertDialog open={completeConfirmOpen} onOpenChange={setCompleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>선택 계산서 완료 처리</AlertDialogTitle>
+            <AlertDialogDescription>
+              선택한 <strong>{selectedIds.size}건</strong>의 계산서를 완료 처리합니다.
+              <br />연결된 자금계획도 함께 완료 처리됩니다.
+              <br /><br />계속하시겠습니까?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setCompleteConfirmOpen(false);
+                completeInvoicesMutation.mutate(Array.from(selectedIds));
+              }}
+              data-testid="button-complete-confirm"
+            >
+              완료 처리
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Bulk complete confirmation dialog */}
       <AlertDialog open={bulkConfirmOpen} onOpenChange={setBulkConfirmOpen}>

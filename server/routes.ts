@@ -8096,6 +8096,45 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/receivables/complete-invoices", async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || !ids.length) {
+        return res.status(400).json({ message: "ids 배열 필수" });
+      }
+      if (!ids.every((id: unknown) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "ids 배열의 모든 항목은 문자열이어야 합니다" });
+      }
+
+      const invResult = await pool.query(
+        `UPDATE sales_invoices SET status = 'paid'
+         WHERE id = ANY($1::varchar[]) AND status != 'paid'
+         RETURNING id`,
+        [ids]
+      );
+      const updatedInvoiceIds = invResult.rows.map((r: any) => r.id);
+
+      let updatedPayments = 0;
+      if (updatedInvoiceIds.length > 0) {
+        const pmtResult = await pool.query(
+          `UPDATE payments SET status = 'completed',
+            actual_date = COALESCE(actual_date, planned_date),
+            actual_amount = COALESCE(actual_amount, amount)
+           WHERE type = 'income'
+             AND status != 'completed'
+             AND sales_invoice_id = ANY($1::varchar[])
+           RETURNING id`,
+          [updatedInvoiceIds]
+        );
+        updatedPayments = pmtResult.rowCount ?? 0;
+      }
+
+      res.json({ updatedInvoices: invResult.rowCount ?? 0, updatedPayments });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/receivables/bulk-complete", async (req, res) => {
     try {
       const { beforeYear } = req.body;
