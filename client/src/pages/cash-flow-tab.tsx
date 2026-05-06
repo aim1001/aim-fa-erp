@@ -500,6 +500,21 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
     },
   });
 
+  // Bulk uncomplete (되돌리기)
+  const bulkUncompleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", "/api/payments/bulk-uncomplete", { ids });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: `${data.updated}건 되돌리기 완료`, description: "미완료 상태로 변경됐습니다" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "되돌리기 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Bulk complete
   const bulkCompleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
@@ -1169,8 +1184,28 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                         <PaymentStatusBadge payment={p} />
                       </td>
                       <td className="px-1">
-                        {/* ▲▼ date shift buttons — only for non-completed payments with plannedDate */}
-                        {p.status !== "completed" && p.plannedDate && (
+                        {p.status === "completed" ? (
+                          <div
+                            className="flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[10px] px-1.5 text-muted-foreground hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+                              onClick={() => {
+                                if (confirm("이 항목을 미완료 상태로 되돌릴까요?\n실제일과 실제금액이 초기화됩니다.")) {
+                                  bulkUncompleteMutation.mutate([p.id]);
+                                }
+                              }}
+                              disabled={bulkUncompleteMutation.isPending}
+                              title="미완료로 되돌리기"
+                              data-testid={`button-uncomplete-${p.id}`}
+                            >
+                              되돌리기
+                            </Button>
+                          </div>
+                        ) : p.plannedDate ? (
                           <div
                             className="flex flex-col items-center opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={e => e.stopPropagation()}
@@ -1198,7 +1233,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                               <ArrowDown className="h-3 w-3" />
                             </Button>
                           </div>
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   );

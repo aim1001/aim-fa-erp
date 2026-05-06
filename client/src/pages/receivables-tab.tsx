@@ -157,6 +157,22 @@ export function ReceivablesTab() {
     onError: (e: any) => toast({ title: "처리 실패", description: e.message, variant: "destructive" }),
   });
 
+  const uncompleteInvoicesMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", "/api/receivables/uncomplete-invoices", { ids });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({
+        title: "되돌리기 완료",
+        description: `계산서 ${data.updatedInvoices}건, 자금계획 ${data.updatedPayments}건 미완료로 변경됨`,
+      });
+    },
+    onError: (e: any) => toast({ title: "되돌리기 실패", description: e.message, variant: "destructive" }),
+  });
+
   const allInvoices = receivablesData?.invoices ?? [];
   const summary = receivablesData?.summary;
 
@@ -556,7 +572,20 @@ export function ReceivablesTab() {
                                   <CheckCircle2 className="h-3 w-3 mr-0.5" />완료
                                 </Button>
                               ) : (
-                                <span className="text-muted-foreground text-xs">-</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs text-muted-foreground hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
+                                  disabled={uncompleteInvoicesMutation.isPending}
+                                  onClick={() => {
+                                    if (confirm(`"${inv.invoiceNumber ?? inv.companyName}" 계산서를 미완료로 되돌릴까요?\n연결된 자금계획도 함께 되돌려집니다.`)) {
+                                      uncompleteInvoicesMutation.mutate([inv.id]);
+                                    }
+                                  }}
+                                  data-testid={`button-uncomplete-invoice-${inv.id}`}
+                                >
+                                  되돌리기
+                                </Button>
                               )}
                             </td>
                           </tr>
