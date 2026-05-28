@@ -957,10 +957,17 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
             ? "검색 조건에 맞는 항목이 없습니다"
             : "이 월의 거래내역이 없습니다"
           }
-          {isSearchActive && (
+          {isSearchActive ? (
             <div className="mt-2">
               <Button variant="ghost" size="sm" className="text-xs h-7" onClick={resetSearch} data-testid="button-cf-empty-reset">
                 <X className="h-3 w-3 mr-1" />검색 초기화
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-col items-center gap-1">
+              <p className="text-xs text-muted-foreground">자금계획을 추가하여 이 달의 수금·지출을 관리해보세요.</p>
+              <Button size="sm" className="mt-1 h-8 text-xs" onClick={() => setShowAddDialog(true)} data-testid="button-cf-empty-add-payment">
+                <Plus className="h-3.5 w-3.5 mr-1" />자금계획 추가
               </Button>
             </div>
           )}
