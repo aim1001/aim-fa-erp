@@ -995,7 +995,7 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
       const res = await apiRequest("POST", `/api/quotations/${quotation.id}/send-email`, {
         to: emailTo,
         subject: emailSubject,
-        body: `<div style="font-family: 'Malgun Gothic', sans-serif; padding: 20px; white-space: pre-line;">${emailBody}</div>`,
+        body: emailBody,
         cc: emailCc || undefined,
       });
       const result = await res.json();
