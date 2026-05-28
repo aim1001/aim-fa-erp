@@ -7891,6 +7891,56 @@ export async function registerRoutes(
 
   const bankUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
+  // Auto-match helper: match unmatched credit transactions to sales invoices by company name
+  async function performAutoMatch(accountId?: string): Promise<number> {
+    // Get all unmatched credit transactions that have a counterparty
+    const txQuery = accountId
+      ? `SELECT id, counterparty, credit_amount FROM bank_transactions
+         WHERE match_status IN ('unmatched') AND credit_amount > 0 AND counterparty IS NOT NULL AND counterparty != ''
+         AND account_id = $1`
+      : `SELECT id, counterparty, credit_amount FROM bank_transactions
+         WHERE match_status IN ('unmatched') AND credit_amount > 0 AND counterparty IS NOT NULL AND counterparty != ''`;
+    const txResult = accountId
+      ? await pool.query(txQuery, [accountId])
+      : await pool.query(txQuery);
+
+    if (txResult.rows.length === 0) return 0;
+
+    // Get all unpaid/partial sales invoices
+    const invoiceResult = await pool.query(
+      `SELECT id, company_name FROM sales_invoices WHERE status IN ('unpaid', 'partial') AND company_name IS NOT NULL`
+    );
+    if (invoiceResult.rows.length === 0) return 0;
+
+    let matched = 0;
+    for (const tx of txResult.rows) {
+      const cp = (tx.counterparty as string).trim();
+      // Find invoice whose company_name is contained in or contains the counterparty
+      const invoice = invoiceResult.rows.find((inv: any) => {
+        const cn = (inv.company_name as string).trim();
+        return cn && (cp.includes(cn) || cn.includes(cp));
+      });
+      if (!invoice) continue;
+      await pool.query(
+        `UPDATE bank_transactions SET matched_sales_invoice_id = $1, match_status = 'auto' WHERE id = $2`,
+        [invoice.id, tx.id]
+      );
+      matched++;
+    }
+    return matched;
+  }
+
+  app.post("/api/bank-transactions/auto-match", async (req, res) => {
+    try {
+      const { accountId } = req.body;
+      const matched = await performAutoMatch(accountId || undefined);
+      res.json({ matched });
+    } catch (err: any) {
+      console.error("[auto-match]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/bank-transactions/import", bankUpload.single("file"), async (req, res) => {
     try {
       const accountId = req.body.accountId as string;
@@ -7930,7 +7980,8 @@ export async function registerRoutes(
         }));
 
       const inserted = await storage.createBankTransactions(toInsert);
-      res.json({ total: parsed.length, inserted: inserted.length, skipped: parsed.length - inserted.length });
+      const autoMatched = await performAutoMatch(accountId);
+      res.json({ total: parsed.length, inserted: inserted.length, skipped: parsed.length - inserted.length, autoMatched });
     } catch (err: any) {
       console.error("[bank import]", err);
       res.status(500).json({ message: err.message });
@@ -7997,6 +8048,7 @@ export async function registerRoutes(
         }));
 
       const inserted = await storage.createBankTransactions(toInsert);
+      const autoMatched = await performAutoMatch(account.id);
       res.json({
         accountId: account.id,
         accountAlias: account.accountAlias,
@@ -8004,6 +8056,7 @@ export async function registerRoutes(
         total: parsed.length,
         inserted: inserted.length,
         skipped: uniqueParsed.length - inserted.length,
+        autoMatched,
       });
     } catch (err: any) {
       console.error("[bank import-auto]", err);

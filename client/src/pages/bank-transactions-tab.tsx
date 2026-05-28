@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Plus, Upload, Trash2, Building2, ArrowDownCircle, ArrowUpCircle, RefreshCw,
-  ChevronDown, ChevronUp, Link2, Link2Off, AlertCircle,
+  ChevronDown, ChevronUp, Link2, Link2Off, AlertCircle, Sparkles,
 } from "lucide-react";
 import type { BankAccount, BankTransaction } from "@shared/schema";
 
@@ -175,7 +175,8 @@ function ImportDialog({ accountId, accountAlias, open, onOpenChange }: {
       if (!res.ok) throw new Error(data.message || "Import failed");
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts/balances"] });
-      toast({ title: `가져오기 완료`, description: `${data.inserted}건 추가, ${data.skipped}건 중복 제외 (전체 ${data.total}건)` });
+      const autoMsg = data.autoMatched > 0 ? `, ${data.autoMatched}건 자동 매칭` : "";
+      toast({ title: `가져오기 완료`, description: `${data.inserted}건 추가${autoMsg}, ${data.skipped}건 중복 제외 (전체 ${data.total}건)` });
       setSelectedFile(null);
       onOpenChange(false);
     } catch (err: any) {
@@ -235,7 +236,7 @@ function QuickImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const fileRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
-  const [result, setResult] = useState<{ accountAlias: string; isNew: boolean; inserted: number; skipped: number; total: number } | null>(null);
+  const [result, setResult] = useState<{ accountAlias: string; isNew: boolean; inserted: number; skipped: number; total: number; autoMatched: number } | null>(null);
 
   const handleClose = () => {
     setSelectedFile(null);
@@ -280,6 +281,12 @@ function QuickImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                 <span className="text-foreground font-medium">{result.inserted}건</span> 추가됨
                 {result.skipped > 0 && <span className="ml-2 text-xs">(중복 {result.skipped}건 제외)</span>}
               </div>
+              {result.autoMatched > 0 && (
+                <div className="flex items-center gap-1.5 text-sm text-green-700">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span className="font-medium">{result.autoMatched}건</span> 자동 매칭됨
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -501,6 +508,25 @@ export function BankTransactionsTab() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [matchDialogTx, setMatchDialogTx] = useState<BankTransaction | null>(null);
 
+  const autoMatchMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/auto-match", { accountId: selectedAccountId || undefined });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      if (data.matched > 0) {
+        toast({ title: `자동 매칭 완료`, description: `${data.matched}건이 매출계산서에 자동 연결됐습니다` });
+      } else {
+        toast({ title: "자동 매칭", description: "매칭 가능한 거래가 없습니다" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "자동 매칭 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<BankAccount[]>({
     queryKey: ["/api/bank-accounts"],
   });
@@ -677,6 +703,18 @@ export function BankTransactionsTab() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => autoMatchMutation.mutate()}
+            disabled={autoMatchMutation.isPending}
+            data-testid="button-auto-match"
+          >
+            {autoMatchMutation.isPending
+              ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+              : <Sparkles className="h-4 w-4 mr-1" />}
+            자동 매칭
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowQuickImport(true)} data-testid="button-quick-import">
             <Upload className="h-4 w-4 mr-1" /> 파일로 바로 가져오기
           </Button>

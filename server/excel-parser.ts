@@ -619,7 +619,7 @@ export function parseBankStatement(buffer: Buffer, year: number, month: number):
       else memoCol = i;
     }
     else if (h.includes("잔액") || h.includes("잔고")) balanceCol = i;
-    else if (h.includes("상대") || h.includes("받는") || h.includes("보내는") || h.includes("거래처")) {
+    else if (h.includes("보낸분") || h.includes("받는분") || h.includes("보내는분") || h.includes("상대") || h.includes("받는") || h.includes("보내는") || h.includes("거래처")) {
       if (memoCol === -1) memoCol = i;
     }
   }
@@ -865,10 +865,10 @@ export function parseKBBankStatementFromBuffer(buffer: Buffer): KBBankTransactio
         else if (h.includes("맡기신") || (h.includes("입금") && !h.includes("입출금"))) creditCol = c;
         else if (h === "거래금액" || h === "금액" || h === "거래액") amountCol = c;
         else if (h.includes("잔액") || h.includes("잔고")) balanceCol = c;
-        else if (h.includes("기재내용") || h.includes("내용") || h.includes("메모") || h.includes("이름")) {
+        else if (h.includes("보낸분") || h.includes("받는분") || h.includes("보내는분") || h.includes("기재내용") || h.includes("이름")) {
           if (counterpartyCol === -1) counterpartyCol = c;
         }
-        else if (h.includes("적요") || h.includes("거래내용")) {
+        else if (h.includes("적요") || h.includes("거래내용") || h.includes("내용") || h.includes("메모")) {
           if (descCol === -1) descCol = c;
         }
       }
