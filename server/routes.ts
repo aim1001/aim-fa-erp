@@ -7875,7 +7875,11 @@ export async function registerRoutes(
       if (!tx) return res.status(404).json({ message: "Transaction not found" });
 
       const prevPaymentId = tx.matchedPaymentId;
-      await storage.updateBankTransaction(txId, { matchStatus: "unmatched", matchedPaymentId: null });
+      await storage.updateBankTransaction(txId, {
+        matchStatus: "unmatched",
+        matchedPaymentId: null,
+        matchedSalesInvoiceId: null,
+      });
       if (prevPaymentId) {
         await storage.updatePayment(prevPaymentId, {
           status: "planned",
@@ -7897,9 +7901,10 @@ export async function registerRoutes(
     const txQuery = accountId
       ? `SELECT id, counterparty, credit_amount FROM bank_transactions
          WHERE match_status IN ('unmatched') AND credit_amount > 0 AND counterparty IS NOT NULL AND counterparty != ''
-         AND account_id = $1`
+         AND matched_sales_invoice_id IS NULL AND account_id = $1`
       : `SELECT id, counterparty, credit_amount FROM bank_transactions
-         WHERE match_status IN ('unmatched') AND credit_amount > 0 AND counterparty IS NOT NULL AND counterparty != ''`;
+         WHERE match_status IN ('unmatched') AND credit_amount > 0 AND counterparty IS NOT NULL AND counterparty != ''
+         AND matched_sales_invoice_id IS NULL`;
     const txResult = accountId
       ? await pool.query(txQuery, [accountId])
       : await pool.query(txQuery);
@@ -8016,7 +8021,7 @@ export async function registerRoutes(
       // 3. Parse and import transactions
       const parsed = parseKBBankStatementFromBuffer(req.file.buffer);
       if (parsed.length === 0) {
-        return res.json({ accountId: account.id, accountAlias: account.accountAlias, isNew, total: 0, inserted: 0, skipped: 0 });
+        return res.json({ accountId: account.id, accountAlias: account.accountAlias, isNew, total: 0, inserted: 0, skipped: 0, autoMatched: 0 });
       }
 
       const seenHashes = new Set<string>();
