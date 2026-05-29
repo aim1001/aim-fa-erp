@@ -18,6 +18,7 @@ import {
   ChevronLeft, ChevronRight, Landmark, ClipboardList,
   Link2, Link2Off, AlertCircle, RefreshCw, AlertTriangle, Clock, Check, Plus,
   ArrowUp, ArrowDown, CalendarDays, X, Search, SlidersHorizontal, CheckCircle2,
+  Columns3,
 } from "lucide-react";
 import type { BankAccount, BankTransaction, MonthlyBalance, Payment } from "@shared/schema";
 import { PaymentDetailModal } from "./fund-overview-tab";
@@ -349,6 +350,8 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDate, setBulkDate] = useState("");
+
+  const [showDetailColumns, setShowDetailColumns] = useState(false);
 
   // Search/filter state
   const [showSearch, setShowSearch] = useState(false);
@@ -761,6 +764,16 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
 
         <div className="ml-auto flex items-center gap-1.5">
           <Button
+            variant={showDetailColumns ? "secondary" : "ghost"}
+            size="sm"
+            className={`h-8 text-xs ${showDetailColumns ? "text-primary font-medium" : ""}`}
+            onClick={() => setShowDetailColumns(v => !v)}
+            data-testid="button-cf-detail-columns-toggle"
+          >
+            <Columns3 className="h-3.5 w-3.5 mr-1" />
+            세부 보기
+          </Button>
+          <Button
             variant={showSearch || isSearchActive ? "secondary" : "ghost"}
             size="sm"
             className={`h-8 text-xs ${isSearchActive ? "text-primary font-medium" : ""}`}
@@ -988,8 +1001,18 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground w-24">날짜</th>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground w-6"></th>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground">내용</th>
-                <th className="text-right px-3 py-2 font-medium text-muted-foreground w-32">출금</th>
-                <th className="text-right px-3 py-2 font-medium text-muted-foreground w-32">입금</th>
+                {showDetailColumns ? (
+                  <>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">공급가</th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground w-24">세액</th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">합계</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground w-32">출금</th>
+                    <th className="text-right px-3 py-2 font-medium text-muted-foreground w-32">입금</th>
+                  </>
+                )}
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">
                   잔액{filterAccount === "all" && accounts.length > 1 && <span className="text-[9px] ml-0.5">(합산)</span>}
                 </th>
@@ -1026,12 +1049,30 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                             {!tx.counterparty && !tx.description && <span className="text-muted-foreground text-xs">-</span>}
                           </div>
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-xs">
-                          {tx.debitAmount ? <span className="text-red-600 font-medium">{tx.debitAmount.toLocaleString()}</span> : <span className="text-muted-foreground">-</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-xs">
-                          {tx.creditAmount ? <span className="text-blue-600 font-medium">{tx.creditAmount.toLocaleString()}</span> : <span className="text-muted-foreground">-</span>}
-                        </td>
+                        {showDetailColumns ? (
+                          <>
+                            <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">-</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">-</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-xs">
+                              {tx.debitAmount ? (
+                                <span className="text-red-600 font-medium">{tx.debitAmount.toLocaleString()}</span>
+                              ) : tx.creditAmount ? (
+                                <span className="text-blue-600 font-medium">{tx.creditAmount.toLocaleString()}</span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2 text-right tabular-nums text-xs">
+                              {tx.debitAmount ? <span className="text-red-600 font-medium">{tx.debitAmount.toLocaleString()}</span> : <span className="text-muted-foreground">-</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-xs">
+                              {tx.creditAmount ? <span className="text-blue-600 font-medium">{tx.creditAmount.toLocaleString()}</span> : <span className="text-muted-foreground">-</span>}
+                            </td>
+                          </>
+                        )}
                         <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground">
                           {row.runningBalance != null ? row.runningBalance.toLocaleString() : "-"}
                         </td>
@@ -1073,7 +1114,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                       </tr>
                       {isExpanded && (
                         <tr key={`${rowKey}-detail`} className="bg-muted/10">
-                          <td colSpan={9} className="px-4 py-2.5">
+                          <td colSpan={showDetailColumns ? 10 : 9} className="px-4 py-2.5">
                             <div className="flex items-center justify-between gap-4">
                               <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs flex-1">
                                 {tx.txTime && <><span className="text-muted-foreground">거래시각</span><span>{tx.txTime}</span></>}
@@ -1158,32 +1199,66 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs">
-                        {p.type === "expense" && p.amount ? (
-                          <div>
-                            <div className="text-red-400 italic font-medium">{p.amount.toLocaleString()}</div>
-                            {hasInvoiceBreakdown && (
-                              <div className="text-[10px] text-muted-foreground/70 space-x-1">
-                                <span>{p.invoiceSupplyAmount!.toLocaleString()}</span>
-                                <span>+{p.invoiceTaxAmount!.toLocaleString()}</span>
-                              </div>
+                      {showDetailColumns ? (
+                        <>
+                          <td className="px-3 py-2 text-right tabular-nums text-xs">
+                            {hasInvoiceBreakdown ? (
+                              <span className={p.type === "expense" ? "text-red-400 italic" : "text-blue-400 italic"}>
+                                {p.invoiceSupplyAmount!.toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
                             )}
-                          </div>
-                        ) : <span className="text-muted-foreground">-</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-xs">
-                        {p.type === "income" && p.amount ? (
-                          <div>
-                            <div className="text-blue-400 italic font-medium">{p.amount.toLocaleString()}</div>
-                            {hasInvoiceBreakdown && (
-                              <div className="text-[10px] text-muted-foreground/70 space-x-1">
-                                <span>{p.invoiceSupplyAmount!.toLocaleString()}</span>
-                                <span>+{p.invoiceTaxAmount!.toLocaleString()}</span>
-                              </div>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-xs">
+                            {hasInvoiceBreakdown ? (
+                              <span className={p.type === "expense" ? "text-red-400 italic" : "text-blue-400 italic"}>
+                                {p.invoiceTaxAmount!.toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
                             )}
-                          </div>
-                        ) : <span className="text-muted-foreground">-</span>}
-                      </td>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-xs">
+                            {p.amount ? (
+                              <span className={`font-medium italic ${p.type === "expense" ? "text-red-400" : "text-blue-400"}`}>
+                                {p.amount.toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="px-3 py-2 text-right tabular-nums text-xs">
+                            {p.type === "expense" && p.amount ? (
+                              <div>
+                                <div className="text-red-400 italic font-medium">{p.amount.toLocaleString()}</div>
+                                {hasInvoiceBreakdown && (
+                                  <div className="text-[10px] text-muted-foreground/70 space-x-1">
+                                    <span>{p.invoiceSupplyAmount!.toLocaleString()}</span>
+                                    <span>+{p.invoiceTaxAmount!.toLocaleString()}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-xs">
+                            {p.type === "income" && p.amount ? (
+                              <div>
+                                <div className="text-blue-400 italic font-medium">{p.amount.toLocaleString()}</div>
+                                {hasInvoiceBreakdown && (
+                                  <div className="text-[10px] text-muted-foreground/70 space-x-1">
+                                    <span>{p.invoiceSupplyAmount!.toLocaleString()}</span>
+                                    <span>+{p.invoiceTaxAmount!.toLocaleString()}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </td>
+                        </>
+                      )}
                       <td className="px-3 py-2 text-right tabular-nums text-xs text-muted-foreground italic">
                         {row.estimatedBalance != null ? `~${row.estimatedBalance.toLocaleString()}` : "-"}
                       </td>
