@@ -69,6 +69,7 @@ export default function PaymentPlan() {
           month={month}
           onPrevMonth={prevMonth}
           onNextMonth={nextMonth}
+          onGoToMonth={(y, m) => { setYear(y); setMonth(m); }}
         />
       )}
 

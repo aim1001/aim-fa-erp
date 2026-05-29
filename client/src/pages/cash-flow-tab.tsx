@@ -332,11 +332,12 @@ function PaymentStatusBadge({ payment }: { payment: EnrichedPayment }) {
   return <Badge variant="outline" className="text-blue-600 bg-blue-50 border-blue-200 text-[10px]"><Clock className="h-2.5 w-2.5 mr-0.5" />예정</Badge>;
 }
 
-export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
+export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth }: {
   year: number;
   month: number;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  onGoToMonth?: (year: number, month: number) => void;
 }) {
   const { toast } = useToast();
   const [filterAccount, setFilterAccount] = useState<string>("all");
@@ -495,8 +496,15 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
       const res = await apiRequest("PATCH", `/api/payments/${id}`, { plannedDate: newDate });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      if (data?.plannedDate) {
+        const [ny, nm] = data.plannedDate.split("-").map(Number);
+        if (ny !== year || nm !== month) {
+          if (onGoToMonth) onGoToMonth(ny, nm);
+          toast({ title: `${ny}년 ${nm}월로 이동됨`, description: "날짜가 현재 월 밖으로 이동되어 해당 월 뷰로 전환했습니다" });
+        }
+      }
     },
     onError: (err: Error) => {
       toast({ title: "날짜 변경 실패", description: err.message, variant: "destructive" });
@@ -542,9 +550,15 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth }: {
       const res = await apiRequest("POST", "/api/payments/bulk-date", { ids, plannedDate });
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      toast({ title: `${data.updated}건 날짜 변경 완료` });
+      const [ny, nm] = variables.plannedDate.split("-").map(Number);
+      if (ny !== year || nm !== month) {
+        if (onGoToMonth) onGoToMonth(ny, nm);
+        toast({ title: `${data.updated}건 날짜 변경 완료 — ${ny}년 ${nm}월로 이동됨` });
+      } else {
+        toast({ title: `${data.updated}건 날짜 변경 완료` });
+      }
       setSelectedIds(new Set());
       setBulkDate("");
     },
