@@ -43,6 +43,10 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get("/api/health", (_req, res) => {
+    res.json({ ok: true });
+  });
+
   app.post("/api/login", (req, res) => {
     const { password } = req.body;
     const appPassword = process.env.APP_PASSWORD || "aim1001";
