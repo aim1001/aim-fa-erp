@@ -1,0 +1,128 @@
+STEP 1 — Replit에서 가져올 정보 수집
+
+이 파일을 Claude Code에 붙여넣고 시작하세요.
+각 항목을 확인하면서 값을 채워넣으면 됩니다.
+
+
+1. 환경변수 (Secrets) 전체 목록
+Replit 좌측 메뉴 → Secrets 탭에서 확인
+아래 항목들을 복사해서 값을 채워주세요:
+# 데이터베이스
+DATABASE_URL=
+
+# Google 연동
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+
+# OneDrive 연동
+ONEDRIVE_CLIENT_ID=
+ONEDRIVE_CLIENT_SECRET=
+ONEDRIVE_REDIRECT_URI=
+ONEDRIVE_TENANT_ID=
+
+# Telegram
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+
+# 앱 설정
+SESSION_SECRET=
+NODE_ENV=production
+
+# 기타 (Replit Secrets에 있는 것 모두 추가)
+
+2. DB 백업
+Replit Shell에서 아래 명령어 실행:
+bash# 백업 생성
+pg_dump $DATABASE_URL > backup_$(date +%Y%m%d).sql
+
+# 파일 크기 확인 (0이면 오류)
+ls -lh backup_*.sql
+백업 파일을 로컬 PC에 다운로드 해두세요.
+(Replit 파일 탐색기 → 파일 우클릭 → Download)
+
+3. 현재 Replit 도메인 확인
+현재 앱 주소: https://________________.replit.app
+이 주소가 Google, OneDrive OAuth에 등록되어 있습니다.
+새 서버로 이전 시 이 주소를 교체해야 합니다.
+
+4. Google Cloud Console 설정 확인
+https://console.cloud.google.com 접속
+확인할 내용:
+
+ 프로젝트 이름: ________________
+ OAuth 2.0 클라이언트 ID 확인
+ 승인된 redirect URI 목록 확인 (현재 Replit 주소 포함되어 있을 것)
+ 활성화된 API 목록:
+
+ Gmail API
+ Google Calendar API
+ Google Drive API (있다면)
+
+
+
+
+5. Azure (OneDrive) 설정 확인
+https://portal.azure.com 접속 → 앱 등록
+확인할 내용:
+
+ 앱 이름: ________________
+ Application (client) ID: ________________
+ Redirect URI 목록 확인 (현재 Replit 주소 포함)
+
+
+6. Telegram Bot 확인
+
+ Bot 이름: ________________
+ Bot Token: (Secrets에서 확인)
+ Webhook URL 현재 값 확인:
+
+bash# Replit Shell에서 실행
+curl https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo
+결과 복사해두기:
+(여기에 결과 붙여넣기)
+
+7. package.json 확인
+Replit Shell에서:
+bashcat package.json
+특히 아래 항목 확인:
+
+"start" 스크립트 명령어
+"build" 스크립트 명령어
+Node.js 버전 (engines 필드)
+
+start 명령어: ________________
+build 명령어: ________________
+Node 버전: ________________
+
+8. GitHub 연동 상태 확인
+
+ Replit에서 GitHub 연동 되어있음
+ Repository 주소: https://github.com/________________
+ 최근 push 날짜: ________________
+ main 브랜치명: ________________ (main? master?)
+
+만약 GitHub 연동이 안 되어있다면:
+bash# Replit Shell에서
+git remote -v
+결과:
+(여기에 결과 붙여넣기)
+
+9. 파일 스토리지 확인
+OneDrive 외에 로컬에 저장되는 파일이 있는지 확인:
+bash# Replit Shell에서
+ls -la uploads/ 2>/dev/null || echo "uploads 폴더 없음"
+ls -la public/ 2>/dev/null || echo "public 폴더 없음"
+결과:
+(여기에 결과 붙여넣기)
+
+✅ 수집 완료 체크리스트
+
+ 환경변수 전체 복사 완료
+ DB 백업 파일 로컬 PC에 저장 완료
+ 현재 Replit 도메인 확인 완료
+ Google Cloud Console 설정 확인 완료
+ Azure OneDrive 설정 확인 완료
+ Telegram Webhook 정보 확인 완료
+ package.json 스크립트 확인 완료
+ GitHub 연동 상태 확인 완료
