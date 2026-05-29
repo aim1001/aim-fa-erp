@@ -7946,6 +7946,69 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/bank-transactions/dedup", async (req, res) => {
+    try {
+      const { accountId } = req.body as { accountId?: string };
+
+      // 같은 계좌+날짜+출금+입금 그룹에서 중복 찾기
+      const dupQuery = accountId
+        ? `SELECT account_id, tx_date, debit_amount, credit_amount, array_agg(id ORDER BY
+            CASE WHEN description IN ('인터넷출금이체','타행이체','자동이체','ATM출금','계좌이체','카드대금','현금인출','자동납부','지로') THEN 1 ELSE 0 END,
+            id
+          ) AS ids
+          FROM bank_transactions
+          WHERE account_id = $1
+          GROUP BY account_id, tx_date, debit_amount, credit_amount
+          HAVING COUNT(*) > 1`
+        : `SELECT account_id, tx_date, debit_amount, credit_amount, array_agg(id ORDER BY
+            CASE WHEN description IN ('인터넷출금이체','타행이체','자동이체','ATM출금','계좌이체','카드대금','현금인출','자동납부','지로') THEN 1 ELSE 0 END,
+            id
+          ) AS ids
+          FROM bank_transactions
+          GROUP BY account_id, tx_date, debit_amount, credit_amount
+          HAVING COUNT(*) > 1`;
+
+      const dupResult = accountId
+        ? await pool.query(dupQuery, [accountId])
+        : await pool.query(dupQuery);
+
+      let deletedCount = 0;
+      for (const row of dupResult.rows) {
+        const ids: string[] = row.ids;
+        const keepId = ids[0];
+        const deleteIds = ids.slice(1);
+
+        // 삭제될 행의 연결 정보가 있으면 남기는 행에 병합
+        for (const delId of deleteIds) {
+          const delRow = await pool.query(
+            `SELECT matched_sales_invoice_id, matched_payment_id, match_status FROM bank_transactions WHERE id = $1`,
+            [delId]
+          );
+          if (delRow.rows.length > 0) {
+            const d = delRow.rows[0];
+            if (d.matched_sales_invoice_id || d.matched_payment_id) {
+              await pool.query(
+                `UPDATE bank_transactions SET
+                  matched_sales_invoice_id = COALESCE(matched_sales_invoice_id, $1),
+                  matched_payment_id = COALESCE(matched_payment_id, $2),
+                  match_status = CASE WHEN match_status IN ('unmatched','ignored') THEN $3 ELSE match_status END
+                WHERE id = $4`,
+                [d.matched_sales_invoice_id, d.matched_payment_id, d.match_status, keepId]
+              );
+            }
+          }
+          await pool.query(`DELETE FROM bank_transactions WHERE id = $1`, [delId]);
+          deletedCount++;
+        }
+      }
+
+      res.json({ deleted: deletedCount, groups: dupResult.rows.length });
+    } catch (err: any) {
+      console.error("[bank dedup]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/bank-transactions/import", bankUpload.single("file"), async (req, res) => {
     try {
       const accountId = req.body.accountId as string;

@@ -752,10 +752,13 @@ function normalizeBankAmount(raw: any): number {
   return isNaN(n) ? 0 : Math.abs(Math.round(n));
 }
 
-function makeImportHash(txDate: string, debit: number, credit: number, description: string | null): string {
+function makeImportHash(txDate: string, debit: number, credit: number, description: string | null, balance?: number | null): string {
   const crypto = require("crypto");
   const amount = debit > 0 ? debit : credit;
-  const raw = `${txDate}|${amount}|${description ?? ""}`;
+  // balance는 거래 후 계좌 잔고라 같은 계좌에서 항상 고유 → description이 달라도 동일 거래 판별 가능
+  const raw = (balance != null && balance > 0)
+    ? `${txDate}|${debit}|${credit}|${balance}`
+    : `${txDate}|${amount}|${description ?? ""}`;
   return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 32);
 }
 
@@ -919,7 +922,7 @@ export function parseKBBankStatementFromBuffer(buffer: Buffer): KBBankTransactio
 
     if (debitAmount === 0 && creditAmount === 0) continue;
 
-    const importHash = makeImportHash(txDate, debitAmount, creditAmount, description);
+    const importHash = makeImportHash(txDate, debitAmount, creditAmount, description, balance);
 
     results.push({
       txDate,

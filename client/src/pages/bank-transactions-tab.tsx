@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Plus, Upload, Trash2, Building2, ArrowDownCircle, ArrowUpCircle, RefreshCw,
-  ChevronDown, ChevronUp, Link2, Link2Off, AlertCircle, Sparkles,
+  ChevronDown, ChevronUp, Link2, Link2Off, AlertCircle, Sparkles, FilterX,
 } from "lucide-react";
 import type { BankAccount, BankTransaction } from "@shared/schema";
 
@@ -527,6 +527,24 @@ export function BankTransactionsTab() {
     },
   });
 
+  const dedupMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/dedup", { accountId: selectedAccountId || undefined });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      if (data.deleted > 0) {
+        toast({ title: `중복 정리 완료`, description: `${data.deleted}건 중복 거래 삭제 (${data.groups}개 그룹)` });
+      } else {
+        toast({ title: "중복 정리", description: "중복 거래가 없습니다" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "중복 정리 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<BankAccount[]>({
     queryKey: ["/api/bank-accounts"],
   });
@@ -715,6 +733,22 @@ export function BankTransactionsTab() {
               : <Sparkles className="h-4 w-4 mr-1" />}
             자동 매칭
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (confirm("같은 날짜·금액 중복 거래를 정리합니다.\n구체적인 거래처명을 남기고 '인터넷출금이체' 등 일반 항목을 삭제합니다.\n계속하시겠습니까?")) {
+                dedupMutation.mutate();
+              }
+            }}
+            disabled={dedupMutation.isPending}
+            data-testid="button-dedup"
+          >
+            {dedupMutation.isPending
+              ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+              : <FilterX className="h-4 w-4 mr-1" />}
+            중복 정리
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowQuickImport(true)} data-testid="button-quick-import">
             <Upload className="h-4 w-4 mr-1" /> 파일로 바로 가져오기
           </Button>
@@ -786,7 +820,8 @@ export function BankTransactionsTab() {
             <thead className="bg-muted/50 text-xs">
               <tr>
                 <th className="text-left px-3 py-2 font-medium text-muted-foreground w-24">날짜</th>
-                <th className="text-left px-3 py-2 font-medium text-muted-foreground">적요/거래처</th>
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground w-32">적요</th>
+                <th className="text-left px-3 py-2 font-medium text-muted-foreground">거래처</th>
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">출금</th>
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">입금</th>
                 <th className="text-right px-3 py-2 font-medium text-muted-foreground w-28">잔액</th>
@@ -797,7 +832,7 @@ export function BankTransactionsTab() {
             <tbody className="divide-y">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
+                  <td colSpan={8} className="text-center py-8 text-sm text-muted-foreground">
                     해당 조건의 거래내역이 없습니다
                   </td>
                 </tr>
@@ -814,21 +849,18 @@ export function BankTransactionsTab() {
                       <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
                         {formatDate(tx.txDate)}
                       </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1.5 min-w-0">
+                      <td className="px-3 py-2 w-32">
+                        <div className="flex items-center gap-1 min-w-0">
                           {expandedId === tx.id ? <ChevronUp className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
-                          <div className="min-w-0">
-                            {tx.counterparty && (
-                              <div className="font-medium truncate">{tx.counterparty}</div>
-                            )}
-                            {tx.description && (
-                              <div className="text-xs text-muted-foreground truncate">{tx.description}</div>
-                            )}
-                            {!tx.counterparty && !tx.description && (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </div>
+                          <span className="text-xs text-muted-foreground truncate">
+                            {tx.description || <span className="opacity-40">-</span>}
+                          </span>
                         </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="font-medium truncate block">
+                          {tx.counterparty || <span className="text-muted-foreground opacity-40">-</span>}
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {tx.debitAmount ? (
@@ -893,7 +925,7 @@ export function BankTransactionsTab() {
                     </tr>
                     {expandedId === tx.id && (
                       <tr key={`${tx.id}-detail`} className="bg-muted/10">
-                        <td colSpan={7} className="px-4 py-3">
+                        <td colSpan={8} className="px-4 py-3">
                           <div className="flex items-start justify-between gap-4">
                             <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs flex-1">
                               {tx.txTime && <><span className="text-muted-foreground">거래시각</span><span>{tx.txTime}</span></>}
