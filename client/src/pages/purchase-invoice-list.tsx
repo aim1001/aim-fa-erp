@@ -1087,9 +1087,18 @@ export default function PurchaseInvoiceList() {
                             </Button>
                           </div>
                           {suggestedProject && (
-                            <span className="text-[10px] text-muted-foreground truncate max-w-[160px]" title={`추천: ${suggestedProject.projectNumber} ${suggestedProject.customerName}`} data-testid={`text-suggested-project-${inv.id}`}>
+                            <button
+                              className="text-[10px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline truncate max-w-[160px] text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={`클릭하여 연결: ${suggestedProject.projectNumber} ${suggestedProject.customerName}`}
+                              data-testid={`text-suggested-project-${inv.id}`}
+                              disabled={inlineLinkMutation.isPending}
+                              onClick={e => {
+                                e.stopPropagation();
+                                inlineLinkMutation.mutate({ id: inv.id, projectId: suggestedProjectId! });
+                              }}
+                            >
                               추천: {suggestedProject.projectNumber} {suggestedProject.customerName}
-                            </span>
+                            </button>
                           )}
                         </div>
                       );
