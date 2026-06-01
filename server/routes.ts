@@ -470,6 +470,34 @@ export async function registerRoutes(
         data.isFavorite = false;
       }
       const oldInquiry = await storage.getInquiry(req.params.id);
+
+      // companyId 변경 시 snapshot 자동 동기화
+      if (data.companyId && data.companyId !== oldInquiry?.companyId) {
+        try {
+          const company = await storage.getCompany(data.companyId);
+          if (company) {
+            data.snapshotContactName = company.contactName || null;
+            data.snapshotEmail = company.email || null;
+            data.snapshotPhone = company.phone || null;
+          }
+        } catch (e: any) {
+          console.warn("Snapshot sync on companyId change error:", e.message);
+        }
+      }
+
+      // customerId 변경 시 snapshot 자동 동기화
+      if (data.customerId && data.customerId !== oldInquiry?.customerId) {
+        try {
+          const customer = await storage.getCustomer(data.customerId);
+          if (customer) {
+            data.snapshotCompanyName = customer.companyName || null;
+            data.snapshotAddress = customer.address || null;
+          }
+        } catch (e: any) {
+          console.warn("Snapshot sync on customerId change error:", e.message);
+        }
+      }
+
       const inquiry = await storage.updateInquiry(req.params.id, data);
       if (!inquiry) return res.status(404).json({ message: "Not found" });
       if (data.status && oldInquiry && data.status !== oldInquiry.status) {
