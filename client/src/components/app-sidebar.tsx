@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, RefreshCw, Building2, LogOut,
   Truck, Wallet, FolderKanban, ClipboardList,
-  CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart,
+  CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart, Package, TrendingDown,
   Settings, Users, TrendingUp, Cloud, ScanEye, CalendarDays
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
@@ -36,14 +36,16 @@ export function AppSidebar() {
   const isOpticsCalculator = location === "/optics-calculator";
   const isSalesSection = isSalesDashboard || isInquiryPage || isOpticsCalculator;
   const isProjectSection = isProjectPage;
-  const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan", "/vendor-ledger"].includes(location);
-  const isTradeSection = ["/purchase-items", "/items", "/purchase-orders", "/vendor-ledger"].includes(location);
+  const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan"].includes(location);
+  const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger"].includes(location);
+  const isSaleProductSection = ["/items"].includes(location);
   const isCompanySection = ["/customers", "/vendors", "/staff"].includes(location);
 
   const [salesOpen, setSalesOpen] = useState(isSalesSection);
   const [projectOpen, setProjectOpen] = useState(isProjectSection);
   const [financeOpen, setFinanceOpen] = useState(isFinanceSection);
-  const [tradeOpen, setTradeOpen] = useState(isTradeSection);
+  const [purchaseOpen, setPurchaseOpen] = useState(isPurchaseSection);
+  const [saleProductOpen, setSaleProductOpen] = useState(isSaleProductSection);
   const [companyOpen, setCompanyOpen] = useState(isCompanySection);
 
   useEffect(() => {
@@ -64,7 +66,8 @@ export function AppSidebar() {
     if (isSalesSection) setSalesOpen(true);
     if (isProjectSection) setProjectOpen(true);
     if (isFinanceSection) setFinanceOpen(true);
-    if (isTradeSection) setTradeOpen(true);
+    if (isPurchaseSection) setPurchaseOpen(true);
+    if (isSaleProductSection) setSaleProductOpen(true);
     if (isCompanySection) setCompanyOpen(true);
   }, [location]);
 
@@ -341,31 +344,20 @@ export function AppSidebar() {
                       <Link href="/payment-plan"><span>자금계획</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={location === "/vendor-ledger"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-vendor-ledger-finance"
-                    >
-                      <Link href="/vendor-ledger"><span>거래원장</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </CollapsibleContent>
           </Collapsible>
         </SidebarGroup>
 
-        {/* 구매/판매 */}
+        {/* 구매 */}
         <SidebarGroup className="py-1">
-          <Collapsible open={tradeOpen} onOpenChange={setTradeOpen} className="group/trade">
-            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isTradeSection && activeSectionLabelClass)}>
-              <CollapsibleTrigger data-testid="nav-section-trade">
-                <ShoppingCart className="h-4 w-4" />
-                <span>구매/판매</span>
-                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/trade:rotate-90" />
+          <Collapsible open={purchaseOpen} onOpenChange={setPurchaseOpen} className="group/purchase">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isPurchaseSection && activeSectionLabelClass)}>
+              <CollapsibleTrigger data-testid="nav-section-purchase">
+                <Package className="h-4 w-4" />
+                <span>구매</span>
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/purchase:rotate-90" />
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
@@ -386,17 +378,6 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       size="sm"
-                      data-active={location === "/items"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-products"
-                    >
-                      <Link href="/items"><span>판매제품관리</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
                       data-active={location === "/purchase-orders"}
                       className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
                       data-testid="nav-orders"
@@ -410,9 +391,39 @@ export function AppSidebar() {
                       size="sm"
                       data-active={location === "/vendor-ledger"}
                       className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-vendor-ledger-trade"
+                      data-testid="nav-vendor-ledger"
                     >
-                      <Link href="/vendor-ledger"><span>거래원장</span></Link>
+                      <Link href="/vendor-ledger"><span>거래처 원장</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </SidebarGroup>
+
+        {/* 판매 */}
+        <SidebarGroup className="py-1">
+          <Collapsible open={saleProductOpen} onOpenChange={setSaleProductOpen} className="group/saleproduct">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isSaleProductSection && activeSectionLabelClass)}>
+              <CollapsibleTrigger data-testid="nav-section-saleproduct">
+                <TrendingDown className="h-4 w-4" />
+                <span>판매</span>
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/saleproduct:rotate-90" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/items"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-products"
+                    >
+                      <Link href="/items"><span>판매제품관리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
