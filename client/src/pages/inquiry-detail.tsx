@@ -497,22 +497,22 @@ function ProductImagesSection({ inquiryId }: { inquiryId: string }) {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {images.map((img) => (
-            <div key={img.id} className="relative group aspect-square rounded-lg overflow-hidden border bg-muted/30">
+            <div key={img.id} className="relative group aspect-square rounded-lg border bg-muted/30">
               <img
                 src={img.imageData}
                 alt="제품 이미지"
-                className="w-full h-full object-contain"
+                className="w-full h-full object-contain rounded-lg overflow-hidden"
                 data-testid={`img-product-${img.id}`}
               />
               <Button
                 size="icon"
                 variant="destructive"
-                className="absolute top-1 right-1 h-6 w-6 opacity-70 hover:opacity-100 transition-opacity"
-                onClick={() => deleteMutation.mutate(img.id)}
+                className="absolute top-1 right-1 h-7 w-7 z-10 shadow"
+                onClick={() => { if(confirm("이미지를 삭제하시겠습니까?")) deleteMutation.mutate(img.id); }}
                 disabled={deleteMutation.isPending}
                 data-testid={`button-delete-image-${img.id}`}
               >
-                <X className="h-3 w-3" />
+                <X className="h-4 w-4" />
               </Button>
             </div>
           ))}
