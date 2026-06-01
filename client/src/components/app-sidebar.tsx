@@ -37,9 +37,9 @@ export function AppSidebar() {
   const isSalesSection = isSalesDashboard || isInquiryPage || isOpticsCalculator;
   const isProjectSection = isProjectPage;
   const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan"].includes(location);
-  const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger"].includes(location);
+  const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors"].includes(location);
   const isSaleProductSection = ["/items"].includes(location);
-  const isCompanySection = ["/customers", "/vendors", "/staff"].includes(location);
+  const isCompanySection = ["/customers", "/staff"].includes(location);
 
   const [salesOpen, setSalesOpen] = useState(isSalesSection);
   const [projectOpen, setProjectOpen] = useState(isProjectSection);
@@ -389,6 +389,17 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       size="sm"
+                      data-active={location === "/vendors"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-vendors"
+                    >
+                      <Link href="/vendors"><span>공급업체</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
                       data-active={location === "/vendor-ledger"}
                       className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
                       data-testid="nav-vendor-ledger"
@@ -454,17 +465,6 @@ export function AppSidebar() {
                       data-testid="nav-customers"
                     >
                       <Link href="/customers"><span>고객사</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={location === "/vendors"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-vendors"
-                    >
-                      <Link href="/vendors"><span>공급업체</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
