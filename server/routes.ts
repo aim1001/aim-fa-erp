@@ -3309,6 +3309,138 @@ export async function registerRoutes(
     }
   });
 
+  // 업체별 거래원장
+  app.get("/api/vendors/:id/ledger", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+
+      const vendor = await storage.getVendor(id);
+      if (!vendor) return res.status(404).json({ message: "업체를 찾을 수 없습니다" });
+
+      // 발주서
+      const allOrders = await storage.getPurchaseOrders();
+      const orders = allOrders.filter(o => o.vendorId === id && (o.year === year || !year));
+
+      // 매입계산서
+      const allInvoices = await storage.getPurchaseInvoices();
+      const invoices = allInvoices.filter(inv => inv.vendorId === id && (inv.year === year || !year));
+
+      // 자금계획
+      const allPayments = await storage.getPayments();
+      const invoiceIds = new Set(invoices.map(i => i.id));
+      const payments = allPayments.filter(p =>
+        p.type === "expense" && p.companyName === vendor.companyName ||
+        (p.purchaseInvoiceId && invoiceIds.has(p.purchaseInvoiceId))
+      );
+
+      // N:M 연결 링크
+      const { purchaseOrderInvoiceLinks } = await import("@shared/schema");
+      const { db } = await import("./db");
+      const { inArray } = await import("drizzle-orm");
+      const orderIds = orders.map(o => o.id);
+      const links = orderIds.length > 0
+        ? await db.select().from(purchaseOrderInvoiceLinks).where(inArray(purchaseOrderInvoiceLinks.purchaseOrderId, orderIds))
+        : [];
+
+      // 발주서에 연결된 계산서 정보 합치기
+      const invoiceMap = new Map(invoices.map(i => [i.id, i]));
+      const paymentMap = new Map<string, typeof payments[0][]>();
+      for (const p of payments) {
+        if (p.purchaseInvoiceId) {
+          const arr = paymentMap.get(p.purchaseInvoiceId) || [];
+          arr.push(p);
+          paymentMap.set(p.purchaseInvoiceId, arr);
+        }
+      }
+
+      const ordersWithLinks = orders.map(o => {
+        // 기존 1:1 링크
+        const linkedInvoiceIds = new Set<string>();
+        if (o.purchaseInvoiceId) linkedInvoiceIds.add(o.purchaseInvoiceId);
+        // N:M 링크
+        links.filter(l => l.purchaseOrderId === o.id).forEach(l => linkedInvoiceIds.add(l.purchaseInvoiceId));
+
+        const linkedInvoices = [...linkedInvoiceIds].map(invId => {
+          const inv = invoiceMap.get(invId);
+          if (!inv) return null;
+          return { ...inv, payments: paymentMap.get(invId) || [] };
+        }).filter(Boolean);
+
+        return { ...o, linkedInvoices };
+      });
+
+      // 계산서 중 발주서와 연결 안 된 것
+      const linkedInvIds = new Set([
+        ...orders.filter(o => o.purchaseInvoiceId).map(o => o.purchaseInvoiceId!),
+        ...links.map(l => l.purchaseInvoiceId),
+      ]);
+      const unlinkedInvoices = invoices.filter(inv => !linkedInvIds.has(inv.id)).map(inv => ({
+        ...inv, payments: paymentMap.get(inv.id) || [],
+      }));
+
+      // 월별 요약
+      const orderTotal = orders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+      const invoiceTotal = invoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
+      const paidTotal = payments.filter(p => p.status === "completed").reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
+      const plannedTotal = payments.filter(p => p.status === "planned").reduce((s, p) => s + (p.amount || 0), 0);
+
+      res.json({
+        vendor,
+        orders: ordersWithLinks,
+        unlinkedInvoices,
+        summary: { orderTotal, invoiceTotal, paidTotal, plannedTotal, diff: invoiceTotal - paidTotal },
+        links,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 발주서 ↔ 계산서 N:M 연결
+  app.post("/api/purchase-orders/:orderId/link-invoice/:invoiceId", async (req, res) => {
+    try {
+      const { orderId, invoiceId } = req.params;
+      const { purchaseOrderInvoiceLinks } = await import("@shared/schema");
+      const { db } = await import("./db");
+      const { and, eq } = await import("drizzle-orm");
+      const { sql: drizzleSql } = await import("drizzle-orm");
+
+      const existing = await db.select().from(purchaseOrderInvoiceLinks)
+        .where(and(
+          eq(purchaseOrderInvoiceLinks.purchaseOrderId, orderId),
+          eq(purchaseOrderInvoiceLinks.purchaseInvoiceId, invoiceId)
+        ));
+      if (existing.length > 0) return res.json({ message: "이미 연결되어 있습니다" });
+
+      const [link] = await db.insert(purchaseOrderInvoiceLinks).values({
+        purchaseOrderId: orderId,
+        purchaseInvoiceId: invoiceId,
+        note: req.body.note || null,
+      }).returning();
+      res.status(201).json(link);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 연결 해제
+  app.delete("/api/purchase-orders/:orderId/link-invoice/:invoiceId", async (req, res) => {
+    try {
+      const { orderId, invoiceId } = req.params;
+      const { purchaseOrderInvoiceLinks } = await import("@shared/schema");
+      const { db } = await import("./db");
+      const { and, eq } = await import("drizzle-orm");
+      await db.delete(purchaseOrderInvoiceLinks).where(and(
+        eq(purchaseOrderInvoiceLinks.purchaseOrderId, orderId),
+        eq(purchaseOrderInvoiceLinks.purchaseInvoiceId, invoiceId)
+      ));
+      res.json({ message: "연결 해제 완료" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/vendors/:vendorId/contacts", async (req, res) => {
     try {
       const contacts = await storage.getVendorContacts(req.params.vendorId);

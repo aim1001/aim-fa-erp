@@ -461,6 +461,16 @@ export const insertPurchaseOrderItemSchema = createInsertSchema(purchaseOrderIte
 export type InsertPurchaseOrderItem = z.infer<typeof insertPurchaseOrderItemSchema>;
 export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 
+// 발주서 ↔ 매입계산서 N:M 연결 테이블
+export const purchaseOrderInvoiceLinks = pgTable("purchase_order_invoice_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  purchaseOrderId: varchar("purchase_order_id").notNull(),
+  purchaseInvoiceId: varchar("purchase_invoice_id").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type PurchaseOrderInvoiceLink = typeof purchaseOrderInvoiceLinks.$inferSelect;
+
 export const onedriveTokens = pgTable("onedrive_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   accessToken: text("access_token").notNull(),

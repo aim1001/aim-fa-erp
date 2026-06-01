@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus, Search, Trash2, Star, RefreshCw } from "lucide-react";
+import { Building2, Plus, Search, Trash2, Star, RefreshCw, Link2, AlertCircle, CheckCircle2, Clock } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -18,6 +18,158 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocumentUploadSection } from "@/components/document-upload-section";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+
+function VendorLedger({ vendorId }: { vendorId: string }) {
+  const [year, setYear] = useState(new Date().getFullYear());
+  const { toast } = useToast();
+
+  const { data, isLoading, refetch } = useQuery<any>({
+    queryKey: ["/api/vendors", vendorId, "ledger", year],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/vendors/${vendorId}/ledger?year=${year}`);
+      return res.json();
+    },
+  });
+
+  const linkMutation = useMutation({
+    mutationFn: async ({ orderId, invoiceId }: { orderId: string; invoiceId: string }) => {
+      const res = await apiRequest("POST", `/api/purchase-orders/${orderId}/link-invoice/${invoiceId}`, {});
+      return res.json();
+    },
+    onSuccess: () => { toast({ title: "연결 완료" }); refetch(); },
+    onError: (err: Error) => toast({ title: "연결 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: async ({ orderId, invoiceId }: { orderId: string; invoiceId: string }) => {
+      await apiRequest("DELETE", `/api/purchase-orders/${orderId}/link-invoice/${invoiceId}`);
+    },
+    onSuccess: () => { toast({ title: "연결 해제 완료" }); refetch(); },
+    onError: (err: Error) => toast({ title: "연결 해제 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const fmtMoney = (n: number) => n?.toLocaleString("ko-KR") + "원";
+
+  if (isLoading) return <div className="py-8 text-center text-muted-foreground text-sm">로딩 중...</div>;
+  if (!data) return null;
+
+  const { orders, unlinkedInvoices, summary } = data;
+  const years = [2024, 2025, 2026, 2027];
+
+  return (
+    <div className="space-y-4">
+      {/* 연도 선택 */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">기간</span>
+        {years.map(y => (
+          <Button key={y} size="sm" variant={year === y ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setYear(y)}>{y}년</Button>
+        ))}
+      </div>
+
+      {/* 요약 */}
+      <div className="grid grid-cols-4 gap-2">
+        {[
+          { label: "발주 총액", value: summary.orderTotal, color: "text-blue-600" },
+          { label: "계산서 총액", value: summary.invoiceTotal, color: "text-purple-600" },
+          { label: "지급 완료", value: summary.paidTotal, color: "text-green-600" },
+          { label: "미지급", value: summary.invoiceTotal - summary.paidTotal, color: "text-red-600" },
+        ].map(s => (
+          <div key={s.label} className="border rounded-lg p-2 text-center">
+            <div className="text-xs text-muted-foreground">{s.label}</div>
+            <div className={`text-sm font-semibold ${s.color}`}>{fmtMoney(s.value)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 발주서 목록 */}
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-muted-foreground">발주서 ({orders.length}건)</div>
+        {orders.length === 0 && <div className="text-center py-4 text-muted-foreground text-sm">발주서 없음</div>}
+        {orders.map((order: any) => (
+          <div key={order.id} className="border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-muted-foreground">{order.orderNumber}</span>
+                <span className="text-sm font-medium truncate max-w-[200px]">{order.description || "-"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">{fmtMoney(order.totalAmount || 0)}</span>
+                {order.linkedInvoices?.length > 0
+                  ? <Badge variant="outline" className="text-xs text-green-600 border-green-300">계산서 {order.linkedInvoices.length}건</Badge>
+                  : <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">계산서 미연결</Badge>
+                }
+              </div>
+            </div>
+            {/* 연결된 계산서 */}
+            {order.linkedInvoices?.map((inv: any) => (
+              <div key={inv.id} className="ml-4 pl-3 border-l-2 border-purple-200 space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-purple-700">📄 계산서 {inv.invoiceNumber || "-"} · {fmtMoney(inv.totalAmount || 0)}</span>
+                  <button onClick={() => unlinkMutation.mutate({ orderId: order.id, invoiceId: inv.id })} className="text-muted-foreground hover:text-red-500 text-[10px]">연결해제</button>
+                </div>
+                {inv.payments?.map((p: any) => (
+                  <div key={p.id} className="flex items-center justify-between text-[11px] text-muted-foreground pl-2">
+                    <span className="flex items-center gap-1">
+                      {p.status === "completed" ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Clock className="h-3 w-3 text-orange-400" />}
+                      {p.status === "completed" ? "지급완료" : "지급예정"} {p.plannedDate}
+                    </span>
+                    <span>{fmtMoney(p.amount || 0)}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {/* 미연결 계산서 연결 버튼 */}
+            {order.linkedInvoices?.length === 0 && unlinkedInvoices?.length > 0 && (
+              <div className="ml-4 pl-3 border-l-2 border-dashed border-muted">
+                <Select onValueChange={invId => linkMutation.mutate({ orderId: order.id, invoiceId: invId })}>
+                  <SelectTrigger className="h-6 text-xs w-48">
+                    <SelectValue placeholder="계산서 연결..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {unlinkedInvoices.map((inv: any) => (
+                      <SelectItem key={inv.id} value={inv.id}>
+                        {inv.invoiceNumber || "번호없음"} · {fmtMoney(inv.totalAmount || 0)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* 미연결 계산서 */}
+      {unlinkedInvoices?.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-orange-600 flex items-center gap-1">
+            <AlertCircle className="h-3.5 w-3.5" />
+            발주서 미연결 계산서 ({unlinkedInvoices.length}건)
+          </div>
+          {unlinkedInvoices.map((inv: any) => (
+            <div key={inv.id} className="border border-orange-200 rounded-lg p-3 bg-orange-50/50 dark:bg-orange-950/10">
+              <div className="flex items-center justify-between text-sm">
+                <span>📄 {inv.invoiceNumber || "번호없음"} · {inv.companyName}</span>
+                <span className="font-semibold">{fmtMoney(inv.totalAmount || 0)}</span>
+              </div>
+              {inv.payments?.map((p: any) => (
+                <div key={p.id} className="flex items-center justify-between text-xs text-muted-foreground mt-1 pl-2">
+                  <span className="flex items-center gap-1">
+                    {p.status === "completed" ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Clock className="h-3 w-3 text-orange-400" />}
+                    {p.status === "completed" ? "지급완료" : "지급예정"} {p.plannedDate}
+                  </span>
+                  <span>{fmtMoney(p.amount || 0)}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PO_PAYMENT_TERM_OPTIONS = [
   { value: "", label: "미설정" },
@@ -115,7 +267,7 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
   }
 
   return (
-    <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="modal-vendor-detail">
+    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="modal-vendor-detail">
       <DialogHeader>
         <div className="flex items-center justify-between pr-8">
           <DialogTitle className="flex items-center gap-2">
@@ -134,61 +286,60 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
           </Button>
         </div>
       </DialogHeader>
-      <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
-      <div className="space-y-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">업체 정보</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-[100px_1fr] gap-y-2 gap-x-2 text-sm items-center">
-              {renderField("상호명", "companyName", vendor.companyName)}
-              {renderField("사업자등록번호", "businessNumber", vendor.businessNumber || "")}
-              {renderField("대표자", "representative", vendor.representative || "")}
-              {renderField("주소", "address", vendor.address || "")}
-              {renderField("전화번호", "phone", vendor.phone || "")}
-              {renderField("팩스", "fax", vendor.fax || "")}
-              {renderField("거래은행", "bankName", vendor.bankName || "")}
-              {renderField("계좌번호", "bankAccount", vendor.bankAccount || "")}
-              {renderField("메모", "memo", vendor.memo || "")}
-              <span className="text-muted-foreground text-sm">기본 결제조건</span>
-              <Select
-                value={vendor.defaultPaymentTerms || "none"}
-                onValueChange={v => updateMutation.mutate({ defaultPaymentTerms: v === "none" ? null : v })}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">미설정</SelectItem>
-                  <SelectItem value="입고후 익월말">입고후 익월말</SelectItem>
-                  <SelectItem value="입고후 월말">입고후 월말</SelectItem>
-                  <SelectItem value="입고후 2주이내">입고후 2주이내</SelectItem>
-                  <SelectItem value="선처리">선처리</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">담당자 정보</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-[100px_1fr] gap-y-2 gap-x-2 text-sm items-center">
-              {renderField("담당자명", "contactName", vendor.contactName || "")}
-              {renderField("이메일", "contactEmail", vendor.contactEmail || "")}
-              {renderField("전화번호", "contactPhone", vendor.contactPhone || "")}
-            </div>
-          </CardContent>
-        </Card>
-        <DocumentUploadSection
-          entityId={vendorId}
-          apiBase="/api/vendors"
-          docTypes={[
-            { type: "사업자등록증", label: "사업자등록증 (PDF/이미지)" },
-            { type: "통장사본", label: "통장사본 (PDF/이미지)" },
-          ]}
-          title="구매처 문서"
-          folderHint="4.경영지원/database/구매처/[업체명]/"
-        />
-      </div>
+      <Tabs defaultValue="info">
+        <TabsList className="mt-1">
+          <TabsTrigger value="info">업체정보</TabsTrigger>
+          <TabsTrigger value="ledger">거래원장</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="info" className="space-y-4 mt-3">
+          <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">업체 정보</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-[120px_1fr] gap-y-2 gap-x-2 text-sm items-center">
+                {renderField("상호명", "companyName", vendor.companyName)}
+                {renderField("사업자번호", "businessNumber", vendor.businessNumber || "")}
+                {renderField("대표자", "representative", vendor.representative || "")}
+                {renderField("주소", "address", vendor.address || "")}
+                {renderField("전화번호", "phone", vendor.phone || "")}
+                {renderField("팩스", "fax", vendor.fax || "")}
+                {renderField("거래은행", "bankName", vendor.bankName || "")}
+                {renderField("계좌번호", "bankAccount", vendor.bankAccount || "")}
+                {renderField("메모", "memo", vendor.memo || "")}
+                <span className="text-muted-foreground text-sm">기본 결제조건</span>
+                <Select value={vendor.defaultPaymentTerms || "none"} onValueChange={v => updateMutation.mutate({ defaultPaymentTerms: v === "none" ? null : v })}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">미설정</SelectItem>
+                    <SelectItem value="입고후 익월말">입고후 익월말</SelectItem>
+                    <SelectItem value="입고후 월말">입고후 월말</SelectItem>
+                    <SelectItem value="입고후 2주이내">입고후 2주이내</SelectItem>
+                    <SelectItem value="선처리">선처리</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">담당자 정보</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-[120px_1fr] gap-y-2 gap-x-2 text-sm items-center">
+                {renderField("담당자명", "contactName", vendor.contactName || "")}
+                {renderField("이메일", "contactEmail", vendor.contactEmail || "")}
+                {renderField("전화번호", "contactPhone", vendor.contactPhone || "")}
+              </div>
+            </CardContent>
+          </Card>
+          <DocumentUploadSection entityId={vendorId} apiBase="/api/vendors"
+            docTypes={[{ type: "사업자등록증", label: "사업자등록증 (PDF/이미지)" }, { type: "통장사본", label: "통장사본 (PDF/이미지)" }]}
+            title="구매처 문서" folderHint="4.경영지원/database/구매처/[업체명]/" />
+        </TabsContent>
+
+        <TabsContent value="ledger" className="mt-3">
+          <VendorLedger vendorId={vendorId} />
+        </TabsContent>
+      </Tabs>
     </DialogContent>
   );
 }
