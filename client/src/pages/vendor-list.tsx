@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus, Search, Trash2, Star, RefreshCw, Link2, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { Building2, Plus, Search, Trash2, Star, RefreshCw, Link2, AlertCircle, CheckCircle2, Clock, BookOpen } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -274,25 +274,31 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
             <Building2 className="h-5 w-5 text-primary" />
             {vendor.companyName}
           </DialogTitle>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => { if (confirm("이 공급업체를 삭제하시겠습니까?")) deleteMutation.mutate(); }}
-            disabled={deleteMutation.isPending}
-            data-testid="button-delete-vendor"
-          >
-            <Trash2 className="h-4 w-4" />
-            <span>삭제</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`/vendor-ledger?vendorId=${vendorId}`, "_blank")}
+              data-testid="button-vendor-ledger"
+            >
+              <BookOpen className="h-4 w-4" />
+              <span>거래처 원장</span>
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => { if (confirm("이 공급업체를 삭제하시겠습니까?")) deleteMutation.mutate(); }}
+              disabled={deleteMutation.isPending}
+              data-testid="button-delete-vendor"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>삭제</span>
+            </Button>
+          </div>
         </div>
       </DialogHeader>
-      <Tabs defaultValue="info">
-        <TabsList className="mt-1">
-          <TabsTrigger value="info">업체정보</TabsTrigger>
-          <TabsTrigger value="ledger">거래원장</TabsTrigger>
-        </TabsList>
 
-        <TabsContent value="info" className="space-y-4 mt-3">
+        <div className="space-y-4 mt-3">
           <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm">업체 정보</CardTitle></CardHeader>
@@ -334,12 +340,7 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
           <DocumentUploadSection entityId={vendorId} apiBase="/api/vendors"
             docTypes={[{ type: "사업자등록증", label: "사업자등록증 (PDF/이미지)" }, { type: "통장사본", label: "통장사본 (PDF/이미지)" }]}
             title="구매처 문서" folderHint="4.경영지원/database/구매처/[업체명]/" />
-        </TabsContent>
-
-        <TabsContent value="ledger" className="mt-3">
-          <VendorLedger vendorId={vendorId} />
-        </TabsContent>
-      </Tabs>
+        </div>
     </DialogContent>
   );
 }

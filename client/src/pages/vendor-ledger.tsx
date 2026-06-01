@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,8 +56,14 @@ const MONTHS = ["전체", "1월", "2월", "3월", "4월", "5월", "6월", "7월"
 
 export default function VendorLedger() {
   const { toast } = useToast();
+  const searchString = useSearch();
   const currentYear = new Date().getFullYear();
-  const [vendorId, setVendorId] = useState<string>("");
+  const urlVendorId = new URLSearchParams(searchString).get("vendorId") || "";
+  const [vendorId, setVendorId] = useState<string>(urlVendorId);
+
+  useEffect(() => {
+    if (urlVendorId) setVendorId(urlVendorId);
+  }, [urlVendorId]);
   const [year, setYear] = useState<number | null>(currentYear);
   const [month, setMonth] = useState(0);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
