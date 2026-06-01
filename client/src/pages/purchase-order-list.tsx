@@ -557,7 +557,7 @@ function PurchaseItemSearchPopover({ onSelect, container }: { onSelect: (item: P
           <Plus className="h-3 w-3 mr-1" />구매품 추가
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[480px] p-0" align="start" container={container}>
+      <PopoverContent className="w-[560px] p-0" align="start" container={container} style={{ maxHeight: "60vh" }}>
         <div className="p-2 border-b space-y-1.5">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -570,7 +570,7 @@ function PurchaseItemSearchPopover({ onSelect, container }: { onSelect: (item: P
             ))}
           </div>
         </div>
-        <div className="max-h-[250px] overflow-y-auto">
+        <div className="max-h-[400px] overflow-y-auto">
           {filtered.length === 0 ? (
             <p className="p-3 text-xs text-muted-foreground text-center">검색 결과가 없습니다</p>
           ) : filtered.map(item => (
@@ -1180,7 +1180,7 @@ function CreateOrderDialog({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="modal-create-order">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="modal-create-order">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />

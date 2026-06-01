@@ -6772,16 +6772,31 @@ export async function registerRoutes(
       let amount: number | null = null;
 
       for (let row = range.s.r; row <= range.e.r; row++) {
-        const cellA = sheet[XLSX.utils.encode_cell({ r: row, c: 0 })];
-        if (cellA) {
-          const val = String(cellA.v || "").replace(/\s+/g, "");
-          if (val.includes("합계") || val.toLowerCase().includes("total")) {
-            const cellG = sheet[XLSX.utils.encode_cell({ r: row, c: 6 })];
-            if (cellG && cellG.v != null) {
-              amount = typeof cellG.v === "number" ? Math.round(cellG.v) : Math.round(Number(String(cellG.v).replace(/[^0-9.-]/g, ""))) || null;
+        // A~E열 중에서 합계 키워드 찾기
+        let foundKeyword = false;
+        for (let col = 0; col <= 4; col++) {
+          const cell = sheet[XLSX.utils.encode_cell({ r: row, c: col })];
+          if (cell) {
+            const val = String(cell.v || "").replace(/\s+/g, "");
+            if (val.includes("합계") || val.toLowerCase().includes("total")) {
+              foundKeyword = true;
+              break;
             }
-            break;
           }
+        }
+        if (foundKeyword) {
+          // 금액은 오른쪽 열(F~J)에서 가장 큰 숫자 찾기
+          for (let col = range.e.c; col >= 5; col--) {
+            const cell = sheet[XLSX.utils.encode_cell({ r: row, c: col })];
+            if (cell && cell.v != null) {
+              const num = typeof cell.v === "number" ? Math.round(cell.v) : Math.round(Number(String(cell.v).replace(/[^0-9.-]/g, "")));
+              if (num > 0) {
+                amount = num;
+                break;
+              }
+            }
+          }
+          break;
         }
       }
 
