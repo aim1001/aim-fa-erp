@@ -3318,17 +3318,22 @@ export async function registerRoutes(
       const vendor = await storage.getVendor(id);
       if (!vendor) return res.status(404).json({ message: "업체를 찾을 수 없습니다" });
 
-      // 발주서 (vendorId 또는 업체명으로 매칭)
+      // 이름 포함 비교 (공백·주식회사 등 차이 흡수)
+      const normalize = (s: string | null | undefined) =>
+        (s || "").replace(/\s|\(주\)|주식회사|유한회사|\(유\)/g, "").toLowerCase();
+      const vendorNorm = normalize(vendor.companyName);
+
+      // 발주서 (vendorId 일치 OR 업체명 유사 일치)
       const allOrders = await storage.getPurchaseOrders();
       const orders = allOrders.filter(o =>
-        (o.vendorId === id || (!o.vendorId && o.vendor && vendor.companyName && o.vendor === vendor.companyName))
+        (o.vendorId === id || normalize(o.vendor) === vendorNorm)
         && (o.year === year || !year)
       );
 
-      // 매입계산서 (vendorId 또는 업체명으로 매칭)
+      // 매입계산서 (vendorId 일치 OR 업체명 유사 일치)
       const allInvoices = await storage.getPurchaseInvoices();
       const invoices = allInvoices.filter(inv =>
-        (inv.vendorId === id || (!inv.vendorId && inv.companyName && vendor.companyName && inv.companyName === vendor.companyName))
+        (inv.vendorId === id || normalize(inv.companyName) === vendorNorm)
         && (inv.year === year || !year)
       );
 
@@ -3442,6 +3447,53 @@ export async function registerRoutes(
         eq(purchaseOrderInvoiceLinks.purchaseInvoiceId, invoiceId)
       ));
       res.json({ message: "연결 해제 완료" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 업체 미연결 발주서/계산서 조회
+  app.get("/api/unlinked-vendor-records", async (req, res) => {
+    try {
+      const allOrders = await storage.getPurchaseOrders();
+      const allInvoices = await storage.getPurchaseInvoices();
+      const unlinkedOrders = allOrders.filter(o => !o.vendorId && o.vendor);
+      const unlinkedInvoices = allInvoices.filter(i => !i.vendorId && i.companyName);
+      res.json({ orders: unlinkedOrders, invoices: unlinkedInvoices });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 발주서에 vendorId 연결
+  app.patch("/api/purchase-orders/:id/assign-vendor", async (req, res) => {
+    try {
+      const { vendorId } = req.body;
+      if (!vendorId) return res.status(400).json({ message: "vendorId 필수" });
+      const vendor = await storage.getVendor(vendorId);
+      if (!vendor) return res.status(404).json({ message: "업체를 찾을 수 없습니다" });
+      const updated = await storage.updatePurchaseOrder(req.params.id, {
+        vendorId,
+        vendor: vendor.companyName,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 계산서에 vendorId 연결
+  app.patch("/api/purchase-invoices/:id/assign-vendor", async (req, res) => {
+    try {
+      const { vendorId } = req.body;
+      if (!vendorId) return res.status(400).json({ message: "vendorId 필수" });
+      const vendor = await storage.getVendor(vendorId);
+      if (!vendor) return res.status(404).json({ message: "업체를 찾을 수 없습니다" });
+      const updated = await storage.updatePurchaseInvoice(req.params.id, {
+        vendorId,
+        companyName: vendor.companyName,
+      });
+      res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

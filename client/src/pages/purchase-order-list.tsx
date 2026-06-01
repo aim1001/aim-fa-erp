@@ -159,6 +159,10 @@ export default function PurchaseOrderList() {
     },
   });
 
+  const unlinkedVendorCount = useMemo(() =>
+    (orders || []).filter(o => !o.vendorId && o.vendor).length,
+  [orders]);
+
   const filtered = useMemo(() => {
     if (!orders) return [];
     let list = [...orders];
@@ -166,7 +170,9 @@ export default function PurchaseOrderList() {
       if (dateFrom) list = list.filter(o => o.expectedDeliveryDate && o.expectedDeliveryDate >= dateFrom);
       if (dateTo) list = list.filter(o => o.expectedDeliveryDate && o.expectedDeliveryDate <= dateTo);
     }
-    if (statusFilter !== "all") {
+    if (statusFilter === "미연결") {
+      list = list.filter(o => !o.vendorId && o.vendor);
+    } else if (statusFilter !== "all") {
       list = list.filter(o => o.status === statusFilter);
     }
     if (search) {
@@ -283,6 +289,18 @@ export default function PurchaseOrderList() {
               </span>
             </Button>
           ))}
+          {unlinkedVendorCount > 0 && (
+            <Button
+              variant={statusFilter === "미연결" ? "default" : "ghost"}
+              size="sm"
+              className={`h-7 text-xs ${statusFilter !== "미연결" ? "text-orange-600" : ""}`}
+              onClick={() => setStatusFilter(statusFilter === "미연결" ? "all" : "미연결")}
+              data-testid="button-filter-unlinked"
+            >
+              ⚠ 업체 미연결
+              <span className="ml-1 text-[10px] opacity-80">{unlinkedVendorCount}</span>
+            </Button>
+          )}
         </div>
         <div className="relative flex-1 max-w-xs ml-auto">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -355,7 +373,12 @@ export default function PurchaseOrderList() {
                       {order.orderNumber || "-"}
                     </td>
                     <td className="px-4 py-2" data-testid={`text-vendor-${order.id}`}>
-                      {order.vendor || "-"}
+                      <div className="flex items-center gap-1.5">
+                        <span>{order.vendor || "-"}</span>
+                        {!order.vendorId && order.vendor && (
+                          <Badge className="bg-orange-100 text-orange-600 border-0 text-[10px] px-1 py-0 h-4 shrink-0">미연결</Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-muted-foreground max-w-[200px] truncate" data-testid={`text-description-${order.id}`}>
                       {order.description || "-"}
