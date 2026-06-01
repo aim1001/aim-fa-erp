@@ -57,7 +57,7 @@ export default function VendorLedger() {
   const { toast } = useToast();
   const currentYear = new Date().getFullYear();
   const [vendorId, setVendorId] = useState<string>("");
-  const [year, setYear] = useState(currentYear);
+  const [year, setYear] = useState<number | null>(currentYear);
   const [month, setMonth] = useState(0);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -69,7 +69,10 @@ export default function VendorLedger() {
   const { data: ledger, isLoading } = useQuery<LedgerData>({
     queryKey: ["/api/vendors", vendorId, "ledger", year],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/vendors/${vendorId}/ledger?year=${year}`);
+      const url = year
+        ? `/api/vendors/${vendorId}/ledger?year=${year}`
+        : `/api/vendors/${vendorId}/ledger`;
+      const res = await apiRequest("GET", url);
       return res.json();
     },
     enabled: !!vendorId,
@@ -130,7 +133,7 @@ export default function VendorLedger() {
     [filteredOrders]
   );
 
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i + 1);
   const isReadyToLink = !!selectedOrderId && !!selectedInvoiceId;
 
   return (
@@ -152,11 +155,12 @@ export default function VendorLedger() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">연도</span>
-          <Select value={String(year)} onValueChange={v => setYear(Number(v))}>
-            <SelectTrigger className="w-22 h-8 text-sm">
+          <Select value={year === null ? "all" : String(year)} onValueChange={v => setYear(v === "all" ? null : Number(v))}>
+            <SelectTrigger className="w-24 h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">전체</SelectItem>
               {years.map(y => <SelectItem key={y} value={String(y)}>{y}년</SelectItem>)}
             </SelectContent>
           </Select>

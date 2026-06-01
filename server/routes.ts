@@ -3313,7 +3313,7 @@ export async function registerRoutes(
   app.get("/api/vendors/:id/ledger", async (req, res) => {
     try {
       const { id } = req.params;
-      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const year = req.query.year ? parseInt(req.query.year as string) : null;
 
       const vendor = await storage.getVendor(id);
       if (!vendor) return res.status(404).json({ message: "업체를 찾을 수 없습니다" });
