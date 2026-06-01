@@ -7671,6 +7671,54 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/google/oauth/status", requireAuth, async (_req, res) => {
+    const { hasGoogleOAuthCredentials, isGoogleOAuthConfigured } = await import("./google-auth");
+    res.json({
+      hasCredentials: hasGoogleOAuthCredentials(),
+      configured: isGoogleOAuthConfigured(),
+    });
+  });
+
+  app.get("/api/google/oauth/authorize", requireAuth, async (req, res) => {
+    try {
+      const { hasGoogleOAuthCredentials, getGoogleAuthUrl, resolveGoogleRedirectUri } = await import("./google-auth");
+      if (!hasGoogleOAuthCredentials()) {
+        return res.status(400).json({ message: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET required" });
+      }
+      const redirectUri = resolveGoogleRedirectUri(req);
+      res.redirect(getGoogleAuthUrl(redirectUri));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/google/oauth/callback", async (req, res) => {
+    try {
+      const code = req.query.code as string | undefined;
+      if (!code) {
+        return res.status(400).send("Missing authorization code");
+      }
+      const { exchangeGoogleAuthCode, resolveGoogleRedirectUri } = await import("./google-auth");
+      const redirectUri = resolveGoogleRedirectUri(req);
+      const tokens = await exchangeGoogleAuthCode(code, redirectUri);
+      if (!tokens.refresh_token) {
+        return res.status(400).send(
+          "No refresh token returned. Revoke app access in Google Account settings and try again with prompt=consent.",
+        );
+      }
+      res.type("html").send(`<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><title>Google OAuth</title></head>
+<body style="font-family:sans-serif;max-width:720px;margin:40px auto;padding:0 16px;">
+<h2>Google OAuth 설정 완료</h2>
+<p>아래 <code>GOOGLE_REFRESH_TOKEN</code> 값을 Railway Variables에 추가하세요.</p>
+<pre style="background:#f4f4f4;padding:12px;overflow:auto;word-break:break-all;">${tokens.refresh_token}</pre>
+<p>Redirect URI: <code>${redirectUri}</code></p>
+</body></html>`);
+    } catch (err: any) {
+      res.status(500).send(err.message);
+    }
+  });
+
   app.get("/api/google-calendar/personal-events", async (req, res) => {
     try {
       const start = req.query.start as string;
