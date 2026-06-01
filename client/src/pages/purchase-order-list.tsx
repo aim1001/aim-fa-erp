@@ -205,7 +205,7 @@ export default function PurchaseOrderList() {
       all: orders.length,
       "일반": orders.filter(o => o.status === "일반").length,
       "수입": orders.filter(o => o.status === "수입").length,
-      "입고완료": orders.filter(o => o.status === "입고완료").length,
+      "입고완료": 0,
     };
   }, [orders]);
 
@@ -267,7 +267,7 @@ export default function PurchaseOrderList() {
 
       <div className="px-4 py-2 flex items-center gap-3 border-b flex-shrink-0">
         <div className="flex items-center gap-1">
-          {(["all", "일반", "수입", "입고완료"] as const).map(s => (
+          {(["all", "일반", "수입"] as const).map(s => (
             <Button
               key={s}
               variant={statusFilter === s ? "default" : "ghost"}
@@ -2275,7 +2275,6 @@ function OrderDetailModal({
                     <SelectContent>
                       <SelectItem value="일반">일반</SelectItem>
                       <SelectItem value="수입">수입</SelectItem>
-                      <SelectItem value="입고완료">입고완료</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2449,18 +2448,6 @@ function OrderDetailModal({
                     onAmountParsed={(data) => setForm(f => ({ ...f, supplyAmount: String(data.supplyAmount), taxAmount: String(data.taxAmount), totalAmount: String(data.totalAmount) }))}
                   />
                 )}
-                <div className="flex items-center">
-                  <label className="flex items-center gap-2 text-xs cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.receivingCompleted}
-                      onChange={e => setForm(f => ({ ...f, receivingCompleted: e.target.checked }))}
-                      className="rounded"
-                      data-testid="input-receiving-completed"
-                    />
-                    입고완료 처리
-                  </label>
-                </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <Label className="text-[10px] text-muted-foreground">납품예정일</Label>
