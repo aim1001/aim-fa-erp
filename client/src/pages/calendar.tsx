@@ -603,7 +603,7 @@ export default function CalendarPage() {
                       "grid items-center px-3 py-2 rounded-lg border transition-colors hover:bg-muted/50 gap-2",
                       evt.completed && "opacity-50"
                     )}
-                    style={{ gridTemplateColumns: "20px 8px 56px 76px 88px 1fr auto auto" }}
+                    style={{ gridTemplateColumns: "20px 8px 68px 80px 90px 1fr auto auto" }}
                     data-testid={`todo-item-${evt.id}`}
                   >
                     <Checkbox
@@ -613,7 +613,7 @@ export default function CalendarPage() {
                       }}
                       data-testid={`checkbox-todo-${evt.id}`}
                     />
-                    <span className={cn("text-[10px] px-1 py-0.5 rounded shrink-0 inline-block w-[56px] text-center overflow-hidden", styles.badgeClass)}>
+                    <span className={cn("text-[10px] px-1 py-0.5 rounded shrink-0 inline-block w-[68px] text-center overflow-hidden truncate", styles.badgeClass)}>
                       {CATEGORY_CONFIG[evt.category]?.label ?? evt.category}
                     </span>
                     <span className="text-xs font-mono text-muted-foreground shrink-0 inline-block w-[76px] overflow-hidden truncate">
