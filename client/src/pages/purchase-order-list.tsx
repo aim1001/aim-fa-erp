@@ -632,39 +632,22 @@ function VendorSearchPopover({ vendor, onSelect, container }: { vendor: string; 
           className="h-8 text-sm px-3 w-full border rounded-md text-left truncate flex items-center justify-between hover:bg-muted/50"
           data-testid="button-select-vendor"
         >
-          <span className={vendor ? "" : "text-muted-foreground"}>{vendor || "구매처 선택 또는 입력"}</span>
+          <span className={vendor ? "" : "text-muted-foreground"}>{vendor || "공급업체 선택"}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-[300px] p-0" align="start" container={container}>
         <div className="p-2 border-b">
           <Input
-            placeholder="구매처 검색 또는 직접 입력..."
+            placeholder="공급업체 검색..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="h-7 text-xs"
             autoFocus
             data-testid="input-vendor-search"
-            onKeyDown={e => {
-              if (e.key === "Enter" && search.trim()) {
-                onSelect(search.trim());
-                setOpen(false);
-                setSearch("");
-              }
-            }}
           />
         </div>
         <ScrollArea className="max-h-[200px]">
-          {search.trim() && !filtered.some(v => v.companyName === search.trim()) && (
-            <button
-              type="button"
-              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted text-blue-600 font-medium border-b"
-              onClick={() => { onSelect(search.trim()); setOpen(false); setSearch(""); }}
-              data-testid="button-vendor-direct-input"
-            >
-              "{search.trim()}" 직접 입력
-            </button>
-          )}
           {filtered.map(v => (
             <button
               key={v.id}
@@ -677,8 +660,22 @@ function VendorSearchPopover({ vendor, onSelect, container }: { vendor: string; 
               {v.businessNumber && <span className="text-[10px] text-muted-foreground ml-1">({v.businessNumber})</span>}
             </button>
           ))}
-          {filtered.length === 0 && !search.trim() && (
-            <p className="p-3 text-xs text-muted-foreground text-center">등록된 구매처가 없습니다</p>
+          {filtered.length === 0 && (
+            <div className="p-3 text-center space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                {search.trim() ? `"${search.trim()}" — 등록된 업체 없음` : "등록된 공급업체가 없습니다"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                발주 전 공급업체 등록이 필요합니다.<br />(사업자번호·통장사본 확인 후 등록)
+              </p>
+              <Link
+                href="/vendors"
+                className="inline-block text-[11px] text-primary underline underline-offset-2"
+                onClick={() => setOpen(false)}
+              >
+                공급업체 관리 →
+              </Link>
+            </div>
           )}
         </ScrollArea>
       </PopoverContent>
