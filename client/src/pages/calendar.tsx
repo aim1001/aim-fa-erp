@@ -137,6 +137,7 @@ export default function CalendarPage() {
   const [todoShowCompleted, setTodoShowCompleted] = useState(false);
   const [modalInquiryId, setModalInquiryId] = useState<string | null>(null);
   const [modalProjectId, setModalProjectId] = useState<string | null>(null);
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
 
   function handleEventNavigate(evt: CalendarEventItem) {
     if (evt.sourceType === "inquiryTask" && evt.sourceId) {
@@ -403,7 +404,7 @@ export default function CalendarPage() {
                       {day.getDate()}
                     </div>
                     <div className="space-y-0.5">
-                      {dayEvents.slice(0, 4).map(evt => (
+                      {(expandedDay === dateStr ? dayEvents : dayEvents.slice(0, 4)).map(evt => (
                         <Popover key={evt.id}>
                           <PopoverTrigger asChild>
                             <button
@@ -423,8 +424,21 @@ export default function CalendarPage() {
                           </PopoverContent>
                         </Popover>
                       ))}
-                      {dayEvents.length > 4 && (
-                        <div className="text-[10px] text-muted-foreground text-center">+{dayEvents.length - 4}개 더</div>
+                      {dayEvents.length > 4 && expandedDay !== dateStr && (
+                        <button
+                          className="text-[10px] text-primary text-center w-full hover:underline"
+                          onClick={() => setExpandedDay(dateStr)}
+                        >
+                          +{dayEvents.length - 4}개 더 보기
+                        </button>
+                      )}
+                      {expandedDay === dateStr && dayEvents.length > 4 && (
+                        <button
+                          className="text-[10px] text-muted-foreground text-center w-full hover:underline"
+                          onClick={() => setExpandedDay(null)}
+                        >
+                          접기
+                        </button>
                       )}
                     </div>
                   </div>
@@ -599,19 +613,17 @@ export default function CalendarPage() {
                       data-testid={`checkbox-todo-${evt.id}`}
                     />
                     <div className={cn("w-2 h-2 rounded-full shrink-0", styles.dotClass)} />
-                    <div className="flex-1 min-w-0">
-                      <div className={cn("text-sm break-words", evt.completed && "line-through")}>{evt.title}</div>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        {evt.description && <span className="text-[10px] text-muted-foreground">{evt.description}</span>}
-                        {evt.assigneeName && (
-                          <span className="text-[10px] px-1 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{evt.assigneeName}</span>
-                        )}
-                      </div>
-                    </div>
-                    {evt.startTime && <span className="text-xs text-muted-foreground shrink-0">{evt.startTime}</span>}
-                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0", styles.badgeClass)}>
+                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0 w-14 text-center", styles.badgeClass)}>
                       {CATEGORY_CONFIG[evt.category]?.label}
                     </span>
+                    <span className="text-xs text-muted-foreground shrink-0 w-16 truncate">{evt.description?.split(" ")[0] || ""}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className={cn("text-sm truncate", evt.completed && "line-through")}>{evt.title}</div>
+                      {evt.assigneeName && (
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{evt.assigneeName}</span>
+                      )}
+                    </div>
+                    {evt.startTime && <span className="text-xs text-muted-foreground shrink-0">{evt.startTime}</span>}
                     {link && (
                       <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => handleEventNavigate(evt)} data-testid={`todo-navigate-${evt.id}`}>
                         <ExternalLink className="h-3 w-3" />

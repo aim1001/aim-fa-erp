@@ -507,7 +507,7 @@ function ProductImagesSection({ inquiryId }: { inquiryId: string }) {
               <Button
                 size="icon"
                 variant="destructive"
-                className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-1 right-1 h-6 w-6 opacity-70 hover:opacity-100 transition-opacity"
                 onClick={() => deleteMutation.mutate(img.id)}
                 disabled={deleteMutation.isPending}
                 data-testid={`button-delete-image-${img.id}`}
