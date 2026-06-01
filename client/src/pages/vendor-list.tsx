@@ -149,18 +149,20 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
               {renderField("거래은행", "bankName", vendor.bankName || "")}
               {renderField("계좌번호", "bankAccount", vendor.bankAccount || "")}
               {renderField("메모", "memo", vendor.memo || "")}
-              <span className="text-muted-foreground text-xs">기본 결제조건</span>
+              <span className="text-muted-foreground text-sm">기본 결제조건</span>
               <Select
-                value={vendor.defaultPaymentTerms || ""}
-                onValueChange={v => updateMutation.mutate({ defaultPaymentTerms: v || null })}
+                value={vendor.defaultPaymentTerms || "none"}
+                onValueChange={v => updateMutation.mutate({ defaultPaymentTerms: v === "none" ? null : v })}
               >
-                <SelectTrigger className="h-7 text-xs">
-                  <SelectValue placeholder="미설정" />
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PO_PAYMENT_TERM_OPTIONS.map(o => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
+                  <SelectItem value="none">미설정</SelectItem>
+                  <SelectItem value="입고후 익월말">입고후 익월말</SelectItem>
+                  <SelectItem value="입고후 월말">입고후 월말</SelectItem>
+                  <SelectItem value="입고후 2주이내">입고후 2주이내</SelectItem>
+                  <SelectItem value="선처리">선처리</SelectItem>
                 </SelectContent>
               </Select>
             </div>
