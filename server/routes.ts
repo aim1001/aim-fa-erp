@@ -8628,6 +8628,100 @@ export async function registerRoutes(
     }
   });
 
+  // 매입계산서 일괄 지급완료 처리 (연도/월 기준)
+  app.post("/api/purchase-invoices/bulk-complete", async (req, res) => {
+    try {
+      const { toYear, toMonth } = req.body;
+      // toYear: 이 연도까지, toMonth: 이 월까지 (없으면 연도 전체)
+      if (!toYear || isNaN(Number(toYear))) {
+        return res.status(400).json({ message: "toYear 필수" });
+      }
+      const year = Number(toYear);
+      const month = toMonth ? Number(toMonth) : 12;
+      // YYYY-MM-DD 마지막 날 계산
+      const lastDay = new Date(year, month, 0).getDate();
+      const cutoffDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+      // 1. 미리보기 모드
+      if (req.body.preview) {
+        const result = await pool.query(
+          `SELECT COUNT(*) as count FROM purchase_invoices
+           WHERE (issue_date <= $1 OR (issue_date IS NULL AND write_date <= $1))
+             AND status != 'completed'`,
+          [cutoffDate]
+        );
+        const pmtResult = await pool.query(
+          `SELECT COUNT(*) as count FROM payments
+           WHERE type = 'expense' AND status != 'completed'
+             AND purchase_invoice_id IN (
+               SELECT id FROM purchase_invoices
+               WHERE (issue_date <= $1 OR (issue_date IS NULL AND write_date <= $1))
+                 AND status != 'completed'
+             )`,
+          [cutoffDate]
+        );
+        return res.json({
+          preview: true,
+          invoiceCount: parseInt(result.rows[0].count),
+          paymentCount: parseInt(pmtResult.rows[0].count),
+          cutoffDate,
+        });
+      }
+
+      // 2. 계산서 완료 처리
+      const invResult = await pool.query(
+        `UPDATE purchase_invoices SET status = 'completed'
+         WHERE (issue_date <= $1 OR (issue_date IS NULL AND write_date <= $1))
+           AND status != 'completed'
+         RETURNING id, total_amount, issue_date, write_date, vendor_id, company_name`,
+        [cutoffDate]
+      );
+      const updatedInvoices = invResult.rows;
+      const invoiceIds = updatedInvoices.map((r: any) => r.id);
+
+      // 3. 기존 연결된 payment 완료 처리
+      let updatedPayments = 0;
+      if (invoiceIds.length > 0) {
+        const pmtResult = await pool.query(
+          `UPDATE payments SET status = 'completed',
+             actual_amount = COALESCE(actual_amount, amount),
+             actual_date = COALESCE(actual_date, planned_date, $2)
+           WHERE type = 'expense' AND status != 'completed'
+             AND purchase_invoice_id = ANY($1::varchar[])
+           RETURNING id`,
+          [invoiceIds, cutoffDate]
+        );
+        updatedPayments = pmtResult.rowCount ?? 0;
+
+        // 4. payment 없는 계산서는 완료 payment 신규 생성
+        const linkedResult = await pool.query(
+          `SELECT DISTINCT purchase_invoice_id FROM payments
+           WHERE purchase_invoice_id = ANY($1::varchar[])`,
+          [invoiceIds]
+        );
+        const linkedIds = new Set(linkedResult.rows.map((r: any) => r.purchase_invoice_id));
+        const noPaymentInvoices = updatedInvoices.filter((inv: any) => !linkedIds.has(inv.id));
+
+        for (const inv of noPaymentInvoices) {
+          await pool.query(
+            `INSERT INTO payments (id, type, purchase_invoice_id, company_name, description, amount, status, actual_amount, actual_date, planned_date)
+             VALUES (gen_random_uuid(), 'expense', $1, $2, '매입계산서 (이전 완료)', $3, 'completed', $3, $4, $4)`,
+            [inv.id, inv.company_name, inv.total_amount, inv.issue_date || inv.write_date || cutoffDate]
+          );
+          updatedPayments++;
+        }
+      }
+
+      res.json({
+        updatedInvoices: updatedInvoices.length,
+        updatedPayments,
+        cutoffDate,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/bank-transactions/:id/link-invoice", async (req, res) => {
     try {
       const txId = req.params.id;
