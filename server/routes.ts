@@ -3318,13 +3318,19 @@ export async function registerRoutes(
       const vendor = await storage.getVendor(id);
       if (!vendor) return res.status(404).json({ message: "업체를 찾을 수 없습니다" });
 
-      // 발주서
+      // 발주서 (vendorId 또는 업체명으로 매칭)
       const allOrders = await storage.getPurchaseOrders();
-      const orders = allOrders.filter(o => o.vendorId === id && (o.year === year || !year));
+      const orders = allOrders.filter(o =>
+        (o.vendorId === id || (!o.vendorId && o.vendor && vendor.companyName && o.vendor === vendor.companyName))
+        && (o.year === year || !year)
+      );
 
-      // 매입계산서
+      // 매입계산서 (vendorId 또는 업체명으로 매칭)
       const allInvoices = await storage.getPurchaseInvoices();
-      const invoices = allInvoices.filter(inv => inv.vendorId === id && (inv.year === year || !year));
+      const invoices = allInvoices.filter(inv =>
+        (inv.vendorId === id || (!inv.vendorId && inv.companyName && vendor.companyName && inv.companyName === vendor.companyName))
+        && (inv.year === year || !year)
+      );
 
       // 자금계획
       const allPayments = await storage.getPayments();
