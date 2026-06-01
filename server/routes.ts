@@ -3220,9 +3220,26 @@ export async function registerRoutes(
     try {
       const list = await storage.getVendors();
       const lastTxDates = await storage.getVendorLastTransactionDates();
+      const allInvoices = await storage.getPurchaseInvoices();
+      const allOrders = await storage.getPurchaseOrders();
+      const recurringExpenses = await storage.getRecurringExpenses();
+      const recurringVendorNames = new Set(recurringExpenses.filter(e => e.isActive !== "false").map(e => e.companyName?.trim().toLowerCase()).filter(Boolean));
+
+      const invoiceCountMap = new Map<string, number>();
+      for (const inv of allInvoices) {
+        if (inv.vendorId) invoiceCountMap.set(inv.vendorId, (invoiceCountMap.get(inv.vendorId) || 0) + 1);
+      }
+      const orderCountMap = new Map<string, number>();
+      for (const ord of allOrders) {
+        if (ord.vendorId) orderCountMap.set(ord.vendorId, (orderCountMap.get(ord.vendorId) || 0) + 1);
+      }
+
       const result = list.map(v => ({
         ...v,
         lastTransactionDate: lastTxDates.get(v.id) || null,
+        invoiceCount: invoiceCountMap.get(v.id) || 0,
+        orderCount: orderCountMap.get(v.id) || 0,
+        isRecurring: recurringVendorNames.has(v.companyName?.trim().toLowerCase() || ""),
       }));
       res.json(result);
     } catch (err: any) {

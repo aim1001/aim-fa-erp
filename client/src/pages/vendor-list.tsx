@@ -193,7 +193,7 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
   );
 }
 
-type VendorWithStats = Vendor & { lastTransactionDate: string | null };
+type VendorWithStats = Vendor & { lastTransactionDate: string | null; invoiceCount: number; orderCount: number; isRecurring: boolean; };
 
 export default function VendorList() {
   const { toast } = useToast();
@@ -201,6 +201,8 @@ export default function VendorList() {
   const [newName, setNewName] = useState("");
   const [search, setSearch] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"name" | "recent" | "count">("recent");
+  const [filterBy, setFilterBy] = useState<"all" | "favorite" | "recurring">("all");
 
   const { data: vendorList, isLoading } = useQuery<VendorWithStats[]>({
     queryKey: ["/api/vendors-with-stats"],
@@ -283,12 +285,22 @@ export default function VendorList() {
         (v.contactName && v.contactName.toLowerCase().includes(s))
       );
     }
+    if (filterBy === "favorite") list = list.filter(v => v.isFavorite);
+    if (filterBy === "recurring") list = list.filter(v => v.isRecurring);
+
     return list.sort((a, b) => {
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
+      if (sortBy === "recent") {
+        if (!a.lastTransactionDate && !b.lastTransactionDate) return a.companyName.localeCompare(b.companyName);
+        if (!a.lastTransactionDate) return 1;
+        if (!b.lastTransactionDate) return -1;
+        return b.lastTransactionDate.localeCompare(a.lastTransactionDate);
+      }
+      if (sortBy === "count") return (b.invoiceCount + b.orderCount) - (a.invoiceCount + a.orderCount);
       return a.companyName.localeCompare(b.companyName);
     });
-  }, [vendorList, search]);
+  }, [vendorList, search, sortBy, filterBy]);
 
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
@@ -312,15 +324,32 @@ export default function VendorList() {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="업체명, 사업자번호, 담당자 검색"
-          className="pl-9"
-          data-testid="input-search-vendors"
-        />
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="업체명, 사업자번호, 담당자 검색"
+            className="pl-9"
+            data-testid="input-search-vendors"
+          />
+        </div>
+        <div className="flex items-center gap-1">
+          {(["all", "favorite", "recurring"] as const).map(f => (
+            <Button key={f} size="sm" variant={filterBy === f ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setFilterBy(f)}>
+              {f === "all" ? `전체 ${vendorList?.length || 0}` : f === "favorite" ? "⭐ 즐겨찾기" : "🔄 정기결제"}
+            </Button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground">정렬:</span>
+          {(["recent", "count", "name"] as const).map(s => (
+            <Button key={s} size="sm" variant={sortBy === s ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setSortBy(s)}>
+              {s === "recent" ? "최근거래" : s === "count" ? "거래많은순" : "이름순"}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
@@ -337,6 +366,8 @@ export default function VendorList() {
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">담당자</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">거래은행</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">계좌번호</th>
+                <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">계산서</th>
+                <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">정기결제</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
               </tr>
             </thead>
@@ -368,7 +399,13 @@ export default function VendorList() {
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{vendor.contactName || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden xl:table-cell">{vendor.bankName || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden xl:table-cell">{vendor.bankAccount || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{vendor.lastTransactionDate || "-"}</td>
+                  <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                    {vendor.invoiceCount > 0 ? <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 rounded-full">{vendor.invoiceCount}건</span> : <span className="text-muted-foreground">-</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                    {vendor.isRecurring ? <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-full">정기</span> : <span className="text-muted-foreground">-</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell text-xs">{vendor.lastTransactionDate || "-"}</td>
                 </tr>
               ))}
             </tbody>
