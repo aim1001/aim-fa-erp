@@ -203,6 +203,7 @@ export default function VendorList() {
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "recent" | "count">("recent");
   const [filterBy, setFilterBy] = useState<"all" | "favorite" | "recurring">("all");
+  const [hideInactivePeriod, setHideInactivePeriod] = useState<number | null>(null); // months
 
   const { data: vendorList, isLoading } = useQuery<VendorWithStats[]>({
     queryKey: ["/api/vendors-with-stats"],
@@ -287,6 +288,12 @@ export default function VendorList() {
     }
     if (filterBy === "favorite") list = list.filter(v => v.isFavorite);
     if (filterBy === "recurring") list = list.filter(v => v.isRecurring);
+    if (hideInactivePeriod) {
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - hideInactivePeriod);
+      const cutoffStr = cutoff.toISOString().split("T")[0];
+      list = list.filter(v => v.lastTransactionDate && v.lastTransactionDate >= cutoffStr);
+    }
 
     return list.sort((a, b) => {
       if (a.isFavorite && !b.isFavorite) return -1;
@@ -300,7 +307,7 @@ export default function VendorList() {
       if (sortBy === "count") return (b.invoiceCount + b.orderCount) - (a.invoiceCount + a.orderCount);
       return a.companyName.localeCompare(b.companyName);
     });
-  }, [vendorList, search, sortBy, filterBy]);
+  }, [vendorList, search, sortBy, filterBy, hideInactivePeriod]);
 
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
@@ -347,6 +354,14 @@ export default function VendorList() {
           {(["recent", "count", "name"] as const).map(s => (
             <Button key={s} size="sm" variant={sortBy === s ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setSortBy(s)}>
               {s === "recent" ? "최근거래" : s === "count" ? "거래많은순" : "이름순"}
+            </Button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground">미거래 숨기기:</span>
+          {([null, 6, 12, 24, 36] as const).map(m => (
+            <Button key={String(m)} size="sm" variant={hideInactivePeriod === m ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setHideInactivePeriod(m)}>
+              {m === null ? "전체" : m === 6 ? "6개월" : m === 12 ? "1년" : m === 24 ? "2년" : "3년"}
             </Button>
           ))}
         </div>
