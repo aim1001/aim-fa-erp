@@ -615,10 +615,10 @@ export default function CalendarPage() {
                     <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0 w-[52px] text-center", styles.badgeClass)}>
                       {CATEGORY_CONFIG[evt.category]?.label ?? evt.category}
                     </span>
-                    <span className="text-xs font-mono text-muted-foreground shrink-0 w-[64px] truncate">
+                    <span className="text-xs font-mono text-muted-foreground shrink-0 w-[72px] truncate">
                       {evt.title.match(/\[([^\]]+)\]/)?.[1] || ""}
                     </span>
-                    <span className="text-xs text-muted-foreground shrink-0 w-[80px] truncate">
+                    <span className="text-xs text-muted-foreground shrink-0 w-[90px] truncate">
                       {evt.description || ""}
                     </span>
                     <div className="flex-1 min-w-0">
