@@ -6,6 +6,28 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { pool } from "./db";
 
+// 자동 DB 마이그레이션 - 새 테이블/컬럼이 없으면 추가
+async function runAutoMigrations() {
+  const migrations = [
+    `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS default_payment_terms text`,
+    `CREATE TABLE IF NOT EXISTS purchase_order_invoice_links (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      purchase_order_id varchar NOT NULL,
+      purchase_invoice_id varchar NOT NULL,
+      note text,
+      created_at timestamp DEFAULT now()
+    )`,
+  ];
+  for (const sql of migrations) {
+    try {
+      await pool.query(sql);
+    } catch (e: any) {
+      console.warn(`Migration warning: ${e.message}`);
+    }
+  }
+  console.log("DB auto-migrations completed");
+}
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -104,6 +126,8 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
+  await runAutoMigrations();
+
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -116,14 +140,12 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  const listenOptions =
+    process.platform === "win32"
+      ? { port, host: "0.0.0.0" }
+      : { port, host: "0.0.0.0", reusePort: true };
+
+  httpServer.listen(listenOptions, () => {
+    log(`serving on port ${port}`);
+  });
 })();
