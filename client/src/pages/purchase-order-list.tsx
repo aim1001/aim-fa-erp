@@ -1200,7 +1200,17 @@ function CreateOrderDialog({
             </div>
             <div>
               <Label className="text-xs">구매처 <span className="text-red-500">*</span></Label>
-              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid, bnum) => setForm(f => ({ ...f, vendor: v, vendorId: vid || null, vendorBusinessNumber: bnum || "", vendorContactId: "" }))} container={dialogContainer} />
+              <VendorSearchPopover vendor={form.vendor} onSelect={(v, vid, bnum) => {
+                const selectedVendor = vendors?.find((vd: any) => vd.id === vid);
+                setForm(f => ({
+                  ...f,
+                  vendor: v,
+                  vendorId: vid || null,
+                  vendorBusinessNumber: bnum || "",
+                  vendorContactId: "",
+                  paymentTerms: selectedVendor?.defaultPaymentTerms || f.paymentTerms || companySettings?.poDefaultPaymentTerms || "입고후 익월말",
+                }));
+              }} container={dialogContainer} />
             </div>
             <div>
               <Label className="text-xs">상태</Label>

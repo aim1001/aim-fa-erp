@@ -31,6 +31,31 @@ declare module "express-session" {
   }
 }
 
+// 결제조건 텍스트 → 지급예정일 계산
+function calcPaymentDate(paymentTerms: string | null | undefined, deliveryDate: string | null | undefined): string | null {
+  if (!paymentTerms) return null;
+  const base = deliveryDate ? new Date(deliveryDate) : new Date();
+  const terms = paymentTerms.replace(/\(.*\)/, "").trim();
+
+  if (terms.includes("익월말") || terms.includes("입고후 익월말")) {
+    const d = new Date(base.getFullYear(), base.getMonth() + 2, 0);
+    return d.toISOString().split("T")[0];
+  }
+  if (terms.includes("월말") || terms.includes("당월말") || terms.includes("입고후 월말")) {
+    const d = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    return d.toISOString().split("T")[0];
+  }
+  if (terms.includes("2주이내") || terms.includes("입고후 2주이내")) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + 14);
+    return d.toISOString().split("T")[0];
+  }
+  if (terms.includes("선처리")) {
+    return new Date().toISOString().split("T")[0];
+  }
+  return null;
+}
+
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (req.session && req.session.authenticated) {
     return next();
@@ -6292,13 +6317,15 @@ export async function registerRoutes(
 
       let payment = null;
 
-      if (paymentDate) {
+      // 결제조건으로 자금계획 자동 생성
+      const computedPaymentDate = paymentDate || calcPaymentDate(order.paymentTerms, order.expectedDeliveryDate);
+      if (computedPaymentDate && order.totalAmount) {
         payment = await storage.createPayment({
           type: "expense",
           companyName: order.vendor || "",
-          description: order.description || "",
+          description: order.description || `${order.orderNumber} ${order.vendor}`,
           amount: order.totalAmount || 0,
-          plannedDate: paymentDate,
+          plannedDate: computedPaymentDate,
           status: "planned",
         });
         await storage.updatePurchaseOrder(order.id, { paymentId: payment.id });
@@ -6523,6 +6550,11 @@ export async function registerRoutes(
         }
         if (paymentDate !== undefined) {
           paymentUpdates.plannedDate = paymentDate || null;
+        } else if ("paymentTerms" in updateData || "expectedDeliveryDate" in updateData) {
+          const newTerms = updateData.paymentTerms ?? existing.paymentTerms;
+          const newDelivery = updateData.expectedDeliveryDate ?? existing.expectedDeliveryDate;
+          const computed = calcPaymentDate(newTerms, newDelivery);
+          if (computed) paymentUpdates.plannedDate = computed;
         }
 
         if ("purchaseInvoiceId" in updateData) {

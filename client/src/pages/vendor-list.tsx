@@ -17,6 +17,15 @@ import {
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DocumentUploadSection } from "@/components/document-upload-section";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const PO_PAYMENT_TERM_OPTIONS = [
+  { value: "", label: "미설정" },
+  { value: "입고후 익월말", label: "입고후 익월말" },
+  { value: "입고후 월말", label: "입고후 월말" },
+  { value: "입고후 2주이내", label: "입고후 2주이내" },
+  { value: "선처리", label: "선처리" },
+];
 
 function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: () => void }) {
   const { toast } = useToast();
@@ -135,6 +144,20 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
               {renderField("거래은행", "bankName", vendor.bankName || "")}
               {renderField("계좌번호", "bankAccount", vendor.bankAccount || "")}
               {renderField("메모", "memo", vendor.memo || "")}
+              <span className="text-muted-foreground text-xs">기본 결제조건</span>
+              <Select
+                value={vendor.defaultPaymentTerms || ""}
+                onValueChange={v => updateMutation.mutate({ defaultPaymentTerms: v || null })}
+              >
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue placeholder="미설정" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PO_PAYMENT_TERM_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>

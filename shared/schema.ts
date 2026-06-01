@@ -125,6 +125,7 @@ export const vendors = pgTable("vendors", {
   bankName: text("bank_name"),
   bankAccount: text("bank_account"),
   isFavorite: boolean("is_favorite").default(false),
+  defaultPaymentTerms: text("default_payment_terms"),
 });
 
 export const vendorContacts = pgTable("vendor_contacts", {
