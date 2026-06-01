@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Link2, Unlink2, FileText, Package, Check, Clock, AlertCircle, ChevronRight, X } from "lucide-react";
+import { Link2, Unlink2, FileText, Package, Check, Clock, AlertCircle, ChevronRight, X, Zap } from "lucide-react";
 import type { Vendor, PurchaseOrder, PurchaseInvoice, Payment } from "@shared/schema";
 
 type LinkedInvoice = PurchaseInvoice & { payments: Payment[] };
@@ -98,6 +98,47 @@ export default function VendorLedger() {
     },
     onError: (e: Error) => toast({ title: "연결 실패", description: e.message, variant: "destructive" }),
   });
+
+  const [autoMatching, setAutoMatching] = useState(false);
+
+  const handleAutoMatch = async () => {
+    if (!ledger) return;
+    setAutoMatching(true);
+    let matched = 0;
+    let skipped = 0;
+
+    // 미매칭 발주서 목록 (금액 기준 Map)
+    const ordersByAmount = new Map<number, OrderWithLinks[]>();
+    for (const o of unlinkedOrders) {
+      const amt = o.totalAmount || 0;
+      if (!ordersByAmount.has(amt)) ordersByAmount.set(amt, []);
+      ordersByAmount.get(amt)!.push(o);
+    }
+
+    // 미매칭 계산서를 금액 기준으로 발주서와 매칭
+    for (const inv of filteredUnlinkedInvoices) {
+      const amt = inv.totalAmount || 0;
+      const candidates = ordersByAmount.get(amt);
+      if (candidates && candidates.length > 0) {
+        const order = candidates.shift()!; // 같은 금액 중 첫 번째
+        try {
+          await apiRequest("POST", `/api/purchase-orders/${order.id}/link-invoice/${inv.id}`);
+          matched++;
+        } catch {
+          skipped++;
+        }
+      } else {
+        skipped++;
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+    setAutoMatching(false);
+    toast({
+      title: `자동 연결 완료`,
+      description: `${matched}건 연결됨${skipped > 0 ? `, ${skipped}건 금액 불일치로 건너뜀` : ""}`,
+    });
+  };
 
   const unlinkMutation = useMutation({
     mutationFn: async ({ orderId, invoiceId }: { orderId: string; invoiceId: string }) => {
@@ -237,6 +278,17 @@ export default function VendorLedger() {
 
           {/* ── 미매칭 탭 ── */}
           <TabsContent value="unmatched" className="flex-1 overflow-hidden m-0 flex flex-col">
+            {/* 자동 연결 바 */}
+            {!isReadyToLink && unlinkedOrders.length > 0 && filteredUnlinkedInvoices.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-2 bg-amber-50 dark:bg-amber-950/20 border-b text-sm shrink-0">
+                <span className="text-amber-700 dark:text-amber-300 text-xs">
+                  금액이 일치하는 발주서-계산서를 자동으로 연결합니다.
+                </span>
+                <Button size="sm" variant="outline" onClick={handleAutoMatch} disabled={autoMatching} className="h-7 text-xs border-amber-400 text-amber-700 hover:bg-amber-100">
+                  <Zap className="h-3 w-3 mr-1" />{autoMatching ? "연결 중..." : "자동 연결"}
+                </Button>
+              </div>
+            )}
             {isReadyToLink && (
               <div className="flex items-center justify-between px-4 py-2 bg-blue-50 dark:bg-blue-950/30 border-b text-sm shrink-0">
                 <span className="text-blue-700 dark:text-blue-300 font-medium">
