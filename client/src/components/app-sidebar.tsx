@@ -396,17 +396,6 @@ export function AppSidebar() {
                       <Link href="/vendors"><span>공급업체</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={location === "/vendor-ledger"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-vendor-ledger"
-                    >
-                      <Link href="/vendor-ledger"><span>거래처 원장</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </CollapsibleContent>

@@ -245,10 +245,7 @@ export default function PurchaseOrderList() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" asChild data-testid="button-vendor-ledger">
-            <Link href="/vendor-ledger"><BookOpen className="h-4 w-4 mr-1" />거래원장</Link>
-          </Button>
-          <Button
+<Button
             variant="default"
             size="sm"
             onClick={() => setShowCreateForm(true)}
