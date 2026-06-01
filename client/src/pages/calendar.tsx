@@ -612,13 +612,19 @@ export default function CalendarPage() {
                       }}
                       data-testid={`checkbox-todo-${evt.id}`}
                     />
-                    <div className={cn("w-2 h-2 rounded-full shrink-0", styles.dotClass)} />
-                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0 w-14 text-center", styles.badgeClass)}>
-                      {CATEGORY_CONFIG[evt.category]?.label}
+                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0 w-[52px] text-center", styles.badgeClass)}>
+                      {CATEGORY_CONFIG[evt.category]?.label ?? evt.category}
                     </span>
-                    <span className="text-xs text-muted-foreground shrink-0 w-16 truncate">{evt.description?.split(" ")[0] || ""}</span>
+                    <span className="text-xs font-mono text-muted-foreground shrink-0 w-[64px] truncate">
+                      {evt.title.match(/\[([^\]]+)\]/)?.[1] || ""}
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0 w-[80px] truncate">
+                      {evt.description || ""}
+                    </span>
                     <div className="flex-1 min-w-0">
-                      <div className={cn("text-sm truncate", evt.completed && "line-through")}>{evt.title}</div>
+                      <div className={cn("text-sm truncate", evt.completed && "line-through")}>
+                        {evt.title.replace(/^\[[^\]]+\]\s*/, "")}
+                      </div>
                       {evt.assigneeName && (
                         <span className="text-[10px] px-1 py-0.5 rounded bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{evt.assigneeName}</span>
                       )}
