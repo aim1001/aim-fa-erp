@@ -600,9 +600,10 @@ export default function CalendarPage() {
                   <div
                     key={evt.id}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors hover:bg-muted/50",
+                      "grid items-center px-3 py-2 rounded-lg border transition-colors hover:bg-muted/50 gap-2",
                       evt.completed && "opacity-50"
                     )}
+                    style={{ gridTemplateColumns: "20px 8px 56px 76px 88px 1fr auto auto" }}
                     data-testid={`todo-item-${evt.id}`}
                   >
                     <Checkbox
@@ -612,13 +613,13 @@ export default function CalendarPage() {
                       }}
                       data-testid={`checkbox-todo-${evt.id}`}
                     />
-                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0 w-[52px] text-center", styles.badgeClass)}>
+                    <span className={cn("text-[10px] px-1 py-0.5 rounded shrink-0 inline-block w-[56px] text-center overflow-hidden", styles.badgeClass)}>
                       {CATEGORY_CONFIG[evt.category]?.label ?? evt.category}
                     </span>
-                    <span className="text-xs font-mono text-muted-foreground shrink-0 w-[72px] truncate">
+                    <span className="text-xs font-mono text-muted-foreground shrink-0 inline-block w-[76px] overflow-hidden truncate">
                       {evt.title.match(/\[([^\]]+)\]/)?.[1] || ""}
                     </span>
-                    <span className="text-xs text-muted-foreground shrink-0 w-[90px] truncate">
+                    <span className="text-xs text-muted-foreground shrink-0 inline-block w-[88px] overflow-hidden truncate">
                       {evt.description || ""}
                     </span>
                     <div className="flex-1 min-w-0">
