@@ -31,6 +31,11 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
   const { toast } = useToast();
   const { data: vendor } = useQuery<Vendor>({
     queryKey: ["/api/vendors", vendorId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/vendors/${vendorId}`);
+      return res.json();
+    },
+    enabled: !!vendorId,
   });
 
   const [editing, setEditing] = useState<string | null>(null);
