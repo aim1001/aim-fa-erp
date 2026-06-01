@@ -3416,7 +3416,7 @@ export async function registerRoutes(
       const [link] = await db.insert(purchaseOrderInvoiceLinks).values({
         purchaseOrderId: orderId,
         purchaseInvoiceId: invoiceId,
-        note: req.body.note || null,
+        note: req.body?.note || null,
       }).returning();
       res.status(201).json(link);
     } catch (err: any) {
