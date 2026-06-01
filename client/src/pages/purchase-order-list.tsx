@@ -1,8 +1,9 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { PhoneLink, EmailLink } from "@/components/contact-links";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, Upload } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, Upload, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
@@ -244,6 +245,9 @@ export default function PurchaseOrderList() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild data-testid="button-vendor-ledger">
+            <Link href="/vendor-ledger"><BookOpen className="h-4 w-4 mr-1" />거래원장</Link>
+          </Button>
           <Button
             variant="default"
             size="sm"

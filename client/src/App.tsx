@@ -30,6 +30,7 @@ import SettingsPage from "@/pages/settings";
 import StaffList from "@/pages/staff-list";
 import OpticsCalculatorPage from "@/pages/optics-calculator";
 import CalendarPage from "@/pages/calendar";
+import VendorLedger from "@/pages/vendor-ledger";
 import Login from "@/pages/login";
 import { getQueryFn } from "@/lib/queryClient";
 import { FinanceGuard } from "@/components/finance-guard";
@@ -53,6 +54,7 @@ function Router() {
       <Route path="/items" component={ItemList} />
       <Route path="/purchase-items" component={PurchaseItemList} />
       <Route path="/purchase-orders" component={PurchaseOrderList} />
+      <Route path="/vendor-ledger" component={VendorLedger} />
       <Route path="/settings" component={SettingsPage} />
       <Route path="/staff" component={StaffList} />
       <Route path="/optics-calculator" component={OpticsCalculatorPage} />

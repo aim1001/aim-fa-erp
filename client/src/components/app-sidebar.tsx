@@ -36,8 +36,8 @@ export function AppSidebar() {
   const isOpticsCalculator = location === "/optics-calculator";
   const isSalesSection = isSalesDashboard || isInquiryPage || isOpticsCalculator;
   const isProjectSection = isProjectPage;
-  const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan"].includes(location);
-  const isTradeSection = ["/purchase-items", "/items", "/purchase-orders"].includes(location);
+  const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan", "/vendor-ledger"].includes(location);
+  const isTradeSection = ["/purchase-items", "/items", "/purchase-orders", "/vendor-ledger"].includes(location);
   const isCompanySection = ["/customers", "/vendors", "/staff"].includes(location);
 
   const [salesOpen, setSalesOpen] = useState(isSalesSection);
@@ -341,6 +341,17 @@ export function AppSidebar() {
                       <Link href="/payment-plan"><span>자금계획</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/vendor-ledger"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-vendor-ledger-finance"
+                    >
+                      <Link href="/vendor-ledger"><span>거래원장</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </CollapsibleContent>
@@ -391,6 +402,17 @@ export function AppSidebar() {
                       data-testid="nav-orders"
                     >
                       <Link href="/purchase-orders"><span>발주관리</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/vendor-ledger"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-vendor-ledger-trade"
+                    >
+                      <Link href="/vendor-ledger"><span>거래원장</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
