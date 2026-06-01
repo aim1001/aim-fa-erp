@@ -19,6 +19,55 @@ import { useToast } from "@/hooks/use-toast";
 import type { Quotation, QuotationItem, Inquiry, ItemMaster, CompanySettings } from "@shared/schema";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
 
+function ContactCcPicker({ customerId, currentEmail, onSelect }: {
+  customerId: string;
+  currentEmail: string;
+  onSelect: (email: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data: contacts = [] } = useQuery<any[]>({
+    queryKey: ["/api/companies/by-customer", customerId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/companies/by-customer/${customerId}`);
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  const available = contacts.filter(c => c.email && c.email !== currentEmail);
+
+  if (available.length === 0 && !open) return null;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-5 text-xs text-muted-foreground px-1">
+          + 담당자 추가
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-2" align="end">
+        <p className="text-xs font-medium mb-2 text-muted-foreground">담당자 선택</p>
+        {available.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-2 text-center">등록된 담당자 이메일이 없습니다</p>
+        ) : (
+          <div className="space-y-1">
+            {available.map((c: any) => (
+              <button
+                key={c.id}
+                onClick={() => { onSelect(c.email); setOpen(false); }}
+                className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-sm"
+              >
+                <div className="font-medium text-xs">{c.contactName || "이름 없음"}</div>
+                <div className="text-xs text-muted-foreground">{c.email}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function fmtNum(n: number | null | undefined) {
   if (n == null) return "0";
   return n.toLocaleString("ko-KR");
@@ -1052,7 +1101,21 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">CC</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">CC</Label>
+                {inquiry.customerId && (
+                  <ContactCcPicker
+                    customerId={inquiry.customerId}
+                    currentEmail={emailTo}
+                    onSelect={(email) => {
+                      const current = emailCc ? emailCc.split(",").map(e => e.trim()).filter(Boolean) : [];
+                      if (!current.includes(email)) {
+                        setEmailCc([...current, email].join(", "));
+                      }
+                    }}
+                  />
+                )}
+              </div>
               <Input
                 value={emailCc}
                 onChange={e => setEmailCc(e.target.value)}
