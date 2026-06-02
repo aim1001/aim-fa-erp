@@ -12,8 +12,11 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Link2, Unlink2, FileText, Package, Check, Clock,
-  AlertCircle, ChevronRight, X, Sparkles, ArrowRight,
+  AlertCircle, ChevronRight, X, Sparkles, ArrowRight, Pencil,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import type { Vendor, PurchaseOrder, PurchaseInvoice, Payment } from "@shared/schema";
 
 type LinkedInvoice = PurchaseInvoice & { payments: Payment[] };
@@ -549,6 +552,53 @@ export default function VendorLedger() {
   const isReadyToLink = !!selectedOrderId && !!selectedInvoiceId;
   const hasUnmatched = unlinkedOrders.length > 0 || filteredUnlinkedInvoices.length > 0;
 
+  // 발주서 편집 모달
+  const [editOrder, setEditOrder] = useState<PurchaseOrder | null>(null);
+  const [editForm, setEditForm] = useState({ description: "", supplyAmount: "", taxAmount: "", totalAmount: "", expectedDeliveryDate: "" });
+
+  const openEditOrder = (o: PurchaseOrder, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditOrder(o);
+    setEditForm({
+      description: o.description || "",
+      supplyAmount: o.supplyAmount != null ? String(o.supplyAmount) : "",
+      taxAmount: o.taxAmount != null ? String(o.taxAmount) : "",
+      totalAmount: o.totalAmount != null ? String(o.totalAmount) : "",
+      expectedDeliveryDate: o.expectedDeliveryDate || "",
+    });
+  };
+
+  const editOrderMutation = useMutation({
+    mutationFn: async (data: Record<string, any>) => {
+      const res = await apiRequest("PATCH", `/api/purchase-orders/${editOrder!.id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "발주서 수정 완료" });
+      setEditOrder(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
+    },
+    onError: (err: Error) => toast({ title: "수정 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const handleEditSave = () => {
+    editOrderMutation.mutate({
+      description: editForm.description || null,
+      supplyAmount: editForm.supplyAmount ? parseInt(editForm.supplyAmount.replace(/,/g, "")) : null,
+      taxAmount: editForm.taxAmount ? parseInt(editForm.taxAmount.replace(/,/g, "")) : null,
+      totalAmount: editForm.totalAmount ? parseInt(editForm.totalAmount.replace(/,/g, "")) : null,
+      expectedDeliveryDate: editForm.expectedDeliveryDate || null,
+    });
+  };
+
+  // 공급가액 입력 시 세액·합계 자동계산
+  const handleSupplyChange = (val: string) => {
+    const supply = parseInt(val.replace(/,/g, "")) || 0;
+    const tax = Math.round(supply * 0.1);
+    setEditForm(f => ({ ...f, supplyAmount: val, taxAmount: String(tax), totalAmount: String(supply + tax) }));
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* 헤더 */}
@@ -691,7 +741,7 @@ export default function VendorLedger() {
                           className={`px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${selectedOrderId === o.id ? "bg-blue-50 dark:bg-blue-950/30 border-l-2 border-l-blue-500" : ""}`}
                           onClick={() => setSelectedOrderId(selectedOrderId === o.id ? null : o.id)}>
                           <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-mono text-muted-foreground">{o.orderNumber}</span>
                                 {o.receivingCompleted && <Badge className="bg-green-100 text-green-700 border-0 text-xs py-0 h-4">입고완료</Badge>}
@@ -699,7 +749,17 @@ export default function VendorLedger() {
                               <div className="text-sm font-medium mt-0.5 truncate">{o.description || "품목 미입력"}</div>
                               {o.expectedDeliveryDate && <div className="text-xs text-muted-foreground mt-0.5">납기: {o.expectedDeliveryDate}</div>}
                             </div>
-                            <div className="text-sm font-semibold shrink-0">{fmt(o.totalAmount)}</div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="text-sm font-semibold">{fmt(o.totalAmount)}</div>
+                              <Button
+                                size="icon" variant="ghost"
+                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                onClick={e => openEditOrder(o, e)}
+                                title="발주서 편집"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </div>
                           {selectedOrderId === o.id && (
                             <div className="mt-1.5 text-xs text-blue-600 flex items-center gap-1">
@@ -819,6 +879,69 @@ export default function VendorLedger() {
           </TabsContent>
         </Tabs>
       )}
+
+      {/* 발주서 편집 모달 */}
+      <Dialog open={!!editOrder} onOpenChange={open => { if (!open) setEditOrder(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">발주서 편집 — {editOrder?.orderNumber}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div>
+              <Label className="text-xs">품목/내용</Label>
+              <Input
+                className="mt-1 h-8 text-sm"
+                value={editForm.description}
+                onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="품목명 입력"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">공급가액</Label>
+              <Input
+                className="mt-1 h-8 text-sm"
+                value={editForm.supplyAmount}
+                onChange={e => handleSupplyChange(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">세액</Label>
+                <Input
+                  className="mt-1 h-8 text-sm"
+                  value={editForm.taxAmount}
+                  onChange={e => setEditForm(f => ({ ...f, taxAmount: e.target.value, totalAmount: String((parseInt(editForm.supplyAmount.replace(/,/g,""))||0) + (parseInt(e.target.value.replace(/,/g,""))||0)) }))}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">합계</Label>
+                <Input
+                  className="mt-1 h-8 text-sm bg-muted"
+                  value={editForm.totalAmount}
+                  readOnly
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">납기일</Label>
+              <Input
+                type="date"
+                className="mt-1 h-8 text-sm"
+                value={editForm.expectedDeliveryDate}
+                onChange={e => setEditForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setEditOrder(null)}>취소</Button>
+            <Button size="sm" onClick={handleEditSave} disabled={editOrderMutation.isPending}>
+              {editOrderMutation.isPending ? "저장 중..." : "저장"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
