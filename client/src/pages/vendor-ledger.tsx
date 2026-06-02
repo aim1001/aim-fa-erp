@@ -573,22 +573,32 @@ export default function VendorLedger() {
   });
 
   type URow =
-    | { kind: "matched"; order: OrderWithLinks; invoice: LinkedInvoice }
+    | { kind: "matched"; orders: OrderWithLinks[]; invoice: LinkedInvoice }
     | { kind: "inv-only"; invoice: InvoiceWithPayments }
     | { kind: "ord-only"; order: OrderWithLinks };
 
   const allRows = useMemo((): URow[] => {
     if (!ledger) return [];
     const rows: URow[] = [];
+
+    // 계산서 기준으로 그룹핑: 여러 발주서 → 하나의 계산서
+    const invoiceMap = new Map<string, { invoice: LinkedInvoice; orders: OrderWithLinks[] }>();
     for (const order of filteredOrders) {
       if (order.linkedInvoices.length === 0) {
         rows.push({ kind: "ord-only", order });
       } else {
         for (const inv of order.linkedInvoices) {
-          rows.push({ kind: "matched", order, invoice: inv });
+          if (!invoiceMap.has(inv.id)) {
+            invoiceMap.set(inv.id, { invoice: inv, orders: [] });
+          }
+          invoiceMap.get(inv.id)!.orders.push(order);
         }
       }
     }
+    for (const { invoice, orders } of invoiceMap.values()) {
+      rows.push({ kind: "matched", orders, invoice });
+    }
+
     for (const inv of filteredUnlinkedInvoices) {
       rows.push({ kind: "inv-only", invoice: inv });
     }
@@ -783,7 +793,8 @@ export default function VendorLedger() {
                 const ordOnly = visibleRows.filter(r => r.kind === "ord-only");
                 const unmatchedCount = invOnly.length + ordOnly.length;
 
-                const PayCell = ({ payments, invoiceId, totalAmount }: { payments: Payment[]; invoiceId: string; totalAmount: number | null }) => (
+                // 컴포넌트 대신 일반 함수로 정의 (렌더 안에서 컴포넌트 정의 방지)
+                const renderPayCell = (payments: Payment[], invoiceId: string, totalAmount: number | null) => (
                   <div className="px-3 py-2 space-y-1">
                     {payments.length === 0 ? (
                       <div className="flex items-center gap-1.5">
@@ -825,24 +836,31 @@ export default function VendorLedger() {
                     <div className="divide-y">
                       {matched.map(row => {
                         if (row.kind !== "matched") return null;
-                        const { order: o, invoice: inv } = row;
+                        const { orders, invoice: inv } = row;
                         return (
-                          <div key={`${o.id}-${inv.id}`} className="grid grid-cols-3 divide-x hover:bg-muted/20">
-                            {/* 발주서 */}
-                            <div className="px-3 py-2 space-y-0.5">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-xs font-mono text-muted-foreground">{o.orderNumber}</span>
-                                {o.receivingCompleted && <Badge className="bg-green-100 text-green-700 border-0 text-[10px] py-0 h-4">입고완료</Badge>}
-                              </div>
-                              <div className="text-xs font-medium truncate">{o.description || "품목 미입력"}</div>
-                              <div className="text-sm font-semibold">{fmt(o.totalAmount)}</div>
-                              <div className="flex items-center gap-0.5 pt-0.5">
-                                <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                                  onClick={e => openEditOrder(o, e)} title="발주서 편집"><Pencil className="h-3 w-3" /></Button>
-                                <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-destructive"
-                                  onClick={() => unlinkMutation.mutate({ orderId: o.id, invoiceId: inv.id })}
-                                  disabled={unlinkMutation.isPending} title="연결 해제"><Unlink2 className="h-3 w-3" /></Button>
-                              </div>
+                          <div key={inv.id} className="grid grid-cols-3 divide-x hover:bg-muted/20">
+                            {/* 발주서 — 여러 개면 세로로 쌓기 */}
+                            <div className="px-3 py-2 divide-y divide-dashed">
+                              {orders.map(o => (
+                                <div key={o.id} className="py-1.5 first:pt-0 last:pb-0 space-y-0.5">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-xs font-mono text-muted-foreground">{o.orderNumber}</span>
+                                    {o.receivingCompleted && <Badge className="bg-green-100 text-green-700 border-0 text-[10px] py-0 h-4">입고완료</Badge>}
+                                  </div>
+                                  <div className="text-xs font-medium truncate">{o.description || "품목 미입력"}</div>
+                                  <div className="text-sm font-semibold">{fmt(o.totalAmount)}</div>
+                                  <div className="flex items-center gap-0.5">
+                                    <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                                      onClick={e => openEditOrder(o, e)} title="발주서 편집"><Pencil className="h-3 w-3" /></Button>
+                                    <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                                      onClick={() => unlinkMutation.mutate({ orderId: o.id, invoiceId: inv.id })}
+                                      disabled={unlinkMutation.isPending} title="연결 해제"><Unlink2 className="h-3 w-3" /></Button>
+                                  </div>
+                                </div>
+                              ))}
+                              {orders.length > 1 && (
+                                <div className="pt-1 text-[10px] text-muted-foreground">합계 {fmt(orders.reduce((s, o) => s + (o.totalAmount || 0), 0))}</div>
+                              )}
                             </div>
                             {/* 계산서 */}
                             <div className="px-3 py-2 space-y-0.5">
@@ -855,7 +873,7 @@ export default function VendorLedger() {
                               {inv.item && <div className="text-xs text-muted-foreground truncate">{inv.item}</div>}
                             </div>
                             {/* 송금내역 */}
-                            <PayCell payments={inv.payments} invoiceId={inv.id} totalAmount={inv.totalAmount} />
+                            {renderPayCell(inv.payments, inv.id, inv.totalAmount)}
                           </div>
                         );
                       })}
@@ -941,7 +959,7 @@ export default function VendorLedger() {
                                     <div className="text-sm font-semibold">{fmt(inv.totalAmount)}</div>
                                     <div className="text-xs text-muted-foreground">{inv.issueDate || inv.writeDate || "-"}</div>
                                   </div>
-                                  <PayCell payments={inv.payments} invoiceId={inv.id} totalAmount={inv.totalAmount} />
+                                  {renderPayCell(inv.payments, inv.id, inv.totalAmount)}
                                 </div>
                               );
                             })}
