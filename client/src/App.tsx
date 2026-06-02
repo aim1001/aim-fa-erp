@@ -47,7 +47,7 @@ function Router() {
       <Route path="/companies/:id" component={CompanyDetail} />
       <Route path="/vendors" component={VendorList} />
       <Route path="/sales-invoices" component={() => <FinanceGuard><SalesInvoiceList /></FinanceGuard>} />
-      <Route path="/purchase-invoices" component={() => <FinanceGuard><PurchaseInvoiceList /></FinanceGuard>} />
+      <Route path="/purchase-invoices" component={PurchaseInvoiceList} />
       <Route path="/payment-plan" component={() => <FinanceGuard><PaymentPlan /></FinanceGuard>} />
       <Route path="/projects" component={ProjectList} />
       <Route path="/management" component={() => <FinanceGuard><ManagementDashboard /></FinanceGuard>} />

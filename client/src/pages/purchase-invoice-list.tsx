@@ -740,7 +740,7 @@ export default function PurchaseInvoiceList() {
     }
 
     if (showUnlinked) {
-      list = list.filter(inv => !inv.projectId);
+      list = list.filter(inv => !inv.vendorId);
     }
 
     if (search) {
@@ -1048,8 +1048,9 @@ export default function PurchaseInvoiceList() {
           className="text-xs"
           onClick={() => setShowUnlinked(v => !v)}
           data-testid="filter-unlinked-purchase"
+          title="공급업체 DB에 연결되지 않은 계산서"
         >
-          미연결
+          업체미연결
         </Button>
       </div>
 

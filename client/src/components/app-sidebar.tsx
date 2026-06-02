@@ -36,8 +36,8 @@ export function AppSidebar() {
   const isOpticsCalculator = location === "/optics-calculator";
   const isSalesSection = isSalesDashboard || isInquiryPage || isOpticsCalculator;
   const isProjectSection = isProjectPage;
-  const isFinanceSection = ["/management", "/sales-invoices", "/purchase-invoices", "/payment-plan"].includes(location);
-  const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors"].includes(location);
+  const isFinanceSection = ["/management", "/sales-invoices", "/payment-plan"].includes(location);
+  const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors", "/purchase-invoices"].includes(location);
   const isSaleProductSection = ["/items"].includes(location);
   const isCompanySection = ["/customers", "/staff"].includes(location);
 
@@ -326,17 +326,6 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       size="sm"
-                      data-active={location === "/purchase-invoices"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-purchase-invoices"
-                    >
-                      <Link href="/purchase-invoices"><span>매입계산서</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
                       data-active={location === "/payment-plan"}
                       className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
                       data-testid="nav-payment-plan"
@@ -372,6 +361,17 @@ export function AppSidebar() {
                       data-testid="nav-purchasing"
                     >
                       <Link href="/purchase-items"><span>구매품관리</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/purchase-invoices"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-purchase-invoices"
+                    >
+                      <Link href="/purchase-invoices"><span>매입계산서</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
