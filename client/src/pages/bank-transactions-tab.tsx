@@ -16,8 +16,176 @@ import {
 import {
   Plus, Upload, Trash2, Building2, ArrowDownCircle, ArrowUpCircle, RefreshCw,
   ChevronDown, ChevronUp, Link2, Link2Off, AlertCircle, Sparkles, FilterX,
+  ArrowUpCircle as DebitIcon, CheckCircle2, XCircle, HelpCircle,
 } from "lucide-react";
 import type { BankAccount, BankTransaction } from "@shared/schema";
+
+type DebitCandidate = {
+  txId: string;
+  txDate: string;
+  txAmount: number;
+  counterparty: string;
+  vendorId: string;
+  vendorName: string;
+  businessType: string;
+  matchedInvoices: { id: string; total_amount: number; issue_date: string }[];
+};
+
+type DebitMatchResult = {
+  matched: number;
+  candidates: DebitCandidate[];
+};
+
+function DebitMatchResultDialog({
+  result,
+  onClose,
+}: {
+  result: DebitMatchResult;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [selections, setSelections] = useState<Record<string, string>>({}); // txId → invoiceId
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const manualCandidates = result.candidates.filter(c => c.matchedInvoices.length !== 1);
+  const noInvoice = result.candidates.filter(c => c.matchedInvoices.length === 0);
+  const multipleInvoice = result.candidates.filter(c => c.matchedInvoices.length > 1);
+
+  const handleManualMatch = async (candidate: DebitCandidate) => {
+    const invoiceId = selections[candidate.txId];
+    if (!invoiceId) return;
+    setSaving(candidate.txId);
+    try {
+      const res = await apiRequest("POST", "/api/bank-transactions/manual-match-debit", {
+        txId: candidate.txId,
+        invoiceId,
+        vendorName: candidate.vendorName,
+        amount: candidate.txAmount,
+        txDate: candidate.txDate,
+      });
+      if (!res.ok) throw new Error("연결 실패");
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      toast({ title: `${candidate.vendorName} 출금 연결 완료` });
+      setSelections(p => { const n = { ...p }; delete n[candidate.txId]; return n; });
+    } catch (err: any) {
+      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>출금 자동매칭 결과</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+          {/* 자동 연결 요약 */}
+          <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg px-4 py-3">
+            <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+            <div>
+              <div className="text-sm font-medium text-green-800 dark:text-green-300">
+                {result.matched}건 자동 연결됨
+              </div>
+              <div className="text-xs text-green-700 dark:text-green-400">
+                업체명 + 금액이 정확히 일치하는 계산서에 자동으로 연결됐습니다
+              </div>
+            </div>
+          </div>
+
+          {/* 수동 검토 필요: 계산서 여러 건 */}
+          {multipleInvoice.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <HelpCircle className="h-4 w-4 text-orange-500" />
+                계산서 여러 건 — 직접 선택 필요 ({multipleInvoice.length}건)
+              </div>
+              {multipleInvoice.map(c => (
+                <div key={c.txId} className="border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <div>
+                      <span className="font-medium">{c.counterparty}</span>
+                      <span className="text-muted-foreground ml-2">→ {c.vendorName}</span>
+                      {c.businessType === "개인" && <Badge variant="outline" className="ml-1 text-[10px]">개인</Badge>}
+                    </div>
+                    <div className="text-red-600 font-medium tabular-nums">
+                      {c.txAmount.toLocaleString()}원
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{c.txDate}</div>
+                  <div className="space-y-1">
+                    {c.matchedInvoices.map(inv => (
+                      <label key={inv.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/30 rounded px-2 py-1">
+                        <input
+                          type="radio"
+                          name={`inv-${c.txId}`}
+                          value={inv.id}
+                          checked={selections[c.txId] === inv.id}
+                          onChange={() => setSelections(p => ({ ...p, [c.txId]: inv.id }))}
+                          className="h-3.5 w-3.5"
+                        />
+                        <span className="text-xs flex-1">
+                          {inv.issue_date} · {inv.total_amount.toLocaleString()}원
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs w-full"
+                    disabled={!selections[c.txId] || saving === c.txId}
+                    onClick={() => handleManualMatch(c)}
+                  >
+                    {saving === c.txId
+                      ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                      : <Link2 className="h-3 w-3 mr-1" />}
+                    연결하기
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 계산서 없음 */}
+          {noInvoice.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <XCircle className="h-4 w-4" />
+                업체 매칭됐지만 금액 맞는 계산서 없음 ({noInvoice.length}건)
+              </div>
+              <div className="border rounded-lg divide-y text-sm">
+                {noInvoice.map(c => (
+                  <div key={c.txId} className="flex items-center justify-between px-3 py-2">
+                    <div>
+                      <span className="font-medium">{c.counterparty}</span>
+                      <span className="text-muted-foreground ml-2 text-xs">→ {c.vendorName}</span>
+                    </div>
+                    <div className="text-red-600 tabular-nums text-xs">{c.txAmount.toLocaleString()}원 · {c.txDate}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs text-muted-foreground px-1">
+                계산서가 아직 등록되지 않았거나 금액이 다를 수 있습니다. 수동으로 연결하려면 거래내역에서 직접 연결하세요.
+              </div>
+            </div>
+          )}
+
+          {result.matched === 0 && manualCandidates.length === 0 && (
+            <div className="text-center py-6 text-sm text-muted-foreground">
+              매칭 가능한 출금 거래가 없습니다
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button onClick={onClose}>닫기</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function formatAmount(n: number | null | undefined) {
   if (!n) return "-";
@@ -495,22 +663,65 @@ function MatchDialog({ tx, onClose }: { tx: BankTransaction; onClose: () => void
   );
 }
 
+type DatePreset = "3m" | "6m" | "1y" | "3y" | "custom";
+
+function getPresetRange(preset: DatePreset): { start: string; end: string } {
+  const now = new Date();
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const end = fmt(now);
+  if (preset === "3m") {
+    const s = new Date(now); s.setMonth(s.getMonth() - 3);
+    return { start: fmt(s), end };
+  }
+  if (preset === "6m") {
+    const s = new Date(now); s.setMonth(s.getMonth() - 6);
+    return { start: fmt(s), end };
+  }
+  if (preset === "1y") {
+    const s = new Date(now); s.setFullYear(s.getFullYear() - 1);
+    return { start: fmt(s), end };
+  }
+  if (preset === "3y") {
+    const s = new Date(now); s.setFullYear(s.getFullYear() - 3);
+    return { start: fmt(s), end };
+  }
+  return { start: "", end: "" };
+}
+
 export function BankTransactionsTab() {
   const { toast } = useToast();
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [datePreset, setDatePreset] = useState<DatePreset>("6m");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [txType, setTxType] = useState<"all" | "credit" | "debit">("all");
-  const [matchFilter, setMatchFilter] = useState<"all" | "matched" | "unmatched" | "ignored">("all");
+  const [matchFilter, setMatchFilter] = useState<"all" | "matched" | "unmatched" | "ignored" | "petty_cash">("all");
   const [showAccountManager, setShowAccountManager] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [showQuickImport, setShowQuickImport] = useState(false);
+const [showQuickImport, setShowQuickImport] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [matchDialogTx, setMatchDialogTx] = useState<BankTransaction | null>(null);
+  const [debitMatchResult, setDebitMatchResult] = useState<DebitMatchResult | null>(null);
+
+  const { start: startDate, end: endDate } = datePreset === "custom"
+    ? { start: customStart, end: customEnd }
+    : getPresetRange(datePreset);
+
+  const autoMatchDebitMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/auto-match-debit", {});
+      return res.json() as Promise<DebitMatchResult>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      setDebitMatchResult(data);
+    },
+    onError: (err: Error) => {
+      toast({ title: "출금 자동매칭 실패", description: err.message, variant: "destructive" });
+    },
+  });
 
   const autoMatchMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/bank-transactions/auto-match", { accountId: selectedAccountId || undefined });
+      const res = await apiRequest("POST", "/api/bank-transactions/auto-match", {});
       return res.json();
     },
     onSuccess: (data) => {
@@ -529,7 +740,7 @@ export function BankTransactionsTab() {
 
   const dedupMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/bank-transactions/dedup", { accountId: selectedAccountId || undefined });
+      const res = await apiRequest("POST", "/api/bank-transactions/dedup", {});
       return res.json();
     },
     onSuccess: (data) => {
@@ -545,24 +756,16 @@ export function BankTransactionsTab() {
     },
   });
 
-  const { data: accounts = [], isLoading: accountsLoading } = useQuery<BankAccount[]>({
-    queryKey: ["/api/bank-accounts"],
-  });
-
-  const selectedAccount = accounts.find(a => a.id === selectedAccountId);
-
   const { data: transactions = [], isLoading: txLoading } = useQuery<BankTransaction[]>({
-    queryKey: ["/api/bank-transactions", selectedAccountId, startDate, endDate, txType],
+    queryKey: ["/api/bank-transactions", startDate, endDate, txType],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (selectedAccountId) params.set("accountId", selectedAccountId);
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
       if (txType !== "all") params.set("txType", txType);
       const res = await fetch(`/api/bank-transactions?${params}`);
       return res.json();
     },
-    enabled: !!selectedAccountId,
   });
 
   const deleteTxMutation = useMutation({
@@ -594,133 +797,80 @@ export function BankTransactionsTab() {
   const totalCredit = transactions.reduce((s, t) => s + (t.creditAmount ?? 0), 0);
   const totalDebit = transactions.reduce((s, t) => s + (t.debitAmount ?? 0), 0);
 
-  const matchedCount = transactions.filter(t => t.matchStatus === "manual" || t.matchStatus === "auto").length;
+  const isPettyCash = (t: BankTransaction) => t.matchCategory === "가지급금" || t.matchCategory === "가지급금반환";
+  const matchedCount = transactions.filter(t => (t.matchStatus === "manual" || t.matchStatus === "auto") && !isPettyCash(t)).length;
   const unmatchedCount = transactions.filter(t => !t.matchStatus || t.matchStatus === "unmatched").length;
   const ignoredCount = transactions.filter(t => t.matchStatus === "ignored").length;
+  const pettyCashCount = transactions.filter(isPettyCash).length;
 
   const filteredTransactions = matchFilter === "all" ? transactions : transactions.filter(t => {
-    if (matchFilter === "matched") return t.matchStatus === "manual" || t.matchStatus === "auto";
+    if (matchFilter === "matched") return (t.matchStatus === "manual" || t.matchStatus === "auto") && !isPettyCash(t);
     if (matchFilter === "unmatched") return !t.matchStatus || t.matchStatus === "unmatched";
     if (matchFilter === "ignored") return t.matchStatus === "ignored";
+    if (matchFilter === "petty_cash") return isPettyCash(t);
     return true;
   });
 
   return (
-    <div className="space-y-4" data-testid="bank-transactions-tab">
+    <div className="space-y-3" data-testid="bank-transactions-tab">
+      {/* Row 1: 날짜 프리셋 + 액션 버튼 */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-            <SelectTrigger className="w-48" data-testid="select-bank-account">
-              <SelectValue placeholder="계좌 선택..." />
-            </SelectTrigger>
-            <SelectContent>
-              {accountsLoading ? (
-                <SelectItem value="_loading" disabled>로딩 중...</SelectItem>
-              ) : accounts.length === 0 ? (
-                <SelectItem value="_empty" disabled>등록된 계좌 없음</SelectItem>
-              ) : (
-                accounts.map(acc => (
-                  <SelectItem key={acc.id} value={acc.id}>{acc.accountAlias}</SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-1">
-            <Input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="h-9 w-36 text-sm"
-              data-testid="input-start-date"
-            />
-            <span className="text-muted-foreground text-sm">~</span>
-            <Input
-              type="date"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-              className="h-9 w-36 text-sm"
-              data-testid="input-end-date"
-            />
-          </div>
-
           <div className="flex items-center gap-1 border rounded-lg p-0.5">
+            {(["3m", "6m", "1y", "3y"] as DatePreset[]).map(p => (
+              <Button
+                key={p}
+                variant={datePreset === p ? "default" : "ghost"}
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setDatePreset(p)}
+              >
+                {p === "3m" ? "3개월" : p === "6m" ? "6개월" : p === "1y" ? "1년" : "3년"}
+              </Button>
+            ))}
             <Button
-              variant={txType === "all" ? "default" : "ghost"}
+              variant={datePreset === "custom" ? "default" : "ghost"}
               size="sm"
               className="h-7 text-xs"
-              onClick={() => setTxType("all")}
-              data-testid="filter-tx-all"
+              onClick={() => setDatePreset("custom")}
             >
-              전체
-            </Button>
-            <Button
-              variant={txType === "credit" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setTxType("credit")}
-              data-testid="filter-tx-credit"
-            >
-              입금
-            </Button>
-            <Button
-              variant={txType === "debit" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setTxType("debit")}
-              data-testid="filter-tx-debit"
-            >
-              출금
+              직접입력
             </Button>
           </div>
-
-          <div className="flex items-center gap-1 border rounded-lg p-0.5">
-            <Button
-              variant={matchFilter === "all" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setMatchFilter("all")}
-              data-testid="filter-match-all"
-            >
-              전체 {transactions.length > 0 && <span className="ml-1 opacity-60">{transactions.length}</span>}
-            </Button>
-            <Button
-              variant={matchFilter === "matched" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setMatchFilter("matched")}
-              data-testid="filter-match-matched"
-            >
-              연결됨 {matchedCount > 0 && <span className="ml-1 text-green-600 opacity-80">{matchedCount}</span>}
-            </Button>
-            <Button
-              variant={matchFilter === "unmatched" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setMatchFilter("unmatched")}
-              data-testid="filter-match-unmatched"
-            >
-              미연결 {unmatchedCount > 0 && <span className="ml-1 text-orange-500 opacity-80">{unmatchedCount}</span>}
-            </Button>
-            <Button
-              variant={matchFilter === "ignored" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setMatchFilter("ignored")}
-              data-testid="filter-match-ignored"
-            >
-              계획없음 {ignoredCount > 0 && <span className="ml-1 opacity-60">{ignoredCount}</span>}
-            </Button>
-          </div>
-
-          {(startDate || endDate || txType !== "all" || matchFilter !== "all") && (
-            <Button variant="ghost" size="sm" onClick={() => { setStartDate(""); setEndDate(""); setTxType("all"); setMatchFilter("all"); }}>
-              필터 초기화
-            </Button>
+          {datePreset === "custom" && (
+            <div className="flex items-center gap-1">
+              <Input
+                type="date"
+                value={customStart}
+                onChange={e => setCustomStart(e.target.value)}
+                className="h-8 w-34 text-xs"
+                data-testid="input-start-date"
+              />
+              <span className="text-muted-foreground text-sm">~</span>
+              <Input
+                type="date"
+                value={customEnd}
+                onChange={e => setCustomEnd(e.target.value)}
+                className="h-8 w-34 text-xs"
+                data-testid="input-end-date"
+              />
+            </div>
           )}
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => autoMatchDebitMutation.mutate()}
+            disabled={autoMatchDebitMutation.isPending}
+            data-testid="button-auto-match-debit"
+          >
+            {autoMatchDebitMutation.isPending
+              ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+              : <DebitIcon className="h-4 w-4 mr-1" />}
+            출금 자동매칭
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -731,39 +881,82 @@ export function BankTransactionsTab() {
             {autoMatchMutation.isPending
               ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
               : <Sparkles className="h-4 w-4 mr-1" />}
-            자동 매칭
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (confirm("같은 날짜·금액 중복 거래를 정리합니다.\n구체적인 거래처명을 남기고 '인터넷출금이체' 등 일반 항목을 삭제합니다.\n계속하시겠습니까?")) {
-                dedupMutation.mutate();
-              }
-            }}
-            disabled={dedupMutation.isPending}
-            data-testid="button-dedup"
-          >
-            {dedupMutation.isPending
-              ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-              : <FilterX className="h-4 w-4 mr-1" />}
-            중복 정리
+            입금 자동매칭
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowQuickImport(true)} data-testid="button-quick-import">
-            <Upload className="h-4 w-4 mr-1" /> 파일로 바로 가져오기
+            <Upload className="h-4 w-4 mr-1" /> 가져오기
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowAccountManager(true)} data-testid="button-manage-accounts">
             <Building2 className="h-4 w-4 mr-1" /> 계좌 관리
           </Button>
-          {selectedAccountId && (
-            <Button size="sm" onClick={() => setShowImport(true)} data-testid="button-import-transactions">
-              <Upload className="h-4 w-4 mr-1" /> 가져오기
-            </Button>
-          )}
         </div>
       </div>
 
-      {selectedAccountId && transactions.length > 0 && (
+      {/* Row 2: 상태 필터 + 입출금 필터 */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1 border rounded-lg p-0.5">
+          <Button
+            variant={matchFilter === "all" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setMatchFilter("all")}
+            data-testid="filter-match-all"
+          >
+            전체 {transactions.length > 0 && <span className="ml-1 opacity-60">{transactions.length}</span>}
+          </Button>
+          <Button
+            variant={matchFilter === "matched" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setMatchFilter("matched")}
+            data-testid="filter-match-matched"
+          >
+            연결됨 {matchedCount > 0 && <span className="ml-1 text-green-600 opacity-80">{matchedCount}</span>}
+          </Button>
+          <Button
+            variant={matchFilter === "unmatched" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setMatchFilter("unmatched")}
+            data-testid="filter-match-unmatched"
+          >
+            미연결 {unmatchedCount > 0 && <span className="ml-1 text-orange-500 opacity-80">{unmatchedCount}</span>}
+          </Button>
+          <Button
+            variant={matchFilter === "ignored" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setMatchFilter("ignored")}
+            data-testid="filter-match-ignored"
+          >
+            계획없음 {ignoredCount > 0 && <span className="ml-1 opacity-60">{ignoredCount}</span>}
+          </Button>
+          <Button
+            variant={matchFilter === "petty_cash" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setMatchFilter("petty_cash")}
+            data-testid="filter-match-petty-cash"
+          >
+            가지급금 {pettyCashCount > 0 && <span className="ml-1 text-purple-500 opacity-80">{pettyCashCount}</span>}
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-1 border rounded-lg p-0.5">
+          <Button variant={txType === "all" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setTxType("all")} data-testid="filter-tx-all">전체</Button>
+          <Button variant={txType === "credit" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setTxType("credit")} data-testid="filter-tx-credit">입금</Button>
+          <Button variant={txType === "debit" ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setTxType("debit")} data-testid="filter-tx-debit">출금</Button>
+        </div>
+
+        {(txType !== "all" || (matchFilter !== "all" && matchFilter !== "petty_cash")) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setTxType("all"); setMatchFilter("all"); }}>
+            필터 초기화
+          </Button>
+        )}
+      </div>
+
+      {/* 요약 바 */}
+      {transactions.length > 0 && (
         <div className="flex items-center gap-4 text-sm bg-muted/30 rounded-lg px-4 py-2 border flex-wrap">
           <span className="text-muted-foreground">{transactions.length}건</span>
           <span className="flex items-center gap-1 text-blue-600">
@@ -787,21 +980,12 @@ export function BankTransactionsTab() {
             <span className="text-xs text-muted-foreground">계획없음 {ignoredCount}</span>
           )}
           <span className="text-muted-foreground ml-auto text-xs">
-            {selectedAccount?.bankName} · {selectedAccount?.accountAlias}
+            {startDate} ~ {endDate}
           </span>
         </div>
       )}
 
-      {!selectedAccountId ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Upload className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <div className="text-sm font-medium text-foreground">거래내역 파일을 바로 가져오세요</div>
-          <div className="text-xs mt-1 mb-4">"파일로 바로 가져오기"를 클릭하면 계좌가 자동으로 등록됩니다</div>
-          <Button size="sm" onClick={() => setShowQuickImport(true)} data-testid="button-empty-quick-import">
-            <Upload className="h-4 w-4 mr-1" /> 파일로 바로 가져오기
-          </Button>
-        </div>
-      ) : txLoading ? (
+      {txLoading ? (
         <div className="space-y-2">
           {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}
         </div>
@@ -810,7 +994,7 @@ export function BankTransactionsTab() {
           <Upload className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <div className="text-sm">거래내역이 없습니다</div>
           <div className="text-xs mt-1">"거래내역 가져오기"를 눌러 Excel 파일을 불러오세요</div>
-          <Button className="mt-4" size="sm" onClick={() => setShowImport(true)} data-testid="button-import-empty">
+          <Button className="mt-4" size="sm" onClick={() => setShowQuickImport(true)} data-testid="button-import-empty">
             <Upload className="h-4 w-4 mr-1" /> 거래내역 가져오기
           </Button>
         </div>
@@ -880,7 +1064,7 @@ export function BankTransactionsTab() {
                         {tx.balance != null ? tx.balance.toLocaleString() : "-"}
                       </td>
                       <td className="px-3 py-2 text-center">
-                        <MatchStatusBadge status={tx.matchStatus} />
+                        <MatchStatusBadge status={tx.matchStatus} category={tx.matchCategory} />
                       </td>
                       <td className="px-1 text-right">
                         <div className="flex items-center justify-end gap-0.5">
@@ -987,16 +1171,11 @@ export function BankTransactionsTab() {
 
       <AccountManagerDialog open={showAccountManager} onOpenChange={v => { setShowAccountManager(v); if (!v) queryClient.invalidateQueries({ queryKey: ["/api/bank-accounts"] }); }} />
       <QuickImportDialog open={showQuickImport} onOpenChange={setShowQuickImport} />
-      {selectedAccountId && selectedAccount && (
-        <ImportDialog
-          accountId={selectedAccountId}
-          accountAlias={selectedAccount.accountAlias}
-          open={showImport}
-          onOpenChange={setShowImport}
-        />
-      )}
       {matchDialogTx && (
         <MatchDialog tx={matchDialogTx} onClose={() => setMatchDialogTx(null)} />
+      )}
+      {debitMatchResult && (
+        <DebitMatchResultDialog result={debitMatchResult} onClose={() => setDebitMatchResult(null)} />
       )}
 
       <DataCleanupSection />
@@ -1055,7 +1234,13 @@ function DataCleanupSection() {
   );
 }
 
-function MatchStatusBadge({ status }: { status: string | null }) {
+function MatchStatusBadge({ status, category }: { status: string | null; category?: string | null }) {
+  if (category === "가지급금") {
+    return <Badge variant="outline" className="text-[10px] text-purple-600 bg-purple-50 border-purple-200 dark:bg-purple-950/30">가지급금</Badge>;
+  }
+  if (category === "가지급금반환") {
+    return <Badge variant="outline" className="text-[10px] text-blue-500 bg-blue-50 border-blue-200 dark:bg-blue-950/20">가지급반환</Badge>;
+  }
   if (status === "auto" || status === "manual") {
     return <Badge variant="outline" className="text-[10px] text-green-600 bg-green-50 border-green-200 dark:bg-green-950/30">연결됨</Badge>;
   }

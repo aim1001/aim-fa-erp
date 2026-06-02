@@ -126,6 +126,7 @@ export const vendors = pgTable("vendors", {
   bankAccount: text("bank_account"),
   isFavorite: boolean("is_favorite").default(false),
   defaultPaymentTerms: text("default_payment_terms"),
+  businessType: text("business_type"), // '개인' | '법인'
 });
 
 export const vendorContacts = pgTable("vendor_contacts", {
@@ -851,6 +852,7 @@ export const bankTransactions = pgTable("bank_transactions", {
   importBatch: text("import_batch"),
   importHash: text("import_hash"),
   memo: text("memo"),
+  matchCategory: text("match_category"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

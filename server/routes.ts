@@ -3262,16 +3262,28 @@ export async function registerRoutes(
         }
       }
 
-      // 계획없음: payment 레코드가 하나도 없는 계산서 건수
+      // 계획없음: payment 레코드가 없고, 완료 처리도 안 된 계산서 건수
       const invoicesWithPayment = new Set<string>();
       for (const p of allPayments) {
         if (p.purchaseInvoiceId) invoicesWithPayment.add(p.purchaseInvoiceId);
       }
+      // 업체명 기준으로 completed payment가 있는 vendorId 집합
+      const vendorsWithCompletedPayment = new Set<string>();
+      const vendorNameToId = new Map(list.map(v => [v.companyName?.trim().toLowerCase(), v.id]));
+      for (const p of allPayments) {
+        if (p.status === "completed" && p.companyName && !p.purchaseInvoiceId) {
+          const vid = vendorNameToId.get(p.companyName.trim().toLowerCase());
+          if (vid) vendorsWithCompletedPayment.add(vid);
+        }
+      }
       const noPaymentCountMap = new Map<string, number>();
       for (const inv of allInvoices) {
-        if (inv.vendorId && !invoicesWithPayment.has(inv.id)) {
-          noPaymentCountMap.set(inv.vendorId, (noPaymentCountMap.get(inv.vendorId) || 0) + 1);
-        }
+        if (!inv.vendorId) continue;
+        // 직접 연결된 payment가 있으면 제외
+        if (invoicesWithPayment.has(inv.id)) continue;
+        // 해당 계산서가 completed 상태면 제외
+        if (inv.status === "completed" || inv.status === "paid") continue;
+        noPaymentCountMap.set(inv.vendorId, (noPaymentCountMap.get(inv.vendorId) || 0) + 1);
       }
 
       const result = list.map(v => ({
@@ -3368,10 +3380,13 @@ export async function registerRoutes(
 
       // 발주서 (vendorId 일치 OR 업체명 유사 일치)
       const allOrders = await storage.getPurchaseOrders();
-      const orders = allOrders.filter(o =>
-        (o.vendorId === id || normalize(o.vendor) === vendorNorm)
-        && (o.year === year || !year)
-      );
+      const orders = allOrders.filter(o => {
+        if (!(o.vendorId === id || normalize(o.vendor) === vendorNorm)) return false;
+        if (!year) return true;
+        // year 필드 일치, 또는 납기일/실입고일이 해당 연도인 경우 포함
+        const deliveryYear = (o.expectedDeliveryDate || o.actualDeliveryDate || "").substring(0, 4);
+        return o.year === year || deliveryYear === String(year);
+      });
 
       // 매입계산서 (vendorId 일치 OR 업체명 유사 일치)
       const allInvoices = await storage.getPurchaseInvoices();
@@ -3610,9 +3625,10 @@ export async function registerRoutes(
       let vendorsCreated = 0;
       let vendorsUpdated = 0;
       let invoicesLinked = 0;
+      let skippedNoBizNum = 0;
 
       for (const inv of allInvoices) {
-        if (!inv.businessNumber) continue;
+        if (!inv.businessNumber) { skippedNoBizNum++; continue; }
         const bizNumClean = inv.businessNumber.replace(/-/g, "");
         if (!bizNumClean) continue;
 
@@ -3653,7 +3669,7 @@ export async function registerRoutes(
       }
 
       const uniqueBizNums = new Set(allInvoices.filter(i => i.businessNumber).map(i => i.businessNumber!.replace(/-/g, "")));
-      res.json({ vendorsCreated, vendorsUpdated, invoicesLinked, totalInvoices: allInvoices.length, uniqueBusinessNumbers: uniqueBizNums.size });
+      res.json({ vendorsCreated, vendorsUpdated, invoicesLinked, totalInvoices: allInvoices.length, uniqueBusinessNumbers: uniqueBizNums.size, skippedNoBizNum });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -8321,6 +8337,87 @@ export async function registerRoutes(
     return matched;
   }
 
+  // Auto-match helper: match unmatched debit transactions to purchase invoices by vendor name
+  // 개인사업자 → 대표자명으로 매칭, 법인 → 업체명으로 매칭
+  async function performAutoMatchDebit(accountId?: string): Promise<{ matched: number; candidates: any[] }> {
+    const txQuery = accountId
+      ? `SELECT id, counterparty, debit_amount, tx_date FROM bank_transactions
+         WHERE match_status = 'unmatched' AND debit_amount > 0 AND counterparty IS NOT NULL AND counterparty != ''
+         AND matched_payment_id IS NULL AND account_id = $1`
+      : `SELECT id, counterparty, debit_amount, tx_date FROM bank_transactions
+         WHERE match_status = 'unmatched' AND debit_amount > 0 AND counterparty IS NOT NULL AND counterparty != ''
+         AND matched_payment_id IS NULL`;
+    const txResult = accountId ? await pool.query(txQuery, [accountId]) : await pool.query(txQuery);
+    if (txResult.rows.length === 0) return { matched: 0, candidates: [] };
+
+    // 공급업체 목록 (개인사업자→대표자명, 법인→업체명)
+    const vendorResult = await pool.query(
+      `SELECT id, company_name, representative, business_type FROM vendors`
+    );
+
+    const normalize = (s: string) => (s || "").replace(/\s|\(주\)|주식회사|유한회사|\(유\)/g, "").toLowerCase();
+
+    let matched = 0;
+    const candidates: any[] = [];
+
+    for (const tx of txResult.rows) {
+      const cp = normalize(tx.counterparty as string);
+
+      // 거래처명으로 업체 찾기
+      const vendor = vendorResult.rows.find((v: any) => {
+        const matchName = (v.business_type === "개인" && v.representative)
+          ? normalize(v.representative)
+          : normalize(v.company_name);
+        // 업체명도 보조로 확인
+        const companyNorm = normalize(v.company_name);
+        return cp.includes(matchName) || matchName.includes(cp) ||
+               cp.includes(companyNorm) || companyNorm.includes(cp);
+      });
+
+      if (!vendor) continue;
+
+      // 해당 업체의 결제계획 없는 계산서 찾기 (금액 일치)
+      const invResult = await pool.query(
+        `SELECT pi.id, pi.total_amount, pi.issue_date
+         FROM purchase_invoices pi
+         LEFT JOIN payments p ON p.purchase_invoice_id = pi.id
+         WHERE pi.vendor_id = $1 AND pi.status != 'completed'
+         GROUP BY pi.id
+         HAVING COUNT(p.id) = 0
+         AND pi.total_amount = $2`,
+        [vendor.id, tx.debit_amount]
+      );
+
+      candidates.push({
+        txId: tx.id,
+        txDate: tx.tx_date,
+        txAmount: tx.debit_amount,
+        counterparty: tx.counterparty,
+        vendorId: vendor.id,
+        vendorName: vendor.company_name,
+        businessType: vendor.business_type,
+        matchedInvoices: invResult.rows,
+      });
+
+      // 정확히 1건 일치하면 자동 연결
+      if (invResult.rows.length === 1) {
+        const inv = invResult.rows[0];
+        // payment 레코드 생성 후 연결
+        const payRes = await pool.query(
+          `INSERT INTO payments (type, purchase_invoice_id, company_name, amount, actual_amount, planned_date, actual_date, status)
+           VALUES ('expense', $1, $2, $3, $3, $4, $4, 'completed') RETURNING id`,
+          [inv.id, vendor.company_name, tx.debit_amount, tx.tx_date]
+        );
+        await pool.query(
+          `UPDATE bank_transactions SET matched_payment_id = $1, match_status = 'auto' WHERE id = $2`,
+          [payRes.rows[0].id, tx.id]
+        );
+        matched++;
+      }
+    }
+    return { matched, candidates };
+  }
+
   app.post("/api/bank-transactions/auto-match", async (req, res) => {
     try {
       const { accountId } = req.body;
@@ -8328,6 +8425,48 @@ export async function registerRoutes(
       res.json({ matched });
     } catch (err: any) {
       console.error("[auto-match]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 출금 자동매칭 (매입계산서 ↔ 은행거래)
+  app.post("/api/bank-transactions/auto-match-debit", async (req, res) => {
+    try {
+      const { accountId } = req.body;
+      const result = await performAutoMatchDebit(accountId || undefined);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[auto-match-debit]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 출금 수동 연결 (계산서 여러 건 중 사용자가 선택한 1건)
+  app.post("/api/bank-transactions/manual-match-debit", async (req, res) => {
+    try {
+      const { txId, invoiceId, vendorName, amount, txDate } = req.body;
+      const payRes = await pool.query(
+        `INSERT INTO payments (type, purchase_invoice_id, company_name, amount, actual_amount, planned_date, actual_date, status)
+         VALUES ('expense', $1, $2, $3, $3, $4, $4, 'completed') RETURNING id`,
+        [invoiceId, vendorName, amount, txDate]
+      );
+      await pool.query(
+        `UPDATE bank_transactions SET matched_payment_id = $1, match_status = 'manual' WHERE id = $2`,
+        [payRes.rows[0].id, txId]
+      );
+      res.json({ ok: true, paymentId: payRes.rows[0].id });
+    } catch (err: any) {
+      console.error("[manual-match-debit]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 출금 매칭 후보 조회 (금액 불일치 포함 — 사용자가 수동 선택)
+  app.get("/api/bank-transactions/debit-candidates", async (req, res) => {
+    try {
+      const result = await performAutoMatchDebit(undefined);
+      res.json(result.candidates);
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
