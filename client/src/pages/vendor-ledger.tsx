@@ -552,6 +552,71 @@ export default function VendorLedger() {
   const isReadyToLink = !!selectedOrderId && !!selectedInvoiceId;
   const hasUnmatched = unlinkedOrders.length > 0 || filteredUnlinkedInvoices.length > 0;
 
+  // ── 통합 뷰 ─────────────────────────────────────────────────────────
+  const [viewFilter, setViewFilter] = useState<"all" | "matched" | "unmatched" | "unpaid">("all");
+  const [addPayInvoiceId, setAddPayInvoiceId] = useState<string | null>(null);
+  const [addPayForm, setAddPayForm] = useState({ amount: "", plannedDate: "" });
+  const [linkingForInvoiceId, setLinkingForInvoiceId] = useState<string | null>(null);
+
+  const createPaymentMutation = useMutation({
+    mutationFn: async ({ invoiceId, amount, plannedDate }: { invoiceId: string; amount: number; plannedDate: string }) => {
+      const res = await apiRequest("POST", "/api/payments", { type: "expense", purchaseInvoiceId: invoiceId, amount, plannedDate, status: "planned" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+      setAddPayInvoiceId(null);
+      setAddPayForm({ amount: "", plannedDate: "" });
+      toast({ title: "결제계획 추가 완료" });
+    },
+    onError: (e: Error) => toast({ title: "추가 실패", description: e.message, variant: "destructive" }),
+  });
+
+  type URow =
+    | { kind: "matched"; order: OrderWithLinks; invoice: LinkedInvoice }
+    | { kind: "inv-only"; invoice: InvoiceWithPayments }
+    | { kind: "ord-only"; order: OrderWithLinks };
+
+  const allRows = useMemo((): URow[] => {
+    if (!ledger) return [];
+    const rows: URow[] = [];
+    for (const order of filteredOrders) {
+      if (order.linkedInvoices.length === 0) {
+        rows.push({ kind: "ord-only", order });
+      } else {
+        for (const inv of order.linkedInvoices) {
+          rows.push({ kind: "matched", order, invoice: inv });
+        }
+      }
+    }
+    for (const inv of filteredUnlinkedInvoices) {
+      rows.push({ kind: "inv-only", invoice: inv });
+    }
+    return rows;
+  }, [filteredOrders, filteredUnlinkedInvoices]);
+
+  const visibleRows = useMemo(() => {
+    if (viewFilter === "matched") return allRows.filter(r => r.kind === "matched");
+    if (viewFilter === "unmatched") return allRows.filter(r => r.kind !== "matched");
+    if (viewFilter === "unpaid") return allRows.filter(r => {
+      if (r.kind === "ord-only") return false;
+      const pays = r.kind === "matched" ? r.invoice.payments : r.invoice.payments;
+      return !(pays.length > 0 && pays.every((p: Payment) => p.status === "completed"));
+    });
+    return allRows;
+  }, [allRows, viewFilter]);
+
+  const rowCounts = useMemo(() => ({
+    all: allRows.length,
+    matched: allRows.filter(r => r.kind === "matched").length,
+    unmatched: allRows.filter(r => r.kind !== "matched").length,
+    unpaid: allRows.filter(r => {
+      if (r.kind === "ord-only") return false;
+      const pays = r.kind === "matched" ? r.invoice.payments : (r as any).invoice.payments;
+      return !(pays.length > 0 && pays.every((p: Payment) => p.status === "completed"));
+    }).length,
+  }), [allRows]);
+
   // 발주서 편집 모달
   const [editOrder, setEditOrder] = useState<PurchaseOrder | null>(null);
   const [editForm, setEditForm] = useState({ description: "", supplyAmount: "", taxAmount: "", totalAmount: "", expectedDeliveryDate: "" });
@@ -665,220 +730,256 @@ export default function VendorLedger() {
       ) : isLoading ? (
         <div className="p-6 space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : (
-        <Tabs defaultValue="unmatched" className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 pt-2 border-b">
-            <TabsList>
-              <TabsTrigger value="unmatched" onClick={() => setShowSmartMatch(false)}>
-                미매칭
-                {hasUnmatched && (
-                  <Badge className="ml-1.5 bg-red-500 text-white text-xs px-1.5 py-0 h-4 rounded-full border-0">
-                    {unlinkedOrders.length + filteredUnlinkedInvoices.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="matched">연결됨 ({linkedOrders.length})</TabsTrigger>
-            </TabsList>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* 필터 바 */}
+          <div className="flex items-center gap-1.5 px-4 py-2 border-b shrink-0 flex-wrap">
+            {([
+              { value: "all", label: "전체", count: rowCounts.all },
+              { value: "matched", label: "매칭됨", count: rowCounts.matched },
+              { value: "unmatched", label: "미매칭", count: rowCounts.unmatched },
+              { value: "unpaid", label: "미결제", count: rowCounts.unpaid },
+            ] as const).map(f => (
+              <Button key={f.value} size="sm" variant={viewFilter === f.value ? "default" : "outline"}
+                className="h-7 text-xs gap-1.5" onClick={() => { setViewFilter(f.value); setShowSmartMatch(false); }}>
+                {f.label}
+                <span className={`text-[10px] px-1 rounded-full ${viewFilter === f.value ? "bg-white/20" : "bg-muted text-muted-foreground"}`}>{f.count}</span>
+              </Button>
+            ))}
+            <div className="flex-1" />
+            {hasUnmatched && !showSmartMatch && (
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => setShowSmartMatch(true)}>
+                <Sparkles className="h-3.5 w-3.5 text-purple-500" />스마트 매칭
+              </Button>
+            )}
+            {showSmartMatch && (
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowSmartMatch(false)}>
+                <X className="h-3 w-3 mr-1" />닫기
+              </Button>
+            )}
           </div>
 
-          {/* ── 미매칭 탭 ── */}
-          <TabsContent value="unmatched" className="flex-1 overflow-hidden m-0 flex flex-col">
+          {/* 스마트 매칭 오버레이 */}
+          {showSmartMatch ? (
+            <SmartMatchPanel
+              orders={unlinkedOrders}
+              invoices={filteredUnlinkedInvoices}
+              vendorId={vendorId}
+              year={year}
+              onDone={() => setShowSmartMatch(false)}
+            />
+          ) : (
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {/* 컬럼 헤더 */}
+              <div className="grid grid-cols-[1fr_1fr_1.2fr] text-xs font-medium text-muted-foreground border-b px-4 py-2 bg-muted/30 sticky top-0 z-10">
+                <div className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5" />계산서</div>
+                <div className="flex items-center gap-1.5"><Package className="h-3.5 w-3.5" />발주서</div>
+                <div className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />송금내역</div>
+              </div>
 
-            {/* 스마트 매칭 뷰 */}
-            {showSmartMatch ? (
-              <SmartMatchPanel
-                orders={unlinkedOrders}
-                invoices={filteredUnlinkedInvoices}
-                vendorId={vendorId}
-                year={year}
-                onDone={() => setShowSmartMatch(false)}
-              />
-            ) : (
-              <>
-                {/* 액션 바 */}
-                <div className="flex items-center justify-between px-4 py-2 border-b shrink-0 bg-muted/10">
-                  {isReadyToLink ? (
-                    <>
-                      <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">발주서와 계산서가 선택되었습니다.</span>
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={() => linkMutation.mutate({ orderId: selectedOrderId!, invoiceId: selectedInvoiceId! })} disabled={linkMutation.isPending} className="h-7 text-xs">
-                          <Link2 className="h-3 w-3 mr-1" />연결
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setSelectedOrderId(null); setSelectedInvoiceId(null); }}>
-                          <X className="h-3 w-3" />취소
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-muted-foreground">발주서 또는 계산서를 클릭하여 선택 후 연결하세요.</span>
-                      {hasUnmatched && (
-                        <Button size="sm" variant="outline" onClick={() => setShowSmartMatch(true)} className="h-7 text-xs gap-1.5">
-                          <Sparkles className="h-3.5 w-3.5 text-purple-500" />
-                          스마트 매칭
-                        </Button>
-                      )}
-                    </>
-                  )}
+              {visibleRows.length === 0 ? (
+                <div className="flex items-center justify-center h-40 text-muted-foreground text-sm flex-col gap-2">
+                  <Check className="h-8 w-8 opacity-30" /><span>항목이 없습니다</span>
                 </div>
-
-                {/* 좌/우 분할 */}
-                <div className="grid grid-cols-2 flex-1 overflow-hidden divide-x">
-                  {/* 왼쪽: 미매칭 발주서 */}
-                  <div className="flex flex-col overflow-hidden">
-                    <div className="px-4 py-2 bg-muted/30 border-b flex items-center gap-2 shrink-0">
-                      <Package className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-semibold">미매칭 발주서</span>
-                      <Badge variant="secondary" className="text-xs">{unlinkedOrders.length}건</Badge>
-                      <span className="ml-auto text-xs text-muted-foreground">클릭 → 선택</span>
-                    </div>
-                    <div className="flex-1 overflow-y-auto divide-y min-h-0">
-                      {unlinkedOrders.length === 0 ? (
-                        <div className="flex items-center justify-center h-32 text-muted-foreground text-sm flex-col gap-1">
-                          <Check className="h-6 w-6 opacity-40" /><span>미매칭 발주서 없음</span>
-                        </div>
-                      ) : unlinkedOrders.map(o => (
-                        <div key={o.id}
-                          className={`px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${selectedOrderId === o.id ? "bg-blue-50 dark:bg-blue-950/30 border-l-2 border-l-blue-500" : ""}`}
-                          onClick={() => setSelectedOrderId(selectedOrderId === o.id ? null : o.id)}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-mono text-muted-foreground">{o.orderNumber}</span>
-                                {o.receivingCompleted && <Badge className="bg-green-100 text-green-700 border-0 text-xs py-0 h-4">입고완료</Badge>}
-                              </div>
-                              <div className="text-sm font-medium mt-0.5 truncate">{o.description || "품목 미입력"}</div>
-                              {o.expectedDeliveryDate && <div className="text-xs text-muted-foreground mt-0.5">납기: {o.expectedDeliveryDate}</div>}
+              ) : (
+                <div className="divide-y">
+                  {visibleRows.map((row, i) => {
+                    // ── 매칭됨 행 ──
+                    if (row.kind === "matched") {
+                      const { order: o, invoice: inv } = row;
+                      return (
+                        <div key={`${o.id}-${inv.id}`} className="grid grid-cols-[1fr_1fr_1.2fr] divide-x hover:bg-muted/20">
+                          {/* 계산서 */}
+                          <div className="px-3 py-3 space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs text-muted-foreground">{inv.invoiceNumber || "번호없음"}</span>
+                              <PayBadge payments={inv.payments} />
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="text-sm font-semibold">{fmt(o.totalAmount)}</div>
-                              <Button
-                                size="icon" variant="ghost"
-                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                onClick={e => openEditOrder(o, e)}
-                                title="발주서 편집"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
+                            <div className="text-sm font-semibold">{fmt(inv.totalAmount)}</div>
+                            <div className="text-xs text-muted-foreground">{inv.issueDate || inv.writeDate || "-"}</div>
+                            {inv.item && <div className="text-xs text-muted-foreground truncate">{inv.item}</div>}
+                          </div>
+                          {/* 발주서 */}
+                          <div className="px-3 py-3 space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-mono text-muted-foreground">{o.orderNumber}</span>
+                              {o.receivingCompleted && <Badge className="bg-green-100 text-green-700 border-0 text-[10px] py-0 h-4">입고완료</Badge>}
+                            </div>
+                            <div className="text-sm font-medium truncate">{o.description || "품목 미입력"}</div>
+                            <div className="text-sm font-semibold">{fmt(o.totalAmount)}</div>
+                            <div className="flex items-center gap-1">
+                              <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                                onClick={e => openEditOrder(o, e)} title="발주서 편집"><Pencil className="h-3 w-3" /></Button>
+                              <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                                onClick={() => unlinkMutation.mutate({ orderId: o.id, invoiceId: inv.id })}
+                                disabled={unlinkMutation.isPending} title="연결 해제"><Unlink2 className="h-3 w-3" /></Button>
+                            </div>
+                          </div>
+                          {/* 송금내역 */}
+                          <div className="px-3 py-3 space-y-1.5">
+                            {inv.payments.length === 0 ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">미설정</span>
+                                <Button size="sm" variant="outline" className="h-5 text-[10px] px-1.5"
+                                  onClick={() => { setAddPayInvoiceId(inv.id); setAddPayForm({ amount: String(inv.totalAmount || ""), plannedDate: "" }); }}>
+                                  + 추가
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                {inv.payments.map((p, pi) => (
+                                  <div key={pi} className="flex items-center gap-2 text-xs">
+                                    {p.status === "completed"
+                                      ? <Check className="h-3 w-3 text-green-600 shrink-0" />
+                                      : <Clock className="h-3 w-3 text-blue-500 shrink-0" />}
+                                    <span className="font-medium">{fmt(p.actualAmount || p.amount)}</span>
+                                    <span className="text-muted-foreground">{p.actualDate || p.plannedDate || "-"}</span>
+                                  </div>
+                                ))}
+                                <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1.5 text-muted-foreground"
+                                  onClick={() => { setAddPayInvoiceId(inv.id); setAddPayForm({ amount: "", plannedDate: "" }); }}>
+                                  + 추가
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // ── 계산서만 (발주서 없음) ──
+                    if (row.kind === "inv-only") {
+                      const inv = row.invoice;
+                      return (
+                        <div key={inv.id} className="grid grid-cols-[1fr_1fr_1.2fr] divide-x hover:bg-muted/20 bg-orange-50/30 dark:bg-orange-950/10">
+                          {/* 계산서 */}
+                          <div className="px-3 py-3 space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs text-muted-foreground">{inv.invoiceNumber || "번호없음"}</span>
+                              <PayBadge payments={inv.payments} />
+                            </div>
+                            <div className="text-sm font-semibold">{fmt(inv.totalAmount)}</div>
+                            <div className="text-xs text-muted-foreground">{inv.issueDate || inv.writeDate || "-"}</div>
+                            {inv.item && <div className="text-xs text-muted-foreground truncate">{inv.item}</div>}
+                          </div>
+                          {/* 발주서 없음 */}
+                          <div className="px-3 py-3 space-y-1.5">
+                            <div className="flex items-center gap-1 text-orange-500 text-xs"><AlertCircle className="h-3.5 w-3.5" />발주서 없음</div>
+                            {linkingForInvoiceId === inv.id ? (
+                              <div className="space-y-1">
+                                <select className="w-full text-xs border rounded px-1.5 py-1 bg-background"
+                                  onChange={e => { if (e.target.value) { linkMutation.mutate({ orderId: e.target.value, invoiceId: inv.id }); setLinkingForInvoiceId(null); } }}>
+                                  <option value="">발주서 선택...</option>
+                                  {unlinkedOrders.map(o => (
+                                    <option key={o.id} value={o.id}>{o.orderNumber} — {o.description || "품목없음"} ({fmt(o.totalAmount)})</option>
+                                  ))}
+                                </select>
+                                <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1.5"
+                                  onClick={() => setLinkingForInvoiceId(null)}>취소</Button>
+                              </div>
+                            ) : (
+                              <Button size="sm" variant="outline" className="h-6 text-xs gap-1"
+                                onClick={() => setLinkingForInvoiceId(inv.id)}>
+                                <Link2 className="h-3 w-3" />발주서 연결
                               </Button>
-                            </div>
+                            )}
                           </div>
-                          {selectedOrderId === o.id && (
-                            <div className="mt-1.5 text-xs text-blue-600 flex items-center gap-1">
-                              <ChevronRight className="h-3 w-3" />오른쪽 계산서를 클릭하여 연결
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {unlinkedOrders.length > 0 && (
-                      <div className="px-4 py-2 border-t bg-muted/20 flex items-center justify-between shrink-0">
-                        <span className="text-xs text-muted-foreground">미매칭 발주 총액</span>
-                        <span className="text-sm font-bold text-orange-600">
-                          {fmt(unlinkedOrders.reduce((s, o) => s + (o.totalAmount || 0), 0))}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 오른쪽: 미매칭 계산서 */}
-                  <div className="flex flex-col overflow-hidden">
-                    <div className="px-4 py-2 bg-muted/30 border-b flex items-center gap-2 shrink-0">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-semibold">미매칭 계산서</span>
-                      <Badge variant="secondary" className="text-xs">{filteredUnlinkedInvoices.length}건</Badge>
-                      <span className="ml-auto text-xs text-muted-foreground">클릭 → 선택</span>
-                    </div>
-                    <div className="flex-1 overflow-y-auto divide-y min-h-0">
-                      {filteredUnlinkedInvoices.length === 0 ? (
-                        <div className="flex items-center justify-center h-32 text-muted-foreground text-sm flex-col gap-1">
-                          <Check className="h-6 w-6 opacity-40" /><span>미매칭 계산서 없음</span>
-                        </div>
-                      ) : filteredUnlinkedInvoices.map(inv => (
-                        <div key={inv.id}
-                          className={`px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${selectedInvoiceId === inv.id ? "bg-blue-50 dark:bg-blue-950/30 border-l-2 border-l-blue-500" : ""}`}
-                          onClick={() => setSelectedInvoiceId(selectedInvoiceId === inv.id ? null : inv.id)}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
+                          {/* 송금내역 */}
+                          <div className="px-3 py-3 space-y-1.5">
+                            {inv.payments.length === 0 ? (
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-mono text-muted-foreground">{inv.invoiceNumber || "번호없음"}</span>
-                                <PayBadge payments={inv.payments} />
+                                <span className="text-xs text-muted-foreground">미설정</span>
+                                <Button size="sm" variant="outline" className="h-5 text-[10px] px-1.5"
+                                  onClick={() => { setAddPayInvoiceId(inv.id); setAddPayForm({ amount: String(inv.totalAmount || ""), plannedDate: "" }); }}>
+                                  + 추가
+                                </Button>
                               </div>
-                              <div className="text-sm font-medium mt-0.5 truncate">{inv.item || "품목 미입력"}</div>
-                              {inv.issueDate && <div className="text-xs text-muted-foreground mt-0.5">발행: {inv.issueDate}</div>}
-                            </div>
-                            <div className="text-sm font-semibold shrink-0">{fmt(inv.totalAmount)}</div>
+                            ) : (
+                              <>
+                                {inv.payments.map((p, pi) => (
+                                  <div key={pi} className="flex items-center gap-2 text-xs">
+                                    {p.status === "completed"
+                                      ? <Check className="h-3 w-3 text-green-600 shrink-0" />
+                                      : <Clock className="h-3 w-3 text-blue-500 shrink-0" />}
+                                    <span className="font-medium">{fmt(p.actualAmount || p.amount)}</span>
+                                    <span className="text-muted-foreground">{p.actualDate || p.plannedDate || "-"}</span>
+                                  </div>
+                                ))}
+                                <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1.5 text-muted-foreground"
+                                  onClick={() => { setAddPayInvoiceId(inv.id); setAddPayForm({ amount: "", plannedDate: "" }); }}>
+                                  + 추가
+                                </Button>
+                              </>
+                            )}
                           </div>
-                          {selectedInvoiceId === inv.id && !selectedOrderId && (
-                            <div className="mt-1.5 text-xs text-blue-600 flex items-center gap-1">
-                              <ChevronRight className="h-3 w-3" />왼쪽 발주서를 클릭하여 연결
-                            </div>
-                          )}
                         </div>
-                      ))}
-                    </div>
-                    {filteredUnlinkedInvoices.length > 0 && (
-                      <div className="px-4 py-2 border-t bg-muted/20 flex items-center justify-between shrink-0">
-                        <span className="text-xs text-muted-foreground">미매칭 계산서 총액</span>
-                        <span className="text-sm font-bold text-blue-600">
-                          {fmt(filteredUnlinkedInvoices.reduce((s, inv) => s + (inv.totalAmount || 0), 0))}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </TabsContent>
+                      );
+                    }
 
-          {/* ── 연결됨 탭 ── */}
-          <TabsContent value="matched" className="flex-1 overflow-y-auto m-0 p-4 space-y-3">
-            {linkedOrders.length === 0 ? (
-              <div className="flex items-center justify-center h-32 text-muted-foreground text-sm flex-col gap-1">
-                <AlertCircle className="h-6 w-6 opacity-40" /><span>연결된 항목이 없습니다</span>
-              </div>
-            ) : linkedOrders.map(o => (
-              <div key={o.id} className="border rounded-lg overflow-hidden">
-                <div className="px-4 py-3 bg-muted/20 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Package className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-muted-foreground">{o.orderNumber}</span>
-                        {o.receivingCompleted && <Badge className="bg-green-100 text-green-700 border-0 text-xs py-0 h-4">입고완료</Badge>}
-                      </div>
-                      <div className="text-sm font-medium truncate">{o.description || "품목 미입력"}</div>
-                      {o.expectedDeliveryDate && <div className="text-xs text-muted-foreground">납기: {o.expectedDeliveryDate}</div>}
-                    </div>
-                  </div>
-                  <div className="text-sm font-semibold shrink-0">{fmt(o.totalAmount)}</div>
-                </div>
-                {o.linkedInvoices.map(inv => (
-                  <div key={inv.id} className="border-t px-4 py-3 pl-12 flex items-center justify-between gap-2 bg-background">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Link2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-mono text-muted-foreground">{inv.invoiceNumber || "번호없음"}</span>
-                          <PayBadge payments={inv.payments} />
+                    // ── 발주서만 (계산서 없음) ──
+                    if (row.kind === "ord-only") {
+                      const o = row.order;
+                      return (
+                        <div key={o.id} className="grid grid-cols-[1fr_1fr_1.2fr] divide-x hover:bg-muted/20 bg-blue-50/30 dark:bg-blue-950/10">
+                          {/* 계산서 없음 */}
+                          <div className="px-3 py-3 flex items-center gap-1 text-muted-foreground text-xs">
+                            <AlertCircle className="h-3.5 w-3.5 text-blue-400" />계산서 없음
+                          </div>
+                          {/* 발주서 */}
+                          <div className="px-3 py-3 space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-mono text-muted-foreground">{o.orderNumber}</span>
+                              {o.receivingCompleted && <Badge className="bg-green-100 text-green-700 border-0 text-[10px] py-0 h-4">입고완료</Badge>}
+                            </div>
+                            <div className="text-sm font-medium truncate">{o.description || "품목 미입력"}</div>
+                            <div className="text-sm font-semibold">{fmt(o.totalAmount)}</div>
+                            {o.expectedDeliveryDate && <div className="text-xs text-muted-foreground">납기: {o.expectedDeliveryDate}</div>}
+                            <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                              onClick={e => openEditOrder(o, e)} title="발주서 편집"><Pencil className="h-3 w-3" /></Button>
+                          </div>
+                          {/* 송금 없음 */}
+                          <div className="px-3 py-3 text-xs text-muted-foreground">-</div>
                         </div>
-                        <div className="text-xs text-muted-foreground truncate">{inv.item || inv.companyName || ""}</div>
-                        {inv.issueDate && <div className="text-xs text-muted-foreground">발행: {inv.issueDate}</div>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-sm font-semibold">{fmt(inv.totalAmount)}</span>
-                      <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                        onClick={() => unlinkMutation.mutate({ orderId: o.id, invoiceId: inv.id })}
-                        disabled={unlinkMutation.isPending} title="연결 해제">
-                        <Unlink2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </TabsContent>
-        </Tabs>
+                      );
+                    }
+
+                    return null;
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
+
+      {/* 결제계획 추가 모달 */}
+      <Dialog open={!!addPayInvoiceId} onOpenChange={open => { if (!open) setAddPayInvoiceId(null); }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader><DialogTitle className="text-sm">결제계획 추가</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-1">
+            <div>
+              <Label className="text-xs">금액</Label>
+              <Input className="mt-1 h-8 text-sm" value={addPayForm.amount}
+                onChange={e => setAddPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0" />
+            </div>
+            <div>
+              <Label className="text-xs">결제예정일</Label>
+              <Input type="date" className="mt-1 h-8 text-sm" value={addPayForm.plannedDate}
+                onChange={e => setAddPayForm(f => ({ ...f, plannedDate: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setAddPayInvoiceId(null)}>취소</Button>
+            <Button size="sm" disabled={!addPayForm.amount || !addPayForm.plannedDate || createPaymentMutation.isPending}
+              onClick={() => createPaymentMutation.mutate({
+                invoiceId: addPayInvoiceId!,
+                amount: parseInt(addPayForm.amount.replace(/,/g, "")),
+                plannedDate: addPayForm.plannedDate,
+              })}>
+              {createPaymentMutation.isPending ? "추가 중..." : "추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 발주서 편집 모달 */}
       <Dialog open={!!editOrder} onOpenChange={open => { if (!open) setEditOrder(null); }}>
