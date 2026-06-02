@@ -1363,7 +1363,19 @@ function CreateOrderDialog({
   const taxAmount = Math.round(supplyAmount * 0.1);
   const totalAmount = supplyAmount + taxAmount;
 
-  const canSubmit = form.vendor.trim() !== "";
+  const canSubmit = form.vendor.trim() !== "" && !!form.expectedDeliveryDate;
+
+  // 지급조건 기반 결재예정일 자동계산
+  const calcPaymentDateLocal = (terms: string, deliveryDate: string): string => {
+    if (!terms || !deliveryDate) return "";
+    const base = new Date(deliveryDate);
+    const t = terms.replace(/\(.*\)/, "").trim();
+    if (t.includes("익월말")) return new Date(base.getFullYear(), base.getMonth() + 2, 0).toISOString().split("T")[0];
+    if (t.includes("월말") || t.includes("당월말")) return new Date(base.getFullYear(), base.getMonth() + 1, 0).toISOString().split("T")[0];
+    if (t.includes("2주이내")) { const d = new Date(base); d.setDate(d.getDate() + 14); return d.toISOString().split("T")[0]; }
+    if (t.includes("선처리")) return new Date().toISOString().split("T")[0];
+    return "";
+  };
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -1622,14 +1634,47 @@ function CreateOrderDialog({
 
           <div className="border-t pt-3 grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">예정입고일</Label>
-              <Input type="date" className="h-8 text-sm" value={form.expectedDeliveryDate} onChange={e => setForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))} data-testid="input-create-delivery-date" />
+              <Label className="text-xs">예정입고일 <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                className={`h-8 text-sm ${!form.expectedDeliveryDate ? "border-red-400 focus:ring-red-400" : ""}`}
+                value={form.expectedDeliveryDate}
+                onChange={e => {
+                  const newDate = e.target.value;
+                  const terms = form.paymentTerms || "입고후 익월말";
+                  const autoPayDate = calcPaymentDateLocal(terms, newDate);
+                  setForm(f => ({
+                    ...f,
+                    expectedDeliveryDate: newDate,
+                    paymentDate: f.paymentDate || autoPayDate, // 수동 입력이 없으면 자동계산
+                  }));
+                }}
+                data-testid="input-create-delivery-date"
+              />
+              {!form.expectedDeliveryDate && <p className="text-[10px] text-red-500 mt-0.5">필수 입력 항목입니다</p>}
             </div>
             <div>
-              <Label className="text-xs">결재(송금)예정일</Label>
+              <Label className="text-xs">
+                결재(송금)예정일
+                {form.expectedDeliveryDate && !form.paymentDate && (
+                  <button
+                    type="button"
+                    className="ml-1.5 text-[10px] text-blue-500 underline"
+                    onClick={() => {
+                      const terms = form.paymentTerms || "입고후 익월말";
+                      const auto = calcPaymentDateLocal(terms, form.expectedDeliveryDate);
+                      if (auto) setForm(f => ({ ...f, paymentDate: auto }));
+                    }}
+                  >
+                    자동계산
+                  </button>
+                )}
+              </Label>
               <Input type="date" className="h-8 text-sm" value={form.paymentDate} onChange={e => setForm(f => ({ ...f, paymentDate: e.target.value }))} data-testid="input-create-payment-date" />
               {form.paymentDate && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">→ 자금계획(출금)에 자동 등록</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  → 자금계획(출금)에 자동 등록 ({form.paymentTerms || "입고후 익월말"})
+                </p>
               )}
             </div>
           </div>
@@ -1676,7 +1721,8 @@ function CreateOrderDialog({
 
         <div className="flex justify-end gap-2 pt-2 border-t shrink-0">
           <Button variant="outline" size="sm" onClick={onClose} data-testid="button-cancel-create">취소</Button>
-          <Button size="sm" onClick={handleSubmit} disabled={!canSubmit || isPending} data-testid="button-submit-create">
+          <Button size="sm" onClick={handleSubmit} disabled={!canSubmit || isPending} data-testid="button-submit-create"
+            title={!form.expectedDeliveryDate ? "예정입고일을 입력해주세요" : ""}>
             {isPending ? "등록 중..." : "발주 등록"}
           </Button>
         </div>
