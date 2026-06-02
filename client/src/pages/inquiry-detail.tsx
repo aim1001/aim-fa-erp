@@ -770,7 +770,7 @@ function SimpleCustomerCard({ inquiryId, inquiry, hasOneDrive }: {
   });
 
   const isSaving = saveCustomerInfoMutation.isPending || createContactMutation.isPending || updateContactMutation.isPending;
-  const selectedContact = contacts.find(c => c.id === inquiry.companyId) || (contacts.length > 0 ? contacts[0] : null);
+  const selectedContact = contacts.find(c => c.id === inquiry.companyId) ?? null;
 
   return (
     <Card>

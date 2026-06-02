@@ -4883,6 +4883,8 @@ export async function registerRoutes(
       const salesInvoices = await storage.getSalesInvoices();
       const purchaseInvoices = await storage.getPurchaseInvoices();
       const allPayments = await storage.getPayments();
+      const allInquiries = await storage.getInquiries();
+      const inquiryMap = new Map(allInquiries.map(i => [i.id, i.inquiryNumber]));
 
       const enriched = list.map(p => {
         const sales = salesInvoices.filter(i => i.projectId === p.id);
@@ -4911,6 +4913,7 @@ export async function registerRoutes(
           pendingPayments,
           salesCount: sales.length,
           purchaseCount: purchases.length,
+          inquiryNumber: p.inquiryId ? (inquiryMap.get(p.inquiryId) || null) : null,
         };
       });
 
@@ -4935,7 +4938,13 @@ export async function registerRoutes(
         customer = await storage.getCustomer(project.customerId);
       }
 
-      res.json({ ...project, salesInvoices, purchaseInvoices, payments, customer: customer || null });
+      let inquiryNumber = null;
+      if (project.inquiryId) {
+        const inquiry = await storage.getInquiry(project.inquiryId);
+        inquiryNumber = inquiry?.inquiryNumber || null;
+      }
+
+      res.json({ ...project, salesInvoices, purchaseInvoices, payments, customer: customer || null, inquiryNumber });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

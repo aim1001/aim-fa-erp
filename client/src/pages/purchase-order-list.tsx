@@ -56,6 +56,164 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline" className="text-muted-foreground" data-testid="badge-status-normal"><Package className="h-3 w-3 mr-1" />일반</Badge>;
 }
 
+function VendorReassignPopover({ vendors, onAssign, isPending }: {
+  vendors: Vendor[];
+  onAssign: (vendorId: string) => void;
+  isPending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const results = useMemo(() => {
+    if (!search.trim()) return [];
+    const q = search.toLowerCase();
+    return vendors.filter(v => v.companyName?.toLowerCase().includes(q)).slice(0, 6);
+  }, [search, vendors]);
+
+  return (
+    <Popover open={open} onOpenChange={o => { setOpen(o); if (!o) setSearch(""); }}>
+      <PopoverTrigger asChild>
+        <span className="text-[10px] underline underline-offset-2 cursor-pointer">변경</span>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-2" align="start" onClick={e => e.stopPropagation()}>
+        <p className="text-[10px] font-medium text-muted-foreground mb-1.5">업체 변경</p>
+        <Input
+          autoFocus
+          placeholder="업체명 검색..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="h-7 text-xs mb-1.5"
+        />
+        <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+          {results.map(v => (
+            <button
+              key={v.id}
+              type="button"
+              disabled={isPending}
+              onClick={() => { onAssign(v.id); setOpen(false); setSearch(""); }}
+              className="text-left text-xs px-2 py-1.5 rounded hover:bg-accent disabled:opacity-50 flex justify-between items-center gap-2"
+            >
+              <span>{v.companyName}</span>
+              {v.businessNumber
+                ? <span className="text-[10px] text-muted-foreground shrink-0">{v.businessNumber}</span>
+                : <span className="text-[10px] text-muted-foreground/50 shrink-0">번호없음</span>
+              }
+            </button>
+          ))}
+          {search.trim() && results.length === 0 && (
+            <p className="text-[10px] text-muted-foreground text-center py-2">검색 결과 없음</p>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function fuzzyMatchVendors(name: string, vendors: Vendor[]): Vendor[] {
+  const q = name.trim().toLowerCase().replace(/\s+/g, "");
+  if (!q) return [];
+  const qChars = new Set(q);
+  return vendors
+    .map(v => {
+      const vn = (v.companyName || "").toLowerCase().replace(/\s+/g, "");
+      let score = 0;
+      if (vn === q) score = 100;
+      else if (vn.includes(q) || q.includes(vn)) score = 80;
+      else {
+        // 고유 글자 기준 공통 비율 (중복 카운트 방지)
+        const vnChars = new Set(vn);
+        let common = 0;
+        qChars.forEach(ch => { if (vnChars.has(ch)) common++; });
+        const ratio = common / Math.max(qChars.size, vnChars.size);
+        score = Math.round(ratio * 60);
+      }
+      return { vendor: v, score };
+    })
+    .filter(x => x.score >= 50)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(x => x.vendor);
+}
+
+function VendorSmartMatch({ orderVendorName, vendors, onAssign, isPending }: {
+  orderVendorName: string;
+  vendors: Vendor[];
+  onAssign: (vendorId: string) => void;
+  isPending: boolean;
+}) {
+  const [search, setSearch] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const suggestions = useMemo(() => fuzzyMatchVendors(orderVendorName, vendors), [orderVendorName, vendors]);
+  const searchResults = useMemo(() => {
+    if (!search.trim()) return [];
+    const q = search.toLowerCase();
+    return vendors.filter(v => v.companyName?.toLowerCase().includes(q)).slice(0, 5);
+  }, [search, vendors]);
+
+  return (
+    <div className="flex flex-col gap-1 mt-0.5">
+      {suggestions.length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-[10px] text-muted-foreground shrink-0">추천:</span>
+          {suggestions.map(v => (
+            <button
+              key={v.id}
+              type="button"
+              disabled={isPending}
+              onClick={(e) => { e.stopPropagation(); onAssign(v.id); }}
+              className={`text-[10px] px-1.5 py-0.5 rounded border disabled:opacity-50 flex flex-col items-start leading-tight ${v.businessNumber ? "bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200" : "bg-gray-50 text-gray-500 hover:bg-gray-100 border-gray-200"}`}
+            >
+              <span>{v.companyName}</span>
+              {v.businessNumber
+                ? <span className="text-[9px] opacity-70">{v.businessNumber}</span>
+                : <span className="text-[9px] opacity-50">사업자번호 미등록</span>
+              }
+            </button>
+          ))}
+        </div>
+      )}
+      {!showSearch ? (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowSearch(true); }}
+          className="text-[10px] text-muted-foreground hover:text-foreground text-left w-fit"
+        >
+          + 직접 검색
+        </button>
+      ) : (
+        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+          <Input
+            autoFocus
+            placeholder="업체명 검색..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-6 text-[11px] w-32 px-1.5"
+          />
+          {searchResults.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {searchResults.map(v => (
+                <button
+                  key={v.id}
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => { onAssign(v.id); setShowSearch(false); setSearch(""); }}
+                  className={`text-[10px] px-1.5 py-0.5 rounded border disabled:opacity-50 flex flex-col items-start leading-tight ${v.businessNumber ? "bg-green-50 text-green-700 hover:bg-green-100 border-green-200" : "bg-gray-50 text-gray-500 hover:bg-gray-100 border-gray-200"}`}
+                >
+                  <span>{v.companyName}</span>
+                  {v.businessNumber
+                    ? <span className="text-[9px] opacity-70">{v.businessNumber}</span>
+                    : <span className="text-[9px] opacity-50">사업자번호 미등록</span>
+                  }
+                </button>
+              ))}
+            </div>
+          )}
+          <button type="button" onClick={() => { setShowSearch(false); setSearch(""); }} className="text-[10px] text-muted-foreground hover:text-foreground">✕</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PurchaseOrderList() {
   const currentYear = new Date().getFullYear();
   const { toast } = useToast();
@@ -94,6 +252,10 @@ export default function PurchaseOrderList() {
 
   const { data: payments } = useQuery<Payment[]>({
     queryKey: ["/api/payments"],
+  });
+
+  const { data: vendors = [] } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
   });
 
   const syncMutation = useMutation({
@@ -156,6 +318,24 @@ export default function PurchaseOrderList() {
     },
     onError: (err: Error) => {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const assignVendorMutation = useMutation({
+    mutationFn: async ({ vendorName, vendorId }: { vendorName: string; vendorId: string }) => {
+      // 같은 이름의 미연결 발주서 전부 찾아서 일괄 처리
+      const targets = (orders || []).filter(o => !o.vendorId && o.vendor === vendorName);
+      await Promise.all(targets.map(o =>
+        apiRequest("PATCH", `/api/purchase-orders/${o.id}/assign-vendor`, { vendorId })
+      ));
+      return targets.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", useAllYears ? "all" : selectedYear] });
+      toast({ title: `업체 연결 완료`, description: count > 1 ? `동일 업체명 ${count}건 일괄 처리` : undefined });
+    },
+    onError: (err: Error) => {
+      toast({ title: "연결 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -373,10 +553,34 @@ export default function PurchaseOrderList() {
                       {order.orderNumber || "-"}
                     </td>
                     <td className="px-4 py-2" data-testid={`text-vendor-${order.id}`}>
-                      <div className="flex items-center gap-1.5">
-                        <span>{order.vendor || "-"}</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 group/vendor">
+                          <span>{order.vendor || "-"}</span>
+                          {!order.vendorId && order.vendor && (
+                            <Badge className="bg-orange-100 text-orange-600 border-0 text-[10px] px-1 py-0 h-4 shrink-0">미연결</Badge>
+                          )}
+                          {order.vendor && (
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); }}
+                              className="opacity-0 group-hover/vendor:opacity-100 text-[10px] text-muted-foreground hover:text-foreground transition-opacity"
+                              title="업체 변경"
+                            >
+                              <VendorReassignPopover
+                                vendors={vendors}
+                                isPending={assignVendorMutation.isPending}
+                                onAssign={(vendorId) => assignVendorMutation.mutate({ vendorName: order.vendor!, vendorId })}
+                              />
+                            </button>
+                          )}
+                        </div>
                         {!order.vendorId && order.vendor && (
-                          <Badge className="bg-orange-100 text-orange-600 border-0 text-[10px] px-1 py-0 h-4 shrink-0">미연결</Badge>
+                          <VendorSmartMatch
+                            orderVendorName={order.vendor}
+                            vendors={vendors}
+                            onAssign={(vendorId) => assignVendorMutation.mutate({ vendorName: order.vendor!, vendorId })}
+                            isPending={assignVendorMutation.isPending}
+                          />
                         )}
                       </div>
                     </td>
@@ -581,7 +785,7 @@ function PurchaseItemSearchPopover({ onSelect, container }: { onSelect: (item: P
           <Plus className="h-3 w-3 mr-1" />구매품 추가
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[560px] p-0" align="start" container={container} style={{ maxHeight: "60vh" }}>
+      <PopoverContent className="w-[560px] p-0" align="start" container={container}>
         <div className="p-2 border-b space-y-1.5">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -1201,8 +1405,8 @@ function CreateOrderDialog({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="modal-create-order">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col" data-testid="modal-create-order">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
             신규 발주 등록
@@ -1210,7 +1414,7 @@ function CreateOrderDialog({
           <DialogDescription className="sr-only">신규 발주 등록 양식</DialogDescription>
         </DialogHeader>
 
-        <div ref={containerRef} className="space-y-4">
+        <div ref={containerRef} className="space-y-4 overflow-y-auto flex-1 pr-1">
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">발주번호</Label>
@@ -1470,7 +1674,7 @@ function CreateOrderDialog({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2 border-t">
+        <div className="flex justify-end gap-2 pt-2 border-t shrink-0">
           <Button variant="outline" size="sm" onClick={onClose} data-testid="button-cancel-create">취소</Button>
           <Button size="sm" onClick={handleSubmit} disabled={!canSubmit || isPending} data-testid="button-submit-create">
             {isPending ? "등록 중..." : "발주 등록"}

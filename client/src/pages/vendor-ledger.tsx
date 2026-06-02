@@ -681,7 +681,7 @@ export default function VendorLedger() {
                       <Badge variant="secondary" className="text-xs">{unlinkedOrders.length}건</Badge>
                       <span className="ml-auto text-xs text-muted-foreground">클릭 → 선택</span>
                     </div>
-                    <div className="flex-1 overflow-y-auto divide-y">
+                    <div className="flex-1 overflow-y-auto divide-y min-h-0">
                       {unlinkedOrders.length === 0 ? (
                         <div className="flex items-center justify-center h-32 text-muted-foreground text-sm flex-col gap-1">
                           <Check className="h-6 w-6 opacity-40" /><span>미매칭 발주서 없음</span>
@@ -709,6 +709,14 @@ export default function VendorLedger() {
                         </div>
                       ))}
                     </div>
+                    {unlinkedOrders.length > 0 && (
+                      <div className="px-4 py-2 border-t bg-muted/20 flex items-center justify-between shrink-0">
+                        <span className="text-xs text-muted-foreground">미매칭 발주 총액</span>
+                        <span className="text-sm font-bold text-orange-600">
+                          {fmt(unlinkedOrders.reduce((s, o) => s + (o.totalAmount || 0), 0))}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* 오른쪽: 미매칭 계산서 */}
@@ -719,7 +727,7 @@ export default function VendorLedger() {
                       <Badge variant="secondary" className="text-xs">{filteredUnlinkedInvoices.length}건</Badge>
                       <span className="ml-auto text-xs text-muted-foreground">클릭 → 선택</span>
                     </div>
-                    <div className="flex-1 overflow-y-auto divide-y">
+                    <div className="flex-1 overflow-y-auto divide-y min-h-0">
                       {filteredUnlinkedInvoices.length === 0 ? (
                         <div className="flex items-center justify-center h-32 text-muted-foreground text-sm flex-col gap-1">
                           <Check className="h-6 w-6 opacity-40" /><span>미매칭 계산서 없음</span>
@@ -747,6 +755,14 @@ export default function VendorLedger() {
                         </div>
                       ))}
                     </div>
+                    {filteredUnlinkedInvoices.length > 0 && (
+                      <div className="px-4 py-2 border-t bg-muted/20 flex items-center justify-between shrink-0">
+                        <span className="text-xs text-muted-foreground">미매칭 계산서 총액</span>
+                        <span className="text-sm font-bold text-blue-600">
+                          {fmt(filteredUnlinkedInvoices.reduce((s, inv) => s + (inv.totalAmount || 0), 0))}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>

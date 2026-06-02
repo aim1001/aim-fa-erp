@@ -32,6 +32,7 @@ type EnrichedProject = Project & {
   pendingPayments: number;
   salesCount: number;
   purchaseCount: number;
+  inquiryNumber: string | null;
 };
 
 import {
@@ -60,6 +61,57 @@ const TIMING_OPTIONS = [
 
 function timingLabel(t: string | null) {
   return TIMING_OPTIONS.find(o => o.value === t)?.label || "-";
+}
+
+function ProjectDescriptionField({ project }: { project: ProjectDetail }) {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(project.description || "");
+
+  useEffect(() => { setValue(project.description || ""); }, [project.description]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/projects/${project.id}`, { description: value });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setEditing(false);
+      toast({ title: "내용 저장 완료" });
+    },
+    onError: (err: Error) => toast({ title: "저장 실패", description: err.message, variant: "destructive" }),
+  });
+
+  if (editing) {
+    return (
+      <div className="flex items-start gap-2">
+        <Input
+          autoFocus
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") saveMutation.mutate(); if (e.key === "Escape") { setEditing(false); setValue(project.description || ""); } }}
+          className="h-8 text-sm flex-1"
+          placeholder="내용 입력..."
+        />
+        <Button size="sm" className="h-8 text-xs" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>저장</Button>
+        <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setEditing(false); setValue(project.description || ""); }}>취소</Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="group flex items-center gap-2 cursor-pointer"
+      onClick={() => setEditing(true)}
+      title="클릭하여 내용 수정"
+    >
+      <span className="text-sm text-muted-foreground flex-1">
+        {project.description || <span className="text-muted-foreground/40 italic">내용 없음 — 클릭하여 입력</span>}
+      </span>
+      <Pencil className="h-3 w-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 shrink-0" />
+    </div>
+  );
 }
 
 function fmtComma(n: number | string): string {
@@ -681,9 +733,7 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
         </AlertDialogContent>
       </AlertDialog>
 
-      {project.description && (
-        <div className="text-sm text-muted-foreground">{project.description}</div>
-      )}
+      <ProjectDescriptionField project={project} />
 
       <div className="grid grid-cols-3 gap-2 text-xs">
         <div className="border rounded p-2">
@@ -833,14 +883,16 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
       )}
 
       {project.inquiryId && (
-        <div className="flex items-center gap-1.5 mt-1">
-          <span className="text-[10px] text-muted-foreground">원본 인콰이어리:</span>
-          <Button variant="link" size="sm" className="h-5 text-[10px] px-0" onClick={() => {
-            window.location.href = `/inquiries?id=${project.inquiryId}`;
-          }} data-testid="link-source-inquiry">
-            인콰이어리 보기
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs gap-1.5 w-fit"
+          onClick={() => { window.location.href = `/inquiries?id=${project.inquiryId}`; }}
+          data-testid="link-source-inquiry"
+        >
+          <Link2 className="h-3 w-3" />
+          영업건 보기 {(project as any).inquiryNumber ? `(${(project as any).inquiryNumber})` : ""}
+        </Button>
       )}
 
       <Tabs defaultValue="conditions" className="mt-2">
@@ -2208,7 +2260,18 @@ export default function ProjectList() {
                     data-testid={`row-project-${p.id}`}
                   >
                     <td className="py-2 px-3">
-                      <span className="text-xs font-mono font-medium" data-testid={`text-project-number-${p.id}`}>{p.projectNumber || "-"}</span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-xs font-mono font-medium" data-testid={`text-project-number-${p.id}`}>{p.projectNumber || "-"}</span>
+                        {p.inquiryNumber && (
+                          <button
+                            type="button"
+                            className="text-[10px] text-blue-500 hover:text-blue-700 hover:underline text-left font-mono"
+                            onClick={e => { e.stopPropagation(); window.location.href = `/inquiries?id=${p.inquiryId}`; }}
+                          >
+                            {p.inquiryNumber}
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-1">

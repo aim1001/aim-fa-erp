@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, XCircle, Package, ExternalLink, Upload, Unlink2, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -41,30 +42,82 @@ function formatAmount(amount: number | null | undefined) {
 
 function PaymentStatusBadge({ inv }: { inv: PurchaseInvoiceWithPayment }) {
   const { paymentStatus, paidAmount, remainingAmount, paymentCount, completedCount, nextPaymentDate } = inv;
+  const [open, setOpen] = useState(false);
 
-  if (paymentStatus === "none") {
-    return <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30" data-testid={`badge-payment-none-${inv.id}`}><CircleMinus className="h-3 w-3 mr-1" />미설정</Badge>;
-  }
-  if (paymentStatus === "completed") {
-    return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-completed-${inv.id}`}><CircleCheck className="h-3 w-3 mr-1" />지급완료</Badge>;
-  }
-  if (paymentStatus === "partial") {
+  const { data: payments = [] } = useQuery<Payment[]>({
+    queryKey: ["/api/payments/by-invoice", "expense", inv.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/payments/by-invoice?type=expense&invoiceId=${inv.id}`);
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  const trigger = (() => {
+    if (paymentStatus === "none") {
+      return <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30 cursor-pointer" data-testid={`badge-payment-none-${inv.id}`}><CircleMinus className="h-3 w-3 mr-1" />미설정</Badge>;
+    }
+    if (paymentStatus === "completed") {
+      return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0 cursor-pointer" data-testid={`badge-payment-completed-${inv.id}`}><CircleCheck className="h-3 w-3 mr-1" />지급완료</Badge>;
+    }
+    if (paymentStatus === "partial") {
+      return (
+        <div className="flex flex-col gap-0.5 cursor-pointer" data-testid={`badge-payment-partial-${inv.id}`}>
+          <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-0">
+            <CircleDot className="h-3 w-3 mr-1" />{completedCount}/{paymentCount}회 지급
+          </Badge>
+          <span className="text-[10px] text-muted-foreground">지급 {paidAmount.toLocaleString()} / 잔액 {remainingAmount.toLocaleString()}</span>
+        </div>
+      );
+    }
     return (
-      <div className="flex flex-col gap-0.5" data-testid={`badge-payment-partial-${inv.id}`}>
-        <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-0">
-          <CircleDot className="h-3 w-3 mr-1" />{completedCount}/{paymentCount}회 지급
+      <div className="flex flex-col gap-0.5 cursor-pointer" data-testid={`badge-payment-planned-${inv.id}`}>
+        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
+          <Clock className="h-3 w-3 mr-1" />지급계획{paymentCount > 1 ? ` (${paymentCount}회)` : ""}
         </Badge>
-        <span className="text-[10px] text-muted-foreground">지급 {paidAmount.toLocaleString()} / 잔액 {remainingAmount.toLocaleString()}</span>
+        {nextPaymentDate && <span className="text-[10px] text-muted-foreground">예정 {nextPaymentDate}</span>}
       </div>
     );
-  }
+  })();
+
   return (
-    <div className="flex flex-col gap-0.5" data-testid={`badge-payment-planned-${inv.id}`}>
-      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
-        <Clock className="h-3 w-3 mr-1" />지급계획{paymentCount > 1 ? ` (${paymentCount}회)` : ""}
-      </Badge>
-      {nextPaymentDate && <span className="text-[10px] text-muted-foreground">예정 {nextPaymentDate}</span>}
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <div>{trigger}</div>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" align="center">
+        <p className="text-xs font-semibold mb-2">송금 내역</p>
+        {payments.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-2">등록된 송금 내역 없음</p>
+        ) : (
+          <div className="space-y-1.5">
+            {payments.map((p, i) => (
+              <div key={p.id} className="flex items-center justify-between text-xs gap-2 border-b last:border-b-0 pb-1.5 last:pb-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {p.status === "completed"
+                    ? <CircleCheck className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                    : <Clock className="h-3.5 w-3.5 text-blue-500 shrink-0" />}
+                  <span className="text-muted-foreground shrink-0">{p.actualDate || p.plannedDate || "-"}</span>
+                </div>
+                <div className="text-right shrink-0">
+                  {p.status === "completed" ? (
+                    <span className="font-medium text-green-700 dark:text-green-400">{(p.actualAmount || p.amount || 0).toLocaleString()}원</span>
+                  ) : (
+                    <span className="text-blue-600">예정 {(p.amount || 0).toLocaleString()}원</span>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div className="pt-1 flex justify-between text-xs font-semibold border-t mt-1">
+              <span>잔액</span>
+              <span className={remainingAmount > 0 ? "text-red-600" : "text-muted-foreground"}>
+                {remainingAmount.toLocaleString()}원
+              </span>
+            </div>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -601,12 +654,28 @@ export default function PurchaseInvoiceList() {
   const { data: projects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
   });
+  const { data: allOrders = [] } = useQuery<PurchaseOrder[]>({
+    queryKey: ["/api/purchase-orders"],
+  });
 
   const vendorMap = useMemo(() => {
     const map = new Map<string, string>();
     vendorList?.forEach(v => map.set(v.id, v.companyName));
     return map;
   }, [vendorList]);
+
+  // 계산서 ID → 연결된 발주서 목록
+  const linkedOrdersMap = useMemo(() => {
+    const map = new Map<string, PurchaseOrder[]>();
+    allOrders.forEach(o => {
+      if (o.purchaseInvoiceId) {
+        const list = map.get(o.purchaseInvoiceId) || [];
+        list.push(o);
+        map.set(o.purchaseInvoiceId, list);
+      }
+    });
+    return map;
+  }, [allOrders]);
 
   const projectMap = useMemo(() => {
     const map = new Map<string, Project>();
@@ -993,8 +1062,7 @@ export default function PurchaseInvoiceList() {
               <tr className="border-b bg-muted/50">
                 <th className="text-left py-2.5 px-4 font-medium">작성일</th>
                 <th className="text-left py-2.5 px-4 font-medium">상호</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">프로젝트</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자번호</th>
+                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">발주서</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">공급가액</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden md:table-cell">세액</th>
                 <th className="text-right py-2.5 px-4 font-medium">합계</th>
@@ -1008,107 +1076,29 @@ export default function PurchaseInvoiceList() {
                 const isInlineEditing = inlineEditId === inv.id;
                 return (
                 <tr key={inv.id} className="border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => { if (!isInlineEditing) setSelectedId(inv.id); }} data-testid={`row-purchase-invoice-${inv.id}`}>
-                  <td className="py-2.5 px-4">{inv.writeDate || inv.issueDate || "-"}</td>
+                  <td className="py-2.5 px-4 text-xs">{inv.writeDate || inv.issueDate || "-"}</td>
                   <td className="py-2.5 px-4">{inv.companyName || (inv.vendorId ? vendorMap.get(inv.vendorId) : "-") || "-"}</td>
                   <td className="py-2.5 px-4 hidden lg:table-cell">
-                    {isInlineEditing ? (
-                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()} data-testid={`inline-link-form-${inv.id}`}>
-                        <Select
-                          value={inlineProjectId}
-                          onValueChange={val => {
-                            setInlineProjectId(val);
-                            inlineLinkMutation.mutate({ id: inv.id, projectId: val || null });
-                          }}
-                          disabled={inlineLinkMutation.isPending}
-                        >
-                          <SelectTrigger className="h-7 text-xs w-full" data-testid={`select-inline-project-${inv.id}`}>
-                            <SelectValue placeholder="프로젝트 선택" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(projects || []).map(p => (
-                              <SelectItem key={p.id} value={p.id}>{p.projectNumber} {p.customerName}{p.description ? ` - ${p.description}` : ""}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 w-6 p-0 shrink-0"
-                          onClick={() => { setInlineEditId(null); setInlineProjectId(""); }}
-                          data-testid={`button-inline-cancel-${inv.id}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : inv.projectId ? (() => {
-                      const proj = projectMap.get(inv.projectId);
+                    {(() => {
+                      const linked = linkedOrdersMap.get(inv.id) || [];
+                      if (linked.length === 0) return <span className="text-[11px] text-muted-foreground/50">-</span>;
                       return (
-                        <div className="group flex items-center gap-1" data-testid={`text-project-${inv.id}`}>
-                          <span className="text-xs text-muted-foreground truncate max-w-[140px]">
-                            {proj ? `${proj.projectNumber} ${proj.customerName}` : inv.projectId}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-muted-foreground hover:text-destructive"
-                            onClick={e => {
-                              e.stopPropagation();
-                              inlineUnlinkMutation.mutate(inv.id);
-                            }}
-                            disabled={inlineUnlinkMutation.isPending}
-                            title="프로젝트 연결 해제"
-                            data-testid={`button-unlink-project-${inv.id}`}
-                          >
-                            <Unlink2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      );
-                    })() : (() => {
-                      const suggestedProjectId = inv.vendorId ? vendorSuggestedProjectMap.get(inv.vendorId) : undefined;
-                      const suggestedProject = suggestedProjectId ? projectMap.get(suggestedProjectId) : undefined;
-                      return (
-                        <div className="flex flex-col gap-0.5" data-testid={`text-project-unlinked-${inv.id}`}>
-                          <div className="flex items-center gap-1">
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-orange-600 dark:text-orange-400 border-orange-300 dark:border-orange-600 bg-orange-50 dark:bg-orange-950/30">
-                              미연결
+                        <div className="flex flex-wrap gap-1">
+                          {linked.map(o => (
+                            <Badge key={o.id} variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
+                              {o.orderNumber}
                             </Badge>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-5 text-[10px] text-muted-foreground hover:text-foreground px-1"
-                              onClick={e => {
-                                e.stopPropagation();
-                                setInlineEditId(inv.id);
-                                setInlineProjectId(inv.projectId || "");
-                              }}
-                              data-testid={`button-link-project-${inv.id}`}
-                            >
-                              <Link2 className="h-3 w-3 mr-0.5" />연결
-                            </Button>
-                          </div>
-                          {suggestedProject && (
-                            <button
-                              className="text-[10px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline truncate max-w-[160px] text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={`클릭하여 연결: ${suggestedProject.projectNumber} ${suggestedProject.customerName}`}
-                              data-testid={`text-suggested-project-${inv.id}`}
-                              disabled={inlineLinkMutation.isPending}
-                              onClick={e => {
-                                e.stopPropagation();
-                                inlineLinkMutation.mutate({ id: inv.id, projectId: suggestedProjectId! });
-                              }}
-                            >
-                              추천: {suggestedProject.projectNumber} {suggestedProject.customerName}
-                            </button>
-                          )}
+                          ))}
                         </div>
                       );
                     })()}
                   </td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{inv.businessNumber || "-"}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.supplyAmount)}</td>
                   <td className="py-2.5 px-4 text-right hidden md:table-cell">{formatAmount(inv.taxAmount)}</td>
                   <td className="py-2.5 px-4 text-right font-medium">{formatAmount(inv.totalAmount)}</td>
-                  <td className="py-2.5 px-4 text-center"><PaymentStatusBadge inv={inv} /></td>
+                  <td className="py-2.5 px-4 text-center" onClick={e => e.stopPropagation()}>
+                    <PaymentStatusBadge inv={inv} />
+                  </td>
                   <td className="py-2.5 px-4 text-right hidden lg:table-cell">
                     {inv.paymentCount > 0 ? <span className="text-green-600 dark:text-green-400">{inv.paidAmount.toLocaleString()}원</span> : <span className="text-muted-foreground">-</span>}
                   </td>
