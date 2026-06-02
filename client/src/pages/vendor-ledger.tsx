@@ -770,7 +770,7 @@ export default function VendorLedger() {
           ) : (
             <div className="flex-1 overflow-y-auto min-h-0">
               {/* 컬럼 헤더: 발주서 | 계산서 | 송금내역 */}
-              <div className="grid grid-cols-[2fr_2fr_3fr] text-xs font-medium text-muted-foreground border-b px-3 py-1.5 bg-muted/30 sticky top-0 z-10">
+              <div className="grid grid-cols-3 text-xs font-medium text-muted-foreground border-b px-3 py-1.5 bg-muted/30 sticky top-0 z-10">
                 <div className="flex items-center gap-1"><Package className="h-3 w-3" />발주서</div>
                 <div className="flex items-center gap-1"><FileText className="h-3 w-3" />계산서</div>
                 <div className="flex items-center gap-1"><Clock className="h-3 w-3" />송금내역</div>
@@ -827,7 +827,7 @@ export default function VendorLedger() {
                         if (row.kind !== "matched") return null;
                         const { order: o, invoice: inv } = row;
                         return (
-                          <div key={`${o.id}-${inv.id}`} className="grid grid-cols-[2fr_2fr_3fr] divide-x hover:bg-muted/20">
+                          <div key={`${o.id}-${inv.id}`} className="grid grid-cols-3 divide-x hover:bg-muted/20">
                             {/* 발주서 */}
                             <div className="px-3 py-2 space-y-0.5">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -882,7 +882,7 @@ export default function VendorLedger() {
                               if (row.kind !== "ord-only") return null;
                               const o = row.order;
                               return (
-                                <div key={o.id} className="grid grid-cols-[2fr_2fr_3fr] divide-x hover:bg-muted/20 bg-blue-50/20 dark:bg-blue-950/10">
+                                <div key={o.id} className="grid grid-cols-3 divide-x hover:bg-muted/20 bg-blue-50/20 dark:bg-blue-950/10">
                                   <div className="px-3 py-2 space-y-0.5">
                                     <div className="flex items-center gap-1.5">
                                       <span className="text-xs font-mono text-muted-foreground">{o.orderNumber}</span>
@@ -912,7 +912,7 @@ export default function VendorLedger() {
                               if (row.kind !== "inv-only") return null;
                               const inv = row.invoice;
                               return (
-                                <div key={inv.id} className="grid grid-cols-[2fr_2fr_3fr] divide-x hover:bg-muted/20 bg-orange-50/20 dark:bg-orange-950/10">
+                                <div key={inv.id} className="grid grid-cols-3 divide-x hover:bg-muted/20 bg-orange-50/20 dark:bg-orange-950/10">
                                   <div className="px-3 py-2 space-y-1">
                                     {linkingForInvoiceId === inv.id ? (
                                       <div className="space-y-1">
