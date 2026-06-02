@@ -1544,7 +1544,13 @@ export async function registerRoutes(
         const siblingInquiries = await storage.getUnlinkedInquiriesByCustomerName(inquiry.customerName);
         for (const inq of siblingInquiries) {
           if (inq.id !== inquiry.id) {
-            await storage.updateInquiry(inq.id, { ...snapshotUpdate, customerName: customer.companyName });
+            // 고객사(customerId)만 연결, 담당자(contact)는 각 영업건이 독립적으로 유지
+            await storage.updateInquiry(inq.id, {
+              customerId: customer.id,
+              snapshotCompanyName: customer.companyName,
+              snapshotAddress: customer.address || null,
+              customerName: customer.companyName,
+            });
             linkedSiblings++;
           }
         }
@@ -3122,13 +3128,12 @@ export async function registerRoutes(
         const siblingInquiries = await storage.getUnlinkedInquiriesByCustomerName(inquiry.customerName);
         for (const inq of siblingInquiries) {
           if (inq.id !== inquiry.id) {
+            // 고객사(customerId)만 연결, 담당자(contact)는 각 영업건이 독립적으로 유지
             await storage.updateInquiry(inq.id, {
               customerId: customer.id,
               snapshotCompanyName: company.companyName,
               snapshotAddress: company.address || null,
-              snapshotContactName: company.contactName || null,
-              snapshotEmail: company.email || null,
-              snapshotPhone: company.phone || null,
+              customerName: company.companyName,
             });
             linkedSiblings++;
           }
