@@ -710,17 +710,16 @@ export default function PurchaseInvoiceList() {
     return Array.from(years).sort((a, b) => b - a);
   }, [invoices]);
 
-  const filtered = useMemo(() => {
+  // 기간 필터만 적용한 리스트 (결제상태/미연결 필터 미적용) → 건수 집계용
+  const periodFiltered = useMemo(() => {
     if (!invoices) return [];
     let list = invoices;
-
     if (dateFrom || dateTo) {
       if (dateFrom) list = list.filter(inv => (inv.writeDate || inv.issueDate) && (inv.writeDate || inv.issueDate)! >= dateFrom);
       if (dateTo) list = list.filter(inv => (inv.writeDate || inv.issueDate) && (inv.writeDate || inv.issueDate)! <= dateTo);
     } else if (filterYear !== "all") {
       const y = filterYear;
       list = list.filter(inv => (inv.writeDate || inv.issueDate)?.startsWith(y));
-
       if (periodType === "monthly" && periodValue !== "all") {
         const m = periodValue.padStart(2, "0");
         list = list.filter(inv => (inv.writeDate || inv.issueDate)?.substring(5, 7) === m);
@@ -734,6 +733,21 @@ export default function PurchaseInvoiceList() {
         });
       }
     }
+    return list;
+  }, [invoices, filterYear, periodType, periodValue, dateFrom, dateTo]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0, none: 0, planned: 0, partial: 0, completed: 0, unlinked: 0 };
+    for (const inv of periodFiltered) {
+      counts.all++;
+      counts[inv.paymentStatus] = (counts[inv.paymentStatus] || 0) + 1;
+      if (!inv.vendorId) counts.unlinked++;
+    }
+    return counts;
+  }, [periodFiltered]);
+
+  const filtered = useMemo(() => {
+    let list = periodFiltered;
 
     if (paymentFilter !== "all") {
       list = list.filter(inv => inv.paymentStatus === paymentFilter);
@@ -755,7 +769,7 @@ export default function PurchaseInvoiceList() {
     }
 
     return list;
-  }, [invoices, search, vendorMap, filterYear, periodType, periodValue, paymentFilter, showUnlinked, dateFrom, dateTo]);
+  }, [periodFiltered, search, vendorMap, paymentFilter, showUnlinked]);
 
   const totals = useMemo(() => {
     let supply = 0, tax = 0, total = 0;
@@ -1024,33 +1038,39 @@ export default function PurchaseInvoiceList() {
       <div className="flex items-center gap-1.5 flex-wrap" data-testid="payment-filter-tabs">
         <Wallet className="h-4 w-4 text-muted-foreground mr-1" />
         {[
-          { value: "all", label: "전체" },
-          { value: "none", label: "미설정" },
-          { value: "planned", label: "지급계획" },
-          { value: "partial", label: "일부지급" },
-          { value: "completed", label: "지급완료" },
+          { value: "all", label: "전체", count: statusCounts.all },
+          { value: "none", label: "미설정", count: statusCounts.none },
+          { value: "planned", label: "지급계획", count: statusCounts.planned },
+          { value: "partial", label: "일부지급", count: statusCounts.partial },
+          { value: "completed", label: "지급완료", count: statusCounts.completed },
         ].map(opt => (
           <Button
             key={opt.value}
             variant={paymentFilter === opt.value ? "default" : "outline"}
             size="sm"
-            className="text-xs"
+            className="text-xs gap-1.5"
             onClick={() => setPaymentFilter(opt.value)}
             data-testid={`filter-payment-${opt.value}`}
           >
             {opt.label}
+            <span className={`text-[10px] px-1 py-0.5 rounded-full ${paymentFilter === opt.value ? "bg-white/20" : "bg-muted text-muted-foreground"}`}>
+              {opt.count}
+            </span>
           </Button>
         ))}
         <div className="w-px h-5 bg-border mx-0.5" />
         <Button
           variant={showUnlinked ? "default" : "outline"}
           size="sm"
-          className="text-xs"
+          className="text-xs gap-1.5"
           onClick={() => setShowUnlinked(v => !v)}
           data-testid="filter-unlinked-purchase"
           title="공급업체 DB에 연결되지 않은 계산서"
         >
           업체미연결
+          <span className={`text-[10px] px-1 py-0.5 rounded-full ${showUnlinked ? "bg-white/20" : "bg-muted text-muted-foreground"}`}>
+            {statusCounts.unlinked}
+          </span>
         </Button>
       </div>
 
