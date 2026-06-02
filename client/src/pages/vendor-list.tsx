@@ -345,7 +345,7 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
   );
 }
 
-type VendorWithStats = Vendor & { lastTransactionDate: string | null; invoiceCount: number; orderCount: number; isRecurring: boolean; };
+type VendorWithStats = Vendor & { lastTransactionDate: string | null; invoiceCount: number; orderCount: number; isRecurring: boolean; plannedAmount: number; overdueAmount: number; };
 
 export default function VendorList() {
   const { toast } = useToast();
@@ -356,6 +356,8 @@ export default function VendorList() {
   const [sortBy, setSortBy] = useState<"name" | "recent" | "count">("recent");
   const [filterBy, setFilterBy] = useState<"all" | "favorite" | "recurring">("all");
   const [hideInactivePeriod, setHideInactivePeriod] = useState<number | null>(null); // months
+  const [colVisible, setColVisible] = useState({ bizNum: true, rep: false, contact: true });
+  const toggleCol = (key: keyof typeof colVisible) => setColVisible(prev => ({ ...prev, [key]: !prev[key] }));
 
   const { data: vendorList, isLoading } = useQuery<VendorWithStats[]>({
     queryKey: ["/api/vendors-with-stats"],
@@ -528,13 +530,33 @@ export default function VendorList() {
               <tr className="border-b bg-muted/50">
                 <th className="w-10 py-2.5 px-2"></th>
                 <th className="text-left py-2.5 px-4 font-medium">업체명</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자등록번호</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
-                <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">담당자</th>
+                <th
+                  className="text-left py-2.5 px-4 font-medium hidden md:table-cell cursor-pointer select-none"
+                  onClick={() => toggleCol("bizNum")}
+                  title="클릭하여 숨기기/보이기"
+                >
+                  <span className={colVisible.bizNum ? "" : "line-through text-muted-foreground"}>사업자등록번호</span>
+                </th>
+                <th
+                  className="text-left py-2.5 px-4 font-medium hidden md:table-cell cursor-pointer select-none"
+                  onClick={() => toggleCol("rep")}
+                  title="클릭하여 숨기기/보이기"
+                >
+                  <span className={colVisible.rep ? "" : "line-through text-muted-foreground"}>대표자</span>
+                </th>
+                <th
+                  className="text-left py-2.5 px-4 font-medium hidden lg:table-cell cursor-pointer select-none"
+                  onClick={() => toggleCol("contact")}
+                  title="클릭하여 숨기기/보이기"
+                >
+                  <span className={colVisible.contact ? "" : "line-through text-muted-foreground"}>담당자</span>
+                </th>
                 <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">거래은행</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">계좌번호</th>
                 <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">계산서</th>
                 <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">정기결제</th>
+                <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell">결제예정</th>
+                <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell">지연</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
               </tr>
             </thead>
@@ -561,9 +583,15 @@ export default function VendorList() {
                       <span className="font-medium">{vendor.companyName}</span>
                     </div>
                   </td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{vendor.businessNumber || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{vendor.representative || "-"}</td>
-                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{vendor.contactName || "-"}</td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">
+                    {colVisible.bizNum ? (vendor.businessNumber || "-") : <span className="text-muted-foreground/30">•••</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">
+                    {colVisible.rep ? (vendor.representative || "-") : <span className="text-muted-foreground/30">•••</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">
+                    {colVisible.contact ? (vendor.contactName || "-") : <span className="text-muted-foreground/30">•••</span>}
+                  </td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden xl:table-cell">{vendor.bankName || "-"}</td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden xl:table-cell">{vendor.bankAccount || "-"}</td>
                   <td className="py-2.5 px-4 text-center hidden lg:table-cell">
@@ -571,6 +599,16 @@ export default function VendorList() {
                   </td>
                   <td className="py-2.5 px-4 text-center hidden lg:table-cell">
                     {vendor.isRecurring ? <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-full">정기</span> : <span className="text-muted-foreground">-</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-right hidden lg:table-cell">
+                    {vendor.plannedAmount > 0
+                      ? <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">{vendor.plannedAmount.toLocaleString("ko-KR")}원</span>
+                      : <span className="text-muted-foreground">-</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-right hidden lg:table-cell">
+                    {vendor.overdueAmount > 0
+                      ? <span className="text-xs text-red-600 dark:text-red-400 font-medium">{vendor.overdueAmount.toLocaleString("ko-KR")}원</span>
+                      : <span className="text-muted-foreground">-</span>}
                   </td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell text-xs">{vendor.lastTransactionDate || "-"}</td>
                 </tr>

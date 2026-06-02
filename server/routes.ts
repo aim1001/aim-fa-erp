@@ -3227,16 +3227,36 @@ export async function registerRoutes(
       const lastTxDates = await storage.getVendorLastTransactionDates();
       const allInvoices = await storage.getPurchaseInvoices();
       const allOrders = await storage.getPurchaseOrders();
+      const allPayments = await storage.getPayments();
       const recurringExpenses = await storage.getRecurringExpenses();
       const recurringVendorNames = new Set(recurringExpenses.filter(e => e.isActive !== "false").map(e => e.companyName?.trim().toLowerCase()).filter(Boolean));
 
       const invoiceCountMap = new Map<string, number>();
+      const invoiceVendorMap = new Map<string, string>(); // invoiceId -> vendorId
       for (const inv of allInvoices) {
-        if (inv.vendorId) invoiceCountMap.set(inv.vendorId, (invoiceCountMap.get(inv.vendorId) || 0) + 1);
+        if (inv.vendorId) {
+          invoiceCountMap.set(inv.vendorId, (invoiceCountMap.get(inv.vendorId) || 0) + 1);
+          invoiceVendorMap.set(inv.id, inv.vendorId);
+        }
       }
       const orderCountMap = new Map<string, number>();
       for (const ord of allOrders) {
         if (ord.vendorId) orderCountMap.set(ord.vendorId, (orderCountMap.get(ord.vendorId) || 0) + 1);
+      }
+
+      // 공급업체별 결제예정 / 지연 금액 집계
+      const today = new Date().toISOString().split("T")[0];
+      const plannedAmountMap = new Map<string, number>();
+      const overdueAmountMap = new Map<string, number>();
+      for (const p of allPayments) {
+        if (p.status !== "planned" || !p.purchaseInvoiceId) continue;
+        const vendorId = invoiceVendorMap.get(p.purchaseInvoiceId);
+        if (!vendorId) continue;
+        const amount = p.amount || 0;
+        plannedAmountMap.set(vendorId, (plannedAmountMap.get(vendorId) || 0) + amount);
+        if (p.plannedDate && p.plannedDate < today) {
+          overdueAmountMap.set(vendorId, (overdueAmountMap.get(vendorId) || 0) + amount);
+        }
       }
 
       const result = list.map(v => ({
@@ -3245,6 +3265,8 @@ export async function registerRoutes(
         invoiceCount: invoiceCountMap.get(v.id) || 0,
         orderCount: orderCountMap.get(v.id) || 0,
         isRecurring: recurringVendorNames.has(v.companyName?.trim().toLowerCase() || ""),
+        plannedAmount: plannedAmountMap.get(v.id) || 0,
+        overdueAmount: overdueAmountMap.get(v.id) || 0,
       }));
       res.json(result);
     } catch (err: any) {
