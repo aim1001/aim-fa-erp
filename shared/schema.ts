@@ -418,6 +418,8 @@ export const purchaseOrders = pgTable("purchase_orders", {
   supplyAmount: integer("supply_amount"),
   taxAmount: integer("tax_amount"),
   totalAmount: integer("total_amount"),
+  orderDate: text("order_date"),
+  leadDays: integer("lead_days"),
   expectedDeliveryDate: text("expected_delivery_date"),
   actualDeliveryDate: text("actual_delivery_date"),
   status: text("status").default("일반"),

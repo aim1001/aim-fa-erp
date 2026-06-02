@@ -629,7 +629,7 @@ export default function VendorLedger() {
 
   // 발주서 편집 모달
   const [editOrder, setEditOrder] = useState<PurchaseOrder | null>(null);
-  const [editForm, setEditForm] = useState({ description: "", supplyAmount: "", taxAmount: "", totalAmount: "", expectedDeliveryDate: "" });
+  const [editForm, setEditForm] = useState({ description: "", supplyAmount: "", taxAmount: "", totalAmount: "", orderDate: "", leadDays: "", expectedDeliveryDate: "" });
 
   const openEditOrder = (o: PurchaseOrder, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -639,8 +639,30 @@ export default function VendorLedger() {
       supplyAmount: o.supplyAmount != null ? String(o.supplyAmount) : "",
       taxAmount: o.taxAmount != null ? String(o.taxAmount) : "",
       totalAmount: o.totalAmount != null ? String(o.totalAmount) : "",
+      orderDate: (o as any).orderDate || "",
+      leadDays: (o as any).leadDays != null ? String((o as any).leadDays) : "",
       expectedDeliveryDate: o.expectedDeliveryDate || "",
     });
+  };
+
+  // 작성일 + 납기일수 → 입고예정일 자동계산
+  const calcExpectedDate = (orderDate: string, leadDays: string) => {
+    if (!orderDate || !leadDays) return "";
+    const days = parseInt(leadDays);
+    if (isNaN(days)) return "";
+    const d = new Date(orderDate);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split("T")[0];
+  };
+
+  const handleOrderDateChange = (val: string) => {
+    const expected = calcExpectedDate(val, editForm.leadDays);
+    setEditForm(f => ({ ...f, orderDate: val, expectedDeliveryDate: expected || f.expectedDeliveryDate }));
+  };
+
+  const handleLeadDaysChange = (val: string) => {
+    const expected = calcExpectedDate(editForm.orderDate, val);
+    setEditForm(f => ({ ...f, leadDays: val, expectedDeliveryDate: expected || f.expectedDeliveryDate }));
   };
 
   const editOrderMutation = useMutation({
@@ -663,6 +685,8 @@ export default function VendorLedger() {
       supplyAmount: editForm.supplyAmount ? parseInt(editForm.supplyAmount.replace(/,/g, "")) : null,
       taxAmount: editForm.taxAmount ? parseInt(editForm.taxAmount.replace(/,/g, "")) : null,
       totalAmount: editForm.totalAmount ? parseInt(editForm.totalAmount.replace(/,/g, "")) : null,
+      orderDate: editForm.orderDate || null,
+      leadDays: editForm.leadDays ? parseInt(editForm.leadDays) : null,
       expectedDeliveryDate: editForm.expectedDeliveryDate || null,
     });
   };
@@ -849,6 +873,8 @@ export default function VendorLedger() {
                                   </div>
                                   <div className="text-xs font-medium truncate">{o.description || "품목 미입력"}</div>
                                   <div className="text-sm font-semibold">{fmt(o.totalAmount)}</div>
+                                  {(o as any).orderDate && <div className="text-[10px] text-muted-foreground">작성: {(o as any).orderDate}</div>}
+                                  {o.expectedDeliveryDate && <div className="text-[10px] text-muted-foreground">납기: {o.expectedDeliveryDate}</div>}
                                   <div className="flex items-center gap-0.5">
                                     <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-foreground"
                                       onClick={e => openEditOrder(o, e)} title="발주서 편집"><Pencil className="h-3 w-3" /></Button>
@@ -908,6 +934,7 @@ export default function VendorLedger() {
                                     </div>
                                     <div className="text-xs font-medium truncate">{o.description || "품목 미입력"}</div>
                                     <div className="text-sm font-semibold">{fmt(o.totalAmount)}</div>
+                                    {(o as any).orderDate && <div className="text-[10px] text-muted-foreground">작성: {(o as any).orderDate}</div>}
                                     {o.expectedDeliveryDate && <div className="text-[10px] text-muted-foreground">납기: {o.expectedDeliveryDate}</div>}
                                     <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground"
                                       onClick={e => openEditOrder(o, e)}><Pencil className="h-3 w-3" /></Button>
@@ -1049,14 +1076,36 @@ export default function VendorLedger() {
                 />
               </div>
             </div>
-            <div>
-              <Label className="text-xs">납기일</Label>
-              <Input
-                type="date"
-                className="mt-1 h-8 text-sm"
-                value={editForm.expectedDeliveryDate}
-                onChange={e => setEditForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))}
-              />
+            <div className="border-t pt-3 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">작성일</Label>
+                  <Input
+                    type="date"
+                    className="mt-1 h-8 text-sm"
+                    value={editForm.orderDate}
+                    onChange={e => handleOrderDateChange(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">납기 (일수)</Label>
+                  <Input
+                    className="mt-1 h-8 text-sm"
+                    value={editForm.leadDays}
+                    onChange={e => handleLeadDaysChange(e.target.value)}
+                    placeholder="예: 30"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">입고예정일 {editForm.orderDate && editForm.leadDays ? <span className="text-blue-500">(자동계산)</span> : "(직접입력)"}</Label>
+                <Input
+                  type="date"
+                  className="mt-1 h-8 text-sm"
+                  value={editForm.expectedDeliveryDate}
+                  onChange={e => setEditForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
