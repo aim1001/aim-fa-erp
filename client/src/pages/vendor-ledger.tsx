@@ -202,6 +202,9 @@ function SmartMatchPanel({
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
   const [linked, setLinked] = useState<Set<number>>(new Set());
   const [linking, setLinking] = useState<number | null>(null);
+  const [manualOrderIds, setManualOrderIds] = useState<Set<string>>(new Set());
+  const [manualInvIds, setManualInvIds] = useState<Set<string>>(new Set());
+  const [manualLinking, setManualLinking] = useState(false);
 
   const matches = useMemo(() => analyzeMatches(orders, invoices), [orders, invoices]);
 
@@ -249,16 +252,7 @@ function SmartMatchPanel({
     }
   };
 
-  if (matches.length === 0) {
-    return (
-      <div className="p-6 flex flex-col items-center gap-2 text-muted-foreground">
-        <AlertCircle className="h-8 w-8 opacity-30" />
-        <p className="text-sm">자동으로 매칭 가능한 조합이 없습니다.</p>
-        <p className="text-xs">금액 기준으로 일치하는 항목이 없습니다. 수동으로 연결해주세요.</p>
-        <Button size="sm" variant="outline" onClick={onDone} className="mt-2">돌아가기</Button>
-      </div>
-    );
-  }
+  // matches.length === 0이어도 Stage 4(수동 조합)는 항상 표시
 
   const renderMatchCard = (match: SmartMatch, idx: number) => {
     const isLinked = linked.has(idx);
@@ -420,28 +414,164 @@ function SmartMatchPanel({
         </section>
       )}
 
-      {/* Stage 4: 미해결 */}
-      {(unresOrders.length > 0 || unresInvs.length > 0) && (
-        <section>
-          <div className="flex items-center gap-2 mb-2">
-            <Badge className="bg-red-100 text-red-700 border-0 text-xs">Stage 4</Badge>
-            <span className="text-sm font-semibold">미해결 — 수동 처리 필요</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              {unresOrders.length > 0 && <p className="text-xs text-muted-foreground mb-1">발주서 ({unresOrders.length}건)</p>}
-              {unresOrders.map(o => <OrderChip key={o.id} order={o} muted />)}
+      {/* Stage 4: 미해결 — 수동 조합 매칭 */}
+      {(unresOrders.length > 0 || unresInvs.length > 0) && (() => {
+        const selOrderTotal = unresOrders.filter(o => manualOrderIds.has(o.id)).reduce((s, o) => s + (o.totalAmount || 0), 0);
+        const selInvTotal = unresInvs.filter(i => manualInvIds.has(i.id)).reduce((s, i) => s + (i.totalAmount || 0), 0);
+        const selOrderCount = manualOrderIds.size;
+        const selInvCount = manualInvIds.size;
+        const totalDiff = selOrderTotal - selInvTotal;
+        const canLink = selOrderCount > 0 && selInvCount > 0;
+
+        const toggleOrder = (id: string) => setManualOrderIds(prev => {
+          const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+        });
+        const toggleInv = (id: string) => setManualInvIds(prev => {
+          const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+        });
+
+        // 계산서를 날짜 기준으로 정렬: 발주 납기일 이후인 것 우선
+        const refDate = unresOrders.length === 1
+          ? (unresOrders[0].expectedDeliveryDate || (unresOrders[0] as any).orderDate || null)
+          : null;
+        const sortedInvs = [...unresInvs].sort((a, b) => {
+          if (!refDate) return 0;
+          const da = a.issueDate || a.writeDate;
+          const db = b.issueDate || b.writeDate;
+          if (!da && !db) return 0;
+          if (!da) return 1;
+          if (!db) return -1;
+          const diffA = new Date(da).getTime() - new Date(refDate).getTime();
+          const diffB = new Date(db).getTime() - new Date(refDate).getTime();
+          const aAfter = diffA >= 0, bAfter = diffB >= 0;
+          if (aAfter && !bAfter) return -1;
+          if (!aAfter && bAfter) return 1;
+          return Math.abs(diffA) - Math.abs(diffB);
+        });
+
+        return (
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Badge className="bg-red-100 text-red-700 border-0 text-xs">Stage 4</Badge>
+              <span className="text-sm font-semibold">미해결 — 직접 조합</span>
+              <span className="text-xs text-muted-foreground">발주서·계산서를 체크해서 묶어 연결하세요</span>
             </div>
-            <div className="space-y-1">
-              {unresInvs.length > 0 && <p className="text-xs text-muted-foreground mb-1">계산서 ({unresInvs.length}건)</p>}
-              {unresInvs.map(i => <InvoiceChip key={i.id} inv={i} muted />)}
+
+            {/* 합계 비교 바 */}
+            {canLink && (
+              <div className={`mb-3 flex items-center gap-3 rounded-lg px-3 py-2 text-sm border ${
+                totalDiff === 0 ? "bg-green-50 border-green-200 dark:bg-green-950/20" : "bg-orange-50 border-orange-200 dark:bg-orange-950/20"
+              }`}>
+                <span className="text-muted-foreground text-xs">발주 합계</span>
+                <span className="font-semibold">{fmt(selOrderTotal)}</span>
+                <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground text-xs">계산서 합계</span>
+                <span className="font-semibold">{fmt(selInvTotal)}</span>
+                {totalDiff === 0
+                  ? <span className="ml-auto text-xs text-green-600 font-medium">금액 일치 ✓</span>
+                  : <span className="ml-auto text-xs text-orange-600">{totalDiff > 0 ? "+" : ""}{totalDiff.toLocaleString()}원 차이</span>
+                }
+                <Button
+                  size="sm" className="h-7 text-xs ml-2"
+                  disabled={manualLinking}
+                  onClick={async () => {
+                    setManualLinking(true);
+                    try {
+                      for (const ordId of Array.from(manualOrderIds)) {
+                        for (const invId of Array.from(manualInvIds)) {
+                          await apiRequest("POST", `/api/purchase-orders/${ordId}/link-invoice/${invId}`);
+                        }
+                      }
+                      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+                      toast({ title: "연결 완료", description: `발주서 ${selOrderCount}건 · 계산서 ${selInvCount}건 연결됨` });
+                      setManualOrderIds(new Set());
+                      setManualInvIds(new Set());
+                      onDone();
+                    } catch (e: any) {
+                      toast({ title: "연결 실패", description: e.message, variant: "destructive" });
+                    }
+                    setManualLinking(false);
+                  }}
+                >
+                  <Link2 className="h-3 w-3 mr-1" />
+                  {manualLinking ? "연결 중..." : `연결 (${selOrderCount}+${selInvCount})`}
+                </Button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* 발주서 */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">발주서 ({unresOrders.length}건)</p>
+                {unresOrders.map(o => {
+                  const checked = manualOrderIds.has(o.id);
+                  return (
+                    <button key={o.id}
+                      className={`w-full text-left rounded px-2 py-1.5 text-xs border transition-all ${
+                        checked ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-transparent bg-muted/40 hover:bg-muted/70"
+                      }`}
+                      onClick={() => toggleOrder(o.id)}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${checked ? "bg-primary border-primary" : "border-muted-foreground/40"}`}>
+                          {checked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                        </div>
+                        <span className="font-mono text-muted-foreground">{o.orderNumber}</span>
+                        <span className="font-semibold ml-auto">{fmt(o.totalAmount)}</span>
+                      </div>
+                      <div className="truncate text-muted-foreground mt-0.5 pl-5">{o.description || "품목 미입력"}</div>
+                      <div className="text-muted-foreground/70 mt-0.5 pl-5 flex gap-2">
+                        {(o as any).orderDate && <span>발주: {(o as any).orderDate}</span>}
+                        {o.expectedDeliveryDate && <span>납기: {o.expectedDeliveryDate}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 계산서 — 날짜순 정렬 */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">
+                  계산서 ({unresInvs.length}건)
+                  {refDate && <span className="ml-1 text-muted-foreground/60">납기일 기준 가까운 순</span>}
+                </p>
+                {sortedInvs.map(inv => {
+                  const checked = manualInvIds.has(inv.id);
+                  const invDate = inv.issueDate || inv.writeDate;
+                  const daysDiff = (refDate && invDate)
+                    ? Math.ceil((new Date(invDate).getTime() - new Date(refDate).getTime()) / 86400000)
+                    : null;
+                  return (
+                    <button key={inv.id}
+                      className={`w-full text-left rounded px-2 py-1.5 text-xs border transition-all ${
+                        checked ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-transparent bg-muted/40 hover:bg-muted/70"
+                      }`}
+                      onClick={() => toggleInv(inv.id)}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${checked ? "bg-primary border-primary" : "border-muted-foreground/40"}`}>
+                          {checked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                        </div>
+                        <span className="font-mono text-muted-foreground">{inv.invoiceNumber || "번호없음"}</span>
+                        <span className="font-semibold ml-auto">{fmt(inv.totalAmount)}</span>
+                      </div>
+                      <div className="truncate text-muted-foreground mt-0.5 pl-5">{inv.item || "품목 미입력"}</div>
+                      <div className="pl-5 mt-0.5 flex gap-2">
+                        {invDate && (
+                          <span className={daysDiff !== null && daysDiff >= 0 ? "text-green-600" : "text-amber-500"}>
+                            발행: {invDate}
+                            {daysDiff !== null && <span className="ml-1">({daysDiff >= 0 ? `+${daysDiff}일` : `${daysDiff}일`})</span>}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            금액 기준으로 매칭되지 않았습니다. 발주서 수정 또는 수동 연결이 필요합니다.
-          </p>
-        </section>
-      )}
+          </section>
+        );
+      })()}
 
       <div className="pt-2">
         <Button variant="outline" size="sm" onClick={onDone}>← 미매칭 목록으로</Button>
