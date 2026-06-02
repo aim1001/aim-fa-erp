@@ -345,7 +345,7 @@ function VendorDetailModal({ vendorId, onClose }: { vendorId: string; onClose: (
   );
 }
 
-type VendorWithStats = Vendor & { lastTransactionDate: string | null; invoiceCount: number; orderCount: number; isRecurring: boolean; plannedAmount: number; overdueAmount: number; };
+type VendorWithStats = Vendor & { lastTransactionDate: string | null; invoiceCount: number; orderCount: number; isRecurring: boolean; plannedAmount: number; overdueAmount: number; noPaymentCount: number; };
 
 export default function VendorList() {
   const { toast } = useToast();
@@ -555,8 +555,9 @@ export default function VendorList() {
                 <th className="text-left py-2.5 px-4 font-medium hidden xl:table-cell">계좌번호</th>
                 <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">계산서</th>
                 <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">정기결제</th>
-                <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell">결제예정</th>
                 <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell">지연</th>
+                <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell">결제예정</th>
+                <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">계획없음</th>
                 <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
               </tr>
             </thead>
@@ -601,13 +602,18 @@ export default function VendorList() {
                     {vendor.isRecurring ? <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-full">정기</span> : <span className="text-muted-foreground">-</span>}
                   </td>
                   <td className="py-2.5 px-4 text-right hidden lg:table-cell">
+                    {vendor.overdueAmount > 0
+                      ? <span className="text-xs text-red-600 dark:text-red-400 font-medium">{vendor.overdueAmount.toLocaleString("ko-KR")}원</span>
+                      : <span className="text-muted-foreground">-</span>}
+                  </td>
+                  <td className="py-2.5 px-4 text-right hidden lg:table-cell">
                     {vendor.plannedAmount > 0
                       ? <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">{vendor.plannedAmount.toLocaleString("ko-KR")}원</span>
                       : <span className="text-muted-foreground">-</span>}
                   </td>
-                  <td className="py-2.5 px-4 text-right hidden lg:table-cell">
-                    {vendor.overdueAmount > 0
-                      ? <span className="text-xs text-red-600 dark:text-red-400 font-medium">{vendor.overdueAmount.toLocaleString("ko-KR")}원</span>
+                  <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                    {vendor.noPaymentCount > 0
+                      ? <span className="text-xs text-orange-600 dark:text-orange-400 font-medium bg-orange-50 dark:bg-orange-950/30 px-2 py-0.5 rounded-full">{vendor.noPaymentCount}건</span>
                       : <span className="text-muted-foreground">-</span>}
                   </td>
                   <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell text-xs">{vendor.lastTransactionDate || "-"}</td>

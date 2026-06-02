@@ -3244,18 +3244,33 @@ export async function registerRoutes(
         if (ord.vendorId) orderCountMap.set(ord.vendorId, (orderCountMap.get(ord.vendorId) || 0) + 1);
       }
 
-      // 공급업체별 결제예정 / 지연 금액 집계
+      // 공급업체별 결제예정(미래) / 지연(overdue) / 계획없음 집계
       const today = new Date().toISOString().split("T")[0];
-      const plannedAmountMap = new Map<string, number>();
-      const overdueAmountMap = new Map<string, number>();
+      const plannedAmountMap = new Map<string, number>(); // 미래 예정
+      const overdueAmountMap = new Map<string, number>(); // 지연(과거 미지급)
       for (const p of allPayments) {
         if (p.status !== "planned" || !p.purchaseInvoiceId) continue;
         const vendorId = invoiceVendorMap.get(p.purchaseInvoiceId);
         if (!vendorId) continue;
         const amount = p.amount || 0;
-        plannedAmountMap.set(vendorId, (plannedAmountMap.get(vendorId) || 0) + amount);
         if (p.plannedDate && p.plannedDate < today) {
+          // 예정일이 오늘 이전 → 지연
           overdueAmountMap.set(vendorId, (overdueAmountMap.get(vendorId) || 0) + amount);
+        } else {
+          // 예정일이 오늘 이후 또는 날짜 없음 → 결제예정
+          plannedAmountMap.set(vendorId, (plannedAmountMap.get(vendorId) || 0) + amount);
+        }
+      }
+
+      // 계획없음: payment 레코드가 하나도 없는 계산서 건수
+      const invoicesWithPayment = new Set<string>();
+      for (const p of allPayments) {
+        if (p.purchaseInvoiceId) invoicesWithPayment.add(p.purchaseInvoiceId);
+      }
+      const noPaymentCountMap = new Map<string, number>();
+      for (const inv of allInvoices) {
+        if (inv.vendorId && !invoicesWithPayment.has(inv.id)) {
+          noPaymentCountMap.set(inv.vendorId, (noPaymentCountMap.get(inv.vendorId) || 0) + 1);
         }
       }
 
@@ -3267,6 +3282,7 @@ export async function registerRoutes(
         isRecurring: recurringVendorNames.has(v.companyName?.trim().toLowerCase() || ""),
         plannedAmount: plannedAmountMap.get(v.id) || 0,
         overdueAmount: overdueAmountMap.get(v.id) || 0,
+        noPaymentCount: noPaymentCountMap.get(v.id) || 0,
       }));
       res.json(result);
     } catch (err: any) {
