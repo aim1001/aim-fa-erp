@@ -402,7 +402,7 @@ export default function VendorList() {
   const [search, setSearch] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "recent" | "count">("recent");
-  const [filterBy, setFilterBy] = useState<"all" | "favorite" | "recurring" | "noplan">("all");
+  const [filterBy, setFilterBy] = useState<"all" | "favorite" | "recurring" | "noplan" | "overdue" | "planned">("all");
   const [hideInactivePeriod, setHideInactivePeriod] = useState<number | null>(6); // 기본 6개월
 
   const { data: vendorList, isLoading } = useQuery<VendorWithStats[]>({
@@ -496,6 +496,8 @@ export default function VendorList() {
     if (filterBy === "favorite") list = list.filter(v => v.isFavorite);
     if (filterBy === "recurring") list = list.filter(v => v.isRecurring);
     if (filterBy === "noplan") list = list.filter(v => v.noPaymentCount > 0);
+    if (filterBy === "overdue") list = list.filter(v => v.overdueAmount > 0);
+    if (filterBy === "planned") list = list.filter(v => v.plannedAmount > 0);
     if (hideInactivePeriod) {
       const cutoff = new Date();
       cutoff.setMonth(cutoff.getMonth() - hideInactivePeriod);
@@ -551,11 +553,13 @@ export default function VendorList() {
           />
         </div>
         <div className="flex items-center gap-1">
-          {(["all", "favorite", "recurring", "noplan"] as const).map(f => (
+          {(["all", "favorite", "recurring", "overdue", "planned", "noplan"] as const).map(f => (
             <Button key={f} size="sm" variant={filterBy === f ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setFilterBy(f)}>
               {f === "all" ? `전체 ${vendorList?.length || 0}`
                 : f === "favorite" ? "⭐ 즐겨찾기"
                 : f === "recurring" ? "🔄 정기결제"
+                : f === "overdue" ? `🔴 지연 ${vendorList?.filter(v => v.overdueAmount > 0).length || 0}`
+                : f === "planned" ? `🔵 결제예정 ${vendorList?.filter(v => v.plannedAmount > 0).length || 0}`
                 : `⚠️ 계획없음 ${vendorList?.filter(v => v.noPaymentCount > 0).length || 0}`}
             </Button>
           ))}
