@@ -3229,6 +3229,8 @@ export async function registerRoutes(
       const allOrders = await storage.getPurchaseOrders();
       const allPayments = await storage.getPayments();
       const recurringExpenses = await storage.getRecurringExpenses();
+      // vendor_id 직접 연결된 것 우선, 없으면 이름 매칭 fallback
+      const recurringVendorIds = new Set(recurringExpenses.filter(e => e.isActive !== "false" && (e as any).vendorId).map(e => (e as any).vendorId).filter(Boolean));
       const recurringVendorNames = new Set(recurringExpenses.filter(e => e.isActive !== "false").map(e => e.companyName?.trim().toLowerCase()).filter(Boolean));
 
       const invoiceCountMap = new Map<string, number>();
@@ -3291,7 +3293,7 @@ export async function registerRoutes(
         lastTransactionDate: lastTxDates.get(v.id) || null,
         invoiceCount: invoiceCountMap.get(v.id) || 0,
         orderCount: orderCountMap.get(v.id) || 0,
-        isRecurring: recurringVendorNames.has(v.companyName?.trim().toLowerCase() || ""),
+        isRecurring: recurringVendorIds.has(v.id) || recurringVendorNames.has(v.companyName?.trim().toLowerCase() || ""),
         plannedAmount: plannedAmountMap.get(v.id) || 0,
         overdueAmount: overdueAmountMap.get(v.id) || 0,
         noPaymentCount: noPaymentCountMap.get(v.id) || 0,

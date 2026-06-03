@@ -683,6 +683,7 @@ export const recurringExpenses = pgTable("recurring_expenses", {
   endDate: text("end_date"),
   totalInstallments: integer("total_installments"),
   startInstallment: integer("start_installment").default(1),
+  vendorId: varchar("vendor_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
