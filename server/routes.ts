@@ -3369,6 +3369,8 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const year = req.query.year ? parseInt(req.query.year as string) : null;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
 
       const vendor = await storage.getVendor(id);
       if (!vendor) return res.status(404).json({ message: "업체를 찾을 수 없습니다" });
@@ -3382,18 +3384,29 @@ export async function registerRoutes(
       const allOrders = await storage.getPurchaseOrders();
       const orders = allOrders.filter(o => {
         if (!(o.vendorId === id || normalize(o.vendor) === vendorNorm)) return false;
+        if (startDate || endDate) {
+          const d = o.expectedDeliveryDate || o.actualDeliveryDate || o.orderDate || "";
+          if (startDate && d && d < startDate) return false;
+          if (endDate && d && d > endDate) return false;
+          return true;
+        }
         if (!year) return true;
-        // year 필드 일치, 또는 납기일/실입고일이 해당 연도인 경우 포함
         const deliveryYear = (o.expectedDeliveryDate || o.actualDeliveryDate || "").substring(0, 4);
         return o.year === year || deliveryYear === String(year);
       });
 
       // 매입계산서 (vendorId 일치 OR 업체명 유사 일치)
       const allInvoices = await storage.getPurchaseInvoices();
-      const invoices = allInvoices.filter(inv =>
-        (inv.vendorId === id || normalize(inv.companyName) === vendorNorm)
-        && (inv.year === year || !year)
-      );
+      const invoices = allInvoices.filter(inv => {
+        if (!(inv.vendorId === id || normalize(inv.companyName) === vendorNorm)) return false;
+        if (startDate || endDate) {
+          const d = inv.issueDate || inv.writeDate || "";
+          if (startDate && d && d < startDate) return false;
+          if (endDate && d && d > endDate) return false;
+          return true;
+        }
+        return inv.year === year || !year;
+      });
 
       // 자금계획
       const allPayments = await storage.getPayments();

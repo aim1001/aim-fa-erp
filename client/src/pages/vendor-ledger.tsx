@@ -238,7 +238,7 @@ function SmartMatchPanel({
         }
       }
       setLinked(prev => new Set([...prev, idx]));
-      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", period] });
     } catch (e: any) {
       toast({ title: "연결 실패", description: e.message, variant: "destructive" });
     }
@@ -482,7 +482,7 @@ function SmartMatchPanel({
                           await apiRequest("POST", `/api/purchase-orders/${ordId}/link-invoice/${invId}`);
                         }
                       }
-                      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+                      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", period] });
                       toast({ title: "연결 완료", description: `발주서 ${selOrderCount}건 · 계산서 ${selInvCount}건 연결됨` });
                       setManualOrderIds(new Set());
                       setManualInvIds(new Set());
@@ -613,9 +613,21 @@ export default function VendorLedger() {
   const currentYear = new Date().getFullYear();
   const urlVendorId = new URLSearchParams(searchString).get("vendorId") || "";
   const [vendorId, setVendorId] = useState<string>(urlVendorId);
-  const [year, setYear] = useState<number | null>(currentYear);
+  const [period, setPeriod] = useState<"6m" | "1y" | "2y" | "all">("1y");
+  const [year, setYear] = useState<number | null>(null); // legacy, unused
   const [month, setMonth] = useState(0);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+
+  const { startDate, endDate } = (() => {
+    if (period === "all") return { startDate: undefined, endDate: undefined };
+    const now = new Date();
+    const end = now.toISOString().slice(0, 10);
+    const s = new Date(now);
+    if (period === "6m") s.setMonth(s.getMonth() - 6);
+    else if (period === "1y") s.setFullYear(s.getFullYear() - 1);
+    else if (period === "2y") s.setFullYear(s.getFullYear() - 2);
+    return { startDate: s.toISOString().slice(0, 10), endDate: end };
+  })();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [showSmartMatch, setShowSmartMatch] = useState(false);
 
@@ -624,9 +636,12 @@ export default function VendorLedger() {
   const { data: vendors = [] } = useQuery<Vendor[]>({ queryKey: ["/api/vendors"] });
 
   const { data: ledger, isLoading } = useQuery<LedgerData>({
-    queryKey: ["/api/vendors", vendorId, "ledger", year],
+    queryKey: ["/api/vendors", vendorId, "ledger", period],
     queryFn: async () => {
-      const url = year ? `/api/vendors/${vendorId}/ledger?year=${year}` : `/api/vendors/${vendorId}/ledger`;
+      const params = new URLSearchParams();
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+      const url = `/api/vendors/${vendorId}/ledger${params.toString() ? "?" + params.toString() : ""}`;
       const res = await apiRequest("GET", url);
       return res.json();
     },
@@ -639,7 +654,7 @@ export default function VendorLedger() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", period] });
       setSelectedOrderId(null); setSelectedInvoiceId(null);
       toast({ title: "연결 완료" });
     },
@@ -652,7 +667,7 @@ export default function VendorLedger() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", period] });
       toast({ title: "연결 해제 완료" });
     },
     onError: (e: Error) => toast({ title: "연결 해제 실패", description: e.message, variant: "destructive" }),
@@ -694,7 +709,7 @@ export default function VendorLedger() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", period] });
       setAddPayInvoiceId(null);
       setAddPayForm({ amount: "", plannedDate: "" });
       toast({ title: "결제계획 추가 완료" });
@@ -803,7 +818,7 @@ export default function VendorLedger() {
     onSuccess: () => {
       toast({ title: "발주서 수정 완료" });
       setEditOrder(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", vendorId, "ledger", period] });
       queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
     },
     onError: (err: Error) => toast({ title: "수정 실패", description: err.message, variant: "destructive" }),
@@ -843,25 +858,22 @@ export default function VendorLedger() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">연도</span>
-          <Select value={year === null ? "all" : String(year)} onValueChange={v => { setYear(v === "all" ? null : Number(v)); setShowSmartMatch(false); }}>
-            <SelectTrigger className="w-24 h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">전체</SelectItem>
-              {years.map(y => <SelectItem key={y} value={String(y)}>{y}년</SelectItem>)}
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-1 border rounded-lg p-0.5">
+          {(["6m", "1y", "2y", "all"] as const).map(p => (
+            <Button
+              key={p}
+              variant={period === p ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => { setPeriod(p); setShowSmartMatch(false); }}
+            >
+              {p === "6m" ? "6개월" : p === "1y" ? "1년" : p === "2y" ? "2년" : "전체"}
+            </Button>
+          ))}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">월</span>
-          <Select value={String(month)} onValueChange={v => { setMonth(Number(v)); setShowSmartMatch(false); }}>
-            <SelectTrigger className="w-20 h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {MONTHS.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        {period !== "all" && startDate && (
+          <span className="text-xs text-muted-foreground">{startDate} ~ {endDate}</span>
+        )}
         {ledger && (
           <div className="ml-auto flex items-center divide-x text-sm border rounded-md overflow-hidden">
             <div className="text-center px-3 py-1.5">
