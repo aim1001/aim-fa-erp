@@ -4340,9 +4340,12 @@ export async function registerRoutes(
       let skipped = 0;
       let vendorsCreated = 0;
       const processedExactKeys = new Set<string>();
+      const OWN_BIZ_NUM = "3708700308"; // 주식회사 에이아이엠 자사 사업자번호
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
         const rowBizClean = (row.businessNumber || "").replace(/-/g, "");
+        // 자사 사업자번호로 발행된 계산서는 매입계산서가 아니므로 건너뜀
+        if (rowBizClean === OWN_BIZ_NUM) { skipped++; continue; }
         const exactKey = `${row.issueDate}|${rowBizClean}|${row.supplyAmount}`;
 
         if (processedExactKeys.has(exactKey)) { skipped++; continue; }
