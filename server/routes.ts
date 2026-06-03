@@ -3246,20 +3246,27 @@ export async function registerRoutes(
         if (ord.vendorId) orderCountMap.set(ord.vendorId, (orderCountMap.get(ord.vendorId) || 0) + 1);
       }
 
+      // 업체명 → vendorId 맵 (floating payment 매칭용)
+      const vendorNameToIdEarly = new Map(list.map(v => [v.companyName?.trim().toLowerCase(), v.id]));
+
       // 공급업체별 결제예정(미래) / 지연(overdue) / 계획없음 집계
       const today = new Date().toISOString().split("T")[0];
       const plannedAmountMap = new Map<string, number>(); // 미래 예정
       const overdueAmountMap = new Map<string, number>(); // 지연(과거 미지급)
       for (const p of allPayments) {
-        if (p.status !== "planned" || !p.purchaseInvoiceId) continue;
-        const vendorId = invoiceVendorMap.get(p.purchaseInvoiceId);
+        if (p.status !== "planned") continue;
+        // invoice 연결된 경우 → vendorId via invoiceVendorMap
+        // invoice 없는 floating payment → vendorId via company name
+        let vendorId = p.purchaseInvoiceId ? invoiceVendorMap.get(p.purchaseInvoiceId) : undefined;
+        if (!vendorId && p.companyName) {
+          vendorId = vendorNameToIdEarly.get(p.companyName.trim().toLowerCase());
+        }
         if (!vendorId) continue;
         const amount = p.amount || 0;
+        if (amount === 0) continue; // 취소건 제외
         if (p.plannedDate && p.plannedDate < today) {
-          // 예정일이 오늘 이전 → 지연
           overdueAmountMap.set(vendorId, (overdueAmountMap.get(vendorId) || 0) + amount);
         } else {
-          // 예정일이 오늘 이후 또는 날짜 없음 → 결제예정
           plannedAmountMap.set(vendorId, (plannedAmountMap.get(vendorId) || 0) + amount);
         }
       }
