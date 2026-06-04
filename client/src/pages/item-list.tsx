@@ -180,22 +180,31 @@ function ComboboxInput({
           data-testid={testId}
         />
       </PopoverTrigger>
-      {open && filteredOptions.length > 0 && (
-        <PopoverContent className="w-[200px] p-1" align="start" onOpenAutoFocus={e => e.preventDefault()} {...(container ? { container } : {})}>
-          <div className="max-h-[150px] overflow-auto">
-            {filteredOptions.map(opt => (
+      <PopoverContent
+        className="w-[200px] p-1"
+        align="start"
+        onOpenAutoFocus={e => e.preventDefault()}
+        {...(container ? { container } : {})}
+      >
+        <div className="max-h-[150px] overflow-auto">
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map(opt => (
               <div
                 key={opt}
                 className={`text-xs px-2 py-1 rounded cursor-pointer hover-elevate ${opt === value ? "bg-accent" : ""}`}
-                onClick={() => { onChange(opt); setOpen(false); setIsTyping(false); }}
+                onMouseDown={e => { e.preventDefault(); onChange(opt); setOpen(false); setIsTyping(false); }}
                 data-testid={`option-${testId}-${opt}`}
               >
                 {opt}
               </div>
-            ))}
-          </div>
-        </PopoverContent>
-      )}
+            ))
+          ) : (
+            <div className="text-xs px-2 py-1 text-muted-foreground">
+              {value ? `"${value}" 직접 입력` : "직접 입력하세요"}
+            </div>
+          )}
+        </div>
+      </PopoverContent>
     </Popover>
   );
 }
