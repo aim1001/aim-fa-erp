@@ -835,6 +835,18 @@ function AddComponentDialog({
   );
 }
 
+const TRUNCATE_OPTIONS = [
+  { label: "절사없음", value: 0 },
+  { label: "천원", value: 1000 },
+  { label: "만원", value: 10000 },
+  { label: "십만원", value: 100000 },
+];
+
+function applyTruncate(val: number, unit: number): number {
+  if (!unit) return val;
+  return Math.floor(val / unit) * unit;
+}
+
 function AddItemDialog({
   open,
   onOpenChange,
@@ -842,6 +854,7 @@ function AddItemDialog({
   category2s,
   category2sByCategory1,
   itemTypes,
+  existingItems,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -849,10 +862,12 @@ function AddItemDialog({
   category2s: string[];
   category2sByCategory1: Map<string, string[]>;
   itemTypes: string[];
+  existingItems: ItemWithDetails[];
 }) {
   const { toast } = useToast();
   const { ref: dialogRef, container } = useDialogContainer();
-  const [form, setForm] = useState({
+
+  const emptyForm = {
     category1: "",
     category2: "",
     itemCode: "",
@@ -860,15 +875,81 @@ function AddItemDialog({
     spec: "",
     cost: "",
     salesPrice: "",
+    marginPct: "",
+    truncateUnit: 0,
     itemType: "",
     active: true,
-  });
+  };
+  const [form, setForm] = useState(emptyForm);
 
-  // 선택된 대분류 기준 소분류 목록 (없으면 전체)
+  // 선택된 대분류 기준 소분류 목록
   const filteredCategory2s = useMemo(() => {
     if (!form.category1) return category2s;
     return category2sByCategory1.get(form.category1) || [];
   }, [form.category1, category2s, category2sByCategory1]);
+
+  // 대분류 기반 품목코드 자동 생성
+  const autoGenerateCode = useCallback((cat1: string) => {
+    if (!cat1) return "";
+    const prefix = cat1.slice(0, 3).toUpperCase();
+    const existing = existingItems
+      .filter(i => i.itemCode.startsWith(prefix + "-"))
+      .map(i => parseInt(i.itemCode.replace(prefix + "-", "")) || 0)
+      .filter(n => !isNaN(n));
+    const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+    return `${prefix}-${String(next).padStart(3, "0")}`;
+  }, [existingItems]);
+
+  // 마진 계산
+  const cost = parseInt(form.cost) || 0;
+  const salesPrice = parseInt(form.salesPrice) || 0;
+  const margin = cost && salesPrice ? salesPrice - cost : null;
+  const marginPct = margin !== null && salesPrice ? Math.round((margin / salesPrice) * 100) : null;
+
+  // 원가 변경 → 마진율 있으면 판매가 재계산
+  const handleCostChange = (val: string) => {
+    const c = parseInt(val) || 0;
+    const pct = parseFloat(form.marginPct);
+    if (c && !isNaN(pct) && pct > 0) {
+      const raw = Math.round(c / (1 - pct / 100));
+      const sp = applyTruncate(raw, form.truncateUnit);
+      setForm(f => ({ ...f, cost: val, salesPrice: String(sp) }));
+    } else {
+      setForm(f => ({ ...f, cost: val }));
+    }
+  };
+
+  // 판매가 변경 → 마진율 자동계산
+  const handleSalesPriceChange = (val: string) => {
+    const sp = parseInt(val) || 0;
+    const c = parseInt(form.cost) || 0;
+    if (sp && c) {
+      const pct = Math.round(((sp - c) / sp) * 100);
+      setForm(f => ({ ...f, salesPrice: val, marginPct: String(pct) }));
+    } else {
+      setForm(f => ({ ...f, salesPrice: val }));
+    }
+  };
+
+  // 마진율 변경 → 원가 있으면 판매가 재계산
+  const handleMarginPctChange = (val: string) => {
+    const pct = parseFloat(val);
+    const c = parseInt(form.cost) || 0;
+    if (c && !isNaN(pct) && pct > 0 && pct < 100) {
+      const raw = Math.round(c / (1 - pct / 100));
+      const sp = applyTruncate(raw, form.truncateUnit);
+      setForm(f => ({ ...f, marginPct: val, salesPrice: String(sp) }));
+    } else {
+      setForm(f => ({ ...f, marginPct: val }));
+    }
+  };
+
+  // 절사 변경 → 판매가 재계산
+  const handleTruncateChange = (unit: number) => {
+    const sp = parseInt(form.salesPrice) || 0;
+    const newSp = sp ? applyTruncate(sp, unit) : sp;
+    setForm(f => ({ ...f, truncateUnit: unit, salesPrice: newSp ? String(newSp) : f.salesPrice }));
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
@@ -879,17 +960,7 @@ function AddItemDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/items"] });
       toast({ title: "제품 추가 완료" });
       onOpenChange(false);
-      setForm({
-        category1: "",
-        category2: "",
-        itemCode: "",
-        itemName: "",
-        spec: "",
-        cost: "",
-        salesPrice: "",
-        itemType: "",
-        active: true,
-      });
+      setForm(emptyForm);
     },
     onError: (err: Error) => {
       toast({ title: "추가 실패", description: err.message, variant: "destructive" });
@@ -922,13 +993,17 @@ function AddItemDialog({
           <DialogDescription>새 판매제품을 수동으로 등록합니다.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3" ref={dialogRef}>
+          {/* 대분류 / 소분류 */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">대분류 *</Label>
               <ComboboxInput
                 value={form.category1}
                 options={categories}
-                onChange={val => setForm(f => ({ ...f, category1: val, category2: "" }))}
+                onChange={val => {
+                  const code = autoGenerateCode(val);
+                  setForm(f => ({ ...f, category1: val, category2: "", itemCode: f.itemCode || code }));
+                }}
                 placeholder="대분류 입력/선택"
                 testId="input-add-category1"
                 container={container}
@@ -951,9 +1026,23 @@ function AddItemDialog({
               />
             </div>
           </div>
+
+          {/* 품목코드 / 품목명 */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">품목코드 *</Label>
+              <Label className="text-xs flex items-center gap-1">
+                품목코드 *
+                {form.category1 && (
+                  <button
+                    type="button"
+                    className="text-[10px] text-blue-500 hover:underline"
+                    onClick={() => setForm(f => ({ ...f, itemCode: autoGenerateCode(f.category1) }))}
+                    data-testid="button-auto-code"
+                  >
+                    자동생성
+                  </button>
+                )}
+              </Label>
               <Input
                 value={form.itemCode}
                 onChange={e => setForm(f => ({ ...f, itemCode: e.target.value }))}
@@ -971,6 +1060,8 @@ function AddItemDialog({
               />
             </div>
           </div>
+
+          {/* 사양 */}
           <div className="space-y-1">
             <Label className="text-xs">사양</Label>
             <Input
@@ -980,28 +1071,73 @@ function AddItemDialog({
               data-testid="input-add-spec"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          {/* 원가 / 마진율 / 절사 */}
+          <div className="grid grid-cols-[1fr_80px_100px] gap-2">
             <div className="space-y-1">
               <Label className="text-xs">원가</Label>
               <Input
                 type="number"
                 value={form.cost}
-                onChange={e => setForm(f => ({ ...f, cost: e.target.value }))}
+                onChange={e => handleCostChange(e.target.value)}
                 placeholder="0"
                 data-testid="input-add-cost"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">판매가</Label>
+              <Label className="text-xs">마진율 %</Label>
               <Input
                 type="number"
-                value={form.salesPrice}
-                onChange={e => setForm(f => ({ ...f, salesPrice: e.target.value }))}
+                value={form.marginPct}
+                onChange={e => handleMarginPctChange(e.target.value)}
                 placeholder="0"
-                data-testid="input-add-salesprice"
+                min={0}
+                max={99}
+                data-testid="input-add-margin-pct"
               />
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">절사</Label>
+              <Select value={String(form.truncateUnit)} onValueChange={v => handleTruncateChange(Number(v))}>
+                <SelectTrigger className="h-9 text-xs" data-testid="select-truncate">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRUNCATE_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {/* 판매가 */}
+          <div className="space-y-1">
+            <Label className="text-xs">판매가</Label>
+            <Input
+              type="number"
+              value={form.salesPrice}
+              onChange={e => handleSalesPriceChange(e.target.value)}
+              placeholder="0"
+              data-testid="input-add-salesprice"
+            />
+          </div>
+
+          {/* 마진 표시 */}
+          {cost > 0 && salesPrice > 0 && (
+            <div className={`text-xs rounded px-3 py-2 flex items-center gap-3 ${margin !== null && margin >= 0 ? "bg-green-50 dark:bg-green-950/20" : "bg-red-50 dark:bg-red-950/20"}`}>
+              <span className="text-muted-foreground">마진</span>
+              <span className={`font-semibold ${margin !== null && margin >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600"}`}>
+                {margin !== null ? margin.toLocaleString() + "원" : "-"}
+              </span>
+              <span className="text-muted-foreground">마진율</span>
+              <span className={`font-semibold ${marginPct !== null && marginPct >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600"}`}>
+                {marginPct !== null ? marginPct + "%" : "-"}
+              </span>
+            </div>
+          )}
+
+          {/* 유형 / 활성 */}
           <div className="grid grid-cols-2 gap-3 items-end">
             <div className="space-y-1">
               <Label className="text-xs">제품유형</Label>
@@ -1412,6 +1548,7 @@ export default function ItemList() {
         category2s={category2s}
         category2sByCategory1={category2sByCategory1}
         itemTypes={itemTypes}
+        existingItems={items || []}
       />
     </div>
   );
