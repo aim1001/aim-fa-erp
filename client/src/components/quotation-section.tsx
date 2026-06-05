@@ -1006,7 +1006,7 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
       }
     } catch {}
     setEmailTo(latestEmail);
-    setEmailSubject(`[견적서] ${quotation.quoteNumber}`);
+    setEmailSubject(`[에이아이엠-견적서] ${quotation.quoteNumber}`);
     const defaultBody = `안녕하세요, ${latestCompanyName}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: ${quotation.quoteNumber}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`;
     try {
       const settingsRes = await fetch("/api/company-settings");
@@ -1384,7 +1384,7 @@ function BatchEmailDialog({ inquiryId, inquiry, quotationList, open, onOpenChang
     setEmailCc(companySettings?.autoCc || "");
 
     const names = quotationList.map(q => q.quoteName || q.quoteNumber).join(", ");
-    const subject = `[견적서] ${inquiry.inquiryNumber} - ${names}`;
+    const subject = `[에이아이엠-견적서] ${inquiry.inquiryNumber} - ${names}`;
     setEmailSubject(subject);
 
     const companyName = inquiry.snapshotCompanyName || "고객";
