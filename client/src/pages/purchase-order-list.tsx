@@ -46,14 +46,14 @@ function formatAmount(amount: number | null | undefined) {
   return amount.toLocaleString() + "원";
 }
 
-function StatusBadge({ status }: { status: string }) {
-  if (status === "입고완료") {
-    return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid="badge-status-completed"><Check className="h-3 w-3 mr-1" />입고완료</Badge>;
+function ReceivingBadge({ status, actualDeliveryDate }: { status: string; actualDeliveryDate?: string | null }) {
+  if (actualDeliveryDate) {
+    return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid="badge-receiving-completed"><Check className="h-3 w-3 mr-1" />입고완료</Badge>;
   }
   if (status === "수입") {
-    return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0" data-testid="badge-status-import"><Ship className="h-3 w-3 mr-1" />수입</Badge>;
+    return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0" data-testid="badge-receiving-import"><Ship className="h-3 w-3 mr-1" />수입</Badge>;
   }
-  return <Badge variant="outline" className="text-muted-foreground" data-testid="badge-status-normal"><Package className="h-3 w-3 mr-1" />일반</Badge>;
+  return <Badge variant="outline" className="text-muted-foreground" data-testid="badge-receiving-pending"><Package className="h-3 w-3 mr-1" />대기</Badge>;
 }
 
 function VendorReassignPopover({ vendors, onAssign, isPending }: {
@@ -352,8 +352,10 @@ export default function PurchaseOrderList() {
     }
     if (statusFilter === "미연결") {
       list = list.filter(o => !o.vendorId && o.vendor);
+    } else if (statusFilter === "입고완료") {
+      list = list.filter(o => !!o.actualDeliveryDate);
     } else if (statusFilter !== "all") {
-      list = list.filter(o => o.status === statusFilter);
+      list = list.filter(o => o.status === statusFilter && !o.actualDeliveryDate);
     }
     if (search) {
       const q = search.toLowerCase();
@@ -390,9 +392,9 @@ export default function PurchaseOrderList() {
     if (!orders) return { all: 0, "일반": 0, "수입": 0, "입고완료": 0 };
     return {
       all: orders.length,
-      "일반": orders.filter(o => o.status === "일반").length,
-      "수입": orders.filter(o => o.status === "수입").length,
-      "입고완료": 0,
+      "일반": orders.filter(o => !o.actualDeliveryDate && o.status === "일반").length,
+      "수입": orders.filter(o => !o.actualDeliveryDate && o.status === "수입").length,
+      "입고완료": orders.filter(o => !!o.actualDeliveryDate).length,
     };
   }, [orders]);
 
@@ -454,7 +456,7 @@ export default function PurchaseOrderList() {
 
       <div className="px-4 py-2 flex items-center gap-3 border-b flex-shrink-0">
         <div className="flex items-center gap-1">
-          {(["all", "일반", "수입"] as const).map(s => (
+          {(["all", "일반", "수입", "입고완료"] as const).map(s => (
             <Button
               key={s}
               variant={statusFilter === s ? "default" : "ghost"}
@@ -520,9 +522,8 @@ export default function PurchaseOrderList() {
                 <th className="text-center px-4 py-2 font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("expectedDeliveryDate")} data-testid="sort-deliveryDate">
                   <span className="inline-flex items-center gap-1">납품예정일 {sortField === "expectedDeliveryDate" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
                 </th>
-                <th className="text-center px-4 py-2 font-medium">납품일</th>
-                <th className="text-center px-4 py-2 font-medium">상태</th>
-                <th className="text-center px-4 py-2 font-medium">입고</th>
+                <th className="text-center px-4 py-2 font-medium">입고일</th>
+                <th className="text-center px-4 py-2 font-medium">입고상태</th>
                 <th className="text-center px-4 py-2 font-medium">계산서</th>
                 <th className="text-center px-4 py-2 font-medium">송금</th>
                 <th className="text-center px-4 py-2 font-medium">폴더</th>
@@ -597,18 +598,7 @@ export default function PurchaseOrderList() {
                       {order.actualDeliveryDate || "-"}
                     </td>
                     <td className="px-4 py-2 text-center">
-                      <StatusBadge status={order.status || "일반"} />
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      {order.receivingCompleted ? (
-                        <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-receiving-done-${order.id}`}>
-                          <Check className="h-3 w-3 mr-1" />완료
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-receiving-pending-${order.id}`}>
-                          대기
-                        </Badge>
-                      )}
+                      <ReceivingBadge status={order.status || "일반"} actualDeliveryDate={order.actualDeliveryDate} />
                     </td>
                     <td className="px-4 py-2 text-center">
                       {linkedInvoice ? (
@@ -2735,8 +2725,22 @@ function OrderDetailModal({
                     <Input type="date" className="h-7 text-xs" value={form.expectedDeliveryDate} onChange={e => setForm(f => ({ ...f, expectedDeliveryDate: e.target.value }))} data-testid="input-expected-date" />
                   </div>
                   <div>
-                    <Label className="text-[10px] text-muted-foreground">납품일</Label>
-                    <Input type="date" className="h-7 text-xs" value={form.actualDeliveryDate} onChange={e => setForm(f => ({ ...f, actualDeliveryDate: e.target.value }))} data-testid="input-actual-date" />
+                    <Label className="text-[10px] text-muted-foreground">입고일 <span className="text-green-600">(입력 시 입고완료 처리)</span></Label>
+                    <Input
+                      type="date"
+                      className="h-7 text-xs"
+                      value={form.actualDeliveryDate}
+                      onChange={e => {
+                        const date = e.target.value;
+                        setForm(f => ({
+                          ...f,
+                          actualDeliveryDate: date,
+                          receivingCompleted: !!date,
+                          status: date ? "입고완료" : (order.status === "입고완료" ? "일반" : order.status || "일반"),
+                        }));
+                      }}
+                      data-testid="input-actual-date"
+                    />
                   </div>
                   <div>
                     <Label className="text-[10px] text-muted-foreground">결제예정일</Label>
