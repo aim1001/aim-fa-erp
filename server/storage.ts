@@ -1181,6 +1181,7 @@ export class DatabaseStorage implements IStorage {
       discountValue: source.quotation.discountValue,
       discountTruncate: source.quotation.discountTruncate,
       discountTruncUnit: source.quotation.discountTruncUnit,
+      categoryDiscounts: (source.quotation as any).categoryDiscounts,
       deliveryDays: source.quotation.deliveryDays,
       createdAt: now,
     });
