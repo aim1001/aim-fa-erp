@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,7 +64,6 @@ export default function SettingsPage() {
   });
 
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
-  const [newCategory, setNewCategory] = useState("");
 
   const [salesDefaultContactPerson, setSalesDefaultContactPerson] = useState("");
   const [projectDefaultContactPerson, setProjectDefaultContactPerson] = useState("");
@@ -453,92 +452,10 @@ export default function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="quotation" className="space-y-6 mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <FileText className="h-4 w-4" />
-                  견적 카테고리 정렬 순서
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">견적서 카테고리가 이 순서대로 표시됩니다. 목록에 없는 카테고리는 맨 뒤에 표시됩니다.</p>
-                <div className="space-y-2">
-                  {categoryOrder.map((cat, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground w-5 text-right">{idx + 1}.</span>
-                      <Input
-                        value={cat}
-                        onChange={e => setCategoryOrder(prev => prev.map((c, i) => i === idx ? e.target.value : c))}
-                        className="h-8 text-sm flex-1"
-                        data-testid={`input-category-order-${idx}`}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={idx === 0}
-                        onClick={() => setCategoryOrder(prev => {
-                          const next = [...prev];
-                          [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                          return next;
-                        })}
-                      >
-                        <ChevronUp className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={idx === categoryOrder.length - 1}
-                        onClick={() => setCategoryOrder(prev => {
-                          const next = [...prev];
-                          [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                          return next;
-                        })}
-                      >
-                        <ChevronDown className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => setCategoryOrder(prev => prev.filter((_, i) => i !== idx))}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    value={newCategory}
-                    onChange={e => setNewCategory(e.target.value)}
-                    placeholder="카테고리명 입력 (예: VISION SYSTEM)"
-                    className="h-8 text-sm"
-                    onKeyDown={e => {
-                      if (e.key === "Enter" && newCategory.trim()) {
-                        setCategoryOrder(prev => [...prev, newCategory.trim()]);
-                        setNewCategory("");
-                      }
-                    }}
-                    data-testid="input-new-category"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (newCategory.trim()) {
-                        setCategoryOrder(prev => [...prev, newCategory.trim()]);
-                        setNewCategory("");
-                      }
-                    }}
-                    data-testid="button-add-category"
-                  >
-                    추가
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <CategoryOrderCard
+              categoryOrder={categoryOrder}
+              setCategoryOrder={setCategoryOrder}
+            />
 
             <Card>
               <CardHeader>
@@ -863,6 +780,141 @@ export default function SettingsPage() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+function CategoryOrderCard({ categoryOrder, setCategoryOrder }: {
+  categoryOrder: string[];
+  setCategoryOrder: React.Dispatch<React.SetStateAction<string[]>>;
+}) {
+  const [newCategory, setNewCategory] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const { data: items = [] } = useQuery<any[]>({ queryKey: ["/api/items"] });
+
+  // 기존 아이템에서 카테고리 추출 (이미 순서에 없는 것만)
+  const availableCategories = useMemo(() => {
+    const all = Array.from(new Set(items.map((i: any) => i.category1).filter(Boolean))).sort() as string[];
+    return all.filter(c => !categoryOrder.includes(c));
+  }, [items, categoryOrder]);
+
+  const filteredOptions = useMemo(() => {
+    if (!newCategory.trim()) return availableCategories;
+    const q = newCategory.toLowerCase();
+    return availableCategories.filter(c => c.toLowerCase().includes(q));
+  }, [availableCategories, newCategory]);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dropdownOpen]);
+
+  const addCategory = (val: string) => {
+    const trimmed = val.trim();
+    if (trimmed && !categoryOrder.includes(trimmed)) {
+      setCategoryOrder(prev => [...prev, trimmed]);
+    }
+    setNewCategory("");
+    setDropdownOpen(false);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <FileText className="h-4 w-4" />
+          견적 카테고리 정렬 순서
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">견적서 카테고리가 이 순서대로 표시됩니다. 목록에 없는 카테고리는 맨 뒤에 표시됩니다.</p>
+        <div className="space-y-2">
+          {categoryOrder.map((cat, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-5 text-right">{idx + 1}.</span>
+              <div className="flex-1 h-8 px-3 flex items-center border rounded-md bg-muted/30 text-sm font-medium">
+                {cat}
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={idx === 0}
+                onClick={() => setCategoryOrder(prev => {
+                  const next = [...prev];
+                  [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                  return next;
+                })}>
+                <ChevronUp className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={idx === categoryOrder.length - 1}
+                onClick={() => setCategoryOrder(prev => {
+                  const next = [...prev];
+                  [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                  return next;
+                })}>
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"
+                onClick={() => setCategoryOrder(prev => prev.filter((_, i) => i !== idx))}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        {/* 콤보박스 추가 */}
+        <div ref={wrapperRef} className="relative flex gap-2">
+          <div className="flex-1 relative">
+            <Input
+              value={newCategory}
+              onChange={e => { setNewCategory(e.target.value); setDropdownOpen(true); }}
+              onFocus={() => setDropdownOpen(true)}
+              placeholder="카테고리 선택 또는 직접 입력..."
+              className="h-8 text-sm"
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  if (filteredOptions.length > 0) addCategory(filteredOptions[0]);
+                  else if (newCategory.trim()) addCategory(newCategory);
+                }
+                if (e.key === "Escape") setDropdownOpen(false);
+              }}
+              data-testid="input-new-category"
+            />
+            {dropdownOpen && (
+              <div className="absolute z-50 top-full left-0 w-full bg-popover border rounded-md shadow-md mt-1 max-h-[200px] overflow-auto">
+                {filteredOptions.length > 0 ? (
+                  filteredOptions.map(opt => (
+                    <div
+                      key={opt}
+                      className="text-sm px-3 py-1.5 cursor-pointer hover:bg-accent"
+                      onMouseDown={e => { e.preventDefault(); addCategory(opt); }}
+                    >
+                      {opt}
+                    </div>
+                  ))
+                ) : newCategory.trim() ? (
+                  <div className="text-sm px-3 py-1.5 text-blue-600 cursor-pointer hover:bg-accent"
+                    onMouseDown={e => { e.preventDefault(); addCategory(newCategory); }}>
+                    "{newCategory.trim()}" 새로 추가
+                  </div>
+                ) : (
+                  <div className="text-xs px-3 py-2 text-muted-foreground">추가할 카테고리 없음</div>
+                )}
+              </div>
+            )}
+          </div>
+          <Button variant="outline" size="sm" className="h-8"
+            onClick={() => { if (newCategory.trim()) addCategory(newCategory); }}
+            data-testid="button-add-category">
+            추가
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
