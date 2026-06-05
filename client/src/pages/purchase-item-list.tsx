@@ -136,7 +136,7 @@ function CategoryCombobox({
   placeholder = "선택...",
   testId,
   compact = false,
-  container,
+  container, // kept for API compatibility
 }: {
   value: string;
   options: string[];
@@ -149,12 +149,25 @@ function CategoryCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open && inputRef.current) {
       setTimeout(() => inputRef.current?.focus(), 0);
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
   const primarySet = useMemo(() => new Set(options), [options]);
@@ -192,24 +205,23 @@ function CategoryCombobox({
   };
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(""); }}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={compact
-            ? "h-6 px-2 text-xs justify-between font-normal min-w-[80px] max-w-[140px]"
-            : "h-9 px-3 text-sm justify-between font-normal w-full"
-          }
-          data-testid={testId}
-        >
-          <span className="truncate">{value || placeholder}</span>
-          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start" onOpenAutoFocus={e => e.preventDefault()} {...(container ? { container } : {})}>
-        <div className="flex flex-col">
+    <div ref={wrapperRef} className="relative">
+      <Button
+        variant="outline"
+        role="combobox"
+        aria-expanded={open}
+        className={compact
+          ? "h-6 px-2 text-xs justify-between font-normal min-w-[80px] max-w-[140px]"
+          : "h-9 px-3 text-sm justify-between font-normal w-full"
+        }
+        onClick={() => setOpen(o => !o)}
+        data-testid={testId}
+      >
+        <span className="truncate">{value || placeholder}</span>
+        <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+      </Button>
+      {open && (
+        <div className="absolute z-50 top-full left-0 w-[220px] bg-popover border rounded-md shadow-md mt-1">
           <div className="flex items-center border-b px-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
@@ -220,12 +232,10 @@ function CategoryCombobox({
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => {
                 if (e.key === "Enter" && search.trim()) {
-                  if (filtered.length > 0) {
-                    handleSelect(filtered[0]);
-                  } else {
-                    handleAddNew();
-                  }
+                  if (filtered.length > 0) handleSelect(filtered[0]);
+                  else handleAddNew();
                 }
+                if (e.key === "Escape") { setOpen(false); setSearch(""); }
               }}
               data-testid={`${testId}-search`}
             />
@@ -238,7 +248,7 @@ function CategoryCombobox({
               <button
                 key={opt}
                 className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground"
-                onClick={() => handleSelect(opt)}
+                onMouseDown={e => { e.preventDefault(); handleSelect(opt); }}
                 data-testid={`${testId}-option-${opt}`}
               >
                 <Check className={`mr-2 h-3 w-3 ${value === opt ? "opacity-100" : "opacity-0"}`} />
@@ -253,7 +263,7 @@ function CategoryCombobox({
                   <button
                     key={opt}
                     className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground text-muted-foreground"
-                    onClick={() => handleSelect(opt)}
+                    onMouseDown={e => { e.preventDefault(); handleSelect(opt); }}
                     data-testid={`${testId}-option-${opt}`}
                   >
                     <Check className={`mr-2 h-3 w-3 ${value === opt ? "opacity-100" : "opacity-0"}`} />
@@ -265,7 +275,7 @@ function CategoryCombobox({
             {search.trim() && !allCombined.includes(search.trim()) && (
               <button
                 className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground text-blue-600 dark:text-blue-400"
-                onClick={handleAddNew}
+                onMouseDown={e => { e.preventDefault(); handleAddNew(); }}
                 data-testid={`${testId}-add-new`}
               >
                 <Plus className="mr-2 h-3 w-3" />
@@ -274,8 +284,8 @@ function CategoryCombobox({
             )}
           </div>
         </div>
-      </PopoverContent>
-    </Popover>
+      )}
+    </div>
   );
 }
 
