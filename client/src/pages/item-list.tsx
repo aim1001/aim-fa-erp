@@ -152,46 +152,52 @@ function ComboboxInput({
   onChange,
   placeholder,
   testId,
-  container,
 }: {
   value: string;
   options: string[];
   onChange: (val: string) => void;
   placeholder?: string;
   testId: string;
-  container?: HTMLElement | null;
+  container?: HTMLElement | null; // kept for API compatibility
 }) {
   const [open, setOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
   const filteredOptions = useMemo(() => {
     if (!isTyping || !value) return options;
     const q = value.toLowerCase();
     return options.filter(o => o.toLowerCase().includes(q));
   }, [options, value, isTyping]);
 
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setIsTyping(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setIsTyping(false); }}>
-      <PopoverTrigger asChild>
-        <Input
-          value={value}
-          onChange={e => { onChange(e.target.value); setIsTyping(true); setOpen(true); }}
-          onFocus={() => { setIsTyping(false); setOpen(true); }}
-          placeholder={placeholder}
-          data-testid={testId}
-        />
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-[200px] p-1"
-        align="start"
-        onOpenAutoFocus={e => e.preventDefault()}
-        {...(container ? { container } : {})}
-      >
-        <div className="max-h-[150px] overflow-auto">
+    <div ref={wrapperRef} className="relative">
+      <Input
+        value={value}
+        onChange={e => { onChange(e.target.value); setIsTyping(true); setOpen(true); }}
+        onFocus={() => { setIsTyping(false); setOpen(true); }}
+        placeholder={placeholder}
+        data-testid={testId}
+      />
+      {open && (
+        <div className="absolute z-50 top-full left-0 w-full min-w-[180px] bg-popover border rounded-md shadow-md mt-1 max-h-[160px] overflow-auto">
           {filteredOptions.length > 0 ? (
             filteredOptions.map(opt => (
               <div
                 key={opt}
-                className={`text-xs px-2 py-1 rounded cursor-pointer hover-elevate ${opt === value ? "bg-accent" : ""}`}
+                className={`text-xs px-2 py-1.5 cursor-pointer hover:bg-accent ${opt === value ? "bg-accent font-medium" : ""}`}
                 onMouseDown={e => { e.preventDefault(); onChange(opt); setOpen(false); setIsTyping(false); }}
                 data-testid={`option-${testId}-${opt}`}
               >
@@ -199,13 +205,13 @@ function ComboboxInput({
               </div>
             ))
           ) : (
-            <div className="text-xs px-2 py-1 text-muted-foreground">
+            <div className="text-xs px-2 py-2 text-muted-foreground">
               {value ? `"${value}" 직접 입력` : "직접 입력하세요"}
             </div>
           )}
         </div>
-      </PopoverContent>
-    </Popover>
+      )}
+    </div>
   );
 }
 
