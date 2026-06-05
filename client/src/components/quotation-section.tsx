@@ -378,50 +378,62 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
               {Array.from(grouped).flatMap(([cat, catItems]) => {
                 const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
                 const catCostTotal = catItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
+                const catProfit = catSubtotal - catCostTotal;
                 const catMargin = catSubtotal > 0 && catCostTotal > 0
                   ? Math.round(((catSubtotal - catCostTotal) / catSubtotal) * 100) : 0;
+                const negoPct = categoryDiscounts[cat] || 0;
+                const negoAmt = negoPct > 0 ? Math.round(catSubtotal * negoPct / 100) : 0;
+                const catAfterNego = catSubtotal - negoAmt;
+                const catAfterProfit = catAfterNego - catCostTotal;
+                const catAfterMargin = catAfterNego > 0 ? Math.round((catAfterProfit / catAfterNego) * 100) : 0;
 
                 const rows = [];
                 rows.push(
                   <tr key={`cat-header-${cat}`} className="bg-blue-50 dark:bg-blue-950/30">
-                    <td colSpan={10} className="px-2 py-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-xs">{cat}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-muted-foreground">
-                            소계: {fmtNum(catSubtotal)}원 · 마진: <MarginBadge rate={catMargin} />
-                          </span>
-                          {!isLocked && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-muted-foreground">네고</span>
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                value={categoryDiscounts[cat] || ""}
-                                onChange={e => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  onCategoryDiscountChange(cat, val);
-                                }}
-                                placeholder="0"
-                                className="w-12 h-5 text-xs text-center border rounded bg-white dark:bg-gray-900 px-1"
-                                data-testid={`input-cat-nego-${cat}`}
-                              />
-                              <span className="text-[10px] text-muted-foreground">%</span>
-                              {(categoryDiscounts[cat] || 0) > 0 && (
-                                <span className="text-[10px] text-red-500">
-                                  -{fmtNum(Math.round(catSubtotal * (categoryDiscounts[cat] || 0) / 100))}원
-                                </span>
-                              )}
-                            </div>
+                    <td colSpan={10} className="px-3 py-2">
+                      {/* 1줄: 카테고리명 + 네고율 입력 */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-sm">{cat}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">네고</span>
+                          {!isLocked ? (
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={negoPct || ""}
+                              onChange={e => onCategoryDiscountChange(cat, parseFloat(e.target.value) || 0)}
+                              placeholder="0"
+                              className="w-14 h-6 text-xs text-center border rounded bg-white dark:bg-gray-900 px-1 font-medium"
+                              data-testid={`input-cat-nego-${cat}`}
+                            />
+                          ) : (
+                            <span className="text-xs font-medium">{negoPct || 0}</span>
                           )}
-                          {isLocked && (categoryDiscounts[cat] || 0) > 0 && (
-                            <span className="text-[10px] text-red-500">
-                              네고 {categoryDiscounts[cat]}% (-{fmtNum(Math.round(catSubtotal * (categoryDiscounts[cat] || 0) / 100))}원)
-                            </span>
-                          )}
+                          <span className="text-xs text-muted-foreground">%</span>
                         </div>
                       </div>
+                      {/* 2줄: 원가 / 소계 / 이윤 / 마진 */}
+                      <div className="flex items-center gap-4 text-xs">
+                        <span className="text-muted-foreground">원가 <span className="font-medium text-foreground">{fmtNum(catCostTotal)}</span></span>
+                        <span className="text-muted-foreground">│</span>
+                        <span className="text-muted-foreground">소계 <span className="font-medium text-foreground">{fmtNum(catSubtotal)}</span></span>
+                        <span className="text-muted-foreground">│</span>
+                        <span className="text-muted-foreground">이윤 <span className={`font-medium ${catProfit >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>{fmtNum(catProfit)}</span></span>
+                        <span className="text-muted-foreground">│</span>
+                        <span className="text-muted-foreground">마진 <MarginBadge rate={catMargin} /></span>
+                      </div>
+                      {/* 3줄: 네고후 (네고율 있을 때만) */}
+                      {negoPct > 0 && (
+                        <div className="flex items-center gap-4 text-xs mt-1 pt-1 border-t border-blue-200/60 dark:border-blue-800/40">
+                          <span className="text-muted-foreground text-[10px]">네고후</span>
+                          <span className="text-muted-foreground">합계 <span className="font-medium text-orange-600 dark:text-orange-400">{fmtNum(catAfterNego)}</span></span>
+                          <span className="text-muted-foreground">│</span>
+                          <span className="text-muted-foreground">이윤 <span className={`font-medium ${catAfterProfit >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>{fmtNum(catAfterProfit)}</span></span>
+                          <span className="text-muted-foreground">│</span>
+                          <span className="text-muted-foreground">마진 <MarginBadge rate={catAfterMargin} /></span>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
