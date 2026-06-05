@@ -840,12 +840,14 @@ function AddItemDialog({
   onOpenChange,
   categories,
   category2s,
+  category2sByCategory1,
   itemTypes,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   categories: string[];
   category2s: string[];
+  category2sByCategory1: Map<string, string[]>;
   itemTypes: string[];
 }) {
   const { toast } = useToast();
@@ -861,6 +863,12 @@ function AddItemDialog({
     itemType: "",
     active: true,
   });
+
+  // 선택된 대분류 기준 소분류 목록 (없으면 전체)
+  const filteredCategory2s = useMemo(() => {
+    if (!form.category1) return category2s;
+    return category2sByCategory1.get(form.category1) || [];
+  }, [form.category1, category2s, category2sByCategory1]);
 
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
@@ -920,19 +928,24 @@ function AddItemDialog({
               <ComboboxInput
                 value={form.category1}
                 options={categories}
-                onChange={val => setForm(f => ({ ...f, category1: val }))}
+                onChange={val => setForm(f => ({ ...f, category1: val, category2: "" }))}
                 placeholder="대분류 입력/선택"
                 testId="input-add-category1"
                 container={container}
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">소분류</Label>
+              <Label className="text-xs">
+                소분류
+                {form.category1 && filteredCategory2s.length === 0 && (
+                  <span className="ml-1 text-[10px] text-muted-foreground">(직접 입력)</span>
+                )}
+              </Label>
               <ComboboxInput
                 value={form.category2}
-                options={category2s}
+                options={filteredCategory2s}
                 onChange={val => setForm(f => ({ ...f, category2: val }))}
-                placeholder="소분류 입력/선택"
+                placeholder={form.category1 ? "소분류 입력/선택" : "대분류 먼저 선택"}
                 testId="input-add-category2"
                 container={container}
               />
@@ -1094,6 +1107,19 @@ export default function ItemList() {
     if (!items) return [];
     const set = new Set(items.map(i => i.category2).filter(Boolean));
     return Array.from(set).sort() as string[];
+  }, [items]);
+
+  const category2sByCategory1 = useMemo(() => {
+    if (!items) return new Map<string, string[]>();
+    const map = new Map<string, string[]>();
+    items.forEach(i => {
+      if (!i.category2) return;
+      const list = map.get(i.category1) || [];
+      if (!list.includes(i.category2)) list.push(i.category2);
+      map.set(i.category1, list);
+    });
+    map.forEach((v, k) => map.set(k, v.sort()));
+    return map;
   }, [items]);
 
   const category2Options = useMemo(() => {
@@ -1384,6 +1410,7 @@ export default function ItemList() {
         onOpenChange={setAddDialogOpen}
         categories={categories}
         category2s={category2s}
+        category2sByCategory1={category2sByCategory1}
         itemTypes={itemTypes}
       />
     </div>
