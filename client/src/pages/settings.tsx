@@ -857,11 +857,70 @@ export default function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="admin-tools" className="space-y-6 mt-6">
+            <GoogleOAuthSettings />
             <AdminToolsSettings />
           </TabsContent>
         </Tabs>
       </div>
     </div>
+  );
+}
+
+function GoogleOAuthSettings() {
+  const { toast } = useToast();
+
+  const { data: status, isLoading, refetch } = useQuery<{
+    hasCredentials: boolean;
+    configured: boolean;
+  }>({
+    queryKey: ["/api/google/oauth/status"],
+  });
+
+  const handleConnect = () => {
+    window.location.href = "/api/google/oauth/authorize";
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Link2 className="h-4 w-4" />
+          구글 연동
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <p className="text-sm font-medium">Google OAuth 상태</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              캘린더, 할일, 주소록 연동에 필요합니다
+            </p>
+          </div>
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : status?.configured ? (
+            <Badge className="bg-green-100 text-green-700 border-0">
+              <CheckCircle className="h-3 w-3 mr-1" />연결됨
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-muted-foreground">
+              <XCircle className="h-3 w-3 mr-1" />미연결
+            </Badge>
+          )}
+        </div>
+
+        <div className="rounded-md bg-muted/40 px-4 py-3 text-xs text-muted-foreground space-y-1">
+          <p>• 주소록(People API) 스코프를 새로 추가했다면 재연결이 필요합니다</p>
+          <p>• 재연결 후 표시되는 <strong>Refresh Token</strong>을 Railway Variables에 업데이트하세요</p>
+          <p>• 기존 캘린더/할일 연동은 재연결 후에도 정상 작동합니다</p>
+        </div>
+
+        <Button onClick={handleConnect} variant="outline" className="w-full">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          구글 재연결 (새 Refresh Token 발급)
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
