@@ -63,6 +63,9 @@ export default function SettingsPage() {
     emailSubjectTemplate: "",
   });
 
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [newCategory, setNewCategory] = useState("");
+
   const [salesDefaultContactPerson, setSalesDefaultContactPerson] = useState("");
   const [projectDefaultContactPerson, setProjectDefaultContactPerson] = useState("");
   const [poDefaultContactPerson, setPoDefaultContactPerson] = useState("");
@@ -94,6 +97,11 @@ export default function SettingsPage() {
         poCalendarId: settings.poCalendarId || "sales@aim-fa.com",
         emailSubjectTemplate: settings.emailSubjectTemplate || "",
       });
+      try {
+        setCategoryOrder(JSON.parse((settings as any).quotationCategoryOrder || "[]"));
+      } catch {
+        setCategoryOrder([]);
+      }
       if (staffList) {
         if (settings.salesDefaultStaffId) {
           const s = staffList.find(st => st.id === settings.salesDefaultStaffId);
@@ -117,7 +125,10 @@ export default function SettingsPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof form) => {
-      const res = await apiRequest("PUT", "/api/company-settings", data);
+      const res = await apiRequest("PUT", "/api/company-settings", {
+        ...data,
+        quotationCategoryOrder: JSON.stringify(categoryOrder),
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -442,6 +453,93 @@ export default function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="quotation" className="space-y-6 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <FileText className="h-4 w-4" />
+                  견적 카테고리 정렬 순서
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">견적서 카테고리가 이 순서대로 표시됩니다. 목록에 없는 카테고리는 맨 뒤에 표시됩니다.</p>
+                <div className="space-y-2">
+                  {categoryOrder.map((cat, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-5 text-right">{idx + 1}.</span>
+                      <Input
+                        value={cat}
+                        onChange={e => setCategoryOrder(prev => prev.map((c, i) => i === idx ? e.target.value : c))}
+                        className="h-8 text-sm flex-1"
+                        data-testid={`input-category-order-${idx}`}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={idx === 0}
+                        onClick={() => setCategoryOrder(prev => {
+                          const next = [...prev];
+                          [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                          return next;
+                        })}
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={idx === categoryOrder.length - 1}
+                        onClick={() => setCategoryOrder(prev => {
+                          const next = [...prev];
+                          [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                          return next;
+                        })}
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => setCategoryOrder(prev => prev.filter((_, i) => i !== idx))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={newCategory}
+                    onChange={e => setNewCategory(e.target.value)}
+                    placeholder="카테고리명 입력 (예: VISION SYSTEM)"
+                    className="h-8 text-sm"
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && newCategory.trim()) {
+                        setCategoryOrder(prev => [...prev, newCategory.trim()]);
+                        setNewCategory("");
+                      }
+                    }}
+                    data-testid="input-new-category"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (newCategory.trim()) {
+                        setCategoryOrder(prev => [...prev, newCategory.trim()]);
+                        setNewCategory("");
+                      }
+                    }}
+                    data-testid="button-add-category"
+                  >
+                    추가
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">

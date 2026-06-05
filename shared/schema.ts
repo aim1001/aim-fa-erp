@@ -648,6 +648,7 @@ export const companySettings = pgTable("company_settings", {
   poCalendarId: text("po_calendar_id"),
   website: text("website"),
   emailSubjectTemplate: text("email_subject_template"),
+  quotationCategoryOrder: text("quotation_category_order"), // JSON: ["VISION SYSTEM","FEEDER","ROBOT","SERVICE"]
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -297,6 +297,11 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ quantity: 0, unitPrice: 0 });
 
+  const { data: companySettings } = useQuery<any>({ queryKey: ["/api/company-settings"] });
+  const categoryOrder: string[] = useMemo(() => {
+    try { return JSON.parse(companySettings?.quotationCategoryOrder || "[]"); } catch { return []; }
+  }, [companySettings?.quotationCategoryOrder]);
+
   const regularItems = useMemo(() => items.filter(i => !i.isAdjustment), [items]);
 
   const grouped = useMemo(() => {
@@ -306,8 +311,19 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     }
+    // 설정된 순서로 정렬, 없는 카테고리는 뒤에
+    if (categoryOrder.length > 0) {
+      const sorted = new Map<string, QuotationItem[]>();
+      for (const cat of categoryOrder) {
+        if (map.has(cat)) sorted.set(cat, map.get(cat)!);
+      }
+      for (const [cat, val] of Array.from(map.entries())) {
+        if (!sorted.has(cat)) sorted.set(cat, val);
+      }
+      return sorted;
+    }
     return map;
-  }, [regularItems]);
+  }, [regularItems, categoryOrder]);
 
   const addItemMut = useMutation({
     mutationFn: (body: any) => apiRequest("POST", `/api/quotations/${quotation.id}/items`, body),
