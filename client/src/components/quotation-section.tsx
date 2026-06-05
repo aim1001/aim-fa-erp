@@ -1333,6 +1333,18 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
   const quotation = data?.quotation;
   const items = data?.items || [];
 
+  const [categoryDiscounts, setCategoryDiscounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (quotation) {
+      try {
+        setCategoryDiscounts(JSON.parse((quotation as any).categoryDiscounts || "{}"));
+      } catch {
+        setCategoryDiscounts({});
+      }
+    }
+  }, [quotation?.id]);
+
   if (isLoading || !quotation) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1342,10 +1354,6 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
   }
 
   const isLocked = quotation.status === "sent" || quotation.status === "accepted";
-
-  const [categoryDiscounts, setCategoryDiscounts] = useState<Record<string, number>>(() => {
-    try { return JSON.parse((quotation as any).categoryDiscounts || "{}"); } catch { return {}; }
-  });
 
   const handleCategoryDiscountChange = (cat: string, val: number) => {
     setCategoryDiscounts(prev => ({ ...prev, [cat]: val }));
