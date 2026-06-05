@@ -285,11 +285,13 @@ function ItemSearchPopover({ onSelect, disabled }: {
   );
 }
 
-function ItemsTab({ quotation, items, onRefresh, isLocked }: {
+function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, onCategoryDiscountChange }: {
   quotation: Quotation;
   items: QuotationItem[];
   onRefresh: () => void;
   isLocked?: boolean;
+  categoryDiscounts: Record<string, number>;
+  onCategoryDiscountChange: (cat: string, val: number) => void;
 }) {
   const { toast } = useToast();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -383,11 +385,42 @@ function ItemsTab({ quotation, items, onRefresh, isLocked }: {
                 rows.push(
                   <tr key={`cat-header-${cat}`} className="bg-blue-50 dark:bg-blue-950/30">
                     <td colSpan={10} className="px-2 py-1.5">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-xs">{cat}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          소계: {fmtNum(catSubtotal)}원 · 마진: <MarginBadge rate={catMargin} />
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] text-muted-foreground">
+                            소계: {fmtNum(catSubtotal)}원 · 마진: <MarginBadge rate={catMargin} />
+                          </span>
+                          {!isLocked && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-muted-foreground">네고</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={categoryDiscounts[cat] || ""}
+                                onChange={e => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  onCategoryDiscountChange(cat, val);
+                                }}
+                                placeholder="0"
+                                className="w-12 h-5 text-xs text-center border rounded bg-white dark:bg-gray-900 px-1"
+                                data-testid={`input-cat-nego-${cat}`}
+                              />
+                              <span className="text-[10px] text-muted-foreground">%</span>
+                              {(categoryDiscounts[cat] || 0) > 0 && (
+                                <span className="text-[10px] text-red-500">
+                                  -{fmtNum(Math.round(catSubtotal * (categoryDiscounts[cat] || 0) / 100))}원
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {isLocked && (categoryDiscounts[cat] || 0) > 0 && (
+                            <span className="text-[10px] text-red-500">
+                              네고 {categoryDiscounts[cat]}% (-{fmtNum(Math.round(catSubtotal * (categoryDiscounts[cat] || 0) / 100))}원)
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -496,12 +529,13 @@ const FALLBACK_NOTES = `[제외사항]
   대전 이남 80만원
 - 원격 기술지원: 4시간 20만원`;
 
-function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
+function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, categoryDiscounts }: {
   quotation: Quotation;
   items: QuotationItem[];
   inquiryId: string;
   onRefresh: () => void;
   isLocked?: boolean;
+  categoryDiscounts: Record<string, number>;
 }) {
   const { data: companySettings } = useQuery<CompanySettings>({
     queryKey: ["/api/company-settings"],
@@ -523,7 +557,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
   const [newAdj, setNewAdj] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [editingAdjId, setEditingAdjId] = useState<string | null>(null);
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
-  const [discountType, setDiscountType] = useState<string>(quotation.discountType || "amount");
+  const [discountType, setDiscountType] = useState<string>("amount");
   const [discountValue, setDiscountValue] = useState(quotation.discountValue || 0);
   const [discountTruncUnit, setDiscountTruncUnit] = useState<string>(quotation.discountTruncUnit || "none");
   const [deliveryDays, setDeliveryDays] = useState<number | null>(quotation.deliveryDays ?? null);
@@ -539,20 +573,38 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
   const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
   const supplyAmount = regularSubtotal + adjTotal;
 
-  const discountAmount = useMemo(() => {
-    if (discountValue <= 0) return 0;
-    if (discountType === "percent") return Math.round(supplyAmount * discountValue / 100);
-    return discountValue;
-  }, [discountType, discountValue, supplyAmount]);
+  const pricingGrouped = useMemo(() => {
+    const map = new Map<string, typeof regularItems>();
+    for (const item of regularItems) {
+      const cat = item.category1 || item.category2 || "기타";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(item);
+    }
+    return map;
+  }, [regularItems]);
+
+  const categoryNegoTotal = useMemo(() => {
+    let total = 0;
+    for (const [cat, catItems] of Array.from(pricingGrouped.entries())) {
+      const pct = categoryDiscounts[cat] || 0;
+      if (pct > 0) {
+        const catSubtotal = catItems.reduce((s: number, i: any) => s + (i.amount || 0), 0);
+        total += Math.round(catSubtotal * pct / 100);
+      }
+    }
+    return total;
+  }, [pricingGrouped, categoryDiscounts]);
+
+  const afterCategoryNego = supplyAmount - categoryNegoTotal;
 
   const afterDiscount = useMemo(() => {
-    const raw = supplyAmount - discountAmount;
     const unit = parseInt(discountTruncUnit);
-    if (unit > 0 && discountAmount > 0) return Math.floor(raw / unit) * unit;
-    return raw;
-  }, [discountAmount, discountTruncUnit, supplyAmount]);
+    if (unit > 0) return Math.floor(afterCategoryNego / unit) * unit;
+    return afterCategoryNego;
+  }, [afterCategoryNego, discountTruncUnit]);
 
   const actualDiscount = supplyAmount - afterDiscount;
+  const discountAmount = actualDiscount;
   const tax = Math.round(afterDiscount * 0.1);
   const total = afterDiscount + tax;
 
@@ -608,9 +660,10 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
   const handleSave = () => {
     updateMut.mutate({
       notes,
-      discountType,
-      discountValue,
+      discountType: "amount",
+      discountValue: actualDiscount,
       discountTruncUnit,
+      categoryDiscounts: JSON.stringify(categoryDiscounts),
       deliveryDays: deliveryDays || null,
       adjustmentAmount: -actualDiscount,
     });
@@ -774,30 +827,13 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked }: {
 
         {!isLocked && (
         <div className="border-t pt-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium">할인</label>
-            <Select value={discountType} onValueChange={(v) => { setDiscountType(v); setDiscountValue(0); }}>
-              <SelectTrigger className="w-20 h-7 text-xs" data-testid="select-discount-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="percent">비율(%)</SelectItem>
-                <SelectItem value="amount">금액(원)</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              type="number"
-              value={discountValue || ""}
-              onChange={e => setDiscountValue(e.target.value === "" ? 0 : (discountType === "percent" ? parseFloat(e.target.value) || 0 : parseInt(e.target.value) || 0))}
-              placeholder={discountType === "percent" ? "할인율" : "할인금액"}
-              className="h-7 text-xs w-28"
-              data-testid="input-discount-value"
-            />
-            <span className="text-xs text-muted-foreground">{discountType === "percent" ? "%" : "원"}</span>
-            {discountType === "percent" && discountAmount > 0 && (
-              <span className="text-xs text-muted-foreground">= -{fmtNum(discountAmount)}원</span>
-            )}
-          </div>
+          {categoryNegoTotal > 0 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-medium text-sm text-foreground">카테고리 네고</span>
+              <span className="text-red-500 font-medium">-{fmtNum(categoryNegoTotal)}원</span>
+              <span className="text-[10px]">({supplyAmount > 0 ? ((categoryNegoTotal / supplyAmount) * 100).toFixed(1) : "0"}%)</span>
+            </div>
+          )}
         </div>
         )}
 
@@ -1307,6 +1343,14 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
 
   const isLocked = quotation.status === "sent" || quotation.status === "accepted";
 
+  const [categoryDiscounts, setCategoryDiscounts] = useState<Record<string, number>>(() => {
+    try { return JSON.parse((quotation as any).categoryDiscounts || "{}"); } catch { return {}; }
+  });
+
+  const handleCategoryDiscountChange = (cat: string, val: number) => {
+    setCategoryDiscounts(prev => ({ ...prev, [cat]: val }));
+  };
+
   return (
     <div className="space-y-4">
       {isLocked && (
@@ -1318,10 +1362,24 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
       <QuotationHeaderBar quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} isLocked={isLocked} />
 
       <div className="border-2 border-primary/20 rounded-lg p-3 bg-background">
-        <ItemsTab quotation={quotation} items={items} onRefresh={onRefresh} isLocked={isLocked} />
+        <ItemsTab
+          quotation={quotation}
+          items={items}
+          onRefresh={onRefresh}
+          isLocked={isLocked}
+          categoryDiscounts={categoryDiscounts}
+          onCategoryDiscountChange={handleCategoryDiscountChange}
+        />
       </div>
 
-      <PricingTab quotation={quotation} items={items} inquiryId={inquiryId} onRefresh={onRefresh} isLocked={isLocked} />
+      <PricingTab
+        quotation={quotation}
+        items={items}
+        inquiryId={inquiryId}
+        onRefresh={onRefresh}
+        isLocked={isLocked}
+        categoryDiscounts={categoryDiscounts}
+      />
     </div>
   );
 }

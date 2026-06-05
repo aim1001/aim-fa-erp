@@ -579,6 +579,7 @@ export const quotations = pgTable("quotations", {
   discountValue: integer("discount_value").default(0),
   discountTruncate: boolean("discount_truncate").default(true),
   discountTruncUnit: text("discount_trunc_unit").default("1000"),
+  categoryDiscounts: text("category_discounts"), // JSON: {"ROBOT": 5, "FEEDER": 10}
   deliveryDays: integer("delivery_days"),
   createdAt: text("created_at").notNull(),
 });
