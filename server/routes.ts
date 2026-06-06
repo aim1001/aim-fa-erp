@@ -681,8 +681,41 @@ export async function registerRoutes(
       });
 
       const allSalesInvoices = await storage.getSalesInvoices();
+      const today = now.toISOString().split('T')[0];
+      const in30Days = new Date(now); in30Days.setDate(in30Days.getDate() + 30);
+      const in30DaysStr = in30Days.toISOString().split('T')[0];
+
+      // 미발행 계산서: plannedIssueDate 있고 issueDate 없는 것
       const unissuedInvoices = allSalesInvoices.filter(i => !i.issueDate && i.plannedIssueDate);
-      const overdueInvoices = unissuedInvoices.filter(i => i.plannedIssueDate && i.plannedIssueDate < now.toISOString().split('T')[0]);
+      const overdueInvoices = unissuedInvoices.filter(i => i.plannedIssueDate! < today);
+      const upcomingInvoices = unissuedInvoices.filter(i => i.plannedIssueDate! >= today && i.plannedIssueDate! <= in30DaysStr);
+
+      // 미발행 목록 상세 (최대 20건, 긴급순)
+      const pendingIssuanceList = [...overdueInvoices, ...upcomingInvoices]
+        .sort((a, b) => (a.plannedIssueDate ?? "").localeCompare(b.plannedIssueDate ?? ""))
+        .slice(0, 20)
+        .map(i => ({
+          id: i.id,
+          companyName: i.companyName,
+          projectId: i.projectId,
+          totalAmount: i.totalAmount ?? 0,
+          supplyAmount: i.supplyAmount ?? 0,
+          plannedIssueDate: i.plannedIssueDate,
+          isOverdue: (i.plannedIssueDate ?? "") < today,
+        }));
+
+      // 미수금: 예정일 지난 수금계획 목록 상세 (최대 20건)
+      const overdueCollectionList = overduePayments
+        .sort((a, b) => (a.plannedDate ?? "").localeCompare(b.plannedDate ?? ""))
+        .slice(0, 20)
+        .map(p => ({
+          id: p.id,
+          companyName: p.companyName,
+          amount: p.amount ?? 0,
+          plannedDate: p.plannedDate,
+          salesInvoiceId: p.salesInvoiceId,
+          projectId: p.projectId,
+        }));
 
       const allPurchaseInvoices = await storage.getPurchaseInvoices();
 
@@ -709,10 +742,13 @@ export async function registerRoutes(
           overdueInvoiceAmount: overdueInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0),
           unissuedCount: unissuedInvoices.length,
           unissuedAmount: unissuedInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0),
+          upcomingInvoiceCount: upcomingInvoices.length,
           uncollectedCount: overduePayments.length,
           uncollectedAmount: overduePayments.reduce((s, p) => s + (p.amount || 0), 0),
           salesInvoiceCount: allSalesInvoices.length,
           purchaseInvoiceCount: allPurchaseInvoices.length,
+          pendingIssuanceList,
+          overdueCollectionList,
         },
         trade: {
           itemCount: allItems.length,
@@ -3807,7 +3843,23 @@ export async function registerRoutes(
 
   app.delete("/api/sales-invoices/:id", async (req, res) => {
     try {
-      await storage.deleteSalesInvoice(req.params.id);
+      const invoiceId = req.params.id;
+
+      // 연결된 수금계획 삭제
+      const allPayments = await storage.getPayments();
+      const linkedPayments = allPayments.filter(p => p.salesInvoiceId === invoiceId);
+      for (const p of linkedPayments) {
+        await storage.deletePayment(p.id);
+      }
+
+      // 은행내역 매칭 해제 (matchedSalesInvoiceId → null)
+      await pool.query(
+        `UPDATE bank_transactions SET matched_sales_invoice_id = NULL, match_status = 'unmatched'
+         WHERE matched_sales_invoice_id = $1`,
+        [invoiceId]
+      );
+
+      await storage.deleteSalesInvoice(invoiceId);
       res.json({ message: "삭제 완료" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -4857,6 +4909,12 @@ export async function registerRoutes(
 
   app.delete("/api/payments/:id", async (req, res) => {
     try {
+      // 은행내역 매칭 해제
+      await pool.query(
+        `UPDATE bank_transactions SET matched_payment_id = NULL, match_status = 'unmatched'
+         WHERE matched_payment_id = $1`,
+        [req.params.id]
+      );
       await storage.deletePayment(req.params.id);
       res.json({ message: "삭제 완료" });
     } catch (err: any) {
@@ -5276,6 +5334,10 @@ export async function registerRoutes(
       const existingProjects = await storage.getProjects(year);
       for (const project of existingProjects) {
         if (project.folderName && !onedriveFolderNames.has(project.folderName)) {
+          await pool.query(`UPDATE sales_invoices SET project_id = NULL WHERE project_id = $1`, [project.id]);
+          await pool.query(`UPDATE purchase_invoices SET project_id = NULL WHERE project_id = $1`, [project.id]);
+          await pool.query(`UPDATE payments SET project_id = NULL WHERE project_id = $1`, [project.id]);
+          await pool.query(`UPDATE bank_transactions SET matched_project_id = NULL WHERE matched_project_id = $1`, [project.id]);
           await storage.deleteProject(project.id);
           deleted++;
         }
@@ -5303,7 +5365,19 @@ export async function registerRoutes(
 
   app.delete("/api/projects/:id", async (req, res) => {
     try {
-      await storage.deleteProject(req.params.id);
+      const projectId = req.params.id;
+
+      // 연결된 매출/매입계산서의 projectId null 처리 (계산서 자체는 유지)
+      await pool.query(`UPDATE sales_invoices SET project_id = NULL WHERE project_id = $1`, [projectId]);
+      await pool.query(`UPDATE purchase_invoices SET project_id = NULL WHERE project_id = $1`, [projectId]);
+
+      // 연결된 수금/지급계획의 projectId null 처리
+      await pool.query(`UPDATE payments SET project_id = NULL WHERE project_id = $1`, [projectId]);
+
+      // 은행내역의 matchedProjectId null 처리
+      await pool.query(`UPDATE bank_transactions SET matched_project_id = NULL WHERE matched_project_id = $1`, [projectId]);
+
+      await storage.deleteProject(projectId);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -8341,8 +8415,12 @@ export async function registerRoutes(
   const bankUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
   // Auto-match helper: match unmatched credit transactions to sales invoices by company name
+  // 업체명 정규화: 주식회사/(주)/(유) 등 제거, 공백 제거, 소문자
+  function normalizeCompanyName(s: string): string {
+    return s.replace(/주식회사|유한회사|\(주\)|\(유\)|\s/g, "").toLowerCase();
+  }
+
   async function performAutoMatch(accountId?: string): Promise<number> {
-    // Get all unmatched credit transactions that have a counterparty
     const txQuery = accountId
       ? `SELECT id, counterparty, credit_amount FROM bank_transactions
          WHERE match_status IN ('unmatched') AND credit_amount > 0 AND counterparty IS NOT NULL AND counterparty != ''
@@ -8356,24 +8434,38 @@ export async function registerRoutes(
 
     if (txResult.rows.length === 0) return 0;
 
-    // Get all unpaid/partial sales invoices
+    // 미수금 계산서 (공급금액 + 세액 포함 total_amount 기준)
     const invoiceResult = await pool.query(
-      `SELECT id, company_name FROM sales_invoices WHERE status IN ('unpaid', 'partial') AND company_name IS NOT NULL`
+      `SELECT id, company_name, total_amount FROM sales_invoices
+       WHERE status IN ('unpaid', 'partial') AND company_name IS NOT NULL`
     );
     if (invoiceResult.rows.length === 0) return 0;
 
     let matched = 0;
     for (const tx of txResult.rows) {
-      const cp = (tx.counterparty as string).trim();
-      // Find invoice whose company_name is contained in or contains the counterparty
-      const invoice = invoiceResult.rows.find((inv: any) => {
-        const cn = (inv.company_name as string).trim();
-        return cn && (cp.includes(cn) || cn.includes(cp));
+      const cpNorm = normalizeCompanyName((tx.counterparty as string).trim());
+      const txAmount = Number(tx.credit_amount);
+
+      // 업체명 매칭 후보 추출 (정규화된 이름 포함 여부)
+      const nameCandidates = invoiceResult.rows.filter((inv: any) => {
+        const cnNorm = normalizeCompanyName((inv.company_name as string).trim());
+        return cnNorm && (cpNorm.includes(cnNorm) || cnNorm.includes(cpNorm));
       });
-      if (!invoice) continue;
+      if (nameCandidates.length === 0) continue;
+
+      // 금액 20% 이내인 후보로 좁힘
+      const amountCandidates = nameCandidates.filter((inv: any) => {
+        const invAmount = Number(inv.total_amount);
+        if (!invAmount) return false;
+        return Math.abs(txAmount - invAmount) / Math.max(txAmount, invAmount) <= 0.2;
+      });
+
+      // 후보가 정확히 1건일 때만 자동 매칭
+      if (amountCandidates.length !== 1) continue;
+
       await pool.query(
         `UPDATE bank_transactions SET matched_sales_invoice_id = $1, match_status = 'auto' WHERE id = $2`,
-        [invoice.id, tx.id]
+        [amountCandidates[0].id, tx.id]
       );
       matched++;
     }
@@ -8712,6 +8804,85 @@ export async function registerRoutes(
   });
 
   // ===== 수금관리 (미수금) API =====
+
+  // 고객사별 수금현황 요약
+  app.get("/api/receivables/by-customer", async (req, res) => {
+    try {
+      const { year } = req.query;
+      const yearNum = year ? parseInt(year as string) : undefined;
+
+      const invoices = await storage.getSalesInvoices();
+      const customers = await storage.getCustomers();
+      const customerMap = new Map(customers.map((c: any) => [c.id, c]));
+
+      // 은행내역 입금 집계 (계산서별)
+      const txResult = await pool.query(
+        `SELECT matched_sales_invoice_id, SUM(credit_amount) as collected
+         FROM bank_transactions
+         WHERE matched_sales_invoice_id IS NOT NULL
+         GROUP BY matched_sales_invoice_id`
+      );
+      const collectedByInvoice = new Map<string, number>();
+      for (const row of txResult.rows) {
+        collectedByInvoice.set(row.matched_sales_invoice_id, Number(row.collected || 0));
+      }
+
+      let filtered = invoices;
+      if (yearNum) {
+        filtered = invoices.filter((inv: any) => {
+          const d = inv.writeDate || inv.issueDate || inv.plannedIssueDate;
+          if (!d) return inv.year === yearNum;
+          return new Date(d).getFullYear() === yearNum;
+        });
+      }
+
+      // 고객사별 집계
+      const byCustomer = new Map<string, {
+        customerId: string | null;
+        companyName: string;
+        invoiceCount: number;
+        totalBilled: number;
+        totalCollected: number;
+        outstanding: number;
+        invoices: any[];
+      }>();
+
+      for (const inv of filtered as any[]) {
+        const key = inv.customerId ?? `__no_customer__${inv.companyName ?? ""}`;
+        const cust = inv.customerId ? customerMap.get(inv.customerId) : null;
+        const companyName = cust?.companyName ?? inv.companyName ?? "미지정";
+        if (!byCustomer.has(key)) {
+          byCustomer.set(key, { customerId: inv.customerId ?? null, companyName, invoiceCount: 0, totalBilled: 0, totalCollected: 0, outstanding: 0, invoices: [] });
+        }
+        const entry = byCustomer.get(key)!;
+        const billed = inv.totalAmount ?? 0;
+        const collected = inv.status === "paid"
+          ? (collectedByInvoice.get(inv.id) ?? billed)
+          : (collectedByInvoice.get(inv.id) ?? 0);
+        entry.invoiceCount++;
+        entry.totalBilled += billed;
+        entry.totalCollected += collected;
+        entry.outstanding += billed - collected;
+        entry.invoices.push({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          issueDate: inv.issueDate,
+          plannedIssueDate: inv.plannedIssueDate,
+          totalAmount: billed,
+          collectedAmount: collected,
+          outstanding: billed - collected,
+          status: inv.status,
+        });
+      }
+
+      const result = Array.from(byCustomer.values())
+        .sort((a, b) => b.outstanding - a.outstanding);
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   app.get("/api/receivables", async (req, res) => {
     try {

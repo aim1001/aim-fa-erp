@@ -33,10 +33,26 @@ type MainDashboardData = {
     overdueInvoiceAmount: number;
     unissuedCount: number;
     unissuedAmount: number;
+    upcomingInvoiceCount: number;
     uncollectedCount: number;
     uncollectedAmount: number;
     salesInvoiceCount: number;
     purchaseInvoiceCount: number;
+    pendingIssuanceList: {
+      id: string;
+      companyName: string | null;
+      projectId: string | null;
+      totalAmount: number;
+      plannedIssueDate: string | null;
+      isOverdue: boolean;
+    }[];
+    overdueCollectionList: {
+      id: string;
+      companyName: string | null;
+      amount: number;
+      plannedDate: string | null;
+      salesInvoiceId: string | null;
+    }[];
   };
   trade: {
     itemCount: number;
@@ -194,27 +210,62 @@ export default function MainDashboard() {
               </div>
             </div>
             <div className="mt-2 space-y-1.5">
-              {data.finance.overdueInvoiceCount > 0 && (
-                <div className="border rounded-lg p-2 bg-red-50/50 dark:bg-red-900/10">
-                  <div className="flex items-center gap-1 text-xs text-red-600">
-                    <AlertTriangle className="h-3 w-3" />
-                    <span className="font-medium">미발행 지연 {data.finance.overdueInvoiceCount}건</span>
-                    <span className="text-muted-foreground ml-auto">{fmt(data.finance.overdueInvoiceAmount)}원</span>
+              {/* 미발행 계산서 목록 */}
+              {data.finance.pendingIssuanceList.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-1 px-2 py-1.5 bg-red-50/70 dark:bg-red-900/10 border-b">
+                    <AlertTriangle className="h-3 w-3 text-red-600" />
+                    <span className="text-xs font-medium text-red-600">
+                      발행 필요 {data.finance.overdueInvoiceCount}건 지연
+                      {data.finance.upcomingInvoiceCount > 0 && ` · 30일 내 ${data.finance.upcomingInvoiceCount}건`}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground ml-auto">{fmt(data.finance.unissuedAmount)}원</span>
+                  </div>
+                  <div className="divide-y max-h-32 overflow-y-auto">
+                    {data.finance.pendingIssuanceList.map(inv => (
+                      <div
+                        key={inv.id}
+                        className="flex items-center gap-2 px-2 py-1 hover:bg-muted/40 cursor-pointer text-xs"
+                        onClick={e => { e.stopPropagation(); navigate("/sales-invoices"); }}
+                      >
+                        <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${inv.isOverdue ? "bg-red-500" : "bg-yellow-400"}`} />
+                        <span className="truncate flex-1">{inv.companyName ?? "업체 미지정"}</span>
+                        <span className="text-muted-foreground shrink-0">{inv.plannedIssueDate}</span>
+                        <span className="font-medium shrink-0">{fmt(inv.totalAmount)}원</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
-              {data.finance.uncollectedCount > 0 && (
-                <div className="border rounded-lg p-2 bg-orange-50/50 dark:bg-orange-900/10">
-                  <div className="flex items-center gap-1 text-xs text-orange-600">
-                    <Banknote className="h-3 w-3" />
-                    <span className="font-medium">미수금 {data.finance.uncollectedCount}건</span>
-                    <span className="text-muted-foreground ml-auto">{fmt(data.finance.uncollectedAmount)}원</span>
+
+              {/* 미수금 목록 */}
+              {data.finance.overdueCollectionList.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-1 px-2 py-1.5 bg-orange-50/70 dark:bg-orange-900/10 border-b">
+                    <Banknote className="h-3 w-3 text-orange-600" />
+                    <span className="text-xs font-medium text-orange-600">미수금 {data.finance.uncollectedCount}건</span>
+                    <span className="text-[10px] text-muted-foreground ml-auto">{fmt(data.finance.uncollectedAmount)}원</span>
+                  </div>
+                  <div className="divide-y max-h-32 overflow-y-auto">
+                    {data.finance.overdueCollectionList.map(p => (
+                      <div
+                        key={p.id}
+                        className="flex items-center gap-2 px-2 py-1 hover:bg-muted/40 cursor-pointer text-xs"
+                        onClick={e => { e.stopPropagation(); navigate("/payment-plan"); }}
+                      >
+                        <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-orange-500" />
+                        <span className="truncate flex-1">{p.companyName ?? "업체 미지정"}</span>
+                        <span className="text-muted-foreground shrink-0">{p.plannedDate}</span>
+                        <span className="font-medium shrink-0">{fmt(p.amount)}원</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
-              {data.finance.overdueInvoiceCount === 0 && data.finance.uncollectedCount === 0 && (
+
+              {data.finance.pendingIssuanceList.length === 0 && data.finance.overdueCollectionList.length === 0 && (
                 <div className="text-xs text-green-600 flex items-center gap-1 p-1">
-                  <TrendingUp className="h-3 w-3" />지연/미수금 없음
+                  <TrendingUp className="h-3 w-3" />발행 지연/미수금 없음
                 </div>
               )}
             </div>
