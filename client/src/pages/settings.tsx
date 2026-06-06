@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays, Send, CheckCircle, XCircle, Loader2, Users, Wrench, RefreshCw, Link2, ChevronDown, ChevronUp } from "lucide-react";
+import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart, CalendarDays, Send, CheckCircle, XCircle, Loader2, Users, Wrench, RefreshCw, Link2, ChevronDown, ChevronUp, Cloud, Unlink, WifiOff, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import type { CompanySettings, Staff } from "@shared/schema";
@@ -36,6 +36,38 @@ export default function SettingsPage() {
 
   const { data: staffList } = useQuery<Staff[]>({
     queryKey: ["/api/staff"],
+  });
+
+  const { data: onedriveStatus, isLoading: statusLoading } = useQuery<{
+    connected: boolean; message: string; expiresAt?: string; accountInfo?: string; errorType?: string; authUrl?: string;
+  } | null>({
+    queryKey: ["/api/onedrive/status"],
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => { const res = await apiRequest("GET", "/api/onedrive/auth"); return res.json(); },
+    onSuccess: (data) => { if (data.authUrl) window.open(data.authUrl, "_blank"); },
+    onError: (err: Error) => toast({ title: "연결 시작 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => { const res = await apiRequest("POST", "/api/onedrive/disconnect"); return res.json(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/onedrive/status"] }); toast({ title: "연결 해제됨" }); },
+    onError: (err: Error) => toast({ title: "연결 해제 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: async () => { const res = await apiRequest("POST", "/api/onedrive/refresh"); return res.json(); },
+    onSuccess: (data) => { queryClient.setQueryData(["/api/onedrive/status"], data); toast({ title: data.connected ? "연결 확인됨" : "연결 실패", description: data.message, variant: data.connected ? "default" : "destructive" }); },
+    onError: (err: Error) => toast({ title: "연결 확인 실패", description: err.message, variant: "destructive" }),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => { const res = await apiRequest("POST", "/api/sync-onedrive"); return res.json(); },
+    onSuccess: (data) => { toast({ title: "동기화 완료", description: data.message }); queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] }); queryClient.invalidateQueries({ queryKey: ["/api/main-dashboard"] }); },
+    onError: (err: Error) => toast({ title: "동기화 실패", description: err.message, variant: "destructive" }),
   });
 
   const [form, setForm] = useState({
@@ -248,7 +280,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="company" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="company" data-testid="tab-company-info">
               <Building2 className="h-4 w-4 mr-2" />
               회사 정보
@@ -268,6 +300,12 @@ export default function SettingsPage() {
             <TabsTrigger value="telegram" data-testid="tab-telegram-settings">
               <Send className="h-4 w-4 mr-2" />
               텔레그램
+            </TabsTrigger>
+            <TabsTrigger value="onedrive" data-testid="tab-onedrive">
+              <Cloud className="h-4 w-4 mr-2" />
+              OneDrive
+              {!statusLoading && onedriveStatus?.connected && <CheckCircle2 className="h-3 w-3 ml-1 text-green-500" />}
+              {!statusLoading && onedriveStatus && !onedriveStatus.connected && <WifiOff className="h-3 w-3 ml-1 text-destructive" />}
             </TabsTrigger>
             <TabsTrigger value="admin-tools" data-testid="tab-admin-tools">
               <Wrench className="h-4 w-4 mr-2" />
@@ -767,6 +805,64 @@ export default function SettingsPage() {
                 {saveMutation.isPending ? "저장 중..." : "저장"}
               </Button>
             </div>
+          </TabsContent>
+
+          <TabsContent value="onedrive" className="space-y-6 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Cloud className="h-4 w-4" />
+                  OneDrive 연결
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-3 p-3 border rounded-lg">
+                  {statusLoading ? (
+                    <><RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" /><span className="text-sm text-muted-foreground">확인 중...</span></>
+                  ) : !onedriveStatus ? (
+                    <><AlertCircle className="h-4 w-4 text-muted-foreground" /><span className="text-sm text-muted-foreground">상태 확인 불가</span></>
+                  ) : onedriveStatus.connected ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-green-700 dark:text-green-400">연결됨</div>
+                        <div className="text-xs text-muted-foreground truncate">{onedriveStatus.accountInfo || onedriveStatus.message}</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="h-4 w-4 text-destructive shrink-0" />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-destructive">연결 안 됨</div>
+                        <div className="text-xs text-muted-foreground">{onedriveStatus.message}</div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {onedriveStatus?.connected ? (
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending} className="flex-1">
+                      <RefreshCw className={`h-4 w-4 mr-2 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+                      {syncMutation.isPending ? "동기화 중..." : "OneDrive 동기화"}
+                    </Button>
+                    <Button variant="outline" onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending}>
+                      <RefreshCw className={`h-4 w-4 mr-2 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+                      연결 확인
+                    </Button>
+                    <Button variant="ghost" onClick={() => disconnectMutation.mutate()} disabled={disconnectMutation.isPending} className="text-destructive hover:text-destructive">
+                      <Unlink className="h-4 w-4 mr-2" />
+                      연결 해제
+                    </Button>
+                  </div>
+                ) : !statusLoading && (
+                  <Button onClick={() => connectMutation.mutate()} disabled={connectMutation.isPending} className="w-full">
+                    <Link2 className="h-4 w-4 mr-2" />
+                    {connectMutation.isPending ? "연결 중..." : "OneDrive 연결"}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="telegram" className="space-y-6 mt-6">
