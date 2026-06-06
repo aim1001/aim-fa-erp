@@ -13,7 +13,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronDown, ChevronRight, Search, Link2, Link2Off, CheckCircle2, AlertCircle, Filter, X, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, Link2, Link2Off, CheckCircle2, AlertCircle, Filter, X, RefreshCw, Banknote } from "lucide-react";
 
 interface ReceivableInvoice {
   id: string;
@@ -79,6 +79,8 @@ export function ReceivablesTab() {
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
+  const [confirmInvoice, setConfirmInvoice] = useState<ReceivableInvoice | null>(null);
+  const [uncompleteInvoice, setUncompleteInvoice] = useState<ReceivableInvoice | null>(null);
 
   const apiYear = yearFilter === "all" ? undefined
     : yearFilter === "before2025" ? undefined
@@ -150,8 +152,8 @@ export function ReceivablesTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       setSelectedIds(new Set());
       toast({
-        title: "완료 처리됨",
-        description: `계산서 ${data.updatedInvoices}건, 자금계획 ${data.updatedPayments}건 완료 처리됨`,
+        title: "수금확정 완료",
+        description: `계산서 ${data.updatedInvoices}건, 자금계획 ${data.updatedPayments}건 확정 처리됨`,
       });
     },
     onError: (e: any) => toast({ title: "처리 실패", description: e.message, variant: "destructive" }),
@@ -393,7 +395,7 @@ export function ReceivablesTab() {
             {completeInvoicesMutation.isPending
               ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
               : <CheckCircle2 className="h-3 w-3 mr-1" />}
-            완료 처리
+            수금확정
           </Button>
           <Button
             size="sm"
@@ -558,18 +560,17 @@ export function ReceivablesTab() {
                             <td className="px-3 py-2 text-center">
                               {!isPaid ? (
                                 <Button
-                                  variant="ghost"
+                                  variant={inv.linkedTxCount > 0 ? "default" : "ghost"}
                                   size="sm"
-                                  className="h-6 text-xs text-green-700 hover:text-green-800 hover:bg-green-50 dark:hover:bg-green-950"
+                                  className={`h-6 text-xs ${inv.linkedTxCount > 0 ? "bg-green-600 hover:bg-green-700 text-white" : "text-green-700 hover:text-green-800 hover:bg-green-50 dark:hover:bg-green-950"}`}
                                   disabled={completeInvoicesMutation.isPending}
-                                  onClick={() => {
-                                    if (confirm(`"${inv.invoiceNumber ?? inv.companyName}" 계산서를 완료 처리할까요?`)) {
-                                      completeInvoicesMutation.mutate([inv.id]);
-                                    }
-                                  }}
+                                  onClick={() => setConfirmInvoice(inv)}
                                   data-testid={`button-complete-invoice-${inv.id}`}
+                                  title={inv.linkedTxCount > 0 ? `은행내역 ${inv.linkedTxCount}건 연결됨` : "수금확정"}
                                 >
-                                  <CheckCircle2 className="h-3 w-3 mr-0.5" />완료
+                                  {inv.linkedTxCount > 0 && <Banknote className="h-3 w-3 mr-0.5" />}
+                                  {inv.linkedTxCount === 0 && <CheckCircle2 className="h-3 w-3 mr-0.5" />}
+                                  수금확정
                                 </Button>
                               ) : (
                                 <Button
@@ -577,14 +578,10 @@ export function ReceivablesTab() {
                                   size="sm"
                                   className="h-6 text-xs text-muted-foreground hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-950"
                                   disabled={uncompleteInvoicesMutation.isPending}
-                                  onClick={() => {
-                                    if (confirm(`"${inv.invoiceNumber ?? inv.companyName}" 계산서를 미완료로 되돌릴까요?\n연결된 자금계획도 함께 되돌려집니다.`)) {
-                                      uncompleteInvoicesMutation.mutate([inv.id]);
-                                    }
-                                  }}
+                                  onClick={() => setUncompleteInvoice(inv)}
                                   data-testid={`button-uncomplete-invoice-${inv.id}`}
                                 >
-                                  되돌리기
+                                  수금취소
                                 </Button>
                               )}
                             </td>
@@ -600,13 +597,79 @@ export function ReceivablesTab() {
         })}
       </div>
 
-      {/* Selected invoices complete confirmation */}
+      {/* Individual invoice confirm dialog */}
+      <AlertDialog open={!!confirmInvoice} onOpenChange={open => !open && setConfirmInvoice(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              수금확정
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  <strong>{confirmInvoice?.invoiceNumber ?? confirmInvoice?.companyName}</strong> 계산서를 수금확정 처리합니다.
+                </p>
+                {confirmInvoice && confirmInvoice.linkedTxCount > 0 && (
+                  <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-200">
+                    <Banknote className="h-4 w-4 text-green-600" />
+                    <span className="text-green-700 dark:text-green-400">은행내역 {confirmInvoice.linkedTxCount}건 연결됨</span>
+                  </div>
+                )}
+                <p className="text-muted-foreground">연결된 자금계획도 함께 완료 처리됩니다.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                if (confirmInvoice) completeInvoicesMutation.mutate([confirmInvoice.id]);
+                setConfirmInvoice(null);
+              }}
+            >
+              수금확정
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Individual invoice uncomplete dialog */}
+      <AlertDialog open={!!uncompleteInvoice} onOpenChange={open => !open && setUncompleteInvoice(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>수금취소</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{uncompleteInvoice?.invoiceNumber ?? uncompleteInvoice?.companyName}</strong> 계산서를 미수금 상태로 되돌립니다.
+              <br />연결된 자금계획도 함께 되돌려집니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={() => {
+                if (uncompleteInvoice) uncompleteInvoicesMutation.mutate([uncompleteInvoice.id]);
+                setUncompleteInvoice(null);
+              }}
+            >
+              수금취소
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Selected invoices confirm dialog */}
       <AlertDialog open={completeConfirmOpen} onOpenChange={setCompleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>선택 계산서 완료 처리</AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              일괄 수금확정
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              선택한 <strong>{selectedIds.size}건</strong>의 계산서를 완료 처리합니다.
+              선택한 <strong>{selectedIds.size}건</strong>의 계산서를 수금확정 처리합니다.
               <br />연결된 자금계획도 함께 완료 처리됩니다.
               <br /><br />계속하시겠습니까?
             </AlertDialogDescription>
@@ -614,13 +677,14 @@ export function ReceivablesTab() {
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
             <AlertDialogAction
+              className="bg-green-600 hover:bg-green-700"
               onClick={() => {
                 setCompleteConfirmOpen(false);
                 completeInvoicesMutation.mutate(Array.from(selectedIds));
               }}
               data-testid="button-complete-confirm"
             >
-              완료 처리
+              수금확정
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
