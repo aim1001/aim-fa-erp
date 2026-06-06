@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink, Upload, Link2, Unlink2 } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, ExternalLink, Upload, Link2, Unlink2, AlertTriangle, CheckCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
@@ -525,6 +525,8 @@ export default function SalesInvoiceList() {
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [inlineCustomerId, setInlineCustomerId] = useState<string>("");
   const [inlineProjectId, setInlineProjectId] = useState<string>("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [overdueOnlyFilter, setOverdueOnlyFilter] = useState(false);
 
   const { data: invoices, isLoading } = useQuery<SalesInvoiceWithPayment[]>({
     queryKey: ["/api/sales-invoices-with-payments"],
@@ -626,6 +628,11 @@ export default function SalesInvoiceList() {
       list = list.filter(inv => !inv.projectId);
     }
 
+    if (overdueOnlyFilter) {
+      const today = new Date().toISOString().split("T")[0];
+      list = list.filter(inv => !inv.issueDate && inv.plannedIssueDate && inv.plannedIssueDate < today);
+    }
+
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(inv =>
@@ -639,7 +646,7 @@ export default function SalesInvoiceList() {
     }
 
     return list;
-  }, [invoices, search, customerMap, filterYear, periodType, periodValue, paymentFilter, issueStatusFilter, unlinkFilter, dateFrom, dateTo]);
+  }, [invoices, search, customerMap, filterYear, periodType, periodValue, paymentFilter, issueStatusFilter, unlinkFilter, overdueOnlyFilter, dateFrom, dateTo]);
 
   const totals = useMemo(() => {
     let supply = 0, tax = 0, total = 0;
@@ -769,6 +776,23 @@ export default function SalesInvoiceList() {
     },
     onError: (err: Error) => {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 발행확정: 선택된 미발행 계산서에 오늘 날짜를 issueDate로 설정
+  const confirmIssuedMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const today = new Date().toISOString().split("T")[0];
+      await Promise.all(ids.map(id => apiRequest("PATCH", `/api/sales-invoices/${id}`, { issueDate: today })));
+    },
+    onSuccess: (_data, ids) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/main-dashboard"] });
+      setSelectedIds(new Set());
+      toast({ title: `발행확정 완료 (${ids.length}건)` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "발행확정 실패", description: err.message, variant: "destructive" });
     },
   });
 
@@ -961,7 +985,36 @@ export default function SalesInvoiceList() {
         >
           <Link2 className="h-3 w-3 mr-1" />미연결
         </Button>
+        <Button
+          variant={overdueOnlyFilter ? "default" : "outline"}
+          size="sm"
+          className={`text-xs ${overdueOnlyFilter ? "bg-red-600 hover:bg-red-700 text-white border-0" : "border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400"}`}
+          onClick={() => setOverdueOnlyFilter(v => !v)}
+          data-testid="filter-overdue-sales"
+        >
+          <AlertTriangle className="h-3 w-3 mr-1" />발행지연
+        </Button>
       </div>
+
+      {/* 일괄 발행확정 툴바 */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">{selectedIds.size}건 선택됨</span>
+          <Button
+            size="sm"
+            className="h-7 text-xs bg-blue-600 hover:bg-blue-700"
+            onClick={() => confirmIssuedMutation.mutate(Array.from(selectedIds))}
+            disabled={confirmIssuedMutation.isPending}
+            data-testid="button-bulk-confirm-issued"
+          >
+            <CheckCheck className="h-3 w-3 mr-1" />
+            {confirmIssuedMutation.isPending ? "처리 중..." : "발행확정 (오늘)"}
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedIds(new Set())}>
+            <X className="h-3 w-3 mr-1" />선택 해제
+          </Button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
@@ -970,6 +1023,18 @@ export default function SalesInvoiceList() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
+                <th className="py-2.5 px-3 w-8">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 cursor-pointer"
+                    checked={selectedIds.size > 0 && filtered.filter(i => !i.issueDate).every(i => selectedIds.has(i.id))}
+                    onChange={e => {
+                      const unissued = filtered.filter(i => !i.issueDate).map(i => i.id);
+                      setSelectedIds(e.target.checked ? new Set(unissued) : new Set());
+                    }}
+                    title="미발행 전체 선택"
+                  />
+                </th>
                 <th className="text-left py-2.5 px-4 font-medium">작성일</th>
                 <th className="text-left py-2.5 px-4 font-medium">상호</th>
                 <th className="text-center py-2.5 px-4 font-medium hidden md:table-cell">구분</th>
@@ -991,12 +1056,44 @@ export default function SalesInvoiceList() {
                 const inlineFilteredProjects = inlineCustomerId
                   ? (allProjects || []).filter(p => p.customerId === inlineCustomerId)
                   : (allProjects || []);
+                const today = new Date().toISOString().split("T")[0];
+                const isOverdue = isUnissued && !!inv.plannedIssueDate && inv.plannedIssueDate < today;
                 return (
-                <tr key={inv.id} className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${isUnissued ? "bg-amber-50/50 dark:bg-amber-950/10" : ""} ${isUnlinked ? "border-l-2 border-l-orange-300 dark:border-l-orange-700" : ""}`} onClick={() => { if (!isInlineEditing) setSelectedId(inv.id); }} data-testid={`row-sales-invoice-${inv.id}`}>
+                <tr key={inv.id} className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${isOverdue ? "bg-red-50/40 dark:bg-red-950/10" : isUnissued ? "bg-amber-50/50 dark:bg-amber-950/10" : ""} ${isUnlinked ? "border-l-2 border-l-orange-300 dark:border-l-orange-700" : ""}`} onClick={() => { if (!isInlineEditing) setSelectedId(inv.id); }} data-testid={`row-sales-invoice-${inv.id}`}>
+                  <td className="py-2.5 px-3" onClick={e => e.stopPropagation()}>
+                    {isUnissued ? (
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 cursor-pointer"
+                        checked={selectedIds.has(inv.id)}
+                        onChange={e => {
+                          const next = new Set(selectedIds);
+                          if (e.target.checked) next.add(inv.id); else next.delete(inv.id);
+                          setSelectedIds(next);
+                        }}
+                        data-testid={`checkbox-invoice-${inv.id}`}
+                      />
+                    ) : <span className="w-3.5 inline-block" />}
+                  </td>
                   <td className="py-2.5 px-4">
                     {isUnissued ? (
                       <div className="flex flex-col gap-0.5">
-                        <Badge variant="outline" className="text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700 text-[10px] w-fit" data-testid={`badge-unissued-${inv.id}`}>미발행</Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline" className={`text-[10px] w-fit ${isOverdue ? "text-red-600 border-red-300 dark:text-red-400 dark:border-red-700" : "text-amber-600 border-amber-300 dark:text-amber-400 dark:border-amber-700"}`} data-testid={`badge-unissued-${inv.id}`}>
+                            {isOverdue ? "발행지연" : "미발행"}
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-5 text-[10px] px-1.5 py-0 border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400"
+                            onClick={e => { e.stopPropagation(); confirmIssuedMutation.mutate([inv.id]); }}
+                            disabled={confirmIssuedMutation.isPending}
+                            title="오늘 날짜로 발행확정"
+                            data-testid={`button-confirm-issued-${inv.id}`}
+                          >
+                            <Check className="h-2.5 w-2.5 mr-0.5" />발행확정
+                          </Button>
+                        </div>
                         {inv.plannedIssueDate && <span className="text-[10px] text-muted-foreground">예정 {inv.plannedIssueDate}</span>}
                       </div>
                     ) : (inv.writeDate || inv.issueDate)}
