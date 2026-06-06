@@ -3929,6 +3929,13 @@ export async function registerRoutes(
         }
       }
 
+      // N:M 링크 테이블 정리 (FK CASCADE 없으므로 직접 삭제)
+      {
+        const { purchaseOrderInvoiceLinks } = await import("@shared/schema");
+        const { db } = await import("./db");
+        const { eq } = await import("drizzle-orm");
+        await db.delete(purchaseOrderInvoiceLinks).where(eq(purchaseOrderInvoiceLinks.purchaseInvoiceId, invoiceId));
+      }
       await storage.deletePurchaseInvoice(invoiceId);
       res.json({ message: "삭제 완료" });
     } catch (err: any) {
@@ -6994,6 +7001,13 @@ export async function registerRoutes(
           console.log(`연결된 결제 처리 실패: ${payErr.message}`);
         }
       }
+      // N:M 링크 테이블 정리 (FK CASCADE 없으므로 직접 삭제)
+      {
+        const { purchaseOrderInvoiceLinks } = await import("@shared/schema");
+        const { db } = await import("./db");
+        const { eq } = await import("drizzle-orm");
+        await db.delete(purchaseOrderInvoiceLinks).where(eq(purchaseOrderInvoiceLinks.purchaseOrderId, req.params.id));
+      }
       await storage.deletePurchaseOrder(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -7060,8 +7074,12 @@ export async function registerRoutes(
       await syncFolders(`${basePath}/입고완료`, "입고완료");
 
       const existingOrders = await storage.getPurchaseOrders(year);
+      const { purchaseOrderInvoiceLinks: poLinks } = await import("@shared/schema");
+      const { db: dbInst } = await import("./db");
+      const { eq: eqOp } = await import("drizzle-orm");
       for (const order of existingOrders) {
         if (order.folderName && !allFolderNames.has(order.folderName)) {
+          await dbInst.delete(poLinks).where(eqOp(poLinks.purchaseOrderId, order.id));
           await storage.deletePurchaseOrder(order.id);
           deleted++;
         }
@@ -9032,6 +9050,18 @@ export async function registerRoutes(
       });
       if (!tx) return res.status(404).json({ message: "Transaction not found" });
       res.json(tx);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 수동 백업 트리거 (관리자용)
+  app.post("/api/backup/run", async (_req, res) => {
+    try {
+      const { runBackup } = await import("./backup");
+      const summary = await runBackup();
+      const total = summary.reduce((s, t) => s + t.rows, 0);
+      res.json({ message: "백업 완료", totalRows: total, tables: summary });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

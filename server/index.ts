@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { pool } from "./db";
+import { startBackupCron } from "./backup";
 
 // 자동 DB 마이그레이션 - 새 테이블/컬럼이 없으면 추가
 async function runAutoMigrations() {
@@ -129,6 +130,7 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   await runAutoMigrations();
+  startBackupCron();
 
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);

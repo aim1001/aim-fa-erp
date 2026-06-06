@@ -1,8 +1,8 @@
 import {
   LayoutDashboard, RefreshCw, Building2, LogOut,
   Truck, Wallet, FolderKanban, ClipboardList,
-  CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart, Package, TrendingDown,
-  Settings, Users, TrendingUp, Cloud, ScanEye, CalendarDays
+  CheckCircle2, AlertCircle, WifiOff, Link2, Unlink, ChevronRight, ShoppingCart, Package,
+  Settings, Users, TrendingUp, Cloud, CalendarDays
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
@@ -34,18 +34,17 @@ export function AppSidebar() {
   const isProjectPage = location === "/projects";
   const isSalesDashboard = location === "/sales-dashboard";
   const isOpticsCalculator = location === "/optics-calculator";
-  const isSalesSection = isSalesDashboard || isInquiryPage || isOpticsCalculator;
-  const isProjectSection = isProjectPage;
-  const isFinanceSection = ["/management", "/sales-invoices", "/payment-plan"].includes(location);
+  const isSalesSection = isSalesDashboard || isInquiryPage || location === "/customers" || location === "/items";
+  const isProjectSection = isProjectPage || location === "/sales-invoices";
+  const isFinanceSection = ["/management", "/payment-plan"].includes(location);
   const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors", "/purchase-invoices"].includes(location);
-  const isSaleProductSection = ["/items"].includes(location);
-  const isCompanySection = ["/customers", "/staff"].includes(location);
+  const isSaleProductSection = false;
+  const isCompanySection = ["/staff"].includes(location);
 
   const [salesOpen, setSalesOpen] = useState(isSalesSection);
   const [projectOpen, setProjectOpen] = useState(isProjectSection);
   const [financeOpen, setFinanceOpen] = useState(isFinanceSection);
   const [purchaseOpen, setPurchaseOpen] = useState(isPurchaseSection);
-  const [saleProductOpen, setSaleProductOpen] = useState(isSaleProductSection);
   const [companyOpen, setCompanyOpen] = useState(isCompanySection);
 
   useEffect(() => {
@@ -67,7 +66,6 @@ export function AppSidebar() {
     if (isProjectSection) setProjectOpen(true);
     if (isFinanceSection) setFinanceOpen(true);
     if (isPurchaseSection) setPurchaseOpen(true);
-    if (isSaleProductSection) setSaleProductOpen(true);
     if (isCompanySection) setCompanyOpen(true);
   }, [location]);
 
@@ -222,11 +220,22 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       asChild
                       size="sm"
-                      data-active={isOpticsCalculator}
+                      data-active={location === "/customers"}
                       className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-optics-calculator"
+                      data-testid="nav-customers"
                     >
-                      <Link href="/optics-calculator"><ScanEye className="h-4 w-4" /><span>광학 계산기</span></Link>
+                      <Link href="/customers"><span>고객사</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/items"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-products"
+                    >
+                      <Link href="/items"><span>판매제품관리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -281,6 +290,17 @@ export function AppSidebar() {
                       <Link href="/projects?status=completed"><span>완료</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/sales-invoices"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-sales-invoices"
+                    >
+                      <Link href="/sales-invoices"><span>매출계산서</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </CollapsibleContent>
@@ -309,17 +329,6 @@ export function AppSidebar() {
                       data-testid="nav-management"
                     >
                       <Link href="/management"><span>경영 대시보드</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={location === "/sales-invoices"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-sales-invoices"
-                    >
-                      <Link href="/sales-invoices"><span>매출계산서</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
@@ -402,36 +411,6 @@ export function AppSidebar() {
           </Collapsible>
         </SidebarGroup>
 
-        {/* 판매 */}
-        <SidebarGroup className="py-1">
-          <Collapsible open={saleProductOpen} onOpenChange={setSaleProductOpen} className="group/saleproduct">
-            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isSaleProductSection && activeSectionLabelClass)}>
-              <CollapsibleTrigger data-testid="nav-section-saleproduct">
-                <TrendingDown className="h-4 w-4" />
-                <span>판매</span>
-                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/saleproduct:rotate-90" />
-              </CollapsibleTrigger>
-            </SidebarGroupLabel>
-            <CollapsibleContent>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={location === "/items"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-products"
-                    >
-                      <Link href="/items"><span>판매제품관리</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </SidebarGroup>
-
         {/* 업체관리 */}
         <SidebarGroup className="py-1">
           <Collapsible open={companyOpen} onOpenChange={setCompanyOpen} className="group/company">
@@ -445,17 +424,6 @@ export function AppSidebar() {
             <CollapsibleContent>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={location === "/customers"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-customers"
-                    >
-                      <Link href="/customers"><span>고객사</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       asChild
