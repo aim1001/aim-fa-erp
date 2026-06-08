@@ -207,47 +207,6 @@ export function AppSidebar() {
           </Collapsible>
         </SidebarGroup>
 
-        {/* 경영지원 */}
-        <SidebarGroup className="py-1">
-          <Collapsible open={financeOpen} onOpenChange={setFinanceOpen} className="group/finance">
-            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isFinanceSection && activeSectionLabelClass)}>
-              <CollapsibleTrigger data-testid="nav-section-finance">
-                <Wallet className="h-4 w-4" />
-                <span>경영지원</span>
-                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/finance:rotate-90" />
-              </CollapsibleTrigger>
-            </SidebarGroupLabel>
-            <CollapsibleContent>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={location === "/management"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-management"
-                    >
-                      <Link href="/management"><span>경영 대시보드</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={location === "/payment-plan"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-payment-plan"
-                    >
-                      <Link href="/payment-plan"><span>자금계획</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </SidebarGroup>
-
         {/* 구매 */}
         <SidebarGroup className="py-1">
           <Collapsible open={purchaseOpen} onOpenChange={setPurchaseOpen} className="group/purchase">
@@ -310,6 +269,48 @@ export function AppSidebar() {
             </CollapsibleContent>
           </Collapsible>
         </SidebarGroup>
+
+        {/* 경영지원 */}
+        <SidebarGroup className="py-1">
+          <Collapsible open={financeOpen} onOpenChange={setFinanceOpen} className="group/finance">
+            <SidebarGroupLabel asChild className={cn(sectionLabelClass, isFinanceSection && activeSectionLabelClass)}>
+              <CollapsibleTrigger data-testid="nav-section-finance">
+                <Wallet className="h-4 w-4" />
+                <span>경영지원</span>
+                <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/finance:rotate-90" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/management"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-management"
+                    >
+                      <Link href="/management"><span>경영 대시보드</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/payment-plan"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-payment-plan"
+                    >
+                      <Link href="/payment-plan"><span>자금계획</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </SidebarGroup>
+
 
         {/* 설정 & 로그아웃 */}
         <SidebarGroup className="mt-auto">
