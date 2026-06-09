@@ -551,7 +551,7 @@ export default function SalesInvoiceList() {
     const sums = new Map<string, number>();
     invoices?.forEach(inv => {
       if (inv.projectId) {
-        sums.set(inv.projectId, (sums.get(inv.projectId) || 0) + (inv.totalAmount || 0));
+        sums.set(inv.projectId, (sums.get(inv.projectId) || 0) + (inv.supplyAmount || 0));
       }
     });
     return sums;
