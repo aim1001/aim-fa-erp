@@ -3799,6 +3799,28 @@ export async function registerRoutes(
     }
   });
 
+  // 같은 프로젝트+스테이지에 실발행 계산서가 있으면 placeholder 자동 삭제
+  app.post("/api/sales-invoices/cleanup-placeholders", async (_req, res) => {
+    try {
+      const allInvoices = await storage.getSalesInvoices();
+      const issued = allInvoices.filter(i => !!i.issueDate && i.projectId && i.invoiceStage);
+      const issuedKeys = new Set(issued.map(i => `${i.projectId}|${i.invoiceStage}`));
+
+      const toDelete = allInvoices.filter(i =>
+        !i.issueDate && i.projectId && i.invoiceStage &&
+        issuedKeys.has(`${i.projectId}|${i.invoiceStage}`)
+      );
+
+      for (const inv of toDelete) {
+        await storage.deleteSalesInvoice(inv.id);
+      }
+
+      res.json({ deleted: toDelete.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/sales-invoices/rematch", async (_req, res) => {
     try {
       const allInvoices = await storage.getSalesInvoices();

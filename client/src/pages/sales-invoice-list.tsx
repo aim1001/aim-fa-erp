@@ -725,6 +725,27 @@ export default function SalesInvoiceList() {
     },
   });
 
+  const cleanupMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sales-invoices/cleanup-placeholders");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({
+        title: "중복 정리 완료",
+        description: data.deleted > 0
+          ? `발행완료된 계산서의 미발행 placeholder ${data.deleted}건 삭제됨`
+          : "정리할 항목이 없습니다",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "정리 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const rematchMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/sales-invoices/rematch");
@@ -863,6 +884,17 @@ export default function SalesInvoiceList() {
             data-testid="button-open-sales-excel"
           >
             <ExternalLink className="h-4 w-4 mr-1" />엑셀 직접 열기
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => cleanupMutation.mutate()}
+            disabled={cleanupMutation.isPending}
+            data-testid="button-cleanup-placeholders"
+            title="발행 완료된 계산서와 같은 프로젝트+스테이지의 미발행 placeholder를 삭제"
+          >
+            {cleanupMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+            중복 정리
           </Button>
           <Button
             variant="outline"
