@@ -718,6 +718,25 @@ export default function SalesInvoiceList() {
     },
   });
 
+  const rematchMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sales-invoices/rematch");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({
+        title: "거래처/프로젝트 재매칭 완료",
+        description: `거래처 ${data.matched}건 연결, 프로젝트 ${data.projectLinked}건 자동 연결`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "재매칭 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const inlineLinkMutation = useMutation({
     mutationFn: async ({ id, customerId, projectId }: { id: string; customerId: string | null; projectId: string | null }) => {
       const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, { customerId: customerId || null, projectId: projectId || null });
@@ -837,6 +856,16 @@ export default function SalesInvoiceList() {
             data-testid="button-open-sales-excel"
           >
             <ExternalLink className="h-4 w-4 mr-1" />엑셀 직접 열기
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => rematchMutation.mutate()}
+            disabled={rematchMutation.isPending}
+            data-testid="button-rematch-sales"
+          >
+            {rematchMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+            거래처 재매칭
           </Button>
           <input
             type="file"

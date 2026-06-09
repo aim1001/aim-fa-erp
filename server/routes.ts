@@ -3799,6 +3799,60 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/sales-invoices/rematch", async (_req, res) => {
+    try {
+      const allInvoices = await storage.getSalesInvoices();
+      const allCustomers = await storage.getCustomers();
+      const allProjects = await storage.getProjects();
+
+      const customerByBizNum = new Map<string, string>();
+      const customerByName = new Map<string, string>();
+      for (const c of allCustomers) {
+        if (c.businessNumber) customerByBizNum.set(c.businessNumber.replace(/-/g, ""), c.id);
+        if (c.companyName) customerByName.set(c.companyName.trim().toLowerCase(), c.id);
+      }
+
+      const projectsByCustomerId = new Map<string, string[]>();
+      for (const p of allProjects) {
+        if (p.customerId) {
+          if (!projectsByCustomerId.has(p.customerId)) projectsByCustomerId.set(p.customerId, []);
+          projectsByCustomerId.get(p.customerId)!.push(p.id);
+        }
+      }
+
+      let matched = 0;
+      let projectLinked = 0;
+
+      for (const inv of allInvoices) {
+        if (inv.customerId) continue; // 이미 연결됨
+
+        const bizClean = inv.businessNumber ? inv.businessNumber.replace(/-/g, "") : "";
+        const nameLower = (inv.companyName || "").trim().toLowerCase();
+
+        let customerId = bizClean ? (customerByBizNum.get(bizClean) || null) : null;
+        if (!customerId && nameLower) customerId = customerByName.get(nameLower) || null;
+        if (!customerId) continue;
+
+        const updates: Record<string, any> = { customerId };
+
+        if (!inv.projectId) {
+          const projects = projectsByCustomerId.get(customerId) || [];
+          if (projects.length === 1) {
+            updates.projectId = projects[0];
+            projectLinked++;
+          }
+        }
+
+        await storage.updateSalesInvoice(inv.id, updates);
+        matched++;
+      }
+
+      res.json({ matched, projectLinked });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/sales-invoices", async (req, res) => {
     try {
       const data = insertSalesInvoiceSchema.parse(req.body);
