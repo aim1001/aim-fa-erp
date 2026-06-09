@@ -5040,8 +5040,9 @@ export async function registerRoutes(
         const purchases = purchaseInvoices.filter(i => i.projectId === p.id);
         const projectPayments = allPayments.filter(pay => pay.projectId === p.id);
 
-        const salesTotal = sales.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
-        const salesSupplyTotal = sales.reduce((sum, i) => sum + (i.supplyAmount || 0), 0);
+        const issuedSales = sales.filter(i => !!i.issueDate);
+        const salesTotal = issuedSales.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
+        const salesSupplyTotal = issuedSales.reduce((sum, i) => sum + (i.supplyAmount || 0), 0);
         const purchaseTotal = purchases.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
         const profit = salesTotal - purchaseTotal;
 

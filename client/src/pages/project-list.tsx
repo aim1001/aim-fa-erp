@@ -669,8 +669,9 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
     );
   }
 
-  const salesSupplyTotal = project.salesInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
-  const salesTotalAmount = project.salesInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
+  const issuedInvoices = project.salesInvoices.filter(i => !!i.issueDate);
+  const salesSupplyTotal = issuedInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
+  const salesTotalAmount = issuedInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const purchaseTotal = project.purchaseInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const incomePayments = project.payments.filter(p => p.type === "income");
   const paidIncome = incomePayments.filter(p => p.status === "completed").reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
