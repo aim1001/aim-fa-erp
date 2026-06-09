@@ -427,6 +427,9 @@ export function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; 
 
   const customerName = customers?.find(c => c.id === invoice.customerId)?.companyName || "-";
   const linkedProject = projects?.find(p => p.id === invoice.projectId);
+  const filteredProjects = invoice.customerId
+    ? (projects || []).filter(p => p.customerId === invoice.customerId)
+    : (projects || []);
 
   return (
     <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="modal-sales-invoice-detail">
@@ -463,6 +466,7 @@ export function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; 
         <Select value={invoice.customerId || ""} onValueChange={val => updateMutation.mutate({ customerId: val || null })}>
           <SelectTrigger className="h-7 text-sm"><SelectValue placeholder="고객사 선택" /></SelectTrigger>
           <SelectContent>
+            <SelectItem value="">선택 안함</SelectItem>
             {(customers || []).map(c => <SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -474,7 +478,10 @@ export function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; 
             <SelectTrigger className="h-7 text-sm" data-testid="select-project-link"><SelectValue placeholder="프로젝트 선택" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">연결 안함</SelectItem>
-              {(projects || []).map(p => <SelectItem key={p.id} value={p.id}>{p.projectNumber} {p.customerName}{p.description ? ` - ${p.description}` : ""}</SelectItem>)}
+              {filteredProjects.map(p => <SelectItem key={p.id} value={p.id}>{p.projectNumber} {p.customerName}{p.description ? ` - ${p.description}` : ""}</SelectItem>)}
+              {invoice.customerId && filteredProjects.length === 0 && (
+                <SelectItem value="" disabled>해당 고객사 프로젝트 없음</SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>
