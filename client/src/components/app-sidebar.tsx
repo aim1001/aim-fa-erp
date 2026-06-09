@@ -168,28 +168,7 @@ export function AppSidebar() {
                       <Link href="/projects"><span>전체보기</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={isProjectPage && params.get("status") === "active"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-projects-active"
-                    >
-                      <Link href="/projects?status=active"><span>진행중</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      size="sm"
-                      data-active={isProjectPage && params.get("status") === "completed"}
-                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
-                      data-testid="nav-projects-completed"
-                    >
-                      <Link href="/projects?status=completed"><span>완료</span></Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       asChild
