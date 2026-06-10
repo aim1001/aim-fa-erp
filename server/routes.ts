@@ -4441,6 +4441,19 @@ export async function registerRoutes(
         if (!customerId && rowCompanyLower && !ambiguousCompanyNames.has(rowCompanyLower)) {
           customerId = customerByCompanyName.get(rowCompanyLower) || null;
         }
+        // 고객사가 없으면 엑셀 데이터로 자동 생성
+        if (!customerId && row.companyName) {
+          const newCustomer = await storage.createCustomer({
+            companyName: row.companyName,
+            businessNumber: row.businessNumber || null,
+            representative: row.representative || null,
+            address: row.address || null,
+          });
+          customerId = newCustomer.id;
+          // 새로 만든 고객사를 맵에도 추가 (같은 업체 중복 생성 방지)
+          if (rowBizClean) customerByBizNum.set(rowBizClean, customerId);
+          if (rowCompanyLower) customerByCompanyName.set(rowCompanyLower, customerId);
+        }
         const year = row.issueDate ? parseInt(row.issueDate.substring(0, 4)) : null;
 
         let autoProjectId: string | null = null;
@@ -4669,9 +4682,13 @@ export async function registerRoutes(
 
       const vendors = await storage.getVendors();
       const vendorByBizNum = new Map<string, string>();
+      const vendorByCompanyName = new Map<string, string>();
       for (const v of vendors) {
         if (v.businessNumber) {
           vendorByBizNum.set(v.businessNumber.replace(/-/g, ""), v.id);
+        }
+        if (v.companyName) {
+          vendorByCompanyName.set(v.companyName.toLowerCase().trim(), v.id);
         }
       }
 
@@ -4690,9 +4707,12 @@ export async function registerRoutes(
 
         if (exactKeyMap.has(exactKey)) { skipped++; continue; }
 
+        const companyLower = (row.companyName || "").toLowerCase().trim();
         let vendorId = bizNumClean ? vendorByBizNum.get(bizNumClean) || null : null;
+        if (!vendorId && companyLower) vendorId = vendorByCompanyName.get(companyLower) || null;
 
-        if (!vendorId && bizNumClean && row.companyName) {
+        // 업체가 없으면 자동 생성
+        if (!vendorId && row.companyName) {
           const newVendor = await storage.createVendor({
             companyName: row.companyName,
             businessNumber: row.businessNumber || null,
@@ -4701,7 +4721,8 @@ export async function registerRoutes(
             contactEmail: row.email1 || null,
           });
           vendorId = newVendor.id;
-          vendorByBizNum.set(bizNumClean, newVendor.id);
+          if (bizNumClean) vendorByBizNum.set(bizNumClean, newVendor.id);
+          if (companyLower) vendorByCompanyName.set(companyLower, newVendor.id);
           vendorsCreated++;
         }
 
