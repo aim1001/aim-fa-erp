@@ -3799,20 +3799,41 @@ export async function registerRoutes(
     }
   });
 
-  // 같은 프로젝트+스테이지에 실발행 계산서가 있으면 placeholder 자동 삭제
+  // 같은 프로젝트에 실발행 계산서가 있으면 placeholder 자동 삭제
   app.post("/api/sales-invoices/cleanup-placeholders", async (_req, res) => {
     try {
       const allInvoices = await storage.getSalesInvoices();
-      const issued = allInvoices.filter(i => !!i.issueDate && i.projectId && i.invoiceStage);
-      const issuedKeys = new Set(issued.map(i => `${i.projectId}|${i.invoiceStage}`));
+      const placeholders = allInvoices.filter(i => !i.issueDate && i.projectId);
+      const issuedByProject = new Map<string, typeof allInvoices>();
 
-      const toDelete = allInvoices.filter(i =>
-        !i.issueDate && i.projectId && i.invoiceStage &&
-        issuedKeys.has(`${i.projectId}|${i.invoiceStage}`)
-      );
+      for (const inv of allInvoices) {
+        if (inv.issueDate && inv.projectId) {
+          if (!issuedByProject.has(inv.projectId)) issuedByProject.set(inv.projectId, []);
+          issuedByProject.get(inv.projectId)!.push(inv);
+        }
+      }
 
-      for (const inv of toDelete) {
-        await storage.deleteSalesInvoice(inv.id);
+      const toDelete: string[] = [];
+
+      for (const ph of placeholders) {
+        const issuedList = issuedByProject.get(ph.projectId!) || [];
+
+        // 조건1: 같은 projectId + invoiceStage 일치
+        const stageMatch = ph.invoiceStage &&
+          issuedList.some(i => i.invoiceStage === ph.invoiceStage);
+
+        // 조건2: 같은 projectId + 금액 10% 이내 유사 (invoiceStage 없는 실발행 계산서 대응)
+        const amountMatch = (ph.supplyAmount || 0) > 0 &&
+          issuedList.some(i => {
+            const diff = Math.abs((i.supplyAmount || 0) - (ph.supplyAmount || 0));
+            return diff <= (ph.supplyAmount || 0) * 0.1;
+          });
+
+        if (stageMatch || amountMatch) toDelete.push(ph.id);
+      }
+
+      for (const id of toDelete) {
+        await storage.deleteSalesInvoice(id);
       }
 
       res.json({ deleted: toDelete.length });
