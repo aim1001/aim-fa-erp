@@ -3874,6 +3874,15 @@ export async function registerRoutes(
 
         let customerId = bizClean ? (customerByBizNum.get(bizClean) || null) : null;
         if (!customerId && nameLower) customerId = customerByName.get(nameLower) || null;
+        // Fuzzy/partial name match: "오토런" ↔ "주식회사 오토런 시스템"
+        if (!customerId && nameLower && nameLower.length >= 2) {
+          for (const [custName, custId] of customerByName.entries()) {
+            if (custName.includes(nameLower) || nameLower.includes(custName)) {
+              customerId = custId;
+              break;
+            }
+          }
+        }
         if (!customerId) continue;
 
         const updates: Record<string, any> = { customerId };
