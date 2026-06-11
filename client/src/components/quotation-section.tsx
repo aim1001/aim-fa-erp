@@ -557,13 +557,15 @@ const FALLBACK_NOTES = `[제외사항]
   대전 이남 80만원
 - 원격 기술지원: 4시간 20만원`;
 
-function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, categoryDiscounts }: {
+function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, categoryDiscounts, totalNegoPct, onTotalNegoPctChange }: {
   quotation: Quotation;
   items: QuotationItem[];
   inquiryId: string;
   onRefresh: () => void;
   isLocked?: boolean;
   categoryDiscounts: Record<string, number>;
+  totalNegoPct: number;
+  onTotalNegoPctChange: (v: number) => void;
 }) {
   const { data: companySettings } = useQuery<CompanySettings>({
     queryKey: ["/api/company-settings"],
@@ -625,11 +627,18 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
 
   const afterCategoryNego = supplyAmount - categoryNegoTotal;
 
+  const totalNegoAmt = useMemo(() => {
+    if (totalNegoPct > 0) return Math.round(afterCategoryNego * totalNegoPct / 100);
+    return 0;
+  }, [afterCategoryNego, totalNegoPct]);
+
+  const afterAllNego = afterCategoryNego - totalNegoAmt;
+
   const afterDiscount = useMemo(() => {
     const unit = parseInt(discountTruncUnit);
-    if (unit > 0) return Math.floor(afterCategoryNego / unit) * unit;
-    return afterCategoryNego;
-  }, [afterCategoryNego, discountTruncUnit]);
+    if (unit > 0) return Math.floor(afterAllNego / unit) * unit;
+    return afterAllNego;
+  }, [afterAllNego, discountTruncUnit]);
 
   const actualDiscount = supplyAmount - afterDiscount;
   const discountAmount = actualDiscount;
@@ -687,12 +696,15 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
   });
 
   const handleSave = () => {
+    const allDiscounts = totalNegoPct > 0
+      ? { ...categoryDiscounts, __total__: totalNegoPct }
+      : { ...categoryDiscounts };
     updateMut.mutate({
       notes,
       discountType: "amount",
       discountValue: actualDiscount,
       discountTruncUnit,
-      categoryDiscounts: JSON.stringify(categoryDiscounts),
+      categoryDiscounts: JSON.stringify(allDiscounts),
       deliveryDays: deliveryDays || null,
       adjustmentAmount: -actualDiscount,
     });
@@ -865,6 +877,34 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
             </div>
           )}
         </div>
+        )}
+
+        {/* 전체 네고 */}
+        {isLocked ? (
+          totalNegoAmt > 0 && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-medium text-sm text-foreground">전체 네고</span>
+              <span className="text-red-500 font-medium">-{fmtNum(totalNegoAmt)}원</span>
+              <span className="text-[10px]">({totalNegoPct}%)</span>
+            </div>
+          )
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">전체 네고</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={totalNegoPct || ""}
+              onChange={e => onTotalNegoPctChange(parseFloat(e.target.value) || 0)}
+              placeholder="0"
+              className="w-14 h-7 text-xs text-center border rounded px-1"
+            />
+            <span className="text-xs text-muted-foreground">%</span>
+            {totalNegoAmt > 0 && (
+              <span className="text-xs text-red-500">-{fmtNum(totalNegoAmt)}원</span>
+            )}
+          </div>
         )}
 
         {!isLocked && (
@@ -1368,13 +1408,18 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
   const items = data?.items || [];
 
   const [categoryDiscounts, setCategoryDiscounts] = useState<Record<string, number>>({});
+  const [totalNegoPct, setTotalNegoPct] = useState<number>(0);
 
   useEffect(() => {
     if (quotation) {
       try {
-        setCategoryDiscounts(JSON.parse((quotation as any).categoryDiscounts || "{}"));
+        const parsed = JSON.parse((quotation as any).categoryDiscounts || "{}");
+        const { __total__, ...rest } = parsed;
+        setCategoryDiscounts(rest);
+        setTotalNegoPct(__total__ || 0);
       } catch {
         setCategoryDiscounts({});
+        setTotalNegoPct(0);
       }
     }
   }, [quotation?.id]);
@@ -1421,6 +1466,8 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
         onRefresh={onRefresh}
         isLocked={isLocked}
         categoryDiscounts={categoryDiscounts}
+        totalNegoPct={totalNegoPct}
+        onTotalNegoPctChange={setTotalNegoPct}
       />
     </div>
   );
