@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -654,6 +654,24 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
     }
   }, [autoDeliveryDays, deliveryAutoCalculated]);
 
+  // 아이템 금액이 바뀌면 discountValue를 자동 재계산 저장 (DB와 화면 일치)
+  const savedDiscountRef = useRef<number>(quotation.discountValue || 0);
+  useEffect(() => {
+    if (savedDiscountRef.current === actualDiscount) return;
+    if (updateMut.isPending) return;
+    const timer = setTimeout(() => {
+      savedDiscountRef.current = actualDiscount;
+      updateMut.mutate({
+        discountType: "amount",
+        discountValue: actualDiscount,
+        discountTruncUnit,
+        categoryDiscounts: JSON.stringify(categoryDiscounts),
+        adjustmentAmount: -actualDiscount,
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [actualDiscount]);
+
   const addAdjMut = useMutation({
     mutationFn: (body: any) => apiRequest("POST", `/api/quotations/${quotation.id}/items`, body),
     onSuccess: () => {
@@ -980,12 +998,10 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
         )}
       </div>
 
-      {!isLocked && (
       <Button onClick={handleSave} disabled={updateMut.isPending} data-testid="button-save-pricing">
         {updateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Check className="h-4 w-4 mr-1" />}
         저장
       </Button>
-      )}
     </div>
   );
 }
