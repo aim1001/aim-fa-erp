@@ -117,7 +117,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       if (companyInfo.address) { doc.text(companyInfo.address, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
       const telFax = [companyInfo.phone ? `Tel ${companyInfo.phone}` : "", companyInfo.fax ? `Fax ${companyInfo.fax}` : ""].filter(Boolean).join("  ");
       if (telFax) { doc.text(telFax, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
-      if (companyInfo.representative) { doc.text(`대표이사 ${companyInfo.representative}`, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      if (companyInfo.representative) { doc.text(`대표이사 ${companyInfo.representative}  010-3199-0309`, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
       if (companyInfo.email) { doc.text(companyInfo.email, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
 
       rightBlockBottom = rY;
