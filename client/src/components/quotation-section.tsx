@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -654,23 +654,6 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
     }
   }, [autoDeliveryDays, deliveryAutoCalculated]);
 
-  // 아이템 금액이 바뀌면 discountValue를 자동 재계산 저장 (DB와 화면 일치)
-  const savedDiscountRef = useRef<number>(quotation.discountValue || 0);
-  useEffect(() => {
-    if (savedDiscountRef.current === actualDiscount) return;
-    if (updateMut.isPending) return;
-    const timer = setTimeout(() => {
-      savedDiscountRef.current = actualDiscount;
-      updateMut.mutate({
-        discountType: "amount",
-        discountValue: actualDiscount,
-        discountTruncUnit,
-        categoryDiscounts: JSON.stringify(categoryDiscounts),
-        adjustmentAmount: -actualDiscount,
-      });
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [actualDiscount]);
 
   const addAdjMut = useMutation({
     mutationFn: (body: any) => apiRequest("POST", `/api/quotations/${quotation.id}/items`, body),
@@ -871,7 +854,8 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
           </div>
         </div>
 
-        {!isLocked && (
+        {/* 카테고리 네고 — 편집 or 읽기전용 표시 */}
+        {(categoryNegoTotal > 0 || !isLocked) && (
         <div className="border-t pt-3 space-y-2">
           {categoryNegoTotal > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -901,10 +885,14 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
         </div>
         )}
 
-        {actualDiscount > 0 && (
+        {/* 할인 표시 — 카테고리 네고 or 저장된 discountValue 둘 다 커버 */}
+        {(actualDiscount > 0 || (isLocked && (quotation.discountValue || 0) > 0)) && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">할인</span>
-            <span className="text-red-500">-{fmtNum(actualDiscount)}원 ({supplyAmount > 0 ? ((actualDiscount / supplyAmount) * 100).toFixed(1) : "0"}%)</span>
+            {(() => {
+              const d = actualDiscount > 0 ? actualDiscount : (quotation.discountValue || 0);
+              return <span className="text-red-500">-{fmtNum(d)}원 ({supplyAmount > 0 ? ((d / supplyAmount) * 100).toFixed(1) : "0"}%)</span>;
+            })()}
           </div>
         )}
 
@@ -998,10 +986,12 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
         )}
       </div>
 
+      {!isLocked && (
       <Button onClick={handleSave} disabled={updateMut.isPending} data-testid="button-save-pricing">
         {updateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Check className="h-4 w-4 mr-1" />}
         저장
       </Button>
+      )}
     </div>
   );
 }
