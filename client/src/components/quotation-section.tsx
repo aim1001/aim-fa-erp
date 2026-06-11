@@ -557,15 +557,17 @@ const FALLBACK_NOTES = `[제외사항]
   대전 이남 80만원
 - 원격 기술지원: 4시간 20만원`;
 
-function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, categoryDiscounts, totalNegoPct, onTotalNegoPctChange }: {
+function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, categoryDiscounts, totalNegoType, totalNegoValue, onTotalNegoTypeChange, onTotalNegoValueChange }: {
   quotation: Quotation;
   items: QuotationItem[];
   inquiryId: string;
   onRefresh: () => void;
   isLocked?: boolean;
   categoryDiscounts: Record<string, number>;
-  totalNegoPct: number;
-  onTotalNegoPctChange: (v: number) => void;
+  totalNegoType: "pct" | "amt";
+  totalNegoValue: number;
+  onTotalNegoTypeChange: (v: "pct" | "amt") => void;
+  onTotalNegoValueChange: (v: number) => void;
 }) {
   const { data: companySettings } = useQuery<CompanySettings>({
     queryKey: ["/api/company-settings"],
@@ -628,9 +630,10 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
   const afterCategoryNego = supplyAmount - categoryNegoTotal;
 
   const totalNegoAmt = useMemo(() => {
-    if (totalNegoPct > 0) return Math.round(afterCategoryNego * totalNegoPct / 100);
-    return 0;
-  }, [afterCategoryNego, totalNegoPct]);
+    if (totalNegoValue <= 0) return 0;
+    if (totalNegoType === "pct") return Math.round(afterCategoryNego * totalNegoValue / 100);
+    return totalNegoValue;
+  }, [afterCategoryNego, totalNegoType, totalNegoValue]);
 
   const afterAllNego = afterCategoryNego - totalNegoAmt;
 
@@ -696,8 +699,8 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
   });
 
   const handleSave = () => {
-    const allDiscounts = totalNegoPct > 0
-      ? { ...categoryDiscounts, __total__: totalNegoPct }
+    const allDiscounts = totalNegoValue > 0
+      ? { ...categoryDiscounts, ...(totalNegoType === "pct" ? { __total_pct__: totalNegoValue } : { __total_amt__: totalNegoValue }) }
       : { ...categoryDiscounts };
     updateMut.mutate({
       notes,
@@ -885,24 +888,39 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium text-sm text-foreground">전체 네고</span>
               <span className="text-red-500 font-medium">-{fmtNum(totalNegoAmt)}원</span>
-              <span className="text-[10px]">({totalNegoPct}%)</span>
+              {totalNegoType === "pct"
+                ? <span className="text-[10px]">({totalNegoValue}%)</span>
+                : <span className="text-[10px]">(금액)</span>
+              }
             </div>
           )
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium">전체 네고</span>
+            {/* % / 금액 토글 */}
+            <div className="flex border rounded overflow-hidden text-xs">
+              <button
+                type="button"
+                onClick={() => onTotalNegoTypeChange("pct")}
+                className={`px-2 py-1 ${totalNegoType === "pct" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+              >%</button>
+              <button
+                type="button"
+                onClick={() => onTotalNegoTypeChange("amt")}
+                className={`px-2 py-1 ${totalNegoType === "amt" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+              >금액</button>
+            </div>
             <input
               type="number"
               min={0}
-              max={100}
-              value={totalNegoPct || ""}
-              onChange={e => onTotalNegoPctChange(parseFloat(e.target.value) || 0)}
+              value={totalNegoValue || ""}
+              onChange={e => onTotalNegoValueChange(parseFloat(e.target.value) || 0)}
               placeholder="0"
-              className="w-14 h-7 text-xs text-center border rounded px-1"
+              className="w-24 h-7 text-xs text-right border rounded px-2"
             />
-            <span className="text-xs text-muted-foreground">%</span>
+            <span className="text-xs text-muted-foreground">{totalNegoType === "pct" ? "%" : "원"}</span>
             {totalNegoAmt > 0 && (
-              <span className="text-xs text-red-500">-{fmtNum(totalNegoAmt)}원</span>
+              <span className="text-xs text-red-500 font-medium">→ -{fmtNum(totalNegoAmt)}원</span>
             )}
           </div>
         )}
@@ -1408,18 +1426,26 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
   const items = data?.items || [];
 
   const [categoryDiscounts, setCategoryDiscounts] = useState<Record<string, number>>({});
-  const [totalNegoPct, setTotalNegoPct] = useState<number>(0);
+  const [totalNegoType, setTotalNegoType] = useState<"pct" | "amt">("pct");
+  const [totalNegoValue, setTotalNegoValue] = useState<number>(0);
 
   useEffect(() => {
     if (quotation) {
       try {
         const parsed = JSON.parse((quotation as any).categoryDiscounts || "{}");
-        const { __total__, ...rest } = parsed;
+        const { __total_pct__, __total_amt__, ...rest } = parsed;
         setCategoryDiscounts(rest);
-        setTotalNegoPct(__total__ || 0);
+        if (__total_amt__ > 0) {
+          setTotalNegoType("amt");
+          setTotalNegoValue(__total_amt__);
+        } else {
+          setTotalNegoType("pct");
+          setTotalNegoValue(__total_pct__ || 0);
+        }
       } catch {
         setCategoryDiscounts({});
-        setTotalNegoPct(0);
+        setTotalNegoType("pct");
+        setTotalNegoValue(0);
       }
     }
   }, [quotation?.id]);
@@ -1466,8 +1492,10 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
         onRefresh={onRefresh}
         isLocked={isLocked}
         categoryDiscounts={categoryDiscounts}
-        totalNegoPct={totalNegoPct}
-        onTotalNegoPctChange={setTotalNegoPct}
+        totalNegoType={totalNegoType}
+        totalNegoValue={totalNegoValue}
+        onTotalNegoTypeChange={setTotalNegoType}
+        onTotalNegoValueChange={setTotalNegoValue}
       />
     </div>
   );
