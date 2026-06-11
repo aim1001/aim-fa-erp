@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Download, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, XCircle, Package, ExternalLink, Upload, Unlink2, Link2 } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, XCircle, Package, Upload, Unlink2, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -629,7 +629,6 @@ export default function PurchaseInvoiceList() {
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [importYear, setImportYear] = useState("");
   const purchaseFileInputRef = useRef<HTMLInputElement>(null);
   const [filterYear, setFilterYear] = useState<string>("all");
   const [periodType, setPeriodType] = useState<string>("all");
@@ -647,9 +646,6 @@ export default function PurchaseInvoiceList() {
   });
   const { data: vendorList } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
-  });
-  const { data: invoiceYears } = useQuery<number[]>({
-    queryKey: ["/api/invoice-years"],
   });
   const { data: projects } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
@@ -781,30 +777,6 @@ export default function PurchaseInvoiceList() {
     return { supply, tax, total };
   }, [filtered]);
 
-  const importMutation = useMutation({
-    mutationFn: async (year: number) => {
-      const res = await apiRequest("POST", "/api/purchase-invoices/import-onedrive", { year });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices-with-payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
-      if (data.autoLinked > 0) queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      const parts = [`${data.imported}건 추가`];
-      if (data.updated > 0) parts.push(`${data.updated}건 업데이트`);
-      parts.push(`${data.skipped}건 변경없음`);
-      if (data.vendorsCreated > 0) parts.push(`공급업체 ${data.vendorsCreated}개 신규 등록`);
-      const autoLinkedMsg = data.autoLinked > 0
-        ? `${data.autoLinked}건 자동 프로젝트 연결됨`
-        : "자동 프로젝트 연결 0건";
-      toast({ title: "가져오기 완료", description: `${parts.join(", ")} (총 ${data.total}건) · ${autoLinkedMsg}` });
-    },
-    onError: (err: Error) => {
-      toast({ title: "가져오기 실패", description: err.message, variant: "destructive" });
-    },
-  });
-
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
@@ -901,43 +873,6 @@ export default function PurchaseInvoiceList() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-semibold" data-testid="text-purchase-invoice-title">매입계산서</h1>
         <div className="flex items-center gap-2">
-          <Select value={importYear} onValueChange={setImportYear}>
-            <SelectTrigger className="w-28" data-testid="select-import-year-purchase">
-              <SelectValue placeholder="연도 선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {(invoiceYears || []).map(y => <SelectItem key={y} value={String(y)}>{y}년</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => { if (importYear) importMutation.mutate(parseInt(importYear)); }}
-            disabled={!importYear || importMutation.isPending}
-            data-testid="button-import-purchase"
-          >
-            {importMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
-            {importMutation.isPending ? "가져오는 중..." : "OneDrive에서 가져오기"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              if (!importYear) { toast({ title: "연도를 먼저 선택해주세요", variant: "destructive" }); return; }
-              try {
-                const res = await fetch(`/api/purchase-invoices/excel-url?year=${importYear}`);
-                if (!res.ok) { const err = await res.json(); toast({ title: "파일 열기 실패", description: err.message, variant: "destructive" }); return; }
-                const { webUrl } = await res.json();
-                window.open(webUrl, "_blank");
-              } catch (e: any) {
-                toast({ title: "파일 열기 실패", description: e.message, variant: "destructive" });
-              }
-            }}
-            disabled={!importYear}
-            data-testid="button-open-purchase-excel"
-          >
-            <ExternalLink className="h-4 w-4 mr-1" />엑셀 직접 열기
-          </Button>
           <input
             type="file"
             accept=".xls,.xlsx"

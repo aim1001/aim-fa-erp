@@ -852,6 +852,7 @@ export const bankTransactions = pgTable("bank_transactions", {
   matchedPaymentId: varchar("matched_payment_id"),
   matchedProjectId: varchar("matched_project_id"),
   matchedSalesInvoiceId: varchar("matched_sales_invoice_id"),
+  matchedPurchaseInvoiceId: varchar("matched_purchase_invoice_id"),
   importBatch: text("import_batch"),
   importHash: text("import_hash"),
   memo: text("memo"),

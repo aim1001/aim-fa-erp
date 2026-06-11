@@ -8526,6 +8526,7 @@ export async function registerRoutes(
         matchStatus: "unmatched",
         matchedPaymentId: null,
         matchedSalesInvoiceId: null,
+        matchedPurchaseInvoiceId: null,
       });
       if (prevPaymentId) {
         await storage.updatePayment(prevPaymentId, {
@@ -9086,6 +9087,153 @@ export async function registerRoutes(
     }
   });
 
+  // 매입채무(지급관리) — /api/receivables 미러
+  app.get("/api/payables", async (req, res) => {
+    try {
+      const { year } = req.query;
+      const yearNum = year ? parseInt(year as string) : undefined;
+
+      const invoices = await storage.getPurchaseInvoices();
+      const projects = await storage.getProjects();
+      const projectMap = new Map(projects.map((p: any) => [p.id, p]));
+
+      const allTx = await pool.query(
+        `SELECT matched_purchase_invoice_id, SUM(debit_amount) as paid, COUNT(*) as tx_count, array_agg(id) as tx_ids
+         FROM bank_transactions
+         WHERE matched_purchase_invoice_id IS NOT NULL
+         GROUP BY matched_purchase_invoice_id`
+      );
+      const txByInvoice = new Map<string, { paid: number; txCount: number; txIds: string[] }>();
+      for (const row of allTx.rows) {
+        txByInvoice.set(row.matched_purchase_invoice_id, {
+          paid: Number(row.paid || 0),
+          txCount: Number(row.tx_count || 0),
+          txIds: row.tx_ids || [],
+        });
+      }
+
+      let filtered = invoices;
+      if (yearNum) {
+        filtered = invoices.filter((inv: any) => {
+          const d = inv.writeDate || inv.issueDate;
+          if (!d) return inv.year === yearNum;
+          return new Date(d).getFullYear() === yearNum;
+        });
+      }
+
+      const enriched = filtered.map((inv: any) => {
+        const proj = inv.projectId ? projectMap.get(inv.projectId) : null;
+        const txInfo = txByInvoice.get(inv.id);
+        return {
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          companyName: inv.companyName,
+          vendorId: inv.vendorId,
+          projectId: inv.projectId,
+          projectNumber: proj?.projectNumber ?? null,
+          writeDate: inv.writeDate,
+          issueDate: inv.issueDate,
+          totalAmount: inv.totalAmount ?? 0,
+          supplyAmount: inv.supplyAmount,
+          taxAmount: inv.taxAmount,
+          status: inv.status,
+          paidAmount: inv.status === 'paid'
+            ? (txInfo?.txCount ? (txInfo.paid ?? 0) : (inv.totalAmount ?? 0))
+            : (txInfo?.paid ?? 0),
+          linkedTxCount: txInfo?.txCount ?? 0,
+          linkedTxIds: txInfo?.txIds ?? [],
+        };
+      });
+
+      const totalBilled = enriched.reduce((s: number, i: any) => s + (i.totalAmount ?? 0), 0);
+      const totalPaid = enriched.reduce((s: number, i: any) => s + i.paidAmount, 0);
+
+      res.json({
+        invoices: enriched,
+        summary: {
+          totalBilled,
+          totalPaid,
+          totalOutstanding: totalBilled - totalPaid,
+          invoiceCount: enriched.length,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/payables/complete-invoices", async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || !ids.length) {
+        return res.status(400).json({ message: "ids 배열 필수" });
+      }
+      if (!ids.every((id: unknown) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "ids 배열의 모든 항목은 문자열이어야 합니다" });
+      }
+
+      const invResult = await pool.query(
+        `UPDATE purchase_invoices SET status = 'paid'
+         WHERE id = ANY($1::varchar[]) AND status != 'paid'
+         RETURNING id`,
+        [ids]
+      );
+      const updatedInvoiceIds = invResult.rows.map((r: any) => r.id);
+
+      let updatedPayments = 0;
+      if (updatedInvoiceIds.length > 0) {
+        const pmtResult = await pool.query(
+          `UPDATE payments SET status = 'completed',
+            actual_date = COALESCE(actual_date, planned_date),
+            actual_amount = COALESCE(actual_amount, amount)
+           WHERE type = 'expense'
+             AND status != 'completed'
+             AND purchase_invoice_id = ANY($1::varchar[])
+           RETURNING id`,
+          [updatedInvoiceIds]
+        );
+        updatedPayments = pmtResult.rowCount ?? 0;
+      }
+
+      res.json({ updatedInvoices: invResult.rowCount ?? 0, updatedPayments });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/payables/uncomplete-invoices", async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || !ids.length) {
+        return res.status(400).json({ message: "ids 배열 필수" });
+      }
+      if (!ids.every((id: unknown) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "ids 배열의 모든 항목은 문자열이어야 합니다" });
+      }
+      const invResult = await pool.query(
+        `UPDATE purchase_invoices SET status = 'pending'
+         WHERE id = ANY($1::varchar[]) AND status = 'paid'
+         RETURNING id`,
+        [ids]
+      );
+      const revertedIds = invResult.rows.map((r: any) => r.id);
+      let updatedPayments = 0;
+      if (revertedIds.length > 0) {
+        const pmtResult = await pool.query(
+          `UPDATE payments SET status = 'pending', actual_date = NULL, actual_amount = NULL
+           WHERE type = 'expense' AND status = 'completed'
+             AND purchase_invoice_id = ANY($1::varchar[])
+           RETURNING id`,
+          [revertedIds]
+        );
+        updatedPayments = pmtResult.rowCount ?? 0;
+      }
+      res.json({ updatedInvoices: invResult.rowCount ?? 0, updatedPayments });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/payments/bulk-uncomplete", async (req, res) => {
     try {
       const { ids } = req.body;
@@ -9345,6 +9493,48 @@ export async function registerRoutes(
       const txId = req.params.id;
       const tx = await storage.updateBankTransaction(txId, {
         matchedSalesInvoiceId: null,
+        matchStatus: "unmatched",
+      });
+      if (!tx) return res.status(404).json({ message: "Transaction not found" });
+      res.json(tx);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 은행 출금거래 ↔ 매입계산서 직접 연결 (매출의 link-invoice 미러)
+  app.post("/api/bank-transactions/:id/link-purchase-invoice", async (req, res) => {
+    try {
+      const txId = req.params.id;
+      const { invoiceId } = req.body;
+      if (!invoiceId) return res.status(400).json({ message: "invoiceId is required" });
+
+      const invoice = await storage.getPurchaseInvoice(invoiceId);
+      if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+
+      const allTx = await storage.getBankTransactions({});
+      const targetTx = allTx.find((t: any) => t.id === txId);
+      if (!targetTx) return res.status(404).json({ message: "Transaction not found" });
+      if (!targetTx.debitAmount || targetTx.debitAmount <= 0) {
+        return res.status(400).json({ message: "출금 거래만 매입계산서에 연결할 수 있습니다" });
+      }
+
+      const tx = await storage.updateBankTransaction(txId, {
+        matchedPurchaseInvoiceId: invoiceId,
+        matchStatus: "manual",
+      });
+      if (!tx) return res.status(404).json({ message: "Transaction not found" });
+      res.json(tx);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/bank-transactions/:id/link-purchase-invoice", async (req, res) => {
+    try {
+      const txId = req.params.id;
+      const tx = await storage.updateBankTransaction(txId, {
+        matchedPurchaseInvoiceId: null,
         matchStatus: "unmatched",
       });
       if (!tx) return res.status(404).json({ message: "Transaction not found" });
