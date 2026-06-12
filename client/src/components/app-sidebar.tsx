@@ -31,9 +31,9 @@ export function AppSidebar() {
   const isSalesDashboard = location === "/sales-dashboard";
   const isOpticsCalculator = location === "/optics-calculator";
   const isSalesSection = isSalesDashboard || isInquiryPage || location === "/customers" || location === "/items";
-  const isProjectSection = isProjectPage || location === "/sales-invoices";
+  const isProjectSection = isProjectPage || location === "/sales-invoices" || location === "/receivables";
   const isFinanceSection = ["/management", "/payment-plan"].includes(location);
-  const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors", "/purchase-invoices"].includes(location);
+  const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors", "/purchase-invoices", "/payables"].includes(location);
 
   const [salesOpen, setSalesOpen] = useState(isSalesSection);
   const [projectOpen, setProjectOpen] = useState(isProjectSection);
@@ -180,6 +180,18 @@ export function AppSidebar() {
                       <Link href="/sales-invoices"><span>매출계산서</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
+
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/receivables"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-receivables"
+                    >
+                      <Link href="/receivables"><span>수금관리</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </CollapsibleContent>
@@ -219,6 +231,17 @@ export function AppSidebar() {
                       data-testid="nav-purchase-invoices"
                     >
                       <Link href="/purchase-invoices"><span>매입계산서</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/payables"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-payables"
+                    >
+                      <Link href="/payables"><span>지급관리</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>

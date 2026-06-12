@@ -21,6 +21,8 @@ import VendorList from "@/pages/vendor-list";
 import SalesInvoiceList from "@/pages/sales-invoice-list";
 import PurchaseInvoiceList from "@/pages/purchase-invoice-list";
 import PaymentPlan from "@/pages/payment-plan";
+import Receivables from "@/pages/receivables";
+import Payables from "@/pages/payables";
 import ProjectList from "@/pages/project-list";
 import ManagementDashboard from "@/pages/management-dashboard";
 import ItemList from "@/pages/item-list";
@@ -48,6 +50,8 @@ function Router() {
       <Route path="/vendors" component={VendorList} />
       <Route path="/sales-invoices" component={SalesInvoiceList} />
       <Route path="/purchase-invoices" component={PurchaseInvoiceList} />
+      <Route path="/receivables" component={() => <FinanceGuard><Receivables /></FinanceGuard>} />
+      <Route path="/payables" component={() => <FinanceGuard><Payables /></FinanceGuard>} />
       <Route path="/payment-plan" component={() => <FinanceGuard><PaymentPlan /></FinanceGuard>} />
       <Route path="/projects" component={ProjectList} />
       <Route path="/management" component={() => <FinanceGuard><ManagementDashboard /></FinanceGuard>} />

@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Landmark, ClipboardList, Settings, ChevronLeft, ChevronRight, ReceiptText, CreditCard } from "lucide-react";
+import { Landmark, ClipboardList, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { CashFlowTab } from "./cash-flow-tab";
 import { RecurringItemsTab } from "./recurring-items-tab";
 import { BankTransactionsTab } from "./bank-transactions-tab";
-import { ReceivablesTab } from "./receivables-tab";
-import { PayablesTab } from "./payables-tab";
 
-type ViewMode = "cashflow" | "recurring" | "bank-manage" | "receivables" | "payables";
+type ViewMode = "cashflow" | "recurring" | "bank-manage";
 
 export default function PaymentPlan() {
   const now = new Date();
@@ -53,22 +51,6 @@ export default function PaymentPlan() {
           >
             <Settings className="h-4 w-4 mr-1" />은행관리
           </Button>
-          <Button
-            variant={viewMode === "receivables" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("receivables")}
-            data-testid="button-view-receivables"
-          >
-            <ReceiptText className="h-4 w-4 mr-1" />수금관리
-          </Button>
-          <Button
-            variant={viewMode === "payables" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("payables")}
-            data-testid="button-view-payables"
-          >
-            <CreditCard className="h-4 w-4 mr-1" />지급관리
-          </Button>
         </div>
       </div>
 
@@ -100,10 +82,6 @@ export default function PaymentPlan() {
       )}
 
       {viewMode === "bank-manage" && <BankTransactionsTab />}
-
-      {viewMode === "receivables" && <ReceivablesTab />}
-
-      {viewMode === "payables" && <PayablesTab />}
     </div>
   );
 }
