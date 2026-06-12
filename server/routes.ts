@@ -5610,7 +5610,16 @@ export async function registerRoutes(
           const latestQuot = quots[quots.length - 1];
           const quotData = await storage.getQuotationWithItems(latestQuot.id);
           if (quotData && quotData.items.length > 0) {
-            latestQuoteTotalAmount = quotData.items.reduce((s, i) => s + (i.amount || 0), 0);
+            // 견적 합계(추가/할인 항목 포함)에서 견적 레벨 할인(카테고리/전체 네고)을 반영
+            const supply = quotData.items.reduce((s, i) => s + (i.amount || 0), 0);
+            const q = quotData.quotation;
+            const dType = q.discountType || "amount";
+            const dVal = q.discountValue || 0;
+            const dAmt = dVal > 0 ? (dType === "percent" ? Math.round(supply * dVal / 100) : dVal) : 0;
+            const dUnit = parseInt((q.discountTruncUnit as string) || "0") || 0;
+            let afterDiscount = supply - dAmt;
+            if (dUnit > 0 && dAmt > 0) afterDiscount = Math.floor(afterDiscount / dUnit) * dUnit;
+            latestQuoteTotalAmount = afterDiscount;
           }
         }
       } catch (calcErr: any) {

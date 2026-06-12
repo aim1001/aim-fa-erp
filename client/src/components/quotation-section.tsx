@@ -635,7 +635,18 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
     return totalNegoValue;
   }, [afterCategoryNego, totalNegoType, totalNegoValue]);
 
-  const afterAllNego = afterCategoryNego - totalNegoAmt;
+  // 레거시 견적 할인 복원: 신규 모델은 항상 discountType="amount"로 저장하므로
+  // discountType==="percent"는 옛 견적(할인율 % 저장)의 마커. 네고가 설정되지 않은
+  // 경우에만 적용하고, 저장 시 자연스럽게 amount 모델로 마이그레이션됨.
+  const legacyDiscountAmt = useMemo(() => {
+    if (quotation.discountType !== "percent") return 0;
+    const pct = quotation.discountValue || 0;
+    if (pct <= 0) return 0;
+    if (categoryNegoTotal > 0 || totalNegoAmt > 0) return 0;
+    return Math.round(supplyAmount * pct / 100);
+  }, [quotation.discountType, quotation.discountValue, categoryNegoTotal, totalNegoAmt, supplyAmount]);
+
+  const afterAllNego = afterCategoryNego - totalNegoAmt - legacyDiscountAmt;
 
   const afterDiscount = useMemo(() => {
     const unit = parseInt(discountTruncUnit);
