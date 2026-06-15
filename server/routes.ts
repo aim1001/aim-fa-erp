@@ -1380,12 +1380,24 @@ export async function registerRoutes(
         await storage.updateCompany(comp.id, { customerId: targetId });
       }
 
+      // 매출계산서·프로젝트의 거래처 참조도 대상으로 이전 (병합 후 참조 끊김 방지)
+      const movedInvoicesRes = await pool.query(
+        `UPDATE sales_invoices SET customer_id = $1 WHERE customer_id = $2`,
+        [targetId, sourceId]
+      );
+      const movedProjectsRes = await pool.query(
+        `UPDATE projects SET customer_id = $1 WHERE customer_id = $2`,
+        [targetId, sourceId]
+      );
+
       await storage.deleteCustomer(sourceId);
 
       res.json({
         message: `${source.companyName} → ${target.companyName} 병합 완료`,
         movedInquiries: sourceInquiries.length,
         movedCompanies: sourceCompanies.length,
+        movedInvoices: movedInvoicesRes.rowCount ?? 0,
+        movedProjects: movedProjectsRes.rowCount ?? 0,
         linkedOrphans,
       });
     } catch (err: any) {
