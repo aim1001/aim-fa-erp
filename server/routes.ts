@@ -3811,33 +3811,43 @@ export async function registerRoutes(
   app.post("/api/sales-invoices/cleanup-placeholders", async (_req, res) => {
     try {
       const allInvoices = await storage.getSalesInvoices();
-      const placeholders = allInvoices.filter(i => !i.issueDate && i.projectId);
-      const issuedByProject = new Map<string, typeof allInvoices>();
+      const allPayments = await storage.getPayments();
 
+      // 프로젝트별로 묶어, 같은 건의 중복(예정/사업자번호없는 발행 vs 실발행)을 정리
+      const byProject = new Map<string, typeof allInvoices>();
       for (const inv of allInvoices) {
-        if (inv.issueDate && inv.projectId) {
-          if (!issuedByProject.has(inv.projectId)) issuedByProject.set(inv.projectId, []);
-          issuedByProject.get(inv.projectId)!.push(inv);
-        }
+        if (!inv.projectId) continue;
+        if (!byProject.has(inv.projectId)) byProject.set(inv.projectId, []);
+        byProject.get(inv.projectId)!.push(inv);
       }
+
+      // "실발행도(real)" 점수: 사업자번호(+2) + 발행일(+1) → 점수 높은 쪽을 정본으로 유지
+      const rank = (i: any) => (i.businessNumber ? 2 : 0) + (i.issueDate ? 1 : 0);
+      const isMatch = (a: any, b: any) =>
+        (a.invoiceStage && b.invoiceStage === a.invoiceStage) ||
+        ((a.supplyAmount || 0) > 0 && Math.abs((b.supplyAmount || 0) - (a.supplyAmount || 0)) <= (a.supplyAmount || 0) * 0.1);
 
       const toDelete: string[] = [];
 
-      for (const ph of placeholders) {
-        const issuedList = issuedByProject.get(ph.projectId!) || [];
+      for (const invs of Array.from(byProject.values())) {
+        for (const cand of invs as any[]) {
+          if (toDelete.includes(cand.id)) continue;
+          // cand보다 "더 정본"이면서 같은 건으로 매칭되는 대상 찾기
+          const target = (invs as any[]).find((t: any) =>
+            t.id !== cand.id && !toDelete.includes(t.id) && rank(t) > rank(cand) && isMatch(cand, t));
+          if (!target) continue;
 
-        // 조건1: 같은 projectId + invoiceStage 일치
-        const stageMatch = ph.invoiceStage &&
-          issuedList.some(i => i.invoiceStage === ph.invoiceStage);
-
-        // 조건2: 같은 projectId + 금액 10% 이내 유사 (invoiceStage 없는 실발행 계산서 대응)
-        const amountMatch = (ph.supplyAmount || 0) > 0 &&
-          issuedList.some(i => {
-            const diff = Math.abs((i.supplyAmount || 0) - (ph.supplyAmount || 0));
-            return diff <= (ph.supplyAmount || 0) * 0.1;
-          });
-
-        if (stageMatch || amountMatch) toDelete.push(ph.id);
+          // 중복(cand)의 입금/은행매칭을 정본(target)으로 이전 후 삭제
+          for (const p of allPayments.filter(p => p.salesInvoiceId === cand.id)) {
+            await storage.updatePayment(p.id, { salesInvoiceId: target.id });
+            (p as any).salesInvoiceId = target.id;
+          }
+          await pool.query(
+            `UPDATE bank_transactions SET matched_sales_invoice_id = $1 WHERE matched_sales_invoice_id = $2`,
+            [target.id, cand.id]
+          );
+          toDelete.push(cand.id);
+        }
       }
 
       for (const id of toDelete) {
@@ -5749,6 +5759,9 @@ export async function registerRoutes(
       if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
 
+      // 예정계산서에 거래처/사업자번호를 채워 홈택스 실발행건과 자동 매칭(예정/완료 혼재 방지)
+      const planCustomer = project.customerId ? await storage.getCustomer(project.customerId) : null;
+
       const existingPayments = await storage.getPayments();
       const projectPayments = existingPayments.filter(p => p.projectId === project.id && p.type === "income");
       const plannedCount = projectPayments.filter(p => p.status !== "completed").length;
@@ -5806,7 +5819,11 @@ export async function registerRoutes(
           } else {
             const newInvoice = await storage.createSalesInvoice({
               projectId: project.id,
-              companyName: project.customerName || "",
+              customerId: project.customerId || null,
+              companyName: planCustomer?.companyName || project.customerName || "",
+              businessNumber: planCustomer?.businessNumber || null,
+              representative: planCustomer?.representative || null,
+              address: planCustomer?.address || null,
               issueDate: null,
               year: project.year || new Date().getFullYear(),
               item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
@@ -5849,6 +5866,9 @@ export async function registerRoutes(
       const project = allProjects.find(p => p.id === req.params.id);
       if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
+
+      // 예정계산서에 거래처/사업자번호를 채워 홈택스 실발행건과 자동 매칭(예정/완료 혼재 방지)
+      const planCustomer = project.customerId ? await storage.getCustomer(project.customerId) : null;
 
       const existingSales = (await storage.getSalesInvoices()).filter(i => i.projectId === project.id);
       const issuedInvoices = existingSales.filter(i => !!i.issueDate);
@@ -5898,7 +5918,11 @@ export async function registerRoutes(
           const plannedDate = calcPaymentDate(baseDate, timingType, timingDays);
           const newInv = await storage.createSalesInvoice({
             projectId: project.id,
-            companyName: project.customerName || "",
+            customerId: project.customerId || null,
+            companyName: planCustomer?.companyName || project.customerName || "",
+            businessNumber: planCustomer?.businessNumber || null,
+            representative: planCustomer?.representative || null,
+            address: planCustomer?.address || null,
             issueDate: null,
             year: yearNum,
             item: `${project.projectNumber || ""} ${project.description || ""}`.trim() || null,
@@ -5931,7 +5955,11 @@ export async function registerRoutes(
           const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
           const newInv = await storage.createSalesInvoice({
             projectId: project.id,
-            companyName: project.customerName || "",
+            customerId: project.customerId || null,
+            companyName: planCustomer?.companyName || project.customerName || "",
+            businessNumber: planCustomer?.businessNumber || null,
+            representative: planCustomer?.representative || null,
+            address: planCustomer?.address || null,
             issueDate: null,
             year: yearNum,
             item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
@@ -9086,6 +9114,15 @@ export async function registerRoutes(
       const projects = await storage.getProjects();
       const projectMap = new Map(projects.map((p: any) => [p.id, p]));
 
+      // payment-레벨로 매칭/완료된 입금(은행거래에 계산서가 직접 연결되지 않은 경우)도 집계에 포함
+      const allPaymentsRcv = await storage.getPayments();
+      const completedByInvoice = new Map<string, number>();
+      for (const p of allPaymentsRcv) {
+        if (p.type === "income" && p.status === "completed" && p.salesInvoiceId) {
+          completedByInvoice.set(p.salesInvoiceId, (completedByInvoice.get(p.salesInvoiceId) || 0) + (p.actualAmount || p.amount || 0));
+        }
+      }
+
       const allTx = await pool.query(
         `SELECT matched_sales_invoice_id, SUM(credit_amount) as collected, COUNT(*) as tx_count, array_agg(id) as tx_ids
          FROM bank_transactions
@@ -9126,9 +9163,15 @@ export async function registerRoutes(
           supplyAmount: inv.supplyAmount,
           taxAmount: inv.taxAmount,
           status: inv.status,
-          collectedAmount: inv.status === 'paid'
-            ? (txInfo?.txCount ? (txInfo.collected ?? 0) : (inv.totalAmount ?? 0))
-            : (txInfo?.collected ?? 0),
+          collectedAmount: (() => {
+            const txCollected = txInfo?.collected ?? 0;
+            const pmtCollected = completedByInvoice.get(inv.id) ?? 0;
+            const recorded = Math.max(txCollected, pmtCollected); // 중복 집계 방지: 둘 중 큰 값
+            if (inv.status === 'paid') {
+              return (txInfo?.txCount || pmtCollected > 0) ? recorded : (inv.totalAmount ?? 0);
+            }
+            return recorded;
+          })(),
           linkedTxCount: txInfo?.txCount ?? 0,
           linkedTxIds: txInfo?.txIds ?? [],
         };
