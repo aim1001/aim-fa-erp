@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus, Search, Trash2, RefreshCw, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, XCircle, Package, Upload, Unlink2, Link2 } from "lucide-react";
+import { FileText, Plus, Search, Trash2, RefreshCw, Calendar, Wallet, Check, CircleDot, Clock, CircleCheck, CircleMinus, Pencil, X, Save, Undo2, XCircle, Package, Upload, Unlink2, Link2, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useState, useMemo, useRef } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -33,6 +33,9 @@ type PurchaseInvoiceWithPayment = PurchaseInvoice & {
   paymentCount: number;
   completedCount: number;
   nextPaymentDate: string | null;
+  dueDate: string | null;
+  isOverdue: boolean;
+  overdueAmount: number;
 };
 
 function formatAmount(amount: number | null | undefined) {
@@ -54,6 +57,16 @@ function PaymentStatusBadge({ inv }: { inv: PurchaseInvoiceWithPayment }) {
   });
 
   const trigger = (() => {
+    if (paymentStatus !== "completed" && inv.isOverdue) {
+      return (
+        <div className="flex flex-col gap-0.5 cursor-pointer" data-testid={`badge-payment-overdue-${inv.id}`}>
+          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0">
+            <AlertTriangle className="h-3 w-3 mr-1" />지연{paymentStatus === "partial" ? ` (${completedCount}/${paymentCount}회 지급)` : ""}
+          </Badge>
+          <span className="text-[10px] text-muted-foreground">미지급 잔액 {remainingAmount.toLocaleString()}{inv.dueDate ? ` · 기한 ${inv.dueDate}` : ""}</span>
+        </div>
+      );
+    }
     if (paymentStatus === "none") {
       return <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30 cursor-pointer" data-testid={`badge-payment-none-${inv.id}`}><CircleMinus className="h-3 w-3 mr-1" />미설정</Badge>;
     }
@@ -733,10 +746,11 @@ export default function PurchaseInvoiceList() {
   }, [invoices, filterYear, periodType, periodValue, dateFrom, dateTo]);
 
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: 0, none: 0, planned: 0, partial: 0, completed: 0, unlinked: 0 };
+    const counts: Record<string, number> = { all: 0, none: 0, planned: 0, partial: 0, completed: 0, overdue: 0, unlinked: 0 };
     for (const inv of periodFiltered) {
       counts.all++;
       counts[inv.paymentStatus] = (counts[inv.paymentStatus] || 0) + 1;
+      if (inv.isOverdue) counts.overdue++;
       if (!inv.vendorId) counts.unlinked++;
     }
     return counts;
@@ -745,7 +759,9 @@ export default function PurchaseInvoiceList() {
   const filtered = useMemo(() => {
     let list = periodFiltered;
 
-    if (paymentFilter !== "all") {
+    if (paymentFilter === "overdue") {
+      list = list.filter(inv => inv.isOverdue);
+    } else if (paymentFilter !== "all") {
       list = list.filter(inv => inv.paymentStatus === paymentFilter);
     }
 
@@ -977,6 +993,7 @@ export default function PurchaseInvoiceList() {
           { value: "none", label: "미설정", count: statusCounts.none },
           { value: "planned", label: "지급계획", count: statusCounts.planned },
           { value: "partial", label: "일부지급", count: statusCounts.partial },
+          { value: "overdue", label: "지연", count: statusCounts.overdue },
           { value: "completed", label: "지급완료", count: statusCounts.completed },
         ].map(opt => (
           <Button
