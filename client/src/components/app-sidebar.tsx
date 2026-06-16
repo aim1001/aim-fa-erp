@@ -31,7 +31,7 @@ export function AppSidebar() {
   const isSalesDashboard = location === "/sales-dashboard";
   const isOpticsCalculator = location === "/optics-calculator";
   const isSalesSection = isSalesDashboard || isInquiryPage || location === "/customers" || location === "/items";
-  const isProjectSection = isProjectPage || location === "/sales-invoices" || location === "/receivables";
+  const isProjectSection = isProjectPage || location === "/sales-invoices" || location === "/receivables" || location === "/customer-ledger";
   const isFinanceSection = ["/management", "/payment-plan"].includes(location);
   const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors", "/purchase-invoices", "/payables"].includes(location);
 
@@ -190,6 +190,18 @@ export function AppSidebar() {
                       data-testid="nav-receivables"
                     >
                       <Link href="/receivables"><span>수금관리</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/customer-ledger"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-customer-ledger"
+                    >
+                      <Link href="/customer-ledger"><span>고객사 거래원장</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

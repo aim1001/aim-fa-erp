@@ -973,6 +973,26 @@ export async function registerRoutes(
     res.json({ ok });
   });
 
+  // 일일 보고서 미리보기(전송 안 함)
+  app.get("/api/daily-report/preview", async (_req, res) => {
+    try {
+      const { buildDailyReport } = await import("./daily-report");
+      res.json({ message: await buildDailyReport() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 일일 보고서 즉시 발송(휴일 무시, 텔레그램 전송)
+  app.post("/api/daily-report/send", async (_req, res) => {
+    try {
+      const { sendDailyReport } = await import("./daily-report");
+      res.json({ ok: await sendDailyReport(true) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/telegram/memos", async (_req, res) => {
     try {
       const memos = await storage.getTelegramMemos();
@@ -3576,6 +3596,113 @@ export async function registerRoutes(
       const unlinkedOrders = allOrders.filter(o => !o.vendorId && o.vendor);
       const unlinkedInvoices = allInvoices.filter(i => !i.vendorId && i.companyName);
       res.json({ orders: unlinkedOrders, invoices: unlinkedInvoices });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 고객사 거래원장: 고객사별 프로젝트/매출계산서/수금/미수금
+  app.get("/api/customers/:id/ledger", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+
+      const customer = await storage.getCustomer(id);
+      if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
+
+      // 이름 정규화 (공백·(주)·주식회사 등 차이 흡수) — vendor ledger와 동일 패턴
+      const normalize = (s: string | null | undefined) =>
+        (s || "").replace(/\s|\(주\)|주식회사|유한회사|\(유\)/g, "").toLowerCase();
+      const custNorm = normalize(customer.companyName);
+
+      const inPeriod = (d: string | null | undefined) => {
+        if (!startDate && !endDate) return true;
+        const v = d || "";
+        if (startDate && v && v < startDate) return false;
+        if (endDate && v && v > endDate) return false;
+        return true;
+      };
+
+      // 프로젝트 (customerId 일치 OR 고객사명 유사 일치)
+      const allProjects = await storage.getProjects();
+      const projects = allProjects.filter(p => p.customerId === id || normalize(p.customerName) === custNorm);
+
+      // 매출계산서 (customerId 일치 OR 상호 유사 일치) + 기간 필터
+      const allInvoices = await storage.getSalesInvoices();
+      const invoices = allInvoices.filter(inv =>
+        (inv.customerId === id || normalize(inv.companyName) === custNorm) &&
+        inPeriod(inv.issueDate || inv.writeDate)
+      );
+      const invoiceIds = new Set(invoices.map(i => i.id));
+
+      // 수금 (income, 상호 일치 OR 위 계산서에 연결)
+      const allPayments = await storage.getPayments();
+      const payments = allPayments.filter(p =>
+        p.type === "income" &&
+        ((p.salesInvoiceId && invoiceIds.has(p.salesInvoiceId)) || normalize(p.companyName) === custNorm)
+      );
+      const paymentsByInvoice = new Map<string, typeof payments>();
+      for (const p of payments) {
+        if (p.salesInvoiceId && invoiceIds.has(p.salesInvoiceId)) {
+          const arr = paymentsByInvoice.get(p.salesInvoiceId) || [];
+          arr.push(p);
+          paymentsByInvoice.set(p.salesInvoiceId, arr);
+        }
+      }
+
+      // 계산서별 수금 합산 + 상태 (sales-invoices-with-payments와 동일 규칙)
+      const invoicesWithPay = invoices.map(inv => {
+        const pmts = (paymentsByInvoice.get(inv.id) || [])
+          .slice()
+          .sort((a, b) => (a.actualDate || a.plannedDate || "").localeCompare(b.actualDate || b.plannedDate || ""));
+        const totalAmount = inv.totalAmount || 0;
+        const recordPaid = pmts.filter(p => p.status === "completed").reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
+        // status='paid'면 수금레코드가 없어도 완납으로 간주 (미수금 화면과 동일 규칙)
+        const statusPaid = inv.status === "paid";
+        const paidAmount = statusPaid ? Math.max(recordPaid, totalAmount) : recordPaid;
+        const remainingAmount = Math.max(totalAmount - paidAmount, 0);
+        const paymentCount = pmts.length;
+        const completedCount = pmts.filter(p => p.status === "completed").length;
+        const pendingPayments = pmts.filter(p => p.status !== "completed");
+        const nextPaymentDate = pendingPayments.length > 0 ? pendingPayments[0].plannedDate : null;
+        let paymentStatus = "none";
+        if (statusPaid || completedCount === paymentCount && paymentCount > 0 || paidAmount >= totalAmount && totalAmount > 0) paymentStatus = "completed";
+        else if (paymentCount === 0) paymentStatus = "none";
+        else if (completedCount > 0) paymentStatus = "partial";
+        else paymentStatus = "planned";
+        return { ...inv, payments: pmts, paidAmount, remainingAmount, paymentCount, completedCount, paymentStatus, nextPaymentDate };
+      });
+
+      // 프로젝트별 그룹핑 + 미연결 그룹
+      const projectMap = new Map(projects.map(p => [p.id, p]));
+      const groupMap = new Map<string, { project: any; invoices: typeof invoicesWithPay }>();
+      const unlinked: typeof invoicesWithPay = [];
+      for (const inv of invoicesWithPay) {
+        if (inv.projectId && projectMap.has(inv.projectId)) {
+          const g = groupMap.get(inv.projectId) || { project: projectMap.get(inv.projectId), invoices: [] };
+          g.invoices.push(inv);
+          groupMap.set(inv.projectId, g);
+        } else {
+          unlinked.push(inv);
+        }
+      }
+      // 계산서 없는 프로젝트도 노출
+      for (const p of projects) {
+        if (!groupMap.has(p.id)) groupMap.set(p.id, { project: p, invoices: [] });
+      }
+      const groups: { project: any; invoices: typeof invoicesWithPay }[] = Array.from(groupMap.values());
+      if (unlinked.length > 0) groups.push({ project: null, invoices: unlinked });
+
+      const invoiceTotal = invoicesWithPay.reduce((s, i) => s + (i.totalAmount || 0), 0);
+      const collectedTotal = invoicesWithPay.reduce((s, i) => s + i.paidAmount, 0);
+      const outstanding = invoicesWithPay.reduce((s, i) => s + i.remainingAmount, 0);
+
+      res.json({
+        customer,
+        summary: { invoiceTotal, collectedTotal, outstanding, projectCount: projects.length, invoiceCount: invoices.length },
+        groups,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
