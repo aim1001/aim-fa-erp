@@ -402,7 +402,9 @@ export default function VendorList() {
   const [search, setSearch] = useState("");
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "recent" | "count">("recent");
-  const [filterBy, setFilterBy] = useState<"all" | "favorite" | "recurring" | "noplan" | "overdue" | "planned">("all");
+  const [filterBy, setFilterBy] = useState<"all" | "favorite" | "recurring" | "noplan">("all");
+  // 지연·결제예정은 독립 토글(OR 다중선택). 단일선택 칩과는 서로 배타.
+  const [statusFilters, setStatusFilters] = useState<Set<"overdue" | "planned">>(new Set());
   const [hideInactivePeriod, setHideInactivePeriod] = useState<number | null>(6); // 기본 6개월
 
   const { data: vendorList, isLoading } = useQuery<VendorWithStats[]>({
@@ -493,11 +495,16 @@ export default function VendorList() {
         (v.contactName && v.contactName.toLowerCase().includes(s))
       );
     }
-    if (filterBy === "favorite") list = list.filter(v => v.isFavorite);
-    if (filterBy === "recurring") list = list.filter(v => v.isRecurring);
-    if (filterBy === "noplan") list = list.filter(v => v.noPaymentCount > 0);
-    if (filterBy === "overdue") list = list.filter(v => v.overdueAmount > 0);
-    if (filterBy === "planned") list = list.filter(v => v.plannedAmount > 0);
+    if (statusFilters.size > 0) {
+      list = list.filter(v =>
+        (statusFilters.has("overdue") && v.overdueAmount > 0) ||
+        (statusFilters.has("planned") && v.plannedAmount > 0)
+      );
+    } else {
+      if (filterBy === "favorite") list = list.filter(v => v.isFavorite);
+      if (filterBy === "recurring") list = list.filter(v => v.isRecurring);
+      if (filterBy === "noplan") list = list.filter(v => v.noPaymentCount > 0);
+    }
     if (hideInactivePeriod) {
       const cutoff = new Date();
       cutoff.setMonth(cutoff.getMonth() - hideInactivePeriod);
@@ -517,7 +524,7 @@ export default function VendorList() {
       if (sortBy === "count") return (b.invoiceCount + b.orderCount) - (a.invoiceCount + a.orderCount);
       return a.companyName.localeCompare(b.companyName);
     });
-  }, [vendorList, search, sortBy, filterBy, hideInactivePeriod]);
+  }, [vendorList, search, sortBy, filterBy, statusFilters, hideInactivePeriod]);
 
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
@@ -553,14 +560,33 @@ export default function VendorList() {
           />
         </div>
         <div className="flex items-center gap-1">
-          {(["all", "favorite", "recurring", "overdue", "planned", "noplan"] as const).map(f => (
-            <Button key={f} size="sm" variant={filterBy === f ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setFilterBy(f)}>
+          {(["all", "favorite", "recurring", "noplan"] as const).map(f => (
+            <Button key={f} size="sm" variant={filterBy === f && statusFilters.size === 0 ? "default" : "ghost"} className="h-7 text-xs" onClick={() => { setFilterBy(f); setStatusFilters(new Set()); }}>
               {f === "all" ? `전체 ${vendorList?.length || 0}`
                 : f === "favorite" ? "⭐ 즐겨찾기"
                 : f === "recurring" ? "🔄 정기결제"
-                : f === "overdue" ? `🔴 지연 ${vendorList?.filter(v => v.overdueAmount > 0).length || 0}`
-                : f === "planned" ? `🔵 결제예정 ${vendorList?.filter(v => v.plannedAmount > 0).length || 0}`
                 : `⚠️ 계획없음 ${vendorList?.filter(v => v.noPaymentCount > 0).length || 0}`}
+            </Button>
+          ))}
+          <span className="mx-1 h-4 w-px bg-border" />
+          {(["overdue", "planned"] as const).map(s => (
+            <Button
+              key={s}
+              size="sm"
+              variant={statusFilters.has(s) ? "default" : "ghost"}
+              className="h-7 text-xs"
+              onClick={() => {
+                setStatusFilters(prev => {
+                  const next = new Set(prev);
+                  if (next.has(s)) next.delete(s); else next.add(s);
+                  return next;
+                });
+                setFilterBy("all");
+              }}
+            >
+              {s === "overdue"
+                ? `🔴 지연 ${vendorList?.filter(v => v.overdueAmount > 0).length || 0}`
+                : `🔵 결제예정 ${vendorList?.filter(v => v.plannedAmount > 0).length || 0}`}
             </Button>
           ))}
         </div>
