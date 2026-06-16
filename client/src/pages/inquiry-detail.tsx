@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Label } from "@/components/ui/label";
 import { FileSpreadsheet, FileIcon, RefreshCw, Trash2, Check, X, Building2, Search, Save, Loader2, ImagePlus, User, Phone, Mail, Pencil, Briefcase, ExternalLink, MapPin, CalendarDays, Plus, StickyNote, Clock, FileText, Download, FolderOpen, ListTodo, Link2, AlertTriangle, Upload } from "lucide-react";
 import { ko } from "date-fns/locale";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
@@ -25,6 +25,18 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo, InquiryTask, ContractTemplate } from "@shared/schema";
 import { QuotationSection } from "@/components/quotation-section";
 import OpticsCalculator from "@/components/OpticsCalculator";
+
+// 전환된 프로젝트의 수금계획 설정 누락 점검 (생성 직후 안내용)
+function getConversionSetupWarnings(p: any): string[] {
+  const warns: string[] = [];
+  if (!p?.totalAmount) warns.push("총액(견적금액)이 비어 있습니다 — 견적 연결/금액을 확인하세요.");
+  if (!p?.deliveryDate) warns.push("납품예정일이 없습니다 — 수금 타이밍 계산을 위해 입력하세요.");
+  const ratioSum = (p?.depositRatio || 0) + (p?.midRatio || 0) + (p?.finalRatio || 0);
+  if (ratioSum !== 100) warns.push(`수금 비율 합계가 ${ratioSum}%입니다 — 계약금+중도금+잔금 = 100%로 맞추세요.`);
+  // 전환 직후에는 항상 수금 계획(예정 입금건)이 아직 없으므로 안내
+  warns.push("수금 계획이 아직 생성되지 않았습니다 — 프로젝트에서 '수금 계획 생성'을 실행하세요.");
+  return warns;
+}
 
 function useInlineUpdate(inquiryId: string) {
   const { toast } = useToast();
@@ -2010,6 +2022,9 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
 
   const [showUnregisteredWarning, setShowUnregisteredWarning] = useState(false);
 
+  const [setupWarning, setSetupWarning] = useState<{ project: any; warnings: string[] } | null>(null);
+  const [, navigate] = useLocation();
+
   const convertMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/inquiries/${id}/convert-to-project`);
@@ -2021,6 +2036,8 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
+      const warnings = getConversionSetupWarnings(data.project);
+      if (warnings.length > 0) setSetupWarning({ project: data.project, warnings });
     },
     onError: (err: Error) => {
       toast({ title: "프로젝트 전환 실패", description: err.message, variant: "destructive" });
@@ -2429,6 +2446,42 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
               data-testid="button-cancel-convert"
             >
               취소
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 전환 직후 수금계획 설정 안내 */}
+      <Dialog open={!!setupWarning} onOpenChange={open => { if (!open) setSetupWarning(null); }}>
+        <DialogContent data-testid="dialog-conversion-setup-warning">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              수금 계획 설정이 필요합니다
+            </DialogTitle>
+            <DialogDescription>
+              프로젝트 <span className="font-medium text-foreground">{setupWarning?.project?.projectNumber}</span>(으)로 전환됐습니다.
+              아래 항목을 설정해야 수금 일정이 정상적으로 관리됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-1.5 py-1 text-sm">
+            {setupWarning?.warnings.map((w, i) => (
+              <li key={i} className="flex items-start gap-2" data-testid={`setup-warning-${i}`}>
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                <span>{w}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              onClick={() => { setSetupWarning(null); navigate("/projects"); }}
+              data-testid="button-goto-project-setup"
+            >
+              <FolderOpen className="h-4 w-4 mr-1" />
+              프로젝트에서 수금계획 설정하기
+            </Button>
+            <Button variant="ghost" onClick={() => setSetupWarning(null)} data-testid="button-setup-later">
+              나중에 하기
             </Button>
           </div>
         </DialogContent>
