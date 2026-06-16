@@ -2049,6 +2049,13 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   });
   const linkedProject = allProjects?.find(p => p.inquiryId === id);
 
+  // 프로젝트 전환 게이트: 거래처에 사업자등록번호가 있어야 전환 가능
+  const { data: linkedCustomer } = useQuery<Customer>({
+    queryKey: ["/api/customers", inquiry?.customerId],
+    enabled: !!inquiry?.customerId,
+  });
+  const hasBusinessNumber = !!linkedCustomer?.businessNumber?.trim();
+
   const { data: staffList } = useQuery<any[]>({
     queryKey: ["/api/staff"],
   });
@@ -2096,6 +2103,14 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
                   setShowUnregisteredWarning(true);
                   return;
                 }
+                if (!hasBusinessNumber) {
+                  toast({
+                    title: "프로젝트 전환 불가",
+                    description: "사업자등록번호가 등록된 거래처만 전환할 수 있습니다. 거래처에 사업자등록번호를 먼저 등록해 주세요.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
                 const amountText = inquiry.lastQuoteSales
                   ? `\n최종 공급가액: ${inquiry.lastQuoteSales.toLocaleString()}원`
                   : "\n금액 정보 없음";
@@ -2104,7 +2119,8 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
                   : `아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?${amountText}`;
                 if (confirm(msg)) convertMutation.mutate();
               }}
-              disabled={convertMutation.isPending}
+              disabled={convertMutation.isPending || (!!inquiry.customerId && !hasBusinessNumber)}
+              title={!!inquiry.customerId && !hasBusinessNumber ? "사업자등록번호 등록 후 전환 가능합니다" : undefined}
               data-testid="button-convert-to-project"
             >
               {convertMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FolderOpen className="h-4 w-4 mr-1" />}
@@ -2399,7 +2415,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
             </DialogTitle>
             <DialogDescription>
               이 인콰이어리는 아직 정식 고객사로 등록되지 않았습니다.
-              미등록 상태로 프로젝트를 전환하면 세금계산서 발행, 수금 계획 등에 문제가 생길 수 있습니다.
+              사업자등록번호가 등록된 고객사만 프로젝트로 전환할 수 있습니다. 고객사를 먼저 등록해 주세요.
               {inquiry.lastQuoteSales ? (
                 <span className="block mt-2 font-medium text-foreground">
                   최종 공급가액: {inquiry.lastQuoteSales.toLocaleString()}원
@@ -2422,23 +2438,6 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
             >
               <Building2 className="h-4 w-4 mr-1" />
               고객사 먼저 등록하기
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowUnregisteredWarning(false);
-                const amountText = inquiry.lastQuoteSales
-                  ? `\n최종 공급가액: ${inquiry.lastQuoteSales.toLocaleString()}원`
-                  : "\n금액 정보 없음";
-                const msg = inquiry.status === "won"
-                  ? `프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다.${amountText}`
-                  : `아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?${amountText}`;
-                if (confirm(msg)) convertMutation.mutate();
-              }}
-              data-testid="button-convert-anyway"
-            >
-              <FolderOpen className="h-4 w-4 mr-1" />
-              임시 업체로 전환 진행
             </Button>
             <Button
               variant="ghost"

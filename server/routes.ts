@@ -32,26 +32,34 @@ declare module "express-session" {
 }
 
 // 결제조건 텍스트 → 지급예정일 계산
-function calcPaymentDate(paymentTerms: string | null | undefined, deliveryDate: string | null | undefined): string | null {
+// 로컬 시간 기준 YYYY-MM-DD (toISOString는 UTC라 KST 등에서 월말이 하루 당겨지는 문제 방지)
+function fmtLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function calcDueDateFromTerms(paymentTerms: string | null | undefined, deliveryDate: string | null | undefined): string | null {
   if (!paymentTerms) return null;
   const base = deliveryDate ? new Date(deliveryDate) : new Date();
   const terms = paymentTerms.replace(/\(.*\)/, "").trim();
 
   if (terms.includes("익월말") || terms.includes("입고후 익월말")) {
     const d = new Date(base.getFullYear(), base.getMonth() + 2, 0);
-    return d.toISOString().split("T")[0];
+    return fmtLocalDate(d);
   }
   if (terms.includes("월말") || terms.includes("당월말") || terms.includes("입고후 월말")) {
     const d = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-    return d.toISOString().split("T")[0];
+    return fmtLocalDate(d);
   }
   if (terms.includes("2주이내") || terms.includes("입고후 2주이내")) {
     const d = new Date(base);
     d.setDate(d.getDate() + 14);
-    return d.toISOString().split("T")[0];
+    return fmtLocalDate(d);
   }
   if (terms.includes("선처리")) {
-    return new Date().toISOString().split("T")[0];
+    return fmtLocalDate(new Date());
   }
   return null;
 }
@@ -99,14 +107,18 @@ export async function registerRoutes(
     return requireAuth(req, res, next);
   });
 
+  // 홈페이지 문의는 리드 손실 방지를 위해 관대하게 검증 (필드 누락·이메일 형식오류여도 접수)
   const webInquirySchema = z.object({
-    companyName: z.string().min(1, "회사명은 필수입니다").max(200),
+    companyName: z.string().max(200).optional(),
     contactName: z.string().max(100).optional(),
-    email: z.string().email().max(200).optional().or(z.literal("")),
+    email: z.string().max(200).optional(),
     phone: z.string().max(50).optional(),
     productInfo: z.string().max(500).optional(),
     message: z.string().max(2000).optional(),
-  });
+  }).refine(
+    d => [d.companyName, d.contactName, d.phone, d.email, d.message].some(v => v && v.trim()),
+    { message: "문의 내용을 입력해 주세요" }
+  );
 
   const webInquiryRateLimit = new Map<string, number[]>();
 
@@ -133,6 +145,10 @@ export async function registerRoutes(
       const year = new Date().getFullYear();
       const nextNumber = await storage.getNextInquiryNumber(year);
 
+      // 필드 누락/형식오류 보정: 회사명 없으면 담당자명/기본값, 이메일은 형식 맞을 때만 필드에 저장
+      const companyName = (data.companyName || "").trim() || (data.contactName || "").trim() || "홈페이지 문의";
+      const emailValid = data.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.email.trim()) ? data.email.trim() : null;
+
       const memoLines = [
         data.message || "",
         "",
@@ -143,7 +159,7 @@ export async function registerRoutes(
 
       const inquiryData: any = {
         inquiryNumber: nextNumber,
-        customerName: data.companyName,
+        customerName: companyName,
         productInfo: data.productInfo || null,
         year,
         status: "none",
@@ -153,62 +169,60 @@ export async function registerRoutes(
         memo: memoLines || null,
       };
 
-      if (data.companyName) {
-        try {
-          const allCustomers = await storage.getCustomers();
-          const nameKey = data.companyName.trim().toLowerCase();
-          let matched = allCustomers.find(c => c.companyName.trim().toLowerCase() === nameKey);
-          if (!matched) {
-            matched = allCustomers.find(c => {
-              const key = c.companyName.trim().toLowerCase();
-              return key.includes(nameKey) || nameKey.includes(key);
-            });
-          }
-          if (!matched) {
-            matched = await storage.createCustomer({ companyName: data.companyName });
-          }
-          inquiryData.customerId = matched.id;
-
-          if (data.contactName) {
-            try {
-              const newCompany = await storage.createCompany({
-                customerId: matched.id,
-                contactName: data.contactName,
-                phone: data.phone || null,
-                email: data.email || null,
-                companyName: data.companyName,
-                isTemporary: false,
-              });
-              inquiryData.companyId = newCompany.id;
-              inquiryData.snapshotContactName = data.contactName;
-              inquiryData.snapshotEmail = data.email || null;
-              inquiryData.snapshotPhone = data.phone || null;
-            } catch (e: any) {
-              console.warn("Web inquiry: create contact error:", e.message);
-            }
-          }
-
-          const customer = await storage.getCustomer(matched.id);
-          if (customer) {
-            inquiryData.snapshotCompanyName = customer.companyName || null;
-            inquiryData.snapshotAddress = customer.address || null;
-          }
-        } catch (e: any) {
-          console.warn("Web inquiry: customer link error:", e.message);
+      try {
+        const allCustomers = await storage.getCustomers();
+        const nameKey = companyName.trim().toLowerCase();
+        let matched = allCustomers.find(c => c.companyName.trim().toLowerCase() === nameKey);
+        if (!matched) {
+          matched = allCustomers.find(c => {
+            const key = c.companyName.trim().toLowerCase();
+            return key.includes(nameKey) || nameKey.includes(key);
+          });
         }
+        if (!matched) {
+          matched = await storage.createCustomer({ companyName });
+        }
+        inquiryData.customerId = matched.id;
+
+        if (data.contactName) {
+          try {
+            const newCompany = await storage.createCompany({
+              customerId: matched.id,
+              contactName: data.contactName,
+              phone: data.phone || null,
+              email: emailValid,
+              companyName,
+              isTemporary: false,
+            });
+            inquiryData.companyId = newCompany.id;
+            inquiryData.snapshotContactName = data.contactName;
+            inquiryData.snapshotEmail = emailValid;
+            inquiryData.snapshotPhone = data.phone || null;
+          } catch (e: any) {
+            console.warn("Web inquiry: create contact error:", e.message);
+          }
+        }
+
+        const customer = await storage.getCustomer(matched.id);
+        if (customer) {
+          inquiryData.snapshotCompanyName = customer.companyName || null;
+          inquiryData.snapshotAddress = customer.address || null;
+        }
+      } catch (e: any) {
+        console.warn("Web inquiry: customer link error:", e.message);
       }
 
       const inquiry = await storage.createInquiry(inquiryData);
 
       import("./telegram").then(t => t.notifyWebInquiry({
-        companyName: data.companyName,
+        companyName,
         contactName: data.contactName,
         email: data.email,
         phone: data.phone,
         productInfo: data.productInfo,
         message: data.message,
         inquiryNumber: nextNumber,
-      })).catch(() => {});
+      })).catch((e) => { console.error("[web-inquiry] telegram notify error:", e); });
 
       res.status(201).json({ success: true, inquiryNumber: nextNumber });
     } catch (err: any) {
@@ -1392,12 +1406,24 @@ export async function registerRoutes(
         await storage.updateCompany(comp.id, { customerId: targetId });
       }
 
+      // 매출계산서·프로젝트의 거래처 참조도 대상으로 이전 (병합 후 참조 끊김 방지)
+      const movedInvoicesRes = await pool.query(
+        `UPDATE sales_invoices SET customer_id = $1 WHERE customer_id = $2`,
+        [targetId, sourceId]
+      );
+      const movedProjectsRes = await pool.query(
+        `UPDATE projects SET customer_id = $1 WHERE customer_id = $2`,
+        [targetId, sourceId]
+      );
+
       await storage.deleteCustomer(sourceId);
 
       res.json({
         message: `${source.companyName} → ${target.companyName} 병합 완료`,
         movedInquiries: sourceInquiries.length,
         movedCompanies: sourceCompanies.length,
+        movedInvoices: movedInvoicesRes.rowCount ?? 0,
+        movedProjects: movedProjectsRes.rowCount ?? 0,
         linkedOrphans,
       });
     } catch (err: any) {
@@ -3930,33 +3956,43 @@ export async function registerRoutes(
   app.post("/api/sales-invoices/cleanup-placeholders", async (_req, res) => {
     try {
       const allInvoices = await storage.getSalesInvoices();
-      const placeholders = allInvoices.filter(i => !i.issueDate && i.projectId);
-      const issuedByProject = new Map<string, typeof allInvoices>();
+      const allPayments = await storage.getPayments();
 
+      // 프로젝트별로 묶어, 같은 건의 중복(예정/사업자번호없는 발행 vs 실발행)을 정리
+      const byProject = new Map<string, typeof allInvoices>();
       for (const inv of allInvoices) {
-        if (inv.issueDate && inv.projectId) {
-          if (!issuedByProject.has(inv.projectId)) issuedByProject.set(inv.projectId, []);
-          issuedByProject.get(inv.projectId)!.push(inv);
-        }
+        if (!inv.projectId) continue;
+        if (!byProject.has(inv.projectId)) byProject.set(inv.projectId, []);
+        byProject.get(inv.projectId)!.push(inv);
       }
+
+      // "실발행도(real)" 점수: 사업자번호(+2) + 발행일(+1) → 점수 높은 쪽을 정본으로 유지
+      const rank = (i: any) => (i.businessNumber ? 2 : 0) + (i.issueDate ? 1 : 0);
+      const isMatch = (a: any, b: any) =>
+        (a.invoiceStage && b.invoiceStage === a.invoiceStage) ||
+        ((a.supplyAmount || 0) > 0 && Math.abs((b.supplyAmount || 0) - (a.supplyAmount || 0)) <= (a.supplyAmount || 0) * 0.1);
 
       const toDelete: string[] = [];
 
-      for (const ph of placeholders) {
-        const issuedList = issuedByProject.get(ph.projectId!) || [];
+      for (const invs of Array.from(byProject.values())) {
+        for (const cand of invs as any[]) {
+          if (toDelete.includes(cand.id)) continue;
+          // cand보다 "더 정본"이면서 같은 건으로 매칭되는 대상 찾기
+          const target = (invs as any[]).find((t: any) =>
+            t.id !== cand.id && !toDelete.includes(t.id) && rank(t) > rank(cand) && isMatch(cand, t));
+          if (!target) continue;
 
-        // 조건1: 같은 projectId + invoiceStage 일치
-        const stageMatch = ph.invoiceStage &&
-          issuedList.some(i => i.invoiceStage === ph.invoiceStage);
-
-        // 조건2: 같은 projectId + 금액 10% 이내 유사 (invoiceStage 없는 실발행 계산서 대응)
-        const amountMatch = (ph.supplyAmount || 0) > 0 &&
-          issuedList.some(i => {
-            const diff = Math.abs((i.supplyAmount || 0) - (ph.supplyAmount || 0));
-            return diff <= (ph.supplyAmount || 0) * 0.1;
-          });
-
-        if (stageMatch || amountMatch) toDelete.push(ph.id);
+          // 중복(cand)의 입금/은행매칭을 정본(target)으로 이전 후 삭제
+          for (const p of allPayments.filter(p => p.salesInvoiceId === cand.id)) {
+            await storage.updatePayment(p.id, { salesInvoiceId: target.id });
+            (p as any).salesInvoiceId = target.id;
+          }
+          await pool.query(
+            `UPDATE bank_transactions SET matched_sales_invoice_id = $1 WHERE matched_sales_invoice_id = $2`,
+            [target.id, cand.id]
+          );
+          toDelete.push(cand.id);
+        }
       }
 
       for (const id of toDelete) {
@@ -4112,6 +4148,9 @@ export async function registerRoutes(
     try {
       const list = await storage.getPurchaseInvoices();
       const allPayments = await storage.getPayments();
+      const vendors = await storage.getVendors();
+      const vendorTermsById = new Map<string, string | null>(vendors.map((v: any) => [v.id, v.defaultPaymentTerms ?? null]));
+      const today = new Date().toISOString().split("T")[0];
       const paymentsByInvoice = new Map<string, any[]>();
       allPayments.forEach(p => {
         if (p.purchaseInvoiceId) {
@@ -4137,6 +4176,12 @@ export async function registerRoutes(
         else if (completedCount > 0) paymentStatus = "partial";
         else paymentStatus = "planned";
 
+        // 지연 판정: 발행일(또는 작성일) + 업체 결제조건으로 지급기한을 산정하고,
+        // 기한이 지났는데 잔액이 남아 있으면 지연(부분지급 잔액 포함). 잔액 일정 날짜와는 무관.
+        const dueDate = calcDueDateFromTerms(vendorTermsById.get(inv.vendorId || "") ?? null, inv.writeDate || inv.issueDate);
+        const isOverdue = remainingAmount > 0 && !!dueDate && dueDate < today;
+        const overdueAmount = isOverdue ? remainingAmount : 0;
+
         return {
           ...inv,
           paymentStatus,
@@ -4146,6 +4191,9 @@ export async function registerRoutes(
           paymentCount,
           completedCount,
           nextPaymentDate,
+          dueDate,
+          isOverdue,
+          overdueAmount,
         };
       });
 
@@ -5143,7 +5191,7 @@ export async function registerRoutes(
         remainderResult = { action: "merge", targetId: remainderTargetId, amount: remainder };
       } else if (remainderAction === "new" && projectId && remainder > 0) {
         const newPayment = await storage.createPayment({
-          type: "income",
+          type: updated.type,
           projectId,
           companyName: companyName || "",
           description: remainderNewDescription || "잔여",
@@ -5692,6 +5740,12 @@ export async function registerRoutes(
         return res.status(409).json({ message: "이미 프로젝트로 전환되었습니다", projectId: existingProject.id });
       }
 
+      // 사업자등록번호가 없는 거래처는 프로젝트로 전환할 수 없음 (예정/완료 계산서 혼재 방지)
+      const convertCustomer = inquiry.customerId ? await storage.getCustomer(inquiry.customerId) : null;
+      if (!convertCustomer || !convertCustomer.businessNumber || !convertCustomer.businessNumber.trim()) {
+        return res.status(400).json({ message: "사업자등록번호가 등록된 거래처만 프로젝트로 전환할 수 있습니다. 거래처에 사업자등록번호를 먼저 등록해 주세요." });
+      }
+
       const year = inquiry.year || new Date().getFullYear();
       const prefix = String(year).slice(-2);
       const yearProjects = allProjects.filter(p => p.year === year && p.projectNumber);
@@ -5850,6 +5904,9 @@ export async function registerRoutes(
       if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
 
+      // 예정계산서에 거래처/사업자번호를 채워 홈택스 실발행건과 자동 매칭(예정/완료 혼재 방지)
+      const planCustomer = project.customerId ? await storage.getCustomer(project.customerId) : null;
+
       const existingPayments = await storage.getPayments();
       const projectPayments = existingPayments.filter(p => p.projectId === project.id && p.type === "income");
       const plannedCount = projectPayments.filter(p => p.status !== "completed").length;
@@ -5907,7 +5964,11 @@ export async function registerRoutes(
           } else {
             const newInvoice = await storage.createSalesInvoice({
               projectId: project.id,
-              companyName: project.customerName || "",
+              customerId: project.customerId || null,
+              companyName: planCustomer?.companyName || project.customerName || "",
+              businessNumber: planCustomer?.businessNumber || null,
+              representative: planCustomer?.representative || null,
+              address: planCustomer?.address || null,
               issueDate: null,
               year: project.year || new Date().getFullYear(),
               item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
@@ -5950,6 +6011,9 @@ export async function registerRoutes(
       const project = allProjects.find(p => p.id === req.params.id);
       if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
+
+      // 예정계산서에 거래처/사업자번호를 채워 홈택스 실발행건과 자동 매칭(예정/완료 혼재 방지)
+      const planCustomer = project.customerId ? await storage.getCustomer(project.customerId) : null;
 
       const existingSales = (await storage.getSalesInvoices()).filter(i => i.projectId === project.id);
       const issuedInvoices = existingSales.filter(i => !!i.issueDate);
@@ -5999,7 +6063,11 @@ export async function registerRoutes(
           const plannedDate = calcPaymentDate(baseDate, timingType, timingDays);
           const newInv = await storage.createSalesInvoice({
             projectId: project.id,
-            companyName: project.customerName || "",
+            customerId: project.customerId || null,
+            companyName: planCustomer?.companyName || project.customerName || "",
+            businessNumber: planCustomer?.businessNumber || null,
+            representative: planCustomer?.representative || null,
+            address: planCustomer?.address || null,
             issueDate: null,
             year: yearNum,
             item: `${project.projectNumber || ""} ${project.description || ""}`.trim() || null,
@@ -6032,7 +6100,11 @@ export async function registerRoutes(
           const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
           const newInv = await storage.createSalesInvoice({
             projectId: project.id,
-            companyName: project.customerName || "",
+            customerId: project.customerId || null,
+            companyName: planCustomer?.companyName || project.customerName || "",
+            businessNumber: planCustomer?.businessNumber || null,
+            representative: planCustomer?.representative || null,
+            address: planCustomer?.address || null,
             issueDate: null,
             year: yearNum,
             item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
@@ -6963,7 +7035,7 @@ export async function registerRoutes(
       let payment = null;
 
       // 결제조건으로 자금계획 자동 생성
-      const computedPaymentDate = paymentDate || calcPaymentDate(order.paymentTerms, order.expectedDeliveryDate);
+      const computedPaymentDate = paymentDate || calcDueDateFromTerms(order.paymentTerms, order.expectedDeliveryDate);
       if (computedPaymentDate && order.totalAmount) {
         payment = await storage.createPayment({
           type: "expense",
@@ -7198,7 +7270,7 @@ export async function registerRoutes(
         } else if ("paymentTerms" in updateData || "expectedDeliveryDate" in updateData) {
           const newTerms = updateData.paymentTerms ?? existing.paymentTerms;
           const newDelivery = updateData.expectedDeliveryDate ?? existing.expectedDeliveryDate;
-          const computed = calcPaymentDate(newTerms, newDelivery);
+          const computed = calcDueDateFromTerms(newTerms, newDelivery);
           if (computed) paymentUpdates.plannedDate = computed;
         }
 
@@ -8636,13 +8708,31 @@ export async function registerRoutes(
         await storage.updateBankTransaction(txId, { matchStatus: "ignored", matchedPaymentId: null });
       } else {
         if (!paymentId) return res.status(400).json({ message: "paymentId required" });
+        const payment = await storage.getPayment(paymentId);
+        if (!payment) return res.status(404).json({ message: "결제 항목을 찾을 수 없습니다" });
+        const matchAmount = tx.creditAmount || tx.debitAmount || 0;
         await storage.updateBankTransaction(txId, { matchStatus: "manual", matchedPaymentId: paymentId });
-        const actualAmount = tx.creditAmount || tx.debitAmount || 0;
         await storage.updatePayment(paymentId, {
           status: "completed",
           actualDate: tx.txDate || undefined,
-          actualAmount: actualAmount || undefined,
+          actualAmount: matchAmount || undefined,
+          amount: matchAmount || payment.amount || 0,
         });
+        // 부분매칭: 은행거래액이 결제예정액보다 작으면 잔액을 원래 기한으로 새 예정 건 분리 (잔액 소실 방지)
+        const remainder = (payment.amount || 0) - matchAmount;
+        if (matchAmount > 0 && remainder > 0) {
+          await storage.createPayment({
+            type: payment.type,
+            projectId: payment.projectId ?? undefined,
+            salesInvoiceId: payment.salesInvoiceId ?? undefined,
+            purchaseInvoiceId: payment.purchaseInvoiceId ?? undefined,
+            companyName: payment.companyName ?? undefined,
+            description: payment.description ? `${payment.description} 잔여` : "잔여",
+            amount: remainder,
+            plannedDate: payment.plannedDate ?? undefined,
+            status: "planned",
+          });
+        }
       }
       res.json({ ok: true });
     } catch (err: any) {
@@ -8700,9 +8790,10 @@ export async function registerRoutes(
     if (txResult.rows.length === 0) return 0;
 
     // 미수금 계산서 (공급금액 + 세액 포함 total_amount 기준)
+    // 매출계산서 status 도메인은 'pending'(미수)/'paid'(완료) → 완납 아닌 건을 후보로
     const invoiceResult = await pool.query(
       `SELECT id, company_name, total_amount FROM sales_invoices
-       WHERE status IN ('unpaid', 'partial') AND company_name IS NOT NULL`
+       WHERE (status IS NULL OR status != 'paid') AND company_name IS NOT NULL`
     );
     if (invoiceResult.rows.length === 0) return 0;
 
@@ -8845,6 +8936,16 @@ export async function registerRoutes(
   app.post("/api/bank-transactions/manual-match-debit", async (req, res) => {
     try {
       const { txId, invoiceId, vendorName, amount, txDate } = req.body;
+      if (!txId || !invoiceId) return res.status(400).json({ message: "txId, invoiceId 필수" });
+      // 이미 매칭된 거래면 중복 payment 생성 방지
+      const existingTx = await pool.query(
+        `SELECT matched_payment_id FROM bank_transactions WHERE id = $1`,
+        [txId]
+      );
+      if (existingTx.rows.length === 0) return res.status(404).json({ message: "거래를 찾을 수 없습니다" });
+      if (existingTx.rows[0].matched_payment_id) {
+        return res.status(409).json({ message: "이미 매칭된 거래입니다", paymentId: existingTx.rows[0].matched_payment_id });
+      }
       const payRes = await pool.query(
         `INSERT INTO payments (type, purchase_invoice_id, company_name, amount, actual_amount, planned_date, actual_date, status)
          VALUES ('expense', $1, $2, $3, $3, $4, $4, 'completed') RETURNING id`,
@@ -8883,14 +8984,14 @@ export async function registerRoutes(
           ) AS ids
           FROM bank_transactions
           WHERE account_id = $1
-          GROUP BY account_id, tx_date, debit_amount, credit_amount
+          GROUP BY account_id, tx_date, debit_amount, credit_amount, counterparty
           HAVING COUNT(*) > 1`
         : `SELECT account_id, tx_date, debit_amount, credit_amount, array_agg(id ORDER BY
             CASE WHEN description IN ('인터넷출금이체','타행이체','자동이체','ATM출금','계좌이체','카드대금','현금인출','자동납부','지로') THEN 1 ELSE 0 END,
             id
           ) AS ids
           FROM bank_transactions
-          GROUP BY account_id, tx_date, debit_amount, credit_amount
+          GROUP BY account_id, tx_date, debit_amount, credit_amount, counterparty
           HAVING COUNT(*) > 1`;
 
       const dupResult = accountId
@@ -9158,11 +9259,15 @@ export async function registerRoutes(
       const projects = await storage.getProjects();
       const projectMap = new Map(projects.map((p: any) => [p.id, p]));
 
-      // 계산서별 다음 입금예정일 (미완료 income 결제계획 중 가장 이른 예정일)
+      // 결제(income) 집계: 완료 입금액 합산 + 미완료 결제계획의 가장 이른 예정일
       const allPayments = await storage.getPayments();
+      const completedByInvoice = new Map<string, number>();
       const plannedByInvoice = new Map<string, string>();
       for (const p of allPayments) {
-        if (p.type === "income" && p.salesInvoiceId && p.status !== "completed" && p.plannedDate) {
+        if (p.type !== "income" || !p.salesInvoiceId) continue;
+        if (p.status === "completed") {
+          completedByInvoice.set(p.salesInvoiceId, (completedByInvoice.get(p.salesInvoiceId) || 0) + (p.actualAmount || p.amount || 0));
+        } else if (p.plannedDate) {
           const cur = plannedByInvoice.get(p.salesInvoiceId);
           if (!cur || p.plannedDate < cur) plannedByInvoice.set(p.salesInvoiceId, p.plannedDate);
         }
@@ -9208,9 +9313,15 @@ export async function registerRoutes(
           supplyAmount: inv.supplyAmount,
           taxAmount: inv.taxAmount,
           status: inv.status,
-          collectedAmount: inv.status === 'paid'
-            ? (txInfo?.txCount ? (txInfo.collected ?? 0) : (inv.totalAmount ?? 0))
-            : (txInfo?.collected ?? 0),
+          collectedAmount: (() => {
+            const txCollected = txInfo?.collected ?? 0;
+            const pmtCollected = completedByInvoice.get(inv.id) ?? 0;
+            const recorded = Math.max(txCollected, pmtCollected); // 중복 집계 방지: 둘 중 큰 값
+            if (inv.status === 'paid') {
+              return (txInfo?.txCount || pmtCollected > 0) ? recorded : (inv.totalAmount ?? 0);
+            }
+            return recorded;
+          })(),
           linkedTxCount: txInfo?.txCount ?? 0,
           linkedTxIds: txInfo?.txIds ?? [],
           nextPaymentDate: plannedByInvoice.get(inv.id) ?? null,
@@ -9284,7 +9395,7 @@ export async function registerRoutes(
           supplyAmount: inv.supplyAmount,
           taxAmount: inv.taxAmount,
           status: inv.status,
-          paidAmount: inv.status === 'paid'
+          paidAmount: inv.status === 'completed'
             ? (txInfo?.txCount ? (txInfo.paid ?? 0) : (inv.totalAmount ?? 0))
             : (txInfo?.paid ?? 0),
           linkedTxCount: txInfo?.txCount ?? 0,
@@ -9320,8 +9431,8 @@ export async function registerRoutes(
       }
 
       const invResult = await pool.query(
-        `UPDATE purchase_invoices SET status = 'paid'
-         WHERE id = ANY($1::varchar[]) AND status != 'paid'
+        `UPDATE purchase_invoices SET status = 'completed'
+         WHERE id = ANY($1::varchar[]) AND status != 'completed'
          RETURNING id`,
         [ids]
       );
@@ -9359,7 +9470,7 @@ export async function registerRoutes(
       }
       const invResult = await pool.query(
         `UPDATE purchase_invoices SET status = 'pending'
-         WHERE id = ANY($1::varchar[]) AND status = 'paid'
+         WHERE id = ANY($1::varchar[]) AND status = 'completed'
          RETURNING id`,
         [ids]
       );
@@ -9367,7 +9478,7 @@ export async function registerRoutes(
       let updatedPayments = 0;
       if (revertedIds.length > 0) {
         const pmtResult = await pool.query(
-          `UPDATE payments SET status = 'pending', actual_date = NULL, actual_amount = NULL
+          `UPDATE payments SET status = 'planned', actual_date = NULL, actual_amount = NULL
            WHERE type = 'expense' AND status = 'completed'
              AND purchase_invoice_id = ANY($1::varchar[])
            RETURNING id`,
@@ -9391,7 +9502,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "ids 배열의 모든 항목은 문자열이어야 합니다" });
       }
       const result = await pool.query(
-        `UPDATE payments SET status = 'pending', actual_date = NULL, actual_amount = NULL
+        `UPDATE payments SET status = 'planned', actual_date = NULL, actual_amount = NULL
          WHERE id = ANY($1::varchar[]) AND status = 'completed'
          RETURNING id`,
         [ids]
@@ -9421,7 +9532,7 @@ export async function registerRoutes(
       let updatedPayments = 0;
       if (revertedIds.length > 0) {
         const pmtResult = await pool.query(
-          `UPDATE payments SET status = 'pending', actual_date = NULL, actual_amount = NULL
+          `UPDATE payments SET status = 'planned', actual_date = NULL, actual_amount = NULL
            WHERE type = 'income' AND status = 'completed'
              AND sales_invoice_id = ANY($1::varchar[])
            RETURNING id`,
