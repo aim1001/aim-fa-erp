@@ -107,14 +107,18 @@ export async function registerRoutes(
     return requireAuth(req, res, next);
   });
 
+  // 홈페이지 문의는 리드 손실 방지를 위해 관대하게 검증 (필드 누락·이메일 형식오류여도 접수)
   const webInquirySchema = z.object({
-    companyName: z.string().min(1, "회사명은 필수입니다").max(200),
+    companyName: z.string().max(200).optional(),
     contactName: z.string().max(100).optional(),
-    email: z.string().email().max(200).optional().or(z.literal("")),
+    email: z.string().max(200).optional(),
     phone: z.string().max(50).optional(),
     productInfo: z.string().max(500).optional(),
     message: z.string().max(2000).optional(),
-  });
+  }).refine(
+    d => [d.companyName, d.contactName, d.phone, d.email, d.message].some(v => v && v.trim()),
+    { message: "문의 내용을 입력해 주세요" }
+  );
 
   const webInquiryRateLimit = new Map<string, number[]>();
 
@@ -141,6 +145,10 @@ export async function registerRoutes(
       const year = new Date().getFullYear();
       const nextNumber = await storage.getNextInquiryNumber(year);
 
+      // 필드 누락/형식오류 보정: 회사명 없으면 담당자명/기본값, 이메일은 형식 맞을 때만 필드에 저장
+      const companyName = (data.companyName || "").trim() || (data.contactName || "").trim() || "홈페이지 문의";
+      const emailValid = data.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.email.trim()) ? data.email.trim() : null;
+
       const memoLines = [
         data.message || "",
         "",
@@ -151,7 +159,7 @@ export async function registerRoutes(
 
       const inquiryData: any = {
         inquiryNumber: nextNumber,
-        customerName: data.companyName,
+        customerName: companyName,
         productInfo: data.productInfo || null,
         year,
         status: "none",
@@ -161,62 +169,60 @@ export async function registerRoutes(
         memo: memoLines || null,
       };
 
-      if (data.companyName) {
-        try {
-          const allCustomers = await storage.getCustomers();
-          const nameKey = data.companyName.trim().toLowerCase();
-          let matched = allCustomers.find(c => c.companyName.trim().toLowerCase() === nameKey);
-          if (!matched) {
-            matched = allCustomers.find(c => {
-              const key = c.companyName.trim().toLowerCase();
-              return key.includes(nameKey) || nameKey.includes(key);
-            });
-          }
-          if (!matched) {
-            matched = await storage.createCustomer({ companyName: data.companyName });
-          }
-          inquiryData.customerId = matched.id;
-
-          if (data.contactName) {
-            try {
-              const newCompany = await storage.createCompany({
-                customerId: matched.id,
-                contactName: data.contactName,
-                phone: data.phone || null,
-                email: data.email || null,
-                companyName: data.companyName,
-                isTemporary: false,
-              });
-              inquiryData.companyId = newCompany.id;
-              inquiryData.snapshotContactName = data.contactName;
-              inquiryData.snapshotEmail = data.email || null;
-              inquiryData.snapshotPhone = data.phone || null;
-            } catch (e: any) {
-              console.warn("Web inquiry: create contact error:", e.message);
-            }
-          }
-
-          const customer = await storage.getCustomer(matched.id);
-          if (customer) {
-            inquiryData.snapshotCompanyName = customer.companyName || null;
-            inquiryData.snapshotAddress = customer.address || null;
-          }
-        } catch (e: any) {
-          console.warn("Web inquiry: customer link error:", e.message);
+      try {
+        const allCustomers = await storage.getCustomers();
+        const nameKey = companyName.trim().toLowerCase();
+        let matched = allCustomers.find(c => c.companyName.trim().toLowerCase() === nameKey);
+        if (!matched) {
+          matched = allCustomers.find(c => {
+            const key = c.companyName.trim().toLowerCase();
+            return key.includes(nameKey) || nameKey.includes(key);
+          });
         }
+        if (!matched) {
+          matched = await storage.createCustomer({ companyName });
+        }
+        inquiryData.customerId = matched.id;
+
+        if (data.contactName) {
+          try {
+            const newCompany = await storage.createCompany({
+              customerId: matched.id,
+              contactName: data.contactName,
+              phone: data.phone || null,
+              email: emailValid,
+              companyName,
+              isTemporary: false,
+            });
+            inquiryData.companyId = newCompany.id;
+            inquiryData.snapshotContactName = data.contactName;
+            inquiryData.snapshotEmail = emailValid;
+            inquiryData.snapshotPhone = data.phone || null;
+          } catch (e: any) {
+            console.warn("Web inquiry: create contact error:", e.message);
+          }
+        }
+
+        const customer = await storage.getCustomer(matched.id);
+        if (customer) {
+          inquiryData.snapshotCompanyName = customer.companyName || null;
+          inquiryData.snapshotAddress = customer.address || null;
+        }
+      } catch (e: any) {
+        console.warn("Web inquiry: customer link error:", e.message);
       }
 
       const inquiry = await storage.createInquiry(inquiryData);
 
       import("./telegram").then(t => t.notifyWebInquiry({
-        companyName: data.companyName,
+        companyName,
         contactName: data.contactName,
         email: data.email,
         phone: data.phone,
         productInfo: data.productInfo,
         message: data.message,
         inquiryNumber: nextNumber,
-      })).catch(() => {});
+      })).catch((e) => { console.error("[web-inquiry] telegram notify error:", e); });
 
       res.status(201).json({ success: true, inquiryNumber: nextNumber });
     } catch (err: any) {
