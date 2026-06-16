@@ -9158,6 +9158,16 @@ export async function registerRoutes(
       const projects = await storage.getProjects();
       const projectMap = new Map(projects.map((p: any) => [p.id, p]));
 
+      // 계산서별 다음 입금예정일 (미완료 income 결제계획 중 가장 이른 예정일)
+      const allPayments = await storage.getPayments();
+      const plannedByInvoice = new Map<string, string>();
+      for (const p of allPayments) {
+        if (p.type === "income" && p.salesInvoiceId && p.status !== "completed" && p.plannedDate) {
+          const cur = plannedByInvoice.get(p.salesInvoiceId);
+          if (!cur || p.plannedDate < cur) plannedByInvoice.set(p.salesInvoiceId, p.plannedDate);
+        }
+      }
+
       const allTx = await pool.query(
         `SELECT matched_sales_invoice_id, SUM(credit_amount) as collected, COUNT(*) as tx_count, array_agg(id) as tx_ids
          FROM bank_transactions
@@ -9203,6 +9213,7 @@ export async function registerRoutes(
             : (txInfo?.collected ?? 0),
           linkedTxCount: txInfo?.txCount ?? 0,
           linkedTxIds: txInfo?.txIds ?? [],
+          nextPaymentDate: plannedByInvoice.get(inv.id) ?? null,
         };
       });
 

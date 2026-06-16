@@ -31,6 +31,7 @@ interface ReceivableInvoice {
   collectedAmount: number;
   linkedTxCount: number;
   linkedTxIds: string[];
+  nextPaymentDate: string | null;
 }
 
 interface ReceivablesData {
@@ -475,6 +476,7 @@ export function ReceivablesTab() {
                         <th className="px-3 py-2 text-right font-medium">청구금액</th>
                         <th className="px-3 py-2 text-right font-medium">수금액</th>
                         <th className="px-3 py-2 text-right font-medium">미수금</th>
+                        <th className="px-3 py-2 text-left font-medium">입금예정일</th>
                         <th className="px-3 py-2 text-center font-medium">상태</th>
                         <th className="px-3 py-2 text-center font-medium">은행연결</th>
                         <th className="px-3 py-2 text-center font-medium">완료</th>
@@ -527,6 +529,17 @@ export function ReceivablesTab() {
                                 <span className="text-red-600 dark:text-red-400 font-medium">{formatAmount(invOutstanding)}</span>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-xs">
+                              {isPaid ? (
+                                <span className="text-muted-foreground">-</span>
+                              ) : !inv.nextPaymentDate ? (
+                                <span className="text-muted-foreground">미정</span>
+                              ) : inv.nextPaymentDate < new Date().toISOString().slice(0, 10) ? (
+                                <span className="text-red-600 dark:text-red-400 font-medium">{formatDate(inv.nextPaymentDate)} (지연)</span>
+                              ) : (
+                                <span>{formatDate(inv.nextPaymentDate)}</span>
                               )}
                             </td>
                             <td className="px-3 py-2 text-center">
