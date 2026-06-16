@@ -1358,12 +1358,16 @@ function CreateOrderDialog({
   // 지급조건 기반 결재예정일 자동계산
   const calcPaymentDateLocal = (terms: string, deliveryDate: string): string => {
     if (!terms || !deliveryDate) return "";
-    const base = new Date(deliveryDate);
+    // 로컬 날짜 파싱·포맷 (toISOString의 UTC 변환으로 월말이 하루 당겨지던 버그 방지)
+    const [y, m, d] = deliveryDate.split("-").map(Number);
+    if (!y || !m || !d) return "";
+    const fmt = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    const mon0 = m - 1; // 0-based month
     const t = terms.replace(/\(.*\)/, "").trim();
-    if (t.includes("익월말")) return new Date(base.getFullYear(), base.getMonth() + 2, 0).toISOString().split("T")[0];
-    if (t.includes("월말") || t.includes("당월말")) return new Date(base.getFullYear(), base.getMonth() + 1, 0).toISOString().split("T")[0];
-    if (t.includes("2주이내")) { const d = new Date(base); d.setDate(d.getDate() + 14); return d.toISOString().split("T")[0]; }
-    if (t.includes("선처리")) return new Date().toISOString().split("T")[0];
+    if (t.includes("익월말")) return fmt(new Date(y, mon0 + 2, 0));
+    if (t.includes("월말") || t.includes("당월말")) return fmt(new Date(y, mon0 + 1, 0));
+    if (t.includes("2주이내")) { const dt = new Date(y, mon0, d); dt.setDate(dt.getDate() + 14); return fmt(dt); }
+    if (t.includes("선처리")) return fmt(new Date());
     return "";
   };
 
@@ -1686,13 +1690,28 @@ function CreateOrderDialog({
                 <Label className="text-xs">지급조건</Label>
                 <PaymentTermsField
                   value={form.paymentTerms}
-                  onChange={v => setForm(f => ({ ...f, paymentTerms: v }))}
+                  onChange={v => setForm(f => {
+                    const next = { ...f, paymentTerms: v };
+                    // 지급조건 변경 시, 결재예정일을 수동 입력하지 않았으면 자동 재계산
+                    if (f.expectedDeliveryDate) {
+                      const oldAuto = calcPaymentDateLocal(f.paymentTerms || "입고후 익월말", f.expectedDeliveryDate);
+                      if (!f.paymentDate || f.paymentDate === oldAuto) {
+                        next.paymentDate = calcPaymentDateLocal(v || "입고후 익월말", f.expectedDeliveryDate);
+                      }
+                    }
+                    return next;
+                  })}
                   showSplit={showSplitPayment}
                   setShowSplit={setShowSplitPayment}
                   splitPayment={splitPayment}
                   setSplitPayment={setSplitPayment}
                   container={dialogContainer}
                 />
+                {!form.paymentTerms?.trim() && (
+                  <p className="text-[10px] text-orange-600 dark:text-orange-400 mt-0.5">
+                    ⚠ 지급조건 미입력 — '입고후 익월말'로 자동 적용됩니다. 확인해 주세요.
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="text-xs">입고장소</Label>
