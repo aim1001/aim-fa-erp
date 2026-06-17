@@ -113,6 +113,9 @@ export function ReceivablesTab() {
       apiRequest("POST", `/api/bank-transactions/${txId}/link-invoice`, { invoiceId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
       toast({ title: "연결 완료" });
     },
@@ -124,6 +127,9 @@ export function ReceivablesTab() {
       apiRequest("DELETE", `/api/bank-transactions/${txId}/link-invoice`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
       toast({ title: "연결 해제 완료" });
     },
@@ -137,6 +143,9 @@ export function ReceivablesTab() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({ title: "일괄 완료 처리 완료", description: `계산서 ${data.updatedInvoices}건, 자금계획 ${data.updatedPayments}건 완료 처리됨` });
     },
@@ -150,6 +159,9 @@ export function ReceivablesTab() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       setSelectedIds(new Set());
       toast({
@@ -167,6 +179,9 @@ export function ReceivablesTab() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({
         title: "되돌리기 완료",

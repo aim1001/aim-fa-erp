@@ -51,7 +51,7 @@ function Router() {
       <Route path="/vendors" component={VendorList} />
       <Route path="/sales-invoices" component={SalesInvoiceList} />
       <Route path="/purchase-invoices" component={PurchaseInvoiceList} />
-      <Route path="/receivables" component={() => <FinanceGuard><Receivables /></FinanceGuard>} />
+      <Route path="/receivables" component={Receivables} />
       <Route path="/payables" component={() => <FinanceGuard><Payables /></FinanceGuard>} />
       <Route path="/payment-plan" component={() => <FinanceGuard><PaymentPlan /></FinanceGuard>} />
       <Route path="/projects" component={ProjectList} />

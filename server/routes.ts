@@ -3761,6 +3761,18 @@ export async function registerRoutes(
         }
       }
 
+      // 은행거래 매칭 입금 (수금관리/미수금 화면과 동일 모델로 통일)
+      const bankByInvoice = new Map<string, number>();
+      if (invoiceIds.size > 0) {
+        const txRes = await pool.query(
+          `SELECT matched_sales_invoice_id, SUM(credit_amount) as collected
+           FROM bank_transactions WHERE matched_sales_invoice_id = ANY($1::varchar[])
+           GROUP BY matched_sales_invoice_id`,
+          [Array.from(invoiceIds)]
+        );
+        for (const r of txRes.rows) bankByInvoice.set(r.matched_sales_invoice_id, Number(r.collected || 0));
+      }
+
       // 계산서별 수금 합산 + 상태 (sales-invoices-with-payments와 동일 규칙)
       const invoicesWithPay = invoices.map(inv => {
         const pmts = (paymentsByInvoice.get(inv.id) || [])
@@ -3768,9 +3780,11 @@ export async function registerRoutes(
           .sort((a, b) => (a.actualDate || a.plannedDate || "").localeCompare(b.actualDate || b.plannedDate || ""));
         const totalAmount = inv.totalAmount || 0;
         const recordPaid = pmts.filter(p => p.status === "completed").reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
-        // status='paid'면 수금레코드가 없어도 완납으로 간주 (미수금 화면과 동일 규칙)
+        const bankPaid = bankByInvoice.get(inv.id) ?? 0;
+        const recorded = Math.max(recordPaid, bankPaid); // 수금레코드 vs 은행매칭 중 큰 값(중복 집계 방지)
+        // status='paid'면 근거가 없어도 완납으로 간주 (미수금 화면과 동일 규칙)
         const statusPaid = inv.status === "paid";
-        const paidAmount = statusPaid ? Math.max(recordPaid, totalAmount) : recordPaid;
+        const paidAmount = statusPaid ? Math.max(recorded, totalAmount) : recorded;
         const remainingAmount = Math.max(totalAmount - paidAmount, 0);
         const paymentCount = pmts.length;
         const completedCount = pmts.filter(p => p.status === "completed").length;

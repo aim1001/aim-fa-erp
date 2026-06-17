@@ -184,6 +184,9 @@ function PaymentSection({ invoiceId, type }: { invoiceId: string; type: "income"
     queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
     queryClient.invalidateQueries({ queryKey: ["/api/payments/by-invoice", type, invoiceId] });
     invalidateKeys.forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+    queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
   };
 
   const { data: existingPayments } = useQuery<Payment[]>({
@@ -353,6 +356,9 @@ export function InvoiceDetailModal({ invoiceId, onClose }: { invoiceId: string; 
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices", invoiceId] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
     },
     onError: (err: Error) => {
       toast({ title: "저장 실패", description: err.message, variant: "destructive" });
