@@ -747,6 +747,26 @@ export default function SalesInvoiceList() {
     },
   });
 
+  const reconcileMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sales-invoices/reconcile-cancellations");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      toast({
+        title: "취소쌍 정리 완료",
+        description: data.closedPairs > 0 ? `+/- 취소쌍 ${data.closedPairs}건 상계 처리됨` : "정리할 취소쌍이 없습니다",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "취소쌍 정리 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const inlineLinkMutation = useMutation({
     mutationFn: async ({ id, customerId, projectId }: { id: string; customerId: string | null; projectId: string | null }) => {
       const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, { customerId: customerId || null, projectId: projectId || null });
@@ -850,6 +870,17 @@ export default function SalesInvoiceList() {
           >
             {rematchMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             거래처 재매칭
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => reconcileMutation.mutate()}
+            disabled={reconcileMutation.isPending}
+            data-testid="button-reconcile-cancellations"
+            title="같은 거래처의 +금액/-금액(수정세금계산서 취소) 쌍을 찾아 상계 처리"
+          >
+            {reconcileMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Undo2 className="h-4 w-4 mr-1" />}
+            취소쌍 정리
           </Button>
           <input
             type="file"

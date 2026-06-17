@@ -4089,6 +4089,54 @@ export async function registerRoutes(
     }
   });
 
+  // 취소쌍 정리: 같은 거래처에서 수금근거 없는 +A 원본과 -A 취소(수정세금계산서)를 짝지어 상계 처리(둘 다 paid로 닫음)
+  app.post("/api/sales-invoices/reconcile-cancellations", async (_req, res) => {
+    try {
+      const invoices = await storage.getSalesInvoices();
+      // 수금근거(완료 수금레코드 / 은행매칭) 보유 계산서 → 실거래라 정리 대상 제외
+      const collected = new Set<string>();
+      const payments = await storage.getPayments();
+      for (const p of payments) {
+        if (p.type === "income" && p.status === "completed" && p.salesInvoiceId) collected.add(p.salesInvoiceId);
+      }
+      const txRows = await pool.query(`SELECT DISTINCT matched_sales_invoice_id FROM bank_transactions WHERE matched_sales_invoice_id IS NOT NULL`);
+      for (const r of txRows.rows) collected.add(r.matched_sales_invoice_id);
+
+      const normalize = (s: string | null | undefined) =>
+        (s || "").replace(/\s|\(주\)|주식회사|유한회사|\(유\)/g, "").toLowerCase();
+      const keyOf = (i: any) => i.customerId || ("name:" + normalize(i.companyName));
+      const byCust = new Map<string, any[]>();
+      for (const i of invoices) {
+        const k = keyOf(i);
+        if (!byCust.has(k)) byCust.set(k, []);
+        byCust.get(k)!.push(i);
+      }
+
+      const dayDiff = (a: any, b: any) =>
+        Math.abs(Date.parse(a.issueDate || a.writeDate || "") - Date.parse(b.issueDate || b.writeDate || ""));
+
+      const closed: { companyName: string | null; amount: number }[] = [];
+      for (const list of Array.from(byCust.values())) {
+        const negs = list.filter(i => (i.totalAmount || 0) < 0 && i.status !== "paid");
+        const usedPos = new Set<string>();
+        for (const n of negs) {
+          const A = -(n.totalAmount || 0);
+          const cand = list
+            .filter(p => p.totalAmount === A && p.status !== "paid" && !usedPos.has(p.id) && !collected.has(p.id))
+            .sort((a, b) => dayDiff(a, n) - dayDiff(b, n))[0];
+          if (!cand) continue;
+          usedPos.add(cand.id);
+          await storage.updateSalesInvoice(cand.id, { status: "paid", memo: `취소정리: 취소건(${n.issueDate || "-"})과 상계` });
+          await storage.updateSalesInvoice(n.id, { status: "paid", memo: `취소정리: 원본(${cand.issueDate || "-"})과 상계` });
+          closed.push({ companyName: list[0].companyName, amount: A });
+        }
+      }
+      res.json({ closedPairs: closed.length, pairs: closed });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/sales-invoices/rematch", async (_req, res) => {
     try {
       const allInvoices = await storage.getSalesInvoices();
