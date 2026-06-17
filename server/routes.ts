@@ -7761,6 +7761,95 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // 자금계획 월별 요약: 현재월 + 앞으로 N개월, 카테고리×월 집계 + 잔고 체인
+  app.get("/api/cash-flow/monthly-summary", async (req: Request, res: Response) => {
+    try {
+      const { deriveCashCategory } = await import("@shared/cash-category");
+      const now = new Date();
+      const fromStr = (req.query.from as string) || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const months = Math.min(Math.max(parseInt((req.query.months as string) || "4") || 4, 1), 12);
+      const [fy, fm] = fromStr.split("-").map(Number);
+      const ymList: string[] = [];
+      for (let i = 0; i < months; i++) {
+        const d = new Date(fy, fm - 1 + i, 1);
+        ymList.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+      const winStart = `${ymList[0]}-01`;
+      const endD = new Date(fy, fm - 1 + months, 1);
+      const winEndExcl = `${endD.getFullYear()}-${String(endD.getMonth() + 1).padStart(2, "0")}-01`;
+      const today = new Date().toISOString().slice(0, 10);
+
+      // 현재 총 잔고 (계좌별 최신 balance 합)
+      const balRes = await pool.query(
+        `SELECT DISTINCT ON (account_id) account_id, balance
+         FROM bank_transactions ORDER BY account_id, tx_date DESC, created_at DESC`
+      );
+      const currentBalance = balRes.rows.reduce((s: number, r: any) => s + Number(r.balance || 0), 0);
+
+      // 은행거래(확정) — 윈도우
+      const bankRes = await pool.query(
+        `SELECT tx_date, counterparty, description, credit_amount, debit_amount, matched_sales_invoice_id
+         FROM bank_transactions WHERE tx_date >= $1 AND tx_date < $2`,
+        [winStart, winEndExcl]
+      );
+      const allPayments = await storage.getPayments();
+
+      type Bucket = { income: Record<string, number>; expense: Record<string, number> };
+      const M: Record<string, Bucket> = {};
+      ymList.forEach(ym => (M[ym] = { income: {}, expense: {} }));
+      const add = (ym: string, dir: "income" | "expense", cat: string, amt: number) => {
+        if (!M[ym]) return;
+        M[ym][dir][cat] = (M[ym][dir][cat] || 0) + amt;
+      };
+
+      const m0 = ymList[0];
+      let m0ConfirmedNet = 0;
+
+      for (const b of bankRes.rows as any[]) {
+        const ym = String(b.tx_date).slice(0, 7);
+        if (!M[ym]) continue;
+        const credit = Number(b.credit_amount || 0);
+        const debit = Number(b.debit_amount || 0);
+        const cat = deriveCashCategory({
+          type: credit > 0 ? "income" : "expense",
+          companyName: b.counterparty,
+          description: b.description,
+          salesInvoiceId: b.matched_sales_invoice_id,
+        });
+        if (credit > 0) add(ym, "income", cat, credit);
+        if (debit > 0) add(ym, "expense", cat, debit);
+        if (ym === m0 && String(b.tx_date) <= today) m0ConfirmedNet += credit - debit;
+      }
+
+      for (const p of allPayments) {
+        if (p.status === "completed") continue; // 확정은 은행거래로 집계됨(중복 방지)
+        const d = p.plannedDate || p.actualDate;
+        if (!d) continue;
+        const ym = String(d).slice(0, 7);
+        if (!M[ym]) continue;
+        const amt = (p.actualAmount ?? p.amount ?? 0);
+        if (amt === 0) continue;
+        const cat = deriveCashCategory(p as any);
+        add(ym, p.type === "income" ? "income" : "expense", cat, amt);
+      }
+
+      let opening = currentBalance - m0ConfirmedNet;
+      const out = ymList.map(ym => {
+        const inc = M[ym].income, exp = M[ym].expense;
+        const incomeTotal = Object.values(inc).reduce((s, v) => s + v, 0);
+        const expenseTotal = Object.values(exp).reduce((s, v) => s + v, 0);
+        const net = incomeTotal - expenseTotal;
+        const closing = opening + net;
+        const row = { ym, opening, income: inc, expense: exp, incomeTotal, expenseTotal, net, closing };
+        opening = closing;
+        return row;
+      });
+      res.json({ currentBalance, months: out });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/recurring-expenses/generate", async (req: Request, res: Response) => {
     const { year, month } = req.query as { year: string; month: string };
     if (!year || !month) return res.status(400).json({ message: "year and month required" });

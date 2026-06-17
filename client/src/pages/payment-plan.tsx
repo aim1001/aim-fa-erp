@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Landmark, ClipboardList, Settings, ChevronLeft, ChevronRight } from "lucide-react";
+import { Landmark, ClipboardList, Settings, ChevronLeft, ChevronRight, CalendarRange } from "lucide-react";
 import { CashFlowTab } from "./cash-flow-tab";
+import { CashMonthlyTab } from "./cash-monthly-tab";
 import { RecurringItemsTab } from "./recurring-items-tab";
 import { BankTransactionsTab } from "./bank-transactions-tab";
 
-type ViewMode = "cashflow" | "recurring" | "bank-manage";
+type ViewMode = "monthly" | "cashflow" | "recurring" | "bank-manage";
 
 export default function PaymentPlan() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [viewMode, setViewMode] = useState<ViewMode>("cashflow");
+  const [viewMode, setViewMode] = useState<ViewMode>("monthly");
 
   const prevMonth = () => {
     if (month === 1) { setYear(y => y - 1); setMonth(12); }
@@ -28,12 +29,20 @@ export default function PaymentPlan() {
         <h1 className="text-2xl font-semibold" data-testid="text-payment-plan-title">자금계획</h1>
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
           <Button
+            variant={viewMode === "monthly" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("monthly")}
+            data-testid="button-view-monthly"
+          >
+            <CalendarRange className="h-4 w-4 mr-1" />월별요약
+          </Button>
+          <Button
             variant={viewMode === "cashflow" ? "default" : "ghost"}
             size="sm"
             onClick={() => setViewMode("cashflow")}
             data-testid="button-view-cashflow"
           >
-            <Landmark className="h-4 w-4 mr-1" />자금흐름
+            <Landmark className="h-4 w-4 mr-1" />일별 자금흐름
           </Button>
           <Button
             variant={viewMode === "recurring" ? "default" : "ghost"}
@@ -53,6 +62,21 @@ export default function PaymentPlan() {
           </Button>
         </div>
       </div>
+
+      {viewMode === "monthly" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-monthly-prev">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-base font-semibold min-w-[100px] text-center">{year}년 {month}월~</span>
+            <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-monthly-next">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <CashMonthlyTab year={year} month={month} />
+        </div>
+      )}
 
       {viewMode === "cashflow" && (
         <CashFlowTab
