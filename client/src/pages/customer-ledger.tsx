@@ -78,35 +78,36 @@ function PaymentStatusBadge({ inv }: { inv: LedgerInvoice }) {
   return <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30"><CircleMinus className="h-3 w-3 mr-1" />미설정</Badge>;
 }
 
-type TimelineRow = { date: string; amount: number; invDate: string | null; invTotal: number | null; project: string };
+type TimelineRow = { kind: "수금" | "미수"; date: string; amount: number; invDate: string | null; invTotal: number | null; project: string };
 
-function PaymentTimelineTable({ timeline }: { timeline: TimelineRow[] }) {
-  if (timeline.length === 0) {
+function PaymentTimelineTable({ collected, outstanding }: { collected: TimelineRow[]; outstanding: TimelineRow[] }) {
+  if (collected.length === 0 && outstanding.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground flex-col gap-2">
         <Wallet className="h-10 w-10 opacity-30" />
-        <p className="text-sm">수금 내역이 없습니다.</p>
+        <p className="text-sm">내역이 없습니다.</p>
       </div>
     );
   }
-  const total = timeline.reduce((s, r) => s + r.amount, 0);
+  const collectedTotal = collected.reduce((s, r) => s + r.amount, 0);
+  const outstandingTotal = outstanding.reduce((s, r) => s + r.amount, 0);
   return (
     <div className="flex-1 overflow-y-auto p-4">
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted/50 text-xs">
-              <th className="text-left py-2.5 px-4 font-medium">수금일자</th>
+              <th className="text-left py-2.5 px-4 font-medium">일자</th>
               <th className="text-right py-2.5 px-4 font-medium">금액</th>
               <th className="text-left py-2.5 px-4 font-medium">대응 계산서</th>
               <th className="text-left py-2.5 px-4 font-medium">프로젝트</th>
             </tr>
           </thead>
           <tbody>
-            {timeline.map((r, i) => {
-              const showDate = i === 0 || timeline[i - 1].date !== r.date;
+            {collected.map((r, i) => {
+              const showDate = i === 0 || collected[i - 1].date !== r.date;
               return (
-                <tr key={i} className={`hover:bg-muted/20 ${showDate ? "border-t" : ""}`} data-testid={`payment-row-${i}`}>
+                <tr key={"c" + i} className={`hover:bg-muted/20 ${showDate ? "border-t" : ""}`} data-testid={`payment-row-${i}`}>
                   <td className="py-2 px-4 text-xs">{showDate ? r.date : ""}</td>
                   <td className="py-2 px-4 text-right text-green-600 dark:text-green-400 font-medium">{fmt(r.amount)}</td>
                   <td className="py-2 px-4 text-xs text-muted-foreground">{r.invDate ? `계산서 ${r.invDate} (${fmt(r.invTotal)})` : "-"}</td>
@@ -114,11 +115,36 @@ function PaymentTimelineTable({ timeline }: { timeline: TimelineRow[] }) {
                 </tr>
               );
             })}
+            {outstanding.length > 0 && (
+              <tr className="border-t bg-red-50/60 dark:bg-red-950/20">
+                <td colSpan={4} className="py-1.5 px-4 text-xs font-medium text-red-700 dark:text-red-400">미수 (계산서는 있으나 아직 수금 안 됨)</td>
+              </tr>
+            )}
+            {outstanding.map((r, i) => (
+              <tr key={"o" + i} className="hover:bg-muted/20" data-testid={`outstanding-row-${i}`}>
+                <td className="py-2 px-4 text-xs text-muted-foreground">{r.invDate || "-"}</td>
+                <td className="py-2 px-4 text-right text-red-600 dark:text-red-400 font-medium">{fmt(r.amount)}</td>
+                <td className="py-2 px-4 text-xs text-muted-foreground">{r.invDate ? `계산서 ${r.invDate} (${fmt(r.invTotal)})` : "-"}</td>
+                <td className="py-2 px-4"><Badge variant="outline" className="font-mono text-xs">{r.project}</Badge></td>
+              </tr>
+            ))}
           </tbody>
-          <tfoot>
-            <tr className="border-t bg-muted/30 font-medium">
-              <td className="py-2.5 px-4 text-xs">수금 합계</td>
-              <td className="py-2.5 px-4 text-right text-green-600 dark:text-green-400">{fmt(total)}</td>
+          <tfoot className="border-t bg-muted/30">
+            <tr className="font-medium">
+              <td className="py-2 px-4 text-xs">수금 합계</td>
+              <td className="py-2 px-4 text-right text-green-600 dark:text-green-400">{fmt(collectedTotal)}</td>
+              <td colSpan={2}></td>
+            </tr>
+            {outstanding.length > 0 && (
+              <tr className="font-medium">
+                <td className="py-2 px-4 text-xs">미수 합계</td>
+                <td className="py-2 px-4 text-right text-red-600 dark:text-red-400">{fmt(outstandingTotal)}</td>
+                <td colSpan={2}></td>
+              </tr>
+            )}
+            <tr className="font-semibold border-t">
+              <td className="py-2 px-4 text-xs">계산서 총액</td>
+              <td className="py-2 px-4 text-right">{fmt(collectedTotal + outstandingTotal)}</td>
               <td colSpan={2}></td>
             </tr>
           </tfoot>
@@ -191,26 +217,26 @@ export default function CustomerLedger() {
     });
   }, [summary, search, filterBy, statusFilters, sortBy]);
 
-  const paymentTimeline = useMemo<TimelineRow[]>(() => {
-    if (!ledger) return [];
-    const flat: TimelineRow[] = [];
+  const paymentTimeline = useMemo<{ collected: TimelineRow[]; outstanding: TimelineRow[] }>(() => {
+    if (!ledger) return { collected: [], outstanding: [] };
+    const collected: TimelineRow[] = [];
+    const outstanding: TimelineRow[] = [];
     for (const g of ledger.groups) {
+      const project = g.project?.projectNumber ?? "미연결";
       for (const inv of g.invoices) {
         for (const p of inv.payments) {
           if (p.status === "completed" && p.actualDate) {
-            flat.push({
-              date: p.actualDate,
-              amount: p.actualAmount ?? p.amount ?? 0,
-              invDate: inv.issueDate,
-              invTotal: inv.totalAmount,
-              project: g.project?.projectNumber ?? "미연결",
-            });
+            collected.push({ kind: "수금", date: p.actualDate, amount: p.actualAmount ?? p.amount ?? 0, invDate: inv.issueDate, invTotal: inv.totalAmount, project });
           }
+        }
+        if (inv.remainingAmount > 0) {
+          outstanding.push({ kind: "미수", date: inv.issueDate ?? "", amount: inv.remainingAmount, invDate: inv.issueDate, invTotal: inv.totalAmount, project });
         }
       }
     }
-    flat.sort((a, b) => b.date.localeCompare(a.date) || (a.invDate || "").localeCompare(b.invDate || ""));
-    return flat;
+    collected.sort((a, b) => b.date.localeCompare(a.date) || (a.invDate || "").localeCompare(b.invDate || ""));
+    outstanding.sort((a, b) => (b.invDate || "").localeCompare(a.invDate || ""));
+    return { collected, outstanding };
   }, [ledger]);
 
   const favoriteMutation = useMutation({
@@ -400,7 +426,7 @@ export default function CustomerLedger() {
           <p className="text-sm">해당 기간에 거래 내역이 없습니다.</p>
         </div>
       ) : detailView === "payment" ? (
-        <PaymentTimelineTable timeline={paymentTimeline} />
+        <PaymentTimelineTable collected={paymentTimeline.collected} outstanding={paymentTimeline.outstanding} />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {ledger.groups.filter(g => g.invoices.length > 0).map((g, gi) => {
