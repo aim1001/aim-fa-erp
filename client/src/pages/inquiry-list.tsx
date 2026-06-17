@@ -692,8 +692,8 @@ export default function InquiryList() {
       let valB: string | number | null = null;
       switch (sortColumn) {
         case "salesNumber": {
-          const numA = a.salesNumber || a.inquiryNumber || "";
-          const numB = b.salesNumber || b.inquiryNumber || "";
+          const numA = a.inquiryNumber || "";
+          const numB = b.inquiryNumber || "";
           const partsA = String(numA).match(/^(\d+)-(\d+)$/);
           const partsB = String(numB).match(/^(\d+)-(\d+)$/);
           if (partsA && partsB) {
