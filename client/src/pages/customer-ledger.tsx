@@ -300,14 +300,14 @@ export default function CustomerLedger() {
 
       {isLoading ? (
         <div className="p-6 space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
-      ) : !ledger || ledger.groups.length === 0 ? (
+      ) : !ledger || ledger.groups.filter(g => g.invoices.length > 0).length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-muted-foreground flex-col gap-2">
           <FileText className="h-10 w-10 opacity-30" />
           <p className="text-sm">해당 기간에 거래 내역이 없습니다.</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {ledger.groups.map((g, gi) => {
+          {ledger.groups.filter(g => g.invoices.length > 0).map((g, gi) => {
             const groupTotal = g.invoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
             const groupPaid = g.invoices.reduce((s, i) => s + i.paidAmount, 0);
             const groupOut = g.invoices.reduce((s, i) => s + i.remainingAmount, 0);
@@ -339,8 +339,6 @@ export default function CustomerLedger() {
                     <thead>
                       <tr className="border-b bg-muted/20 text-muted-foreground text-xs">
                         <th className="px-3 py-2 text-left font-medium">발급일</th>
-                        <th className="px-3 py-2 text-left font-medium">계산서번호</th>
-                        <th className="px-3 py-2 text-left font-medium hidden md:table-cell">품목</th>
                         <th className="px-3 py-2 text-right font-medium">합계</th>
                         <th className="px-3 py-2 text-right font-medium">수금액</th>
                         <th className="px-3 py-2 text-right font-medium">잔액</th>
@@ -361,8 +359,6 @@ export default function CustomerLedger() {
                             <td className="px-3 py-2 text-xs">
                               {inv.issueDate || <span className="text-amber-600 dark:text-amber-400">미발행</span>}
                             </td>
-                            <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{inv.invoiceNumber || "-"}</td>
-                            <td className="px-3 py-2 text-xs hidden md:table-cell">{inv.item || "-"}</td>
                             <td className="px-3 py-2 text-right font-medium">{fmt(inv.totalAmount)}</td>
                             <td className="px-3 py-2 text-right text-green-600 dark:text-green-400">{inv.paidAmount > 0 ? fmt(inv.paidAmount) : "-"}</td>
                             <td className="px-3 py-2 text-right">
