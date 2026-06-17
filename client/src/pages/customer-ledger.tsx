@@ -1,12 +1,12 @@
 import { useState, useMemo, Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
-import { FileText, FolderKanban, Wallet, CircleCheck, CircleDot, Clock, CircleMinus, Search, Star, ArrowLeft, Building2, ChevronRight, ChevronDown, Pencil } from "lucide-react";
+import { FileText, FolderKanban, Wallet, CircleCheck, CircleDot, Clock, CircleMinus, Search, Star, ArrowLeft, ChevronRight, ChevronDown, Pencil } from "lucide-react";
 import type { Customer } from "@shared/schema";
 import { InvoiceDetailModal } from "./sales-invoice-list";
 
@@ -213,6 +213,14 @@ export default function CustomerLedger() {
     return flat;
   }, [ledger]);
 
+  const favoriteMutation = useMutation({
+    mutationFn: async (cid: string) => apiRequest("PATCH", `/api/customers/${cid}/favorite`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+    },
+  });
+
   // ───────────────────── 리스트(허브) 모드 ─────────────────────
   if (!customerId) {
     return (
@@ -293,9 +301,14 @@ export default function CustomerLedger() {
                   >
                     <td className="py-2.5 px-4">
                       <div className="flex items-center gap-2">
-                        {r.isFavorite
-                          ? <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400 shrink-0" />
-                          : <Building2 className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />}
+                        <button
+                          onClick={e => { e.stopPropagation(); favoriteMutation.mutate(r.customerId); }}
+                          className="shrink-0 hover:scale-110 transition-transform"
+                          data-testid={`favorite-customer-${r.customerId}`}
+                          title="즐겨찾기"
+                        >
+                          <Star className={`h-3.5 w-3.5 ${r.isFavorite ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/40 hover:text-yellow-400"}`} />
+                        </button>
                         <span className="font-medium">{r.companyName}</span>
                       </div>
                     </td>
