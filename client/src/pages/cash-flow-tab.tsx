@@ -1,4 +1,17 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { deriveCashCategory, cashCategoryTone, type CashCategoryInput } from "@shared/cash-category";
+
+const CAT_TONE_CLS: Record<string, string> = {
+  income: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800",
+  tax: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800",
+  finance: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-800",
+  recurring: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800",
+  neutral: "bg-muted text-muted-foreground border-border",
+};
+function CatBadge({ e }: { e: CashCategoryInput }) {
+  const c = deriveCashCategory(e);
+  return <span className={`shrink-0 inline-block px-1.5 py-0.5 rounded text-[10px] border ${CAT_TONE_CLS[cashCategoryTone(c)] || CAT_TONE_CLS.neutral}`}>{c}</span>;
+}
 import { useState, useMemo, Fragment } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1058,7 +1071,10 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
                         </td>
                         <td className="px-3 py-2">
                           <div className="min-w-0">
-                            {tx.counterparty && <div className="font-medium truncate text-xs">{tx.counterparty}</div>}
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <CatBadge e={{ type: (tx.creditAmount || 0) > 0 ? "income" : "expense", companyName: tx.counterparty, description: tx.description, salesInvoiceId: (tx as any).matchedSalesInvoiceId }} />
+                              {tx.counterparty && <span className="font-medium truncate text-xs">{tx.counterparty}</span>}
+                            </div>
                             {tx.description && <div className="text-xs text-muted-foreground truncate">{tx.description}</div>}
                             {!tx.counterparty && !tx.description && <span className="text-muted-foreground text-xs">-</span>}
                           </div>
@@ -1203,6 +1219,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
                               {p.purchaseOrderNumber}
                             </span>
                           )}
+                          <CatBadge e={{ type: p.type, category: (p as any).category, companyName: p.companyName, description: p.description, salesInvoiceId: (p as any).salesInvoiceId, purchaseInvoiceId: (p as any).purchaseInvoiceId, recurringExpenseId: (p as any).recurringExpenseId }} />
                           <div className="min-w-0 flex-1">
                             <div className="text-xs italic text-muted-foreground truncate">
                               {p.description || p.companyName || p.projectCustomerName || "내용 없음"}

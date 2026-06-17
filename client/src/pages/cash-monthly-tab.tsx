@@ -1,6 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { CASH_CATEGORIES, type CashCategory } from "@shared/cash-category";
 
 type MonthRow = {
@@ -22,6 +25,7 @@ const INCOME_CATS: CashCategory[] = ["수금", "기타"];
 const EXPENSE_CATS = CASH_CATEGORIES.filter(c => c !== "수금");
 
 export function CashMonthlyTab({ year, month }: { year: number; month: number }) {
+  const { toast } = useToast();
   const from = `${year}-${String(month).padStart(2, "0")}`;
   const { data, isLoading } = useQuery<Summary>({
     queryKey: ["/api/cash-flow/monthly-summary", from, 4],
@@ -29,6 +33,26 @@ export function CashMonthlyTab({ year, month }: { year: number; month: number })
       const res = await fetch(`/api/cash-flow/monthly-summary?from=${from}&months=4`);
       return res.json();
     },
+  });
+
+  // 현재월~+3개월 정기지출 자동 생성(멱등). 미래 예정 칸을 채운다.
+  const projectMutation = useMutation({
+    mutationFn: async () => {
+      let total = 0;
+      for (let i = 0; i < 4; i++) {
+        const d = new Date(year, month - 1 + i, 1);
+        const res = await apiRequest("POST", `/api/recurring-expenses/generate?year=${d.getFullYear()}&month=${d.getMonth() + 1}`);
+        const j = await res.json().catch(() => ({}));
+        total += j.created || 0;
+      }
+      return total;
+    },
+    onSuccess: (total: number) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cash-flow/monthly-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: "정기지출 반영 완료", description: total > 0 ? `${total}건 생성` : "이미 모두 반영됨" });
+    },
+    onError: (e: Error) => toast({ title: "반영 실패", description: e.message, variant: "destructive" }),
   });
 
   if (isLoading) return <div className="space-y-2">{[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-9 w-full" />)}</div>;
@@ -47,6 +71,16 @@ export function CashMonthlyTab({ year, month }: { year: number; month: number })
         <span className="text-muted-foreground">현재 총 잔고</span>
         <span className="font-semibold text-base">{fmt(data.currentBalance)}원</span>
         <span className="text-xs text-muted-foreground">· {from}부터 4개월 (현재월 + 앞으로 3개월)</span>
+        <Button
+          variant="outline" size="sm" className="h-7 text-xs ml-auto"
+          onClick={() => projectMutation.mutate()}
+          disabled={projectMutation.isPending}
+          data-testid="button-project-recurring"
+          title="현재월~+3개월의 정기지출(급여·세금·대출 등)을 예정으로 자동 생성"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-1 ${projectMutation.isPending ? "animate-spin" : ""}`} />
+          정기지출 반영
+        </Button>
       </div>
 
       <div className="border rounded-lg overflow-x-auto">
