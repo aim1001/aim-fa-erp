@@ -679,10 +679,13 @@ export default function InquiryList() {
     }
 
     return list.sort((a, b) => {
-      if (a.isWebInquiry && !b.isWebInquiry) return -1;
-      if (!a.isWebInquiry && b.isWebInquiry) return 1;
-      if (a.isFavorite && !b.isFavorite) return -1;
-      if (!a.isFavorite && b.isFavorite) return 1;
+      // 번호순 정렬일 때는 웹문의/즐겨찾기 상단 고정을 풀어 순수 번호 순서로 본다
+      if (sortColumn !== "salesNumber") {
+        if (a.isWebInquiry && !b.isWebInquiry) return -1;
+        if (!a.isWebInquiry && b.isWebInquiry) return 1;
+        if (a.isFavorite && !b.isFavorite) return -1;
+        if (!a.isFavorite && b.isFavorite) return 1;
+      }
 
       const dir = sortDirection === "asc" ? 1 : -1;
       let valA: string | number | null = null;
