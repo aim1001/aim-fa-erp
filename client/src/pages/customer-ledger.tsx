@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
-import { FileText, FolderKanban, Wallet, CircleCheck, CircleDot, Clock, CircleMinus, Search, Star, ArrowLeft, Building2 } from "lucide-react";
+import { FileText, FolderKanban, Wallet, CircleCheck, CircleDot, Clock, CircleMinus, Search, Star, ArrowLeft, Building2, ChevronRight, ChevronDown, Pencil } from "lucide-react";
 import type { Customer } from "@shared/schema";
 import { InvoiceDetailModal } from "./sales-invoice-list";
 
@@ -133,6 +133,7 @@ export default function CustomerLedger() {
   const [period, setPeriod] = useState<Period>("1y");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [detailView, setDetailView] = useState<"project" | "payment">("project");
+  const [collapsedInvoices, setCollapsedInvoices] = useState<Set<string>>(new Set());
 
   // 리스트(허브) 상태
   const [search, setSearch] = useState("");
@@ -426,20 +427,28 @@ export default function CustomerLedger() {
                         <th className="px-3 py-2 text-right font-medium">잔액</th>
                         <th className="px-3 py-2 text-center font-medium">상태</th>
                         <th className="px-3 py-2 text-left font-medium hidden lg:table-cell">입금예정일</th>
+                        <th className="w-8"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {g.invoices.map(inv => {
                         const unissued = !inv.issueDate;
+                        const expanded = !collapsedInvoices.has(inv.id);
+                        const pmts = [...inv.payments].sort((a, b) => (a.actualDate || a.plannedDate || "").localeCompare(b.actualDate || b.plannedDate || ""));
                         return (
+                          <Fragment key={inv.id}>
                           <tr
-                            key={inv.id}
-                            className={`border-b last:border-0 hover:bg-muted/20 cursor-pointer ${unissued ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}`}
-                            onClick={() => setSelectedInvoiceId(inv.id)}
+                            className={`border-b hover:bg-muted/20 cursor-pointer ${unissued ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}`}
+                            onClick={() => setCollapsedInvoices(prev => { const n = new Set(prev); if (n.has(inv.id)) n.delete(inv.id); else n.add(inv.id); return n; })}
                             data-testid={`ledger-invoice-${inv.id}`}
                           >
                             <td className="px-3 py-2 text-xs">
-                              {inv.issueDate || <span className="text-amber-600 dark:text-amber-400">미발행</span>}
+                              <span className="inline-flex items-center gap-1">
+                                {pmts.length > 0
+                                  ? (expanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />)
+                                  : <span className="w-3 inline-block" />}
+                                {inv.issueDate || <span className="text-amber-600 dark:text-amber-400">미발행</span>}
+                              </span>
                             </td>
                             <td className="px-3 py-2 text-right font-medium">{fmt(inv.totalAmount)}</td>
                             <td className="px-3 py-2 text-right text-green-600 dark:text-green-400">{inv.paidAmount > 0 ? fmt(inv.paidAmount) : "-"}</td>
@@ -450,7 +459,33 @@ export default function CustomerLedger() {
                             </td>
                             <td className="px-3 py-2 text-center"><PaymentStatusBadge inv={inv} /></td>
                             <td className="px-3 py-2 text-xs text-muted-foreground hidden lg:table-cell">{fmtDate(inv.nextPaymentDate)}</td>
+                            <td className="px-1 py-2 text-center">
+                              <button
+                                className="text-muted-foreground/60 hover:text-foreground"
+                                onClick={e => { e.stopPropagation(); setSelectedInvoiceId(inv.id); }}
+                                data-testid={`ledger-invoice-edit-${inv.id}`}
+                                title="계산서 상세/편집"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
                           </tr>
+                          {expanded && pmts.map(p => {
+                            const done = p.status === "completed";
+                            return (
+                              <tr key={p.id} className="border-b bg-muted/10 text-xs">
+                                <td className="px-3 py-1.5 text-muted-foreground" style={{ paddingLeft: "1.75rem" }}>
+                                  └ {done ? "수금" : "예정"} {p.actualDate || p.plannedDate || "-"}
+                                </td>
+                                <td></td>
+                                <td className={`px-3 py-1.5 text-right ${done ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}`}>
+                                  {fmt(p.actualAmount ?? p.amount)}
+                                </td>
+                                <td colSpan={4}></td>
+                              </tr>
+                            );
+                          })}
+                          </Fragment>
                         );
                       })}
                     </tbody>
