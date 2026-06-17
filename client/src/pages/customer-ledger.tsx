@@ -78,10 +78,61 @@ function PaymentStatusBadge({ inv }: { inv: LedgerInvoice }) {
   return <Badge variant="outline" className="text-muted-foreground border-muted-foreground/30"><CircleMinus className="h-3 w-3 mr-1" />미설정</Badge>;
 }
 
+type TimelineRow = { date: string; amount: number; invDate: string | null; invTotal: number | null; project: string };
+
+function PaymentTimelineTable({ timeline }: { timeline: TimelineRow[] }) {
+  if (timeline.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-muted-foreground flex-col gap-2">
+        <Wallet className="h-10 w-10 opacity-30" />
+        <p className="text-sm">수금 내역이 없습니다.</p>
+      </div>
+    );
+  }
+  const total = timeline.reduce((s, r) => s + r.amount, 0);
+  return (
+    <div className="flex-1 overflow-y-auto p-4">
+      <div className="border rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-muted/50 text-xs">
+              <th className="text-left py-2.5 px-4 font-medium">수금일자</th>
+              <th className="text-right py-2.5 px-4 font-medium">금액</th>
+              <th className="text-left py-2.5 px-4 font-medium">대응 계산서</th>
+              <th className="text-left py-2.5 px-4 font-medium">프로젝트</th>
+            </tr>
+          </thead>
+          <tbody>
+            {timeline.map((r, i) => {
+              const showDate = i === 0 || timeline[i - 1].date !== r.date;
+              return (
+                <tr key={i} className={`hover:bg-muted/20 ${showDate ? "border-t" : ""}`} data-testid={`payment-row-${i}`}>
+                  <td className="py-2 px-4 text-xs">{showDate ? r.date : ""}</td>
+                  <td className="py-2 px-4 text-right text-green-600 dark:text-green-400 font-medium">{fmt(r.amount)}</td>
+                  <td className="py-2 px-4 text-xs text-muted-foreground">{r.invDate ? `계산서 ${r.invDate} (${fmt(r.invTotal)})` : "-"}</td>
+                  <td className="py-2 px-4"><Badge variant="outline" className="font-mono text-xs">{r.project}</Badge></td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t bg-muted/30 font-medium">
+              <td className="py-2.5 px-4 text-xs">수금 합계</td>
+              <td className="py-2.5 px-4 text-right text-green-600 dark:text-green-400">{fmt(total)}</td>
+              <td colSpan={2}></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomerLedger() {
   const [customerId, setCustomerId] = useState<string>("");
   const [period, setPeriod] = useState<Period>("1y");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [detailView, setDetailView] = useState<"project" | "payment">("project");
 
   // 리스트(허브) 상태
   const [search, setSearch] = useState("");
@@ -138,6 +189,28 @@ export default function CustomerLedger() {
       return (a.companyName || "").localeCompare(b.companyName || "");
     });
   }, [summary, search, filterBy, statusFilters, sortBy]);
+
+  const paymentTimeline = useMemo<TimelineRow[]>(() => {
+    if (!ledger) return [];
+    const flat: TimelineRow[] = [];
+    for (const g of ledger.groups) {
+      for (const inv of g.invoices) {
+        for (const p of inv.payments) {
+          if (p.status === "completed" && p.actualDate) {
+            flat.push({
+              date: p.actualDate,
+              amount: p.actualAmount ?? p.amount ?? 0,
+              invDate: inv.issueDate,
+              invTotal: inv.totalAmount,
+              project: g.project?.projectNumber ?? "미연결",
+            });
+          }
+        }
+      }
+    }
+    flat.sort((a, b) => b.date.localeCompare(a.date) || (a.invDate || "").localeCompare(b.invDate || ""));
+    return flat;
+  }, [ledger]);
 
   // ───────────────────── 리스트(허브) 모드 ─────────────────────
   if (!customerId) {
@@ -271,6 +344,13 @@ export default function CustomerLedger() {
             </Button>
           ))}
         </div>
+        <div className="flex items-center gap-1 border rounded-lg p-0.5">
+          {(["project", "payment"] as const).map(v => (
+            <Button key={v} variant={detailView === v ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setDetailView(v)} data-testid={`detail-view-${v}`}>
+              {v === "project" ? "프로젝트별" : "수금일자순"}
+            </Button>
+          ))}
+        </div>
         {period !== "all" && startDate && (
           <span className="text-xs text-muted-foreground">{startDate} ~ {endDate}</span>
         )}
@@ -305,6 +385,8 @@ export default function CustomerLedger() {
           <FileText className="h-10 w-10 opacity-30" />
           <p className="text-sm">해당 기간에 거래 내역이 없습니다.</p>
         </div>
+      ) : detailView === "payment" ? (
+        <PaymentTimelineTable timeline={paymentTimeline} />
       ) : (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {ledger.groups.filter(g => g.invoices.length > 0).map((g, gi) => {
