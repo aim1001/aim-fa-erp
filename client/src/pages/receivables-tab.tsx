@@ -136,6 +136,22 @@ export function ReceivablesTab() {
     onError: (e: any) => toast({ title: "연결 해제 실패", description: e.message, variant: "destructive" }),
   });
 
+  const autoLinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/auto-link-by-amount");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/receivables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-receivables-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      toast({ title: "자동연결 완료", description: `입금 ${data.creditLinked || 0}건 · 출금 ${data.debitLinked || 0}건 연결됨` });
+    },
+    onError: (e: any) => toast({ title: "자동연결 실패", description: e.message, variant: "destructive" }),
+  });
+
   const bulkCompleteMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/receivables/bulk-complete", { beforeYear: 2025 });
@@ -340,6 +356,18 @@ export function ReceivablesTab() {
           data-testid="button-outstanding-filter"
         >
           <Filter className="h-3.5 w-3.5 mr-1" />미수금만
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => autoLinkMutation.mutate()}
+          disabled={autoLinkMutation.isPending}
+          data-testid="button-auto-link-deposits"
+          title="이름+금액이 같은 미연결 입출금을 계산서에 자동 연결 (애매한 건 제외)"
+        >
+          {autoLinkMutation.isPending ? <RefreshCw className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Link2 className="h-3.5 w-3.5 mr-1" />}
+          미연결 자동연결
         </Button>
 
         <div className="relative flex-1 min-w-[180px]">

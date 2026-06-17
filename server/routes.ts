@@ -9167,6 +9167,45 @@ export async function registerRoutes(
     }
   });
 
+  // 미연결 입출금을 이름+금액 단일후보로 자동연결 (이름 있는 것만, 같은금액 여러 후보는 제외)
+  app.post("/api/bank-transactions/auto-link-by-amount", async (_req, res) => {
+    try {
+      const norm = (s: string | null | undefined) =>
+        (s || "").replace(/\s|\(주\)|주식회사|유한회사|\(유\)|㈜/g, "").toLowerCase();
+      const sMatched = new Set((await pool.query(`SELECT DISTINCT matched_sales_invoice_id m FROM bank_transactions WHERE matched_sales_invoice_id IS NOT NULL`)).rows.map((r: any) => r.m));
+      const pMatched = new Set((await pool.query(`SELECT DISTINCT matched_purchase_invoice_id m FROM bank_transactions WHERE matched_purchase_invoice_id IS NOT NULL`)).rows.map((r: any) => r.m));
+      const sInv = await storage.getSalesInvoices();
+      const pInv = await storage.getPurchaseInvoices();
+      const dep = (await pool.query(
+        `SELECT id, counterparty, credit_amount, debit_amount FROM bank_transactions
+         WHERE matched_sales_invoice_id IS NULL AND matched_purchase_invoice_id IS NULL
+           AND counterparty IS NOT NULL AND counterparty <> ''`
+      )).rows;
+      let creditLinked = 0, debitLinked = 0;
+      for (const t of dep as any[]) {
+        const cn = norm(t.counterparty);
+        if (!cn) continue;
+        const credit = Number(t.credit_amount || 0), debit = Number(t.debit_amount || 0);
+        if (credit > 0) {
+          const cand = sInv.filter(i => norm(i.companyName) === cn && (i.totalAmount || 0) === credit && !sMatched.has(i.id));
+          if (cand.length === 1) {
+            await pool.query(`UPDATE bank_transactions SET matched_sales_invoice_id=$1, match_status='manual' WHERE id=$2`, [cand[0].id, t.id]);
+            sMatched.add(cand[0].id); creditLinked++;
+          }
+        } else if (debit > 0) {
+          const cand = pInv.filter(i => norm(i.companyName) === cn && (i.totalAmount || 0) === debit && !pMatched.has(i.id));
+          if (cand.length === 1) {
+            await pool.query(`UPDATE bank_transactions SET matched_purchase_invoice_id=$1, match_status='manual' WHERE id=$2`, [cand[0].id, t.id]);
+            pMatched.add(cand[0].id); debitLinked++;
+          }
+        }
+      }
+      res.json({ creditLinked, debitLinked });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // 출금 수동 연결 (계산서 여러 건 중 사용자가 선택한 1건)
   app.post("/api/bank-transactions/manual-match-debit", async (req, res) => {
     try {
