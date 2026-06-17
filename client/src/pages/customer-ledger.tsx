@@ -2,19 +2,25 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { FileText, FolderKanban, Wallet, CircleCheck, CircleDot, Clock, CircleMinus } from "lucide-react";
+import { FileText, FolderKanban, Wallet, CircleCheck, CircleDot, Clock, CircleMinus, Search, Star, ArrowLeft, Building2 } from "lucide-react";
 import type { Customer } from "@shared/schema";
 import { InvoiceDetailModal } from "./sales-invoice-list";
+
+type SummaryRow = {
+  customerId: string;
+  companyName: string;
+  isFavorite: boolean;
+  invoiceCount: number;
+  outstanding: number;
+  overdueAmount: number;
+  plannedAmount: number;
+  noPaymentCount: number;
+  lastTransactionDate: string | null;
+};
 
 type LedgerInvoice = {
   id: string;
@@ -43,6 +49,8 @@ type LedgerData = {
 };
 
 type Period = "6m" | "1y" | "2y" | "all";
+type FilterBy = "all" | "favorite" | "noplan";
+type SortBy = "outstanding" | "recent" | "name";
 
 const fmt = (n: number | null | undefined) => (n || n === 0 ? Number(n).toLocaleString() : "-");
 const fmtDate = (d: string | null | undefined) => d || "-";
@@ -75,9 +83,17 @@ export default function CustomerLedger() {
   const [period, setPeriod] = useState<Period>("1y");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
 
+  // 리스트(허브) 상태
+  const [search, setSearch] = useState("");
+  const [filterBy, setFilterBy] = useState<FilterBy>("all");
+  const [statusFilters, setStatusFilters] = useState<Set<"overdue" | "planned">>(new Set());
+  const [sortBy, setSortBy] = useState<SortBy>("outstanding");
+
   const { startDate, endDate } = periodRange(period);
 
-  const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
+  const { data: summary = [], isLoading: summaryLoading } = useQuery<SummaryRow[]>({
+    queryKey: ["/api/customers-receivables-summary"],
+  });
 
   const { data: ledger, isLoading } = useQuery<LedgerData>({
     queryKey: ["/api/customers", customerId, "ledger", period],
@@ -92,36 +108,165 @@ export default function CustomerLedger() {
     enabled: !!customerId,
   });
 
-  const sortedCustomers = useMemo(
-    () => [...customers].sort((a, b) => (a.companyName || "").localeCompare(b.companyName || "")),
-    [customers],
-  );
+  const counts = useMemo(() => ({
+    all: summary.length,
+    favorite: summary.filter(r => r.isFavorite).length,
+    noplan: summary.filter(r => r.noPaymentCount > 0).length,
+    overdue: summary.filter(r => r.overdueAmount > 0).length,
+    planned: summary.filter(r => r.plannedAmount > 0).length,
+  }), [summary]);
 
+  const filteredSummary = useMemo(() => {
+    let list = summary;
+    if (search) {
+      const s = search.toLowerCase();
+      list = list.filter(r => r.companyName?.toLowerCase().includes(s));
+    }
+    if (statusFilters.size > 0) {
+      list = list.filter(r =>
+        (statusFilters.has("overdue") && r.overdueAmount > 0) ||
+        (statusFilters.has("planned") && r.plannedAmount > 0)
+      );
+    } else {
+      if (filterBy === "favorite") list = list.filter(r => r.isFavorite);
+      if (filterBy === "noplan") list = list.filter(r => r.noPaymentCount > 0);
+    }
+    return [...list].sort((a, b) => {
+      if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+      if (sortBy === "outstanding") return b.outstanding - a.outstanding;
+      if (sortBy === "recent") return (b.lastTransactionDate || "").localeCompare(a.lastTransactionDate || "");
+      return (a.companyName || "").localeCompare(b.companyName || "");
+    });
+  }, [summary, search, filterBy, statusFilters, sortBy]);
+
+  // ───────────────────── 리스트(허브) 모드 ─────────────────────
+  if (!customerId) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center gap-3 p-3 border-b bg-background flex-wrap">
+          <h1 className="text-lg font-semibold flex items-center gap-2"><Wallet className="h-5 w-5" />고객사 거래원장</h1>
+          <div className="relative w-64">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="고객사명 검색" className="pl-8 h-8 text-sm" data-testid="input-search-customer-ledger" />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 px-3 py-2 border-b flex-wrap">
+          <div className="flex items-center gap-1">
+            {(["all", "favorite", "noplan"] as const).map(f => (
+              <Button key={f} size="sm" variant={filterBy === f && statusFilters.size === 0 ? "default" : "ghost"} className="h-7 text-xs" onClick={() => { setFilterBy(f); setStatusFilters(new Set()); }}>
+                {f === "all" ? `전체 ${counts.all}` : f === "favorite" ? "⭐ 즐겨찾기" : `⚠️ 계획없음 ${counts.noplan}`}
+              </Button>
+            ))}
+            <span className="mx-1 h-4 w-px bg-border" />
+            {(["overdue", "planned"] as const).map(s => (
+              <Button
+                key={s}
+                size="sm"
+                variant={statusFilters.has(s) ? "default" : "ghost"}
+                className="h-7 text-xs"
+                onClick={() => {
+                  setStatusFilters(prev => {
+                    const next = new Set(prev);
+                    if (next.has(s)) next.delete(s); else next.add(s);
+                    return next;
+                  });
+                  setFilterBy("all");
+                }}
+              >
+                {s === "overdue" ? `🔴 지연 ${counts.overdue}` : `🔵 결제예정 ${counts.planned}`}
+              </Button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 ml-auto">
+            <span className="text-xs text-muted-foreground">정렬:</span>
+            {(["outstanding", "recent", "name"] as const).map(s => (
+              <Button key={s} size="sm" variant={sortBy === s ? "default" : "ghost"} className="h-7 text-xs" onClick={() => setSortBy(s)}>
+                {s === "outstanding" ? "미수금순" : s === "recent" ? "최근거래" : "이름순"}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {summaryLoading ? (
+          <div className="p-4 space-y-2">{[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-11 w-full" />)}</div>
+        ) : filteredSummary.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground flex-col gap-2">
+            <FileText className="h-10 w-10 opacity-30" />
+            <p className="text-sm">조건에 맞는 고객사가 없습니다.</p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b bg-muted/50 text-xs">
+                  <th className="text-left py-2.5 px-4 font-medium">고객사</th>
+                  <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell">계산서</th>
+                  <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell" title="입금예정일이 지났는데 미입금">지연</th>
+                  <th className="text-right py-2.5 px-4 font-medium hidden lg:table-cell" title="미래 입금예정 금액">결제예정</th>
+                  <th className="text-center py-2.5 px-4 font-medium hidden lg:table-cell" title="수금 계획이 하나도 없는 계산서 건수">계획없음</th>
+                  <th className="text-right py-2.5 px-4 font-medium">미수금</th>
+                  <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">최근거래</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSummary.map(r => (
+                  <tr
+                    key={r.customerId}
+                    className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                    onClick={() => setCustomerId(r.customerId)}
+                    data-testid={`customer-row-${r.customerId}`}
+                  >
+                    <td className="py-2.5 px-4">
+                      <div className="flex items-center gap-2">
+                        {r.isFavorite
+                          ? <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400 shrink-0" />
+                          : <Building2 className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />}
+                        <span className="font-medium">{r.companyName}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                      {r.invoiceCount > 0 ? <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 rounded-full">{r.invoiceCount}건</span> : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="py-2.5 px-4 text-right hidden lg:table-cell">
+                      {r.overdueAmount > 0 ? <span className="text-xs text-red-600 dark:text-red-400 font-medium">{fmt(r.overdueAmount)}</span> : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="py-2.5 px-4 text-right hidden lg:table-cell">
+                      {r.plannedAmount > 0 ? <span className="text-xs text-blue-600 dark:text-blue-400">{fmt(r.plannedAmount)}</span> : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="py-2.5 px-4 text-center hidden lg:table-cell">
+                      {r.noPaymentCount > 0 ? <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded-full">{r.noPaymentCount}</span> : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="py-2.5 px-4 text-right">
+                      {r.outstanding > 0
+                        ? <span className="text-red-600 dark:text-red-400 font-medium">{fmt(r.outstanding)}</span>
+                        : r.outstanding < 0
+                          ? <span className="text-amber-600 dark:text-amber-400">{fmt(r.outstanding)}</span>
+                          : <span className="text-muted-foreground">-</span>}
+                    </td>
+                    <td className="py-2.5 px-4 text-muted-foreground text-xs hidden md:table-cell">{fmtDate(r.lastTransactionDate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-4 py-2 text-xs text-muted-foreground">총 {filteredSummary.length}개 고객사</div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ───────────────────── 상세(원장) 모드 ─────────────────────
   return (
     <div className="flex flex-col h-full">
-      {/* 헤더 */}
       <div className="flex items-center gap-3 p-3 border-b bg-background flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">고객사</span>
-          <Select value={customerId} onValueChange={setCustomerId}>
-            <SelectTrigger className="w-52 h-8 text-sm" data-testid="select-customer-ledger">
-              <SelectValue placeholder="고객사 선택..." />
-            </SelectTrigger>
-            <SelectContent>
-              {sortedCustomers.map(c => <SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        <Button variant="ghost" size="sm" className="h-8" onClick={() => setCustomerId("")} data-testid="button-back-to-list">
+          <ArrowLeft className="h-4 w-4 mr-1" />목록
+        </Button>
+        <span className="font-semibold text-base">{ledger?.customer.companyName || ""}</span>
         <div className="flex items-center gap-1 border rounded-lg p-0.5">
           {(["6m", "1y", "2y", "all"] as const).map(p => (
-            <Button
-              key={p}
-              variant={period === p ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setPeriod(p)}
-              data-testid={`period-${p}`}
-            >
+            <Button key={p} variant={period === p ? "default" : "ghost"} size="sm" className="h-7 text-xs" onClick={() => setPeriod(p)} data-testid={`period-${p}`}>
               {p === "6m" ? "6개월" : p === "1y" ? "1년" : p === "2y" ? "2년" : "전체"}
             </Button>
           ))}
@@ -153,12 +298,7 @@ export default function CustomerLedger() {
         )}
       </div>
 
-      {!customerId ? (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground flex-col gap-2">
-          <Wallet className="h-10 w-10 opacity-30" />
-          <p className="text-sm">고객사를 선택하면 거래원장이 표시됩니다.</p>
-        </div>
-      ) : isLoading ? (
+      {isLoading ? (
         <div className="p-6 space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
       ) : !ledger || ledger.groups.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-muted-foreground flex-col gap-2">

@@ -3627,6 +3627,90 @@ export async function registerRoutes(
     }
   });
 
+  // 고객사 미수금 현황 목록 (공급업체 목록 대칭) — 고객사별 미수금/지연/결제예정/계획없음 집계
+  app.get("/api/customers-receivables-summary", async (_req, res) => {
+    try {
+      const customers = await storage.getCustomers();
+      const invoices = await storage.getSalesInvoices();
+      const allPayments = await storage.getPayments();
+      const today = new Date().toISOString().split("T")[0];
+
+      const normalize = (s: string | null | undefined) =>
+        (s || "").replace(/\s|\(주\)|주식회사|유한회사|\(유\)/g, "").toLowerCase();
+      const nameToId = new Map<string, string>();
+      for (const c of customers) nameToId.set(normalize(c.companyName), c.id);
+      const customerOf = (inv: any): string | null =>
+        inv.customerId || nameToId.get(normalize(inv.companyName)) || null;
+
+      // 은행매칭 입금
+      const txResult = await pool.query(
+        `SELECT matched_sales_invoice_id, SUM(credit_amount) as collected
+         FROM bank_transactions WHERE matched_sales_invoice_id IS NOT NULL
+         GROUP BY matched_sales_invoice_id`
+      );
+      const bankCollected = new Map<string, number>();
+      for (const row of txResult.rows) bankCollected.set(row.matched_sales_invoice_id, Number(row.collected || 0));
+
+      // 완료 수금레코드 + payment 보유 계산서
+      const pmtCollected = new Map<string, number>();
+      const invoiceWithPayment = new Set<string>();
+      for (const p of allPayments) {
+        if (p.type !== "income" || !p.salesInvoiceId) continue;
+        invoiceWithPayment.add(p.salesInvoiceId);
+        if (p.status === "completed") {
+          pmtCollected.set(p.salesInvoiceId, (pmtCollected.get(p.salesInvoiceId) || 0) + (p.actualAmount || p.amount || 0));
+        }
+      }
+
+      const invCustomer = new Map<string, string | null>();
+      for (const inv of invoices) invCustomer.set(inv.id, customerOf(inv));
+
+      type Agg = { outstanding: number; invoiceCount: number; overdueAmount: number; plannedAmount: number; noPaymentCount: number; lastTransactionDate: string | null };
+      const agg = new Map<string, Agg>();
+      const ensure = (cid: string): Agg => {
+        if (!agg.has(cid)) agg.set(cid, { outstanding: 0, invoiceCount: 0, overdueAmount: 0, plannedAmount: 0, noPaymentCount: 0, lastTransactionDate: null });
+        return agg.get(cid)!;
+      };
+
+      for (const inv of invoices as any[]) {
+        const cid = customerOf(inv);
+        if (!cid) continue;
+        const e = ensure(cid);
+        const billed = inv.totalAmount || 0;
+        const txC = bankCollected.get(inv.id) ?? 0;
+        const pmtC = pmtCollected.get(inv.id) ?? 0;
+        const recorded = Math.max(txC, pmtC);
+        const collected = inv.status === "paid" ? ((txC > 0 || pmtC > 0) ? recorded : billed) : recorded;
+        e.outstanding += billed - collected;
+        e.invoiceCount++;
+        const d = inv.issueDate || inv.writeDate;
+        if (d && (!e.lastTransactionDate || d > e.lastTransactionDate)) e.lastTransactionDate = d;
+        if (!invoiceWithPayment.has(inv.id) && inv.status !== "paid" && inv.status !== "completed") e.noPaymentCount++;
+      }
+
+      // 결제예정/지연: 미완료(planned) income 결제계획
+      for (const p of allPayments) {
+        if (p.type !== "income" || p.status !== "planned") continue;
+        let cid = p.salesInvoiceId ? invCustomer.get(p.salesInvoiceId) : null;
+        if (!cid && p.companyName) cid = nameToId.get(normalize(p.companyName)) ?? null;
+        if (!cid) continue;
+        const amount = p.amount || 0;
+        if (amount === 0) continue;
+        const e = ensure(cid);
+        if (p.plannedDate && p.plannedDate < today) e.overdueAmount += amount;
+        else e.plannedAmount += amount;
+      }
+
+      const result = customers
+        .filter(c => agg.has(c.id))
+        .map(c => ({ customerId: c.id, companyName: c.companyName, isFavorite: c.isFavorite ?? false, ...agg.get(c.id)! }))
+        .sort((a, b) => b.outstanding - a.outstanding);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // 고객사 거래원장: 고객사별 프로젝트/매출계산서/수금/미수금
   app.get("/api/customers/:id/ledger", async (req, res) => {
     try {
