@@ -71,6 +71,13 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   return res.status(401).json({ message: "Unauthorized" });
 }
 
+// 매출계산서 수금액 단일 판정 규칙 (수금관리·거래처원장·고객요약 공용).
+// 은행매칭/완료수금레코드 중 큰 값을 실수금으로 보고, status='paid'면 최소 청구액까지 완납 간주.
+function invoiceCollected(totalAmount: number, bankAmount: number, recordAmount: number, statusPaid: boolean): number {
+  const recorded = Math.max(bankAmount || 0, recordAmount || 0);
+  return statusPaid ? Math.max(recorded, totalAmount || 0) : recorded;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1303,6 +1310,13 @@ export async function registerRoutes(
   app.post("/api/customers", async (req, res) => {
     try {
       const data = insertCustomerSchema.parse(req.body);
+      // 사업자번호 중복차단: 같은 번호의 거래처가 이미 있으면 생성하지 않고 기존 건 반환
+      if (data.businessNumber && data.businessNumber.replace(/[^0-9]/g, "")) {
+        const existing = await storage.getCustomerByBusinessNumber(data.businessNumber);
+        if (existing) {
+          return res.status(409).json({ message: `이미 등록된 거래처입니다: ${existing.companyName}`, existing });
+        }
+      }
       const customer = await storage.createCustomer(data);
       res.status(201).json(customer);
     } catch (err: any) {
@@ -3729,8 +3743,7 @@ export async function registerRoutes(
         const billed = inv.totalAmount || 0;
         const txC = bankCollected.get(inv.id) ?? 0;
         const pmtC = pmtCollected.get(inv.id) ?? 0;
-        const recorded = Math.max(txC, pmtC);
-        const collected = inv.status === "paid" ? ((txC > 0 || pmtC > 0) ? recorded : billed) : recorded;
+        const collected = invoiceCollected(billed, txC, pmtC, inv.status === "paid");
         e.outstanding += billed - collected;
         e.invoiceCount++;
         const d = inv.issueDate || inv.writeDate;
@@ -3828,10 +3841,8 @@ export async function registerRoutes(
         const totalAmount = inv.totalAmount || 0;
         const recordPaid = pmts.filter(p => p.status === "completed").reduce((s, p) => s + (p.actualAmount || p.amount || 0), 0);
         const bankPaid = bankByInvoice.get(inv.id) ?? 0;
-        const recorded = Math.max(recordPaid, bankPaid); // 수금레코드 vs 은행매칭 중 큰 값(중복 집계 방지)
-        // status='paid'면 근거가 없어도 완납으로 간주 (미수금 화면과 동일 규칙)
         const statusPaid = inv.status === "paid";
-        const paidAmount = statusPaid ? Math.max(recorded, totalAmount) : recorded;
+        const paidAmount = invoiceCollected(totalAmount, bankPaid, recordPaid, statusPaid);
         const remainingAmount = Math.max(totalAmount - paidAmount, 0);
         const paymentCount = pmts.length;
         const completedCount = pmts.filter(p => p.status === "completed").length;
@@ -9701,15 +9712,7 @@ export async function registerRoutes(
           supplyAmount: inv.supplyAmount,
           taxAmount: inv.taxAmount,
           status: inv.status,
-          collectedAmount: (() => {
-            const txCollected = txInfo?.collected ?? 0;
-            const pmtCollected = completedByInvoice.get(inv.id) ?? 0;
-            const recorded = Math.max(txCollected, pmtCollected); // 중복 집계 방지: 둘 중 큰 값
-            if (inv.status === 'paid') {
-              return (txInfo?.txCount || pmtCollected > 0) ? recorded : (inv.totalAmount ?? 0);
-            }
-            return recorded;
-          })(),
+          collectedAmount: invoiceCollected(inv.totalAmount ?? 0, txInfo?.collected ?? 0, completedByInvoice.get(inv.id) ?? 0, inv.status === 'paid'),
           linkedTxCount: txInfo?.txCount ?? 0,
           linkedTxIds: txInfo?.txIds ?? [],
           nextPaymentDate: plannedByInvoice.get(inv.id) ?? null,

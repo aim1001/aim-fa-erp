@@ -404,7 +404,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomerByBusinessNumber(bizNum: string): Promise<Customer | undefined> {
-    const result = await db.select().from(customers).where(eq(customers.businessNumber, bizNum));
+    // 형식차(하이픈/공백) 무시하고 숫자만 비교해 중복을 정확히 잡음
+    const clean = (bizNum || "").replace(/[^0-9]/g, "");
+    if (!clean) return undefined;
+    const result = await db.select().from(customers)
+      .where(sql`regexp_replace(coalesce(${customers.businessNumber}, ''), '[^0-9]', '', 'g') = ${clean}`);
     return result[0];
   }
 
