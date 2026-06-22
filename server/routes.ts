@@ -1310,6 +1310,56 @@ export async function registerRoutes(
     }
   });
 
+  // 사업자등록증 OCR 자동입력 — 네이버 CLOVA OCR(Document OCR · 사업자등록증)
+  const certUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+  app.post("/api/customers/extract-business-cert", certUpload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "파일이 필요합니다" });
+      const invokeUrl = process.env.CLOVA_OCR_INVOKE_URL;
+      const secret = process.env.CLOVA_OCR_SECRET;
+      if (!invokeUrl || !secret) {
+        return res.status(503).json({ message: "CLOVA OCR 설정이 없습니다. 서버 환경변수 CLOVA_OCR_INVOKE_URL / CLOVA_OCR_SECRET 를 등록해 주세요." });
+      }
+
+      const mime = (req.file.mimetype || "").toLowerCase();
+      const format = mime.includes("pdf") ? "pdf" : mime.includes("png") ? "png" : mime.includes("tif") ? "tiff" : "jpg";
+      const body = {
+        version: "V2",
+        requestId: `cert-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        timestamp: Date.now(),
+        images: [{ format, name: "biz-license", data: req.file.buffer.toString("base64") }],
+      };
+
+      const resp = await fetch(invokeUrl, {
+        method: "POST",
+        headers: { "X-OCR-SECRET": secret, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const t = await resp.text();
+        return res.status(502).json({ message: `CLOVA OCR 호출 실패 (${resp.status})`, detail: t.slice(0, 300) });
+      }
+      const data: any = await resp.json();
+      const image = data?.images?.[0];
+      if (!image || image.inferResult !== "SUCCESS") {
+        return res.status(422).json({ message: "사업자등록증을 인식하지 못했습니다. 더 선명한 이미지를 사용하세요." });
+      }
+      const r = image.bizLicense?.result || {};
+      const pick = (arr: any) => Array.isArray(arr) ? arr.map((x: any) => x?.text).filter(Boolean).join(" ").trim() : "";
+      res.json({
+        companyName: pick(r.companyName) || pick(r.corpName) || "",
+        businessNumber: pick(r.registerNumber) || "",
+        representative: pick(r.repName) || "",
+        address: pick(r.bisAddress) || pick(r.headAddress) || "",
+        businessType: pick(r.bisType) || "",
+        businessCategory: pick(r.bisItem) || "",
+      });
+    } catch (err: any) {
+      console.error("[extract-business-cert]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.patch("/api/customers/:id", async (req, res) => {
     try {
       const data = insertCustomerSchema.partial().parse(req.body);
@@ -3721,11 +3771,6 @@ export async function registerRoutes(
       const customer = await storage.getCustomer(id);
       if (!customer) return res.status(404).json({ message: "고객사를 찾을 수 없습니다" });
 
-      // 이름 정규화 (공백·(주)·주식회사 등 차이 흡수) — vendor ledger와 동일 패턴
-      const normalize = (s: string | null | undefined) =>
-        (s || "").replace(/\s|\(주\)|주식회사|유한회사|\(유\)/g, "").toLowerCase();
-      const custNorm = normalize(customer.companyName);
-
       const inPeriod = (d: string | null | undefined) => {
         if (!startDate && !endDate) return true;
         const v = d || "";
@@ -3734,23 +3779,25 @@ export async function registerRoutes(
         return true;
       };
 
-      // 프로젝트 (customerId 일치 OR 고객사명 유사 일치)
+      // 거래처원장은 customer_id 기준으로만 모음 (이름 유사매칭 제거 — 오연결/오염 방지).
+      // 모든 매출계산서가 customer_id를 보유하므로 이름매칭 없이도 누락 없음.
       const allProjects = await storage.getProjects();
-      const projects = allProjects.filter(p => p.customerId === id || normalize(p.customerName) === custNorm);
+      const projects = allProjects.filter(p => p.customerId === id);
+      const projectIds = new Set(projects.map(p => p.id));
 
-      // 매출계산서 (customerId 일치 OR 상호 유사 일치) + 기간 필터
+      // 매출계산서 (customerId 일치) + 기간 필터
       const allInvoices = await storage.getSalesInvoices();
       const invoices = allInvoices.filter(inv =>
-        (inv.customerId === id || normalize(inv.companyName) === custNorm) &&
-        inPeriod(inv.issueDate || inv.writeDate)
+        inv.customerId === id && inPeriod(inv.issueDate || inv.writeDate)
       );
       const invoiceIds = new Set(invoices.map(i => i.id));
 
-      // 수금 (income, 상호 일치 OR 위 계산서에 연결)
+      // 수금(income): 이 고객의 계산서 또는 프로젝트에 연결된 것만 (이름매칭 제거)
       const allPayments = await storage.getPayments();
       const payments = allPayments.filter(p =>
         p.type === "income" &&
-        ((p.salesInvoiceId && invoiceIds.has(p.salesInvoiceId)) || normalize(p.companyName) === custNorm)
+        ((p.salesInvoiceId && invoiceIds.has(p.salesInvoiceId)) ||
+         (p.projectId && projectIds.has(p.projectId)))
       );
       const paymentsByInvoice = new Map<string, typeof payments>();
       for (const p of payments) {

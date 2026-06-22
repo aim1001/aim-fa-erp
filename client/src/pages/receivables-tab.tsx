@@ -549,7 +549,12 @@ export function ReceivablesTab() {
                               )}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                              {inv.invoiceNumber ?? "-"}
+                              <span className="inline-flex items-center gap-1">
+                                {inv.invoiceNumber ?? "-"}
+                                {!inv.issueDate && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-400 text-amber-600 dark:text-amber-400">예정</Badge>
+                                )}
+                              </span>
                             </td>
                             <td className="px-3 py-2 text-xs">
                               {formatDate(inv.writeDate ?? inv.issueDate)}
