@@ -5892,6 +5892,43 @@ export async function registerRoutes(
         return res.status(400).json({ message: "사업자등록번호가 등록된 거래처만 프로젝트로 전환할 수 있습니다. 거래처에 사업자등록번호를 먼저 등록해 주세요." });
       }
 
+      // 견적 최종 금액(할인 반영) 계산 — 게이트와 프로젝트 총액에 사용
+      let latestQuoteTotalAmount: number | null = null;
+      try {
+        const quots0 = await storage.getQuotationsByInquiry(inquiry.id);
+        if (quots0.length > 0) {
+          const quotData0 = await storage.getQuotationWithItems(quots0[quots0.length - 1].id);
+          if (quotData0 && quotData0.items.length > 0) {
+            const supply = quotData0.items.reduce((s, i) => s + (i.amount || 0), 0);
+            const q = quotData0.quotation;
+            const dType = q.discountType || "amount";
+            const dVal = q.discountValue || 0;
+            const dAmt = dVal > 0 ? (dType === "percent" ? Math.round(supply * dVal / 100) : dVal) : 0;
+            const dUnit = parseInt((q.discountTruncUnit as string) || "0") || 0;
+            let afterDiscount = supply - dAmt;
+            if (dUnit > 0 && dAmt > 0) afterDiscount = Math.floor(afterDiscount / dUnit) * dUnit;
+            latestQuoteTotalAmount = afterDiscount;
+          }
+        }
+      } catch (calcErr: any) {
+        console.log(`최종금액 계산 실패 (lastQuoteSales 사용): ${calcErr.message}`);
+      }
+
+      // 전환 게이트: 계산서·수금 계획을 생성할 수 있는 비율·금액이 갖춰져야 전환 허용.
+      // 없으면 프로젝트/폴더를 만들지 않고 차단(생성·전환 모두 안 됨).
+      const convTotal = latestQuoteTotalAmount ?? inquiry.lastQuoteSales ?? 0;
+      const ratioSum = (inquiry.contractRatio || 0) + (inquiry.midRatio || 0) + (inquiry.finalRatio || 0);
+      const needDelivery =
+        (inquiry.midAfterDelivery === "true" && (inquiry.midRatio || 0) > 0) ||
+        (inquiry.finalAfterDelivery === "true" && (inquiry.finalRatio || 0) > 0);
+      const planErrors: string[] = [];
+      if (!convTotal || convTotal <= 0) planErrors.push("견적 금액(총액)이 없습니다 — 견적서를 연결/작성하세요.");
+      if (ratioSum !== 100) planErrors.push(`수금·계산서 비율 합계가 ${ratioSum}%입니다 — 계약금+중도금+잔금 = 100%로 설정하세요.`);
+      if (needDelivery && !inquiry.deliveryDate) planErrors.push("납품예정일이 없습니다 — 납품 기준 수금 타이밍 계산에 필요합니다.");
+      if (planErrors.length > 0) {
+        return res.status(400).json({ message: "계산서·수금 계획을 먼저 설정해야 전환할 수 있습니다:\n· " + planErrors.join("\n· "), planErrors });
+      }
+
       const year = inquiry.year || new Date().getFullYear();
       const prefix = String(year).slice(-2);
       const yearProjects = allProjects.filter(p => p.year === year && p.projectNumber);
@@ -5928,29 +5965,6 @@ export async function registerRoutes(
         }
       } catch (driveErr: any) {
         console.log(`OneDrive 프로젝트 폴더 생성 실패 (전환은 계속): ${driveErr.message}`);
-      }
-
-      let latestQuoteTotalAmount: number | null = null;
-      try {
-        const quots = await storage.getQuotationsByInquiry(inquiry.id);
-        if (quots.length > 0) {
-          const latestQuot = quots[quots.length - 1];
-          const quotData = await storage.getQuotationWithItems(latestQuot.id);
-          if (quotData && quotData.items.length > 0) {
-            // 견적 합계(추가/할인 항목 포함)에서 견적 레벨 할인(카테고리/전체 네고)을 반영
-            const supply = quotData.items.reduce((s, i) => s + (i.amount || 0), 0);
-            const q = quotData.quotation;
-            const dType = q.discountType || "amount";
-            const dVal = q.discountValue || 0;
-            const dAmt = dVal > 0 ? (dType === "percent" ? Math.round(supply * dVal / 100) : dVal) : 0;
-            const dUnit = parseInt((q.discountTruncUnit as string) || "0") || 0;
-            let afterDiscount = supply - dAmt;
-            if (dUnit > 0 && dAmt > 0) afterDiscount = Math.floor(afterDiscount / dUnit) * dUnit;
-            latestQuoteTotalAmount = afterDiscount;
-          }
-        }
-      } catch (calcErr: any) {
-        console.log(`최종금액 계산 실패 (lastQuoteSales 사용): ${calcErr.message}`);
       }
 
       const project = await storage.createProject({
@@ -6005,6 +6019,59 @@ export async function registerRoutes(
             });
           }
         }
+      }
+
+      // 전환 시 계산서 발행계획 + 수금계획 자동 생성 (게이트를 통과했으므로 비율·금액 유효).
+      // 단계별로 미발행 계산서(placeholder) + 예정 수금(payment)을 한 번에 생성.
+      try {
+        const genTotal = project.totalAmount || 0;
+        const baseDate = new Date().toISOString().split("T")[0];
+        const genDelivery = project.deliveryDate || baseDate;
+        const genStages = [
+          { name: "계약금", ratio: project.depositRatio || 0, timingType: project.depositTimingType, timingDays: project.depositTimingDays, afterDelivery: null as string | null, idx: 1 },
+          { name: "중도금", ratio: project.midRatio || 0, timingType: project.midTimingType, timingDays: project.midTimingDays, afterDelivery: project.midAfterDelivery, idx: 2 },
+          { name: "잔금", ratio: project.finalRatio || 0, timingType: project.finalTimingType, timingDays: project.finalTimingDays, afterDelivery: project.finalAfterDelivery, idx: 3 },
+        ].filter(s => s.ratio > 0);
+        const splitTotal = genStages.length;
+        for (const stage of genStages) {
+          const supplyAmt = Math.round((genTotal * stage.ratio) / 100);
+          const tax = Math.round(supplyAmt * 0.1);
+          const amount = supplyAmt + tax;
+          const refDate = stage.afterDelivery === "true" ? genDelivery : baseDate;
+          const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
+          const inv = await storage.createSalesInvoice({
+            projectId: project.id,
+            customerId: project.customerId || null,
+            companyName: convertCustomer.companyName || project.customerName || "",
+            businessNumber: convertCustomer.businessNumber || null,
+            representative: convertCustomer.representative || null,
+            address: convertCustomer.address || null,
+            issueDate: null,
+            year: project.year || year,
+            item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
+            supplyAmount: supplyAmt,
+            taxAmount: tax,
+            totalAmount: amount,
+            invoiceStage: stage.name,
+            plannedIssueDate: plannedDate,
+            status: "pending",
+          });
+          await storage.createPayment({
+            type: "income",
+            projectId: project.id,
+            salesInvoiceId: inv.id,
+            companyName: project.customerName || "",
+            description: `${project.projectNumber} ${stage.name}`,
+            amount,
+            plannedDate,
+            paymentMethod: stage.timingType || "end_of_next_month",
+            status: "planned",
+            splitIndex: stage.idx,
+            splitTotal,
+          });
+        }
+      } catch (genErr: any) {
+        console.log(`전환 시 계획 자동생성 실패: ${genErr.message}`);
       }
 
       await storage.updateInquiry(inquiry.id, { status: "won" });

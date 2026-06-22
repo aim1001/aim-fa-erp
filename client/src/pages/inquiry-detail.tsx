@@ -2031,13 +2031,11 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
       return res.json();
     },
     onSuccess: (data) => {
-      toast({ title: "프로젝트로 전환되었습니다", description: `프로젝트 번호: ${data.project.projectNumber}` });
+      toast({ title: "프로젝트로 전환되었습니다", description: `프로젝트 번호: ${data.project.projectNumber} · 계산서·수금 계획 생성됨` });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/inquiries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard"] });
-      const warnings = getConversionSetupWarnings(data.project);
-      if (warnings.length > 0) setSetupWarning({ project: data.project, warnings });
     },
     onError: (err: Error) => {
       toast({ title: "프로젝트 전환 실패", description: err.message, variant: "destructive" });
