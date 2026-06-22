@@ -654,12 +654,10 @@ export default function SalesInvoiceList() {
       );
     }
 
-    // 전체 보기일 때: 미발행 먼저(맨 위), 발행완료 나중 / 각 그룹 내 날짜 내림차순
+    // 전체 보기: 발행완료/미발행 구분 없이 날짜 기준 단일 목록 (한 목록).
+    // 미발행/발행완료는 행 색상·뱃지로만 구분하고 섹션은 나누지 않음.
     if (issueStatusFilter === "all") {
       return [...list].sort((a, b) => {
-        const aIssued = !!a.issueDate;
-        const bIssued = !!b.issueDate;
-        if (aIssued !== bIssued) return aIssued ? 1 : -1;
         const aDate = a.issueDate || a.writeDate || a.plannedIssueDate || "";
         const bDate = b.issueDate || b.writeDate || b.plannedIssueDate || "";
         return bDate.localeCompare(aDate);
@@ -1083,7 +1081,7 @@ export default function SalesInvoiceList() {
                 <span className="flex items-center gap-1 font-medium text-green-600 dark:text-green-400">
                   <CheckCheck className="h-3.5 w-3.5" />발행완료 {issuedList.length}건
                 </span>
-                <span className="text-[10px] text-muted-foreground/60">(미발행은 노란 배경, 맨 위)</span>
+                <span className="text-[10px] text-muted-foreground/60">(미발행은 노란 배경으로 표시)</span>
               </div>
             );
           }
@@ -1121,8 +1119,6 @@ export default function SalesInvoiceList() {
             <tbody>
               {filtered.map((inv, idx) => {
                 const isUnissued = !inv.issueDate;
-                const prevUnissued = idx > 0 && !filtered[idx - 1].issueDate;
-                const showDivider = issueStatusFilter === "all" && !isUnissued && prevUnissued;
                 const isUnlinked = !inv.projectId;
                 const isInlineEditing = inlineEditId === inv.id;
                 const inlineFilteredProjects = inlineCustomerId
@@ -1131,17 +1127,6 @@ export default function SalesInvoiceList() {
                 const today = new Date().toISOString().split("T")[0];
                 const isOverdue = isUnissued && !!inv.plannedIssueDate && inv.plannedIssueDate < today;
                 return (
-                <>
-                {showDivider && (
-                  <tr key={`divider-${inv.id}`}>
-                    <td colSpan={12} className="py-0">
-                      <div className="flex items-center gap-2 px-4 py-1.5 bg-green-50 dark:bg-green-950/20 border-y border-green-200 dark:border-green-800">
-                        <CheckCheck className="h-3 w-3 text-green-600 dark:text-green-400" />
-                        <span className="text-xs font-medium text-green-700 dark:text-green-300">발행완료</span>
-                      </div>
-                    </td>
-                  </tr>
-                )}
                 <tr key={inv.id} className={`border-b last:border-b-0 hover:bg-muted/30 cursor-pointer transition-colors ${isOverdue ? "bg-red-50/40 dark:bg-red-950/10" : isUnissued ? "bg-amber-50/30 dark:bg-amber-950/10" : ""} ${isUnlinked ? "border-l-2 border-l-orange-300 dark:border-l-orange-700" : ""}`} onClick={() => { if (!isInlineEditing) setSelectedId(inv.id); }} data-testid={`row-sales-invoice-${inv.id}`}>
                   <td className="py-2.5 px-3" onClick={e => e.stopPropagation()}>
                     {isUnissued ? (
@@ -1304,7 +1289,6 @@ export default function SalesInvoiceList() {
                     {inv.paymentCount > 0 ? <span className={inv.remainingAmount > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}>{inv.remainingAmount.toLocaleString()}원</span> : <span className="text-muted-foreground">-</span>}
                   </td>
                 </tr>
-                </>
                 );
               })}
             </tbody>
