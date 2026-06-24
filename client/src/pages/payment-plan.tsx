@@ -58,7 +58,7 @@ export default function PaymentPlan() {
             onClick={() => setViewMode("bank-manage")}
             data-testid="button-view-bank-manage"
           >
-            <Settings className="h-4 w-4 mr-1" />은행관리
+            <Settings className="h-4 w-4 mr-1" />은행 데이터
           </Button>
         </div>
       </div>

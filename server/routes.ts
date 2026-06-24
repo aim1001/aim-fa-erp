@@ -7975,6 +7975,99 @@ export async function registerRoutes(
     }
   });
 
+  // 월별요약 셀 클릭 → 그 달·용도의 거래 내역 (집계와 동일 로직)
+  app.get("/api/cash-flow/monthly-detail", async (req: Request, res: Response) => {
+    try {
+      const { deriveCashCategory } = await import("@shared/cash-category");
+      const ym = req.query.ym as string;
+      const dir = req.query.dir as string; // income | expense
+      const category = (req.query.category as string) || "";
+      if (!ym || !dir) return res.status(400).json({ message: "ym and dir required" });
+      const [y, m] = ym.split("-").map(Number);
+      const winStart = `${ym}-01`;
+      const endD = new Date(y, m, 1);
+      const winEndExcl = `${endD.getFullYear()}-${String(endD.getMonth() + 1).padStart(2, "0")}-01`;
+
+      const projects = await storage.getProjects();
+      const projectMap = new Map(projects.map((p: any) => [p.id, p]));
+      const allOrders = await storage.getPurchaseOrders();
+      const orderByPaymentId = new Map(allOrders.filter((o: any) => o.paymentId).map((o: any) => [o.paymentId, o.orderNumber || null]));
+
+      const items: any[] = [];
+      const bankRes = await pool.query(
+        `SELECT tx_date, counterparty, description, credit_amount, debit_amount, matched_sales_invoice_id
+         FROM bank_transactions WHERE tx_date >= $1 AND tx_date < $2 ORDER BY tx_date`,
+        [winStart, winEndExcl]
+      );
+      for (const b of bankRes.rows as any[]) {
+        const credit = Number(b.credit_amount || 0);
+        const debit = Number(b.debit_amount || 0);
+        const thisDir = credit > 0 ? "income" : "expense";
+        if (thisDir !== dir) continue;
+        const cat = deriveCashCategory({ type: thisDir, companyName: b.counterparty, description: b.description, salesInvoiceId: b.matched_sales_invoice_id });
+        if (category && cat !== category) continue;
+        items.push({ source: "bank", date: b.tx_date, category: cat, name: b.counterparty || b.description || "-", description: b.description, amount: credit > 0 ? credit : debit, status: "실제" });
+      }
+      const allPayments = await storage.getPayments();
+      for (const p of allPayments) {
+        if (p.status === "completed") continue;
+        const d = p.plannedDate || p.actualDate;
+        if (!d || d < winStart || d >= winEndExcl) continue;
+        const thisDir = p.type === "income" ? "income" : "expense";
+        if (thisDir !== dir) continue;
+        const amt = (p.actualAmount ?? p.amount ?? 0);
+        if (amt === 0) continue;
+        const cat = deriveCashCategory(p as any);
+        if (category && cat !== category) continue;
+        const proj = p.projectId ? projectMap.get(p.projectId) : null;
+        items.push({
+          source: "plan", date: d, category: cat,
+          name: p.companyName || (proj as any)?.customerName || p.description || "-",
+          description: p.description, amount: amt,
+          projectNumber: (proj as any)?.projectNumber || null,
+          purchaseOrderNumber: orderByPaymentId.get(p.id) || null,
+          customerName: (proj as any)?.customerName || null,
+          status: "예정",
+        });
+      }
+      items.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      res.json({ ym, dir, category: category || null, items, total: items.reduce((s, i) => s + i.amount, 0) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 정기지출 예정 ↔ 실제 은행출금 자동매칭 (같은 달 + 동일 금액). 변동금액/불명확은 매칭 안 하고 미확인으로 반환.
+  app.post("/api/recurring-payments/auto-match", async (_req: Request, res: Response) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const payments = await storage.getPayments();
+      const recProjections = payments.filter(p => p.recurringExpenseId && p.status !== "completed" && (p.amount || 0) > 0 && p.plannedDate);
+      recProjections.sort((a, b) => (a.plannedDate || "").localeCompare(b.plannedDate || ""));
+      const allTx = await storage.getBankTransactions({});
+      const unmatchedDebits = allTx.filter((t: any) => (t.debitAmount || 0) > 0 && (!t.matchStatus || t.matchStatus === "unmatched"));
+
+      const used = new Set<string>();
+      let matched = 0;
+      const unresolved: any[] = [];
+      for (const p of recProjections) {
+        const ym = (p.plannedDate || "").slice(0, 7);
+        const cand = unmatchedDebits.find((t: any) => !used.has(t.id) && (t.txDate || "").slice(0, 7) === ym && (t.debitAmount || 0) === p.amount);
+        if (cand) {
+          used.add(cand.id);
+          await storage.updateBankTransaction(cand.id, { matchStatus: "auto", matchedPaymentId: p.id });
+          await storage.updatePayment(p.id, { status: "completed", actualDate: cand.txDate || undefined, actualAmount: cand.debitAmount || undefined });
+          matched++;
+        } else if ((p.plannedDate || "") < today) {
+          unresolved.push({ id: p.id, companyName: p.companyName, amount: p.amount, plannedDate: p.plannedDate });
+        }
+      }
+      res.json({ matched, unresolvedCount: unresolved.length, unresolved });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/recurring-expenses/generate", async (req: Request, res: Response) => {
     const { year, month } = req.query as { year: string; month: string };
     if (!year || !month) return res.status(400).json({ message: "year and month required" });

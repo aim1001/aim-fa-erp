@@ -1,10 +1,84 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CASH_CATEGORIES, type CashCategory } from "@shared/cash-category";
+import { CategoryChip } from "@/components/cash-category-chip";
+
+type DetailTarget = { ym: string; dir: "income" | "expense"; category: string; label: string };
+
+type DetailItem = {
+  source: "bank" | "plan";
+  date: string;
+  category: CashCategory;
+  name: string;
+  description: string | null;
+  amount: number;
+  projectNumber?: string | null;
+  purchaseOrderNumber?: string | null;
+  customerName?: string | null;
+  status: string;
+};
+
+function MonthlyDetailModal({ target, onClose }: { target: DetailTarget; onClose: () => void }) {
+  const { data, isLoading } = useQuery<{ items: DetailItem[]; total: number }>({
+    queryKey: ["/api/cash-flow/monthly-detail", target.ym, target.dir, target.category],
+    queryFn: async () => {
+      const params = new URLSearchParams({ ym: target.ym, dir: target.dir });
+      if (target.category) params.set("category", target.category);
+      const res = await fetch(`/api/cash-flow/monthly-detail?${params}`);
+      return res.json();
+    },
+  });
+  const items = data?.items ?? [];
+  return (
+    <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-xl max-h-[80vh] flex flex-col" data-testid="monthly-detail-modal">
+        <DialogHeader>
+          <DialogTitle className="text-base">
+            {target.ym} · {target.label}
+            <span className={`ml-2 text-sm font-semibold ${target.dir === "income" ? "text-green-600" : "text-red-600"}`}>
+              {target.dir === "income" ? "+" : "-"}{(data?.total ?? 0).toLocaleString()}원
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="overflow-y-auto flex-1 -mx-1 px-1">
+          {isLoading ? (
+            <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-9" />)}</div>
+          ) : items.length === 0 ? (
+            <div className="text-center py-10 text-sm text-muted-foreground">내역이 없습니다</div>
+          ) : (
+            <div className="divide-y text-sm">
+              {items.map((it, i) => (
+                <div key={i} className="flex items-center gap-2 py-2" data-testid={`detail-item-${i}`}>
+                  <span className="text-[11px] text-muted-foreground w-20 shrink-0">{it.date}</span>
+                  <CategoryChip category={it.category} />
+                  {it.projectNumber && <span className="shrink-0 text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-400">{it.projectNumber}</span>}
+                  {it.purchaseOrderNumber && <span className="shrink-0 text-[10px] font-mono font-semibold text-amber-700 dark:text-amber-400">{it.purchaseOrderNumber}</span>}
+                  <span className="flex-1 min-w-0 truncate">
+                    {it.name}
+                    {it.customerName && it.customerName !== it.name && <span className="text-muted-foreground"> · {it.customerName}</span>}
+                  </span>
+                  <Badge variant="outline" className={`text-[9px] h-4 px-1 shrink-0 ${it.source === "bank" ? "text-green-600 border-green-200" : "text-blue-600 border-blue-200"}`}>
+                    {it.status}
+                  </Badge>
+                  <span className={`tabular-nums text-xs font-medium w-24 text-right shrink-0 ${target.dir === "income" ? "text-green-600" : "text-red-600"}`}>
+                    {it.amount.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 type MonthRow = {
   ym: string;
@@ -26,6 +100,7 @@ const EXPENSE_CATS = CASH_CATEGORIES.filter(c => c !== "수금");
 
 export function CashMonthlyTab({ year, month }: { year: number; month: number }) {
   const { toast } = useToast();
+  const [detail, setDetail] = useState<DetailTarget | null>(null);
   const from = `${year}-${String(month).padStart(2, "0")}`;
   const { data, isLoading } = useQuery<Summary>({
     queryKey: ["/api/cash-flow/monthly-summary", from, 4],
@@ -107,8 +182,22 @@ export function CashMonthlyTab({ year, month }: { year: number; month: number })
             <tr className="bg-green-50/60 dark:bg-green-950/20"><td colSpan={months.length + 1} className="py-1.5 px-3 text-xs font-medium text-green-700 dark:text-green-400">수입</td></tr>
             {incCats.map(c => (
               <tr key={"i" + c} className="border-b last:border-0">
-                <td className="py-1.5 px-3 pl-6">{c === "기타" ? "기타수입" : c}</td>
-                {months.map(m => <td key={m.ym} className="py-1.5 px-3 text-right">{(m.income[c] || 0) !== 0 ? fmt(m.income[c]) : "—"}</td>)}
+                <td className="py-1.5 px-3 pl-6">
+                  <span className="inline-flex items-center gap-1.5">
+                    <CategoryChip category={c as CashCategory} />
+                    {c === "기타" && <span className="text-xs text-muted-foreground">수입</span>}
+                  </span>
+                </td>
+                {months.map(m => {
+                  const v = m.income[c] || 0;
+                  return (
+                    <td key={m.ym} className="py-1.5 px-3 text-right tabular-nums">
+                      {v !== 0 ? (
+                        <button className="hover:underline hover:text-primary cursor-pointer" onClick={() => setDetail({ ym: m.ym, dir: "income", category: c, label: c === "기타" ? "기타수입" : c })} data-testid={`cell-income-${c}-${m.ym}`}>{fmt(v)}</button>
+                      ) : "—"}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
             <tr className="border-b font-medium">
@@ -119,8 +208,19 @@ export function CashMonthlyTab({ year, month }: { year: number; month: number })
             <tr className="bg-muted/40"><td colSpan={months.length + 1} className="py-1.5 px-3 text-xs font-medium">지출</td></tr>
             {expCats.map(c => (
               <tr key={"e" + c} className="border-b last:border-0">
-                <td className="py-1.5 px-3 pl-6">{c}</td>
-                {months.map(m => <td key={m.ym} className="py-1.5 px-3 text-right">{(m.expense[c] || 0) !== 0 ? fmt(m.expense[c]) : "—"}</td>)}
+                <td className="py-1.5 px-3 pl-6">
+                  <CategoryChip category={c as CashCategory} />
+                </td>
+                {months.map(m => {
+                  const v = m.expense[c] || 0;
+                  return (
+                    <td key={m.ym} className="py-1.5 px-3 text-right tabular-nums">
+                      {v !== 0 ? (
+                        <button className="hover:underline hover:text-primary cursor-pointer" onClick={() => setDetail({ ym: m.ym, dir: "expense", category: c, label: c })} data-testid={`cell-expense-${c}-${m.ym}`}>{fmt(v)}</button>
+                      ) : "—"}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
             <tr className="border-b font-medium">
@@ -147,7 +247,10 @@ export function CashMonthlyTab({ year, month }: { year: number; month: number })
 
       <p className="text-xs text-muted-foreground">
         과거·당월 실적은 은행거래(확정), 미래는 예정(수금예정·정기지출 자동 투영) 기준입니다. 월말잔고가 음수/저잔고면 색으로 경고합니다.
+        <span className="ml-1">금액을 클릭하면 상세 내역이 열립니다.</span>
       </p>
+
+      {detail && <MonthlyDetailModal target={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }

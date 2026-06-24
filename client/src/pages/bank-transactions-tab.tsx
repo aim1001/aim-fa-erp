@@ -813,6 +813,9 @@ const [showQuickImport, setShowQuickImport] = useState(false);
 
   return (
     <div className="space-y-3" data-testid="bank-transactions-tab">
+      <p className="text-xs text-muted-foreground">
+        엑셀 가져오기·중복정리·자동매칭으로 <span className="font-medium text-foreground">확정 거래</span>를 관리하는 곳입니다. 미래 예정·잔액 흐름은 <span className="font-medium text-foreground">일별 자금흐름</span>에서 보세요.
+      </p>
       {/* Row 1: 날짜 프리셋 + 액션 버튼 */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
