@@ -361,6 +361,110 @@ function AddPaymentDialog({ defaultYear, defaultMonth, onClose }: {
   );
 }
 
+// 변동금액 정기 등 '확인 필요' 건을 실제 출금에 연결하거나 완료처리하는 다이얼로그
+function ConfirmRecurringDialog({ payment, onClose }: { payment: EnrichedPayment; onClose: () => void }) {
+  const { toast } = useToast();
+  const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
+  const ym = (payment.plannedDate || payment.actualDate || "").slice(0, 7);
+  const [y, m] = ym.split("-").map(Number);
+  const start = `${ym}-01`;
+  const lastDay = new Date(y, m, 0).getDate();
+  const end = `${ym}-${String(lastDay).padStart(2, "0")}`;
+
+  const { data: txs = [], isLoading } = useQuery<BankTransaction[]>({
+    queryKey: ["/api/bank-transactions", "confirm-debit", ym, start, end],
+    queryFn: async () => {
+      const res = await fetch(`/api/bank-transactions?startDate=${start}&endDate=${end}&txType=debit`);
+      return res.json();
+    },
+  });
+  const candidates = useMemo(() => txs
+    .filter(t => (t.debitAmount || 0) > 0 && (!t.matchStatus || t.matchStatus === "unmatched"))
+    .sort((a, b) => Math.abs((a.debitAmount || 0) - (payment.amount || 0)) - Math.abs((b.debitAmount || 0) - (payment.amount || 0))),
+    [txs, payment.amount]);
+
+  const linkMutation = useMutation({
+    mutationFn: async (txId: string) => {
+      const res = await apiRequest("POST", `/api/bank-transactions/${txId}/match`, { paymentId: payment.id });
+      return res.json();
+    },
+    onSuccess: () => { invalidateCashViews(); toast({ title: "확인 완료 — 실제 출금에 연결됨" }); onClose(); },
+    onError: (e: Error) => toast({ title: "연결 실패", description: e.message, variant: "destructive" }),
+  });
+  const completeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/payments/bulk-complete", { ids: [payment.id] });
+      return res.json();
+    },
+    onSuccess: () => { invalidateCashViews(); toast({ title: "완료 처리됨" }); onClose(); },
+    onError: (e: Error) => toast({ title: "완료 실패", description: e.message, variant: "destructive" }),
+  });
+  const pending = linkMutation.isPending || completeMutation.isPending;
+
+  return (
+    <Dialog open onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>정기지출 확인 — 실제 출금 연결</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-muted/40 rounded-lg px-3 py-2.5 text-sm space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="font-medium">{payment.companyName || payment.description || "정기지출"}</div>
+              <div className="text-red-600 font-semibold">-{(payment.amount || 0).toLocaleString()}원</div>
+            </div>
+            <div className="text-xs text-muted-foreground">예정일 {payment.plannedDate} · 실제 나간 금액으로 연결됩니다</div>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-2">
+              {ym} 미연결 출금 {!isLoading && <span className="font-normal">({candidates.length}건 — 금액 가까운 순)</span>}
+            </div>
+            {isLoading ? (
+              <div className="space-y-2">{[1, 2].map(i => <Skeleton key={i} className="h-12" />)}</div>
+            ) : candidates.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-6 bg-muted/20 rounded-lg">이 달에 미연결 출금이 없습니다</div>
+            ) : (
+              <div className="space-y-1 max-h-60 overflow-y-auto pr-1">
+                {candidates.slice(0, 15).map(t => {
+                  const diff = (t.debitAmount || 0) - (payment.amount || 0);
+                  return (
+                    <div key={t.id}
+                      className={`border rounded-lg px-3 py-2 cursor-pointer text-sm ${selectedTxId === t.id ? "border-primary bg-primary/5" : "hover:border-primary/40 hover:bg-muted/30"}`}
+                      onClick={() => setSelectedTxId(selectedTxId === t.id ? null : t.id)}
+                      data-testid={`confirm-candidate-${t.id}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{t.counterparty || t.description || "내용 없음"}</div>
+                          <div className="text-xs text-muted-foreground">{t.txDate}</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-red-600 font-medium">-{(t.debitAmount || 0).toLocaleString()}</div>
+                          {diff !== 0 && <div className="text-[10px] text-muted-foreground">예정대비 {diff > 0 ? "+" : ""}{diff.toLocaleString()}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" size="sm" className="text-xs text-muted-foreground" disabled={pending}
+            onClick={() => completeMutation.mutate()} data-testid="button-confirm-complete-only">
+            은행출금 없이 완료
+          </Button>
+          <div className="flex gap-2 sm:ml-auto">
+            <Button variant="secondary" size="sm" onClick={onClose} disabled={pending}>취소(연체 유지)</Button>
+            <Button size="sm" disabled={!selectedTxId || pending}
+              onClick={() => { if (selectedTxId) linkMutation.mutate(selectedTxId); }} data-testid="button-confirm-link">
+              {pending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}연결
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function PaymentStatusBadge({ payment }: { payment: EnrichedPayment }) {
   const today = new Date().toISOString().split("T")[0];
   if (payment.status === "completed") {
@@ -386,6 +490,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [filterCategory, setFilterCategory] = useState<SimpleCashCategory | "all">("all");
   const [showActual, setShowActual] = useState(false); // 과거 실제 거래 펼치기
+  const [confirmTarget, setConfirmTarget] = useState<EnrichedPayment | null>(null); // 연체 정기 확인
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [matchDialogTx, setMatchDialogTx] = useState<BankTransaction | null>(null);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
@@ -1627,6 +1732,18 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
                               되돌리기
                             </Button>
                           </div>
+                        ) : isOverdue ? (
+                          <div className="flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                            <Button
+                              variant="outline" size="sm"
+                              className="h-6 text-[10px] px-2 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/30"
+                              onClick={() => setConfirmTarget(p)}
+                              title="실제 출금에 연결하거나 완료 처리"
+                              data-testid={`button-confirm-overdue-${p.id}`}
+                            >
+                              확인
+                            </Button>
+                          </div>
                         ) : p.plannedDate ? (
                           <div
                             className="flex flex-col items-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1668,6 +1785,10 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
 
       {matchDialogTx && (
         <MatchDialog tx={matchDialogTx} onClose={() => setMatchDialogTx(null)} />
+      )}
+
+      {confirmTarget && (
+        <ConfirmRecurringDialog payment={confirmTarget} onClose={() => setConfirmTarget(null)} />
       )}
 
       {selectedPaymentId && (
