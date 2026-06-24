@@ -170,9 +170,14 @@ function BulkCompleteSection() {
   );
 }
 
+type VatQuarter = { year: number; quarter: number; label: string; salesTax: number; purchaseTax: number; vat: number; paymentDate: string };
+
 export default function ManagementDashboard() {
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/management-dashboard"],
+  });
+  const { data: vat } = useQuery<{ upcoming: VatQuarter | null }>({
+    queryKey: ["/api/vat/summary"],
   });
 
   const [showAllInvoices, setShowAllInvoices] = useState(false);
@@ -262,6 +267,24 @@ export default function ManagementDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {vat?.upcoming && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/10">
+          <CardContent className="p-3 flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Receipt className="h-4 w-4 text-amber-600" />
+              <span className="text-sm font-medium">예상 부가세 — {vat.upcoming.label}</span>
+            </div>
+            <span className={`text-lg font-bold ${vat.upcoming.vat < 0 ? "text-blue-600" : "text-amber-700 dark:text-amber-400"}`}>
+              {vat.upcoming.vat < 0 ? "환급 " : ""}{fmtComma(Math.abs(vat.upcoming.vat))}원
+            </span>
+            <span className="text-xs text-muted-foreground">
+              매출세액 {fmtComma(vat.upcoming.salesTax)} − 매입세액 {fmtComma(vat.upcoming.purchaseTax)}
+            </span>
+            <span className="ml-auto text-xs text-muted-foreground">납부 예정일 {vat.upcoming.paymentDate}</span>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="border rounded-lg">

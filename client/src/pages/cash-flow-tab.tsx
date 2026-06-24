@@ -601,7 +601,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
     },
   });
 
-  const { data: payments = [], isLoading: paymentsLoading } = useQuery<EnrichedPayment[]>({
+  const { data: paymentsRaw = [], isLoading: paymentsLoading } = useQuery<EnrichedPayment[]>({
     queryKey: ["/api/payments", isSearchActive ? "search" : rangeMode, isSearchActive ? "search" : year, isSearchActive ? "search" : month, searchQuery, searchMinAmount, searchMaxAmount, searchDateFrom, searchDateTo],
     queryFn: async () => {
       if (isSearchActive) {
@@ -630,6 +630,26 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
       return res.json();
     },
   });
+
+  // 부가세 자동계산 → 분기 납부일에 '예상 부가세' 예정행으로 자동 주입(합성)
+  const { data: vatData } = useQuery<{ quarters: { year: number; quarter: number; label: string; vat: number; paymentDate: string }[] }>({
+    queryKey: ["/api/vat/summary"],
+  });
+  const payments = useMemo(() => {
+    if (isSearchActive) return paymentsRaw;
+    const todayS = new Date().toISOString().slice(0, 10);
+    const synth = (vatData?.quarters || [])
+      .filter(q => q.vat > 0 && q.paymentDate >= startDate && q.paymentDate <= endDate && q.paymentDate >= todayS)
+      .map(q => ({
+        id: `vat:${q.year}-${q.quarter}`, type: "expense", amount: q.vat, plannedDate: q.paymentDate,
+        actualDate: null, status: "planned", category: "세금", companyName: "국세(부가세)",
+        description: `예상 부가세 ${q.label}`, recurringExpenseId: null, salesInvoiceId: null, purchaseInvoiceId: null,
+        projectId: null, projectNumber: null, projectCustomerName: null, purchaseOrderNumber: null,
+        invoiceIssueDate: null, invoiceNumber: null, invoiceTotalAmount: null, invoiceItem: null,
+        invoicePaidAmount: 0, invoiceRemainingAmount: 0, invoiceSupplyAmount: null, invoiceTaxAmount: null,
+      } as unknown as EnrichedPayment));
+    return synth.length ? [...paymentsRaw, ...synth] : paymentsRaw;
+  }, [paymentsRaw, vatData, startDate, endDate, isSearchActive]);
 
   const unmatchMutation = useMutation({
     mutationFn: async (txId: string) => {
@@ -927,7 +947,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
   // Selectable payment rows (only payment rows, not completed)
   const selectablePaymentIds = useMemo(() =>
     visibleRows
-      .filter(r => r.kind === "payment" && r.payment.status !== "completed")
+      .filter(r => r.kind === "payment" && r.payment.status !== "completed" && !r.payment.id.startsWith("vat:"))
       .map(r => (r as { kind: "payment"; payment: EnrichedPayment; estimatedBalance: number | null }).payment.id),
     [visibleRows]
   );
@@ -1586,7 +1606,8 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
                   const today = new Date().toISOString().split("T")[0];
                   const isOverdue = p.status !== "completed" && p.plannedDate && p.plannedDate < today;
                   const date = p.actualDate || p.plannedDate || "";
-                  const isSelectable = p.status !== "completed";
+                  const isSynthetic = p.id.startsWith("vat:");
+                  const isSelectable = p.status !== "completed" && !isSynthetic;
                   const isSelected = selectedIds.has(p.id);
 
                   // Supply/tax info from linked invoice
@@ -1607,7 +1628,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
                         isOverdue ? "bg-red-50/60 dark:bg-red-950/20 border-l-red-500" :
                         `${pstyle.bg} ${pstyle.bar}`
                       }`}
-                      onClick={() => setSelectedPaymentId(p.id)}
+                      onClick={() => { if (!isSynthetic) setSelectedPaymentId(p.id); }}
                       data-testid={`cf-payment-row-${p.id}`}
                     >
                       <td
@@ -1711,7 +1732,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
                         <PaymentStatusBadge payment={p} />
                       </td>
                       <td className="px-1">
-                        {p.status === "completed" ? (
+                        {isSynthetic ? null : p.status === "completed" ? (
                           <div
                             className="flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={e => e.stopPropagation()}

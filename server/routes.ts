@@ -8037,6 +8037,43 @@ export async function registerRoutes(
     }
   });
 
+  // 부가세(국세) 분기별 자동계산 — 매출세액 - 매입세액. 발행된 계산서(작성일/발행일 있는 것)만 집계.
+  app.get("/api/vat/summary", async (_req: Request, res: Response) => {
+    try {
+      const sales = await storage.getSalesInvoices();
+      const purchases = await storage.getPurchaseInvoices();
+      const dateOf = (inv: any) => inv.writeDate || inv.issueDate || null;
+      const qIndex = (d: string) => { const [y, m] = d.split("-").map(Number); return { y, q: Math.floor((m - 1) / 3) + 1 }; };
+      const bucket = new Map<string, { salesTax: number; purchaseTax: number }>();
+      const add = (d: string | null, field: "salesTax" | "purchaseTax", amt: number) => {
+        if (!d) return;
+        const { y, q } = qIndex(d);
+        const k = `${y}-${q}`;
+        const b = bucket.get(k) || { salesTax: 0, purchaseTax: 0 };
+        b[field] += amt || 0;
+        bucket.set(k, b);
+      };
+      for (const inv of sales) add(dateOf(inv), "salesTax", inv.taxAmount || 0);
+      for (const inv of purchases) add(dateOf(inv), "purchaseTax", inv.taxAmount || 0);
+
+      const today = new Date().toISOString().slice(0, 10);
+      const payDate = (y: number, q: number) => q < 4 ? `${y}-${String(q * 3 + 1).padStart(2, "0")}-25` : `${y + 1}-01-25`;
+      const labelOf = (q: number) => (({ 1: "1기예정(1~3월)", 2: "1기확정(4~6월)", 3: "2기예정(7~9월)", 4: "2기확정(10~12월)" } as Record<number, string>)[q]);
+      const quarters = Array.from(bucket.entries()).map(([k, b]) => {
+        const [y, q] = k.split("-").map(Number);
+        return {
+          year: y, quarter: q, label: labelOf(q),
+          salesTax: b.salesTax, purchaseTax: b.purchaseTax, vat: b.salesTax - b.purchaseTax,
+          paymentDate: payDate(y, q),
+        };
+      }).sort((a, b) => a.paymentDate.localeCompare(b.paymentDate));
+      const upcoming = quarters.find(q => q.paymentDate >= today) || null;
+      res.json({ quarters, upcoming, today });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // 정기지출 예정 ↔ 실제 은행출금 자동매칭 (같은 달 + 동일 금액). 변동금액/불명확은 매칭 안 하고 미확인으로 반환.
   app.post("/api/recurring-payments/auto-match", async (_req: Request, res: Response) => {
     try {
