@@ -101,11 +101,16 @@ export async function fetchPersonalCalendarEvents(start: string, end: string): P
     const calendar = await getCalendarClient();
     const listRes = await calendar.calendarList.list({});
     const allCals = listRes.data.items || [];
-    const TARGET_NAMES = ["houn shim", "yup sim"];
-    const targetCals = allCals.filter((cal) => {
-      const name = (cal.summary || "").toLowerCase().trim();
-      return TARGET_NAMES.includes(name);
-    });
+    // 캘린더를 이름/별칭/ID(이메일)/한글명으로 견고하게 식별 → 캐노니컬 이름으로 정규화
+    const canonOf = (cal: any): string | null => {
+      const hay = `${cal.summary || ""} ${cal.summaryOverride || ""} ${cal.id || ""}`.toLowerCase();
+      if (/houn|houns9|심훈/.test(hay)) return "houn shim";
+      if (/yup|yups|심엽/.test(hay)) return "yup sim";
+      return null;
+    };
+    const targetCals = allCals
+      .map((cal) => ({ cal, canon: canonOf(cal) }))
+      .filter((x): x is { cal: typeof allCals[number]; canon: string } => x.canon !== null);
 
     const results: Array<{
       id: string;
@@ -134,9 +139,9 @@ export async function fetchPersonalCalendarEvents(start: string, end: string): P
       return adjusted !== startDate ? adjusted : null;
     }
 
-    for (const cal of targetCals) {
+    for (const { cal, canon } of targetCals) {
       const calId = cal.id!;
-      const calName = (cal.summary || "").toLowerCase().trim();
+      const calName = canon;
       const eventsRes = await calendar.events.list({
         calendarId: calId,
         timeMin: `${start}T00:00:00+09:00`,
@@ -179,4 +184,17 @@ export async function fetchPersonalCalendarEvents(start: string, end: string): P
     console.error("Personal calendar fetch failed:", err);
     return [];
   }
+}
+
+// 진단용 — 현재 OAuth 계정이 접근 가능한 캘린더 목록(이름/별칭/ID/권한)
+export async function listAccessibleCalendars(): Promise<Array<{ summary: string; summaryOverride: string; id: string; accessRole: string; primary: boolean }>> {
+  const calendar = await getCalendarClient();
+  const r = await calendar.calendarList.list({});
+  return (r.data.items || []).map((c) => ({
+    summary: c.summary || "",
+    summaryOverride: c.summaryOverride || "",
+    id: c.id || "",
+    accessRole: c.accessRole || "",
+    primary: c.primary || false,
+  }));
 }

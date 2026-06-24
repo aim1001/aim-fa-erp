@@ -9025,6 +9025,16 @@ export async function registerRoutes(
     }
   });
 
+  // 진단 — 접근 가능한 캘린더 목록(hounshim/yupsim 매칭 확인용)
+  app.get("/api/google-calendar/calendars", async (_req, res) => {
+    try {
+      const { listAccessibleCalendars } = await import("./google-calendar");
+      res.json(await listAccessibleCalendars());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/monthly-balances", async (req, res) => {
     try {
       const year = parseInt(req.query.year as string);
