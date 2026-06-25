@@ -222,6 +222,8 @@ export function ReceivablesTab() {
   const filtered = useMemo(() => {
     return invoices.filter(inv => {
       if (showOutstandingOnly) {
+        // 미수금만 = 발행된(issued) 계산서 중 미수금만 (미발행 예정 제외)
+        if (!inv.issueDate) return false;
         const outstanding = (inv.totalAmount ?? 0) - inv.collectedAmount;
         if (outstanding <= 0) return false;
       }
@@ -238,20 +240,23 @@ export function ReceivablesTab() {
   }, [invoices, showOutstandingOnly, search]);
 
   const filteredSummary = useMemo(() => {
-    const totalBilled = filtered.reduce((s, i) => s + (i.totalAmount ?? 0), 0);
+    const totalBilled = filtered.reduce((s, i) => s + (i.issueDate ? (i.totalAmount ?? 0) : 0), 0);
+    const totalPlanned = filtered.reduce((s, i) => s + (!i.issueDate ? (i.totalAmount ?? 0) : 0), 0);
     const totalCollected = filtered.reduce((s, i) => s + i.collectedAmount, 0);
-    return { totalBilled, totalCollected, totalOutstanding: totalBilled - totalCollected, invoiceCount: filtered.length };
+    return { totalBilled, totalPlanned, totalCollected, totalOutstanding: totalBilled - totalCollected, invoiceCount: filtered.length };
   }, [filtered]);
 
   const grouped = useMemo(() => {
-    const map = new Map<string, { customerName: string; invoices: ReceivableInvoice[]; totalBilled: number; totalCollected: number }>();
+    const map = new Map<string, { customerName: string; invoices: ReceivableInvoice[]; totalBilled: number; totalCollected: number; totalPlanned: number }>();
     for (const inv of filtered) {
       const key = inv.customerId ?? inv.companyName ?? "미분류";
       const label = inv.companyName ?? "미분류";
-      if (!map.has(key)) map.set(key, { customerName: label, invoices: [], totalBilled: 0, totalCollected: 0 });
+      if (!map.has(key)) map.set(key, { customerName: label, invoices: [], totalBilled: 0, totalCollected: 0, totalPlanned: 0 });
       const entry = map.get(key)!;
       entry.invoices.push(inv);
-      entry.totalBilled += inv.totalAmount ?? 0;
+      // 발행(issued)만 발행금액, 미발행은 예정으로 분리
+      if (inv.issueDate) entry.totalBilled += inv.totalAmount ?? 0;
+      else entry.totalPlanned += inv.totalAmount ?? 0;
       entry.totalCollected += inv.collectedAmount;
     }
     return Array.from(map.entries())
@@ -402,6 +407,9 @@ export function ReceivablesTab() {
           <div className="text-base font-semibold mt-0.5" data-testid="text-total-billed">
             {formatAmount(filteredSummary.totalBilled)}원
           </div>
+          {filteredSummary.totalPlanned > 0 && (
+            <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">예정(미발행) {formatAmount(filteredSummary.totalPlanned)}원</div>
+          )}
         </div>
         <div className="border rounded-lg p-3 bg-background">
           <div className="text-xs text-muted-foreground">수금 완료</div>
@@ -462,7 +470,7 @@ export function ReceivablesTab() {
           const outstanding = group.totalBilled - group.totalCollected;
           const isExpanded = expandedCustomers.has(group.key);
           const unpaidInGroup = group.invoices.filter(inv =>
-            inv.status !== "paid" && (inv.totalAmount ?? 0) - inv.collectedAmount > 0
+            inv.status !== "paid" && !!inv.issueDate && (inv.totalAmount ?? 0) - inv.collectedAmount > 0
           );
           const groupSelectedCount = unpaidInGroup.filter(inv => selectedIds.has(inv.id)).length;
           const groupAllSelected = unpaidInGroup.length > 0 && groupSelectedCount === unpaidInGroup.length;
@@ -489,6 +497,9 @@ export function ReceivablesTab() {
                   </div>
                   <div className="flex items-center gap-3 text-sm">
                     <span className="text-muted-foreground hidden sm:inline">발행 <span className="text-foreground font-medium">{formatAmount(group.totalBilled)}</span></span>
+                    {group.totalPlanned > 0 && (
+                      <span className="text-amber-600 dark:text-amber-400 hidden md:inline">예정 <span className="font-medium">{formatAmount(group.totalPlanned)}</span></span>
+                    )}
                     <span className="text-green-600 dark:text-green-400 hidden sm:inline">수금 <span className="font-medium">{formatAmount(group.totalCollected)}</span></span>
                     <span className={outstanding > 0 ? "text-red-600 dark:text-red-400 font-semibold" : "text-muted-foreground"}>
                       미수금 {formatAmount(outstanding)}원
@@ -529,6 +540,7 @@ export function ReceivablesTab() {
                       {group.invoices.map(inv => {
                         const invOutstanding = (inv.totalAmount ?? 0) - inv.collectedAmount;
                         const isPaid = invOutstanding <= 0 || inv.status === "paid";
+                        const isSelectable = !isPaid && !!inv.issueDate;
                         const isSelected = selectedIds.has(inv.id);
                         return (
                           <tr
@@ -538,9 +550,9 @@ export function ReceivablesTab() {
                           >
                             <td
                               className="px-2 py-2 w-8"
-                              onClick={e => { e.stopPropagation(); if (!isPaid) toggleInvoice(inv.id); }}
+                              onClick={e => { e.stopPropagation(); if (isSelectable) toggleInvoice(inv.id); }}
                             >
-                              {!isPaid && (
+                              {isSelectable && (
                                 <Checkbox
                                   checked={isSelected}
                                   aria-label="선택"
@@ -573,7 +585,9 @@ export function ReceivablesTab() {
                               {inv.collectedAmount > 0 ? formatAmount(inv.collectedAmount) : "-"}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {invOutstanding > 0 ? (
+                              {!inv.issueDate ? (
+                                <span className="text-amber-600 dark:text-amber-400 text-xs">예정</span>
+                              ) : invOutstanding > 0 ? (
                                 <span className="text-red-600 dark:text-red-400 font-medium">{formatAmount(invOutstanding)}</span>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
@@ -593,6 +607,8 @@ export function ReceivablesTab() {
                             <td className="px-3 py-2 text-center">
                               {isPaid ? (
                                 <Badge className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 hover:bg-green-100">완료</Badge>
+                              ) : !inv.issueDate ? (
+                                <Badge variant="outline" className="text-xs border-amber-400 text-amber-600 dark:text-amber-400">예정</Badge>
                               ) : inv.collectedAmount > 0 ? (
                                 <Badge variant="secondary" className="text-xs">일부수금</Badge>
                               ) : (
