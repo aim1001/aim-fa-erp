@@ -126,7 +126,8 @@ export default function CalendarPage() {
   const [pageMode, setPageMode] = useState<PageMode>("schedule");
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [filters, setFilters] = useState<Record<string, boolean>>({
-    task: true, delivery: true, deadline: true, payment: true, custom: true,
+    // 기본: 할일 + Houn Shim + Yup Sim만 (입고·납품·대금·일정은 꺼둠 → 필요시 토글)
+    task: true, delivery: false, deadline: false, payment: false, custom: false,
     hounshim: true, yupsim: true,
   });
   const [areaFilter, setAreaFilter] = useState<AreaFilter>("all");
