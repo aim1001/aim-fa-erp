@@ -85,16 +85,25 @@ export async function buildDailyReport(): Promise<string> {
   lines.push(`📊 <b>일일 보고 (${today})</b>`);
   lines.push("");
 
-  // ── 미발행 계산서 ──
+  // ── 미발행 계산서 (발행지연 먼저, 그 외 미발행도 함께 목록) ──
   lines.push(`🧾 <b>미발행 계산서</b> ${unissued.length}건 / ${won(unissuedTotal)}원`);
-  if (overdue.length > 0) {
-    lines.push(`  └ ⚠️ 발행지연 ${overdue.length}건`);
-    overdue.slice(0, 5).forEach(i => {
-      lines.push(`     · ${esc(i.companyName || "-")} ${won(i.totalAmount || 0)}원 (예정 ${i.plannedIssueDate})`);
-    });
-    if (overdue.length > 5) lines.push(`     · 외 ${overdue.length - 5}건`);
-  } else if (unissued.length === 0) {
+  if (unissued.length === 0) {
     lines.push("  └ 없음 ✅");
+  } else {
+    if (overdue.length > 0) lines.push(`  └ ⚠️ 발행지연 ${overdue.length}건`);
+    const overdueIds = new Set(overdue.map(i => i.id));
+    const rest = unissued
+      .filter(i => !overdueIds.has(i.id))
+      .sort((a, b) =>
+        (a.plannedIssueDate || "9999-99-99").localeCompare(b.plannedIssueDate || "9999-99-99")
+        || (b.totalAmount || 0) - (a.totalAmount || 0));
+    const listed = [...overdue, ...rest].slice(0, 10);
+    for (const i of listed) {
+      const mark = overdueIds.has(i.id) ? "⚠️ " : "· ";
+      const due = i.plannedIssueDate ? ` (예정 ${i.plannedIssueDate})` : "";
+      lines.push(`     ${mark}${esc(i.companyName || "-")} ${won(i.totalAmount || 0)}원${due}`);
+    }
+    if (unissued.length > 10) lines.push(`     · 외 ${unissued.length - 10}건`);
   }
   lines.push("");
 
