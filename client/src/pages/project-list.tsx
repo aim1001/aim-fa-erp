@@ -146,40 +146,74 @@ function CommaInput({ value, onChange, className, ...props }: { value: number; o
 
 function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetail; onSave: () => void }) {
   const { toast } = useToast();
-  const [totalAmount, setTotalAmount] = useState(project.totalAmount ?? 0);
+  const initTotal = project.totalAmount ?? 0;
+  const derive = (amt: number | null | undefined, ratio: number | null | undefined, def: number) =>
+    amt ?? Math.round(initTotal * (ratio ?? def) / 100);
+  const [totalAmount, setTotalAmountRaw] = useState(initTotal);
   const [depositRatio, setDepositRatio] = useState(project.depositRatio ?? 50);
+  const [depositAmount, setDepositAmount] = useState(derive(project.depositAmount, project.depositRatio, 50));
   const [depositTimingType, setDepositTimingType] = useState(project.depositTimingType || "end_of_next_month");
   const [depositTimingDays, setDepositTimingDays] = useState(project.depositTimingDays ?? 0);
   const [midRatio, setMidRatio] = useState(project.midRatio ?? 0);
+  const [midAmount, setMidAmount] = useState(derive(project.midAmount, project.midRatio, 0));
   const [midTimingType, setMidTimingType] = useState(project.midTimingType || "end_of_next_month");
   const [midTimingDays, setMidTimingDays] = useState(project.midTimingDays ?? 0);
   const [midAfterDelivery, setMidAfterDelivery] = useState(project.midAfterDelivery === "true");
   const [finalRatio, setFinalRatio] = useState(project.finalRatio ?? 50);
+  const [finalAmount, setFinalAmount] = useState(derive(project.finalAmount, project.finalRatio, 50));
   const [finalTimingType, setFinalTimingType] = useState(project.finalTimingType || "end_of_next_month");
   const [finalTimingDays, setFinalTimingDays] = useState(project.finalTimingDays ?? 0);
   const [finalAfterDelivery, setFinalAfterDelivery] = useState(project.finalAfterDelivery === "true");
   const [invoicePlan, setInvoicePlan] = useState(project.invoicePlan || "split");
   const [deliveryDate, setDeliveryDate] = useState(project.deliveryDate || "");
 
+  // 총액 변경 시 각 단계 금액을 현재 비율로 재계산
+  const setTotalAmount = (v: number) => {
+    setTotalAmountRaw(v);
+    setDepositAmount(Math.round(v * depositRatio / 100));
+    setMidAmount(Math.round(v * midRatio / 100));
+    setFinalAmount(Math.round(v * finalRatio / 100));
+  };
+  // %↔금액 양방향: 한쪽을 바꾸면 다른 쪽을 자동 환산
+  const onRatioChange = (setRatio: (n: number) => void, setAmount: (n: number) => void, v: number) => {
+    setRatio(v);
+    setAmount(totalAmount > 0 ? Math.round(totalAmount * v / 100) : 0);
+  };
+  const onAmountChange = (setRatio: (n: number) => void, setAmount: (n: number) => void, v: number) => {
+    setAmount(v);
+    setRatio(totalAmount > 0 ? Math.round(v / totalAmount * 100) : 0);
+  };
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("PATCH", `/api/projects/${project.id}`, {
-        totalAmount, depositRatio, depositTimingType, depositTimingDays,
-        midRatio, midTimingType, midTimingDays, midAfterDelivery: midAfterDelivery ? "true" : "false",
-        finalRatio, finalTimingType, finalTimingDays, finalAfterDelivery: finalAfterDelivery ? "true" : "false",
+        totalAmount, depositRatio, depositAmount, depositTimingType, depositTimingDays,
+        midRatio, midAmount, midTimingType, midTimingDays, midAfterDelivery: midAfterDelivery ? "true" : "false",
+        finalRatio, finalAmount, finalTimingType, finalTimingDays, finalAfterDelivery: finalAfterDelivery ? "true" : "false",
         invoicePlan, deliveryDate: deliveryDate || null,
       });
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "계약조건 저장 완료" });
+    onSuccess: (data: any) => {
+      const r = data?.regen;
+      const desc = r?.error
+        ? `재생성 경고: ${r.error}`
+        : r
+          ? `수금계획 ${r.collection?.created ?? 0}건·계산서 ${r.invoice?.created ?? 0}건 갱신${(r.collection?.skipped || r.invoice?.skipped) ? " (완료/발행건 보존)" : ""}`
+          : undefined;
+      toast({ title: "계약조건 저장 완료", description: desc });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-invoices-with-payments"] });
       onSave();
     },
     onError: (err: Error) => toast({ title: "저장 실패", description: err.message, variant: "destructive" }),
   });
 
-  const ratioSum = depositRatio + midRatio + finalRatio;
+  const amountSum = depositAmount + midAmount + finalAmount;
+  const amountMismatch = totalAmount > 0 && Math.abs(amountSum - totalAmount) > 1;
+  const canSave = totalAmount > 0 && amountSum > 0;
 
   return (
     <div className="space-y-3">
@@ -205,19 +239,23 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
 
       <div className="space-y-2">
         {[
-          { label: "계약금", ratio: depositRatio, setRatio: setDepositRatio, timing: depositTimingType, setTiming: setDepositTimingType, days: depositTimingDays, setDays: setDepositTimingDays, after: false, setAfter: () => {}, showAfter: false },
-          { label: "중도금", ratio: midRatio, setRatio: setMidRatio, timing: midTimingType, setTiming: setMidTimingType, days: midTimingDays, setDays: setMidTimingDays, after: midAfterDelivery, setAfter: setMidAfterDelivery, showAfter: true },
-          { label: "잔금", ratio: finalRatio, setRatio: setFinalRatio, timing: finalTimingType, setTiming: setFinalTimingType, days: finalTimingDays, setDays: setFinalTimingDays, after: finalAfterDelivery, setAfter: setFinalAfterDelivery, showAfter: true },
+          { label: "계약금", ratio: depositRatio, setRatio: setDepositRatio, amount: depositAmount, setAmount: setDepositAmount, timing: depositTimingType, setTiming: setDepositTimingType, days: depositTimingDays, setDays: setDepositTimingDays, after: false, setAfter: () => {}, showAfter: false },
+          { label: "중도금", ratio: midRatio, setRatio: setMidRatio, amount: midAmount, setAmount: setMidAmount, timing: midTimingType, setTiming: setMidTimingType, days: midTimingDays, setDays: setMidTimingDays, after: midAfterDelivery, setAfter: setMidAfterDelivery, showAfter: true },
+          { label: "잔금", ratio: finalRatio, setRatio: setFinalRatio, amount: finalAmount, setAmount: setFinalAmount, timing: finalTimingType, setTiming: setFinalTimingType, days: finalTimingDays, setDays: setFinalTimingDays, after: finalAfterDelivery, setAfter: setFinalAfterDelivery, showAfter: true },
         ].map(stage => (
           <div key={stage.label} className="border rounded p-2 bg-muted/20">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium w-10">{stage.label}</span>
               <div className="flex items-center gap-1">
-                <Input type="number" className="h-7 w-16 text-xs" value={stage.ratio} onChange={e => stage.setRatio(Number(e.target.value))} data-testid={`input-${stage.label}-ratio`} />
+                <Input type="number" className="h-7 w-14 text-xs" value={stage.ratio} onChange={e => onRatioChange(stage.setRatio, stage.setAmount, Number(e.target.value))} data-testid={`input-${stage.label}-ratio`} />
                 <span className="text-xs text-muted-foreground">%</span>
               </div>
-              {totalAmount > 0 && (
-                <span className="text-[10px] text-muted-foreground">{fmtComma(Math.round(totalAmount * stage.ratio / 100))}원 (VAT포함 {fmtComma(Math.round(totalAmount * stage.ratio / 100 * 1.1))}원)</span>
+              <div className="flex items-center gap-1">
+                <CommaInput className="h-7 w-28 text-xs" value={stage.amount} onChange={v => onAmountChange(stage.setRatio, stage.setAmount, v)} data-testid={`input-${stage.label}-amount`} />
+                <span className="text-xs text-muted-foreground">원</span>
+              </div>
+              {stage.amount > 0 && (
+                <span className="text-[10px] text-muted-foreground">VAT포함 {fmtComma(Math.round(stage.amount * 1.1))}원</span>
               )}
               <Select value={stage.timing} onValueChange={stage.setTiming}>
                 <SelectTrigger className="h-7 w-24 text-xs" data-testid={`select-${stage.label}-timing`}>
@@ -249,8 +287,11 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
             </div>
           </div>
         ))}
-        {ratioSum !== 100 && (
-          <div className="text-[10px] text-destructive">비율 합계: {ratioSum}% (100%가 되어야 합니다)</div>
+        {amountMismatch && (
+          <div className="text-[10px] text-amber-600">
+            단계 합계 {fmtComma(amountSum)}원 / 총액 {fmtComma(totalAmount)}원 · 차액 {fmtComma(totalAmount - amountSum)}원
+            <span className="text-muted-foreground"> — 의도된 분할(추가 발행 예정 등)이면 그대로 저장 가능합니다</span>
+          </div>
         )}
       </div>
 
@@ -267,8 +308,8 @@ function CollectionConditionsEditor({ project, onSave }: { project: ProjectDetai
         </Select>
       </div>
 
-      <Button size="sm" className="w-full h-8 text-xs" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || ratioSum !== 100} data-testid="button-save-conditions">
-        <Check className="h-3 w-3 mr-1" />{saveMutation.isPending ? "저장중..." : "계약조건 저장"}
+      <Button size="sm" className="w-full h-8 text-xs" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !canSave} data-testid="button-save-conditions">
+        <Check className="h-3 w-3 mr-1" />{saveMutation.isPending ? "저장·재생성중..." : "계약조건 저장 (수금계획·계산서 자동 갱신)"}
       </Button>
     </div>
   );

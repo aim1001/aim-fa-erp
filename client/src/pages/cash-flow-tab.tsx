@@ -1619,6 +1619,44 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
                   if (pIsIncome) { pMain = p.description || p.companyName || p.projectCustomerName || "내용 없음"; pSub = (p.projectCustomerName && p.projectCustomerName !== pMain) ? p.projectCustomerName : null; }
                   else { pMain = p.companyName || p.description || "내용 없음"; pSub = (p.description && p.description !== pMain) ? p.description : null; }
 
+                  // 월말 요약행: 이 행이 해당 월의 마지막 예정행이면 아래에 월말 잔액행을 끼워넣음
+                  const nextDate = idx + 1 < planVisible.length
+                    ? (planVisible[idx + 1].payment.actualDate || planVisible[idx + 1].payment.plannedDate || "")
+                    : "";
+                  const ym = date.slice(0, 7);
+                  const isLastOfMonth = !!date && (idx === planVisible.length - 1 || nextDate.slice(0, 7) !== ym);
+                  let monthEndRow: JSX.Element | null = null;
+                  if (isLastOfMonth && row.estimatedBalance != null) {
+                    const [my, mm] = ym.split("-").map(Number);
+                    const lastDay = new Date(my, mm, 0).getDate();
+                    const eomDate = `${ym}-${String(lastDay).padStart(2, "0")}`;
+                    const isFuture = eomDate >= todayStr;
+                    const bal = row.estimatedBalance;
+                    const danger = bal < 0;
+                    const warn = !danger && bal < 10000000;
+                    const tone = danger
+                      ? { text: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800" }
+                      : warn
+                      ? { text: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800" }
+                      : { text: "text-primary", bg: "bg-primary/10 border-primary/40" };
+                    monthEndRow = (
+                      <tr key={`${rowKey}-monthend`} className={`border-y-2 ${tone.bg}`} data-testid={`cf-month-end-${ym}`}>
+                        <td colSpan={showDetailColumns ? 7 : 6} className={`px-3 py-3 ${tone.text}`}>
+                          <span className="inline-flex items-center gap-1.5 font-semibold text-sm">
+                            <CalendarRange className="h-4 w-4" />
+                            {my}.{mm} 월말 ({mm}월 {lastDay}일)
+                          </span>
+                          <span className="ml-2 text-xs opacity-80">{isFuture ? "예상 잔액" : "마감 잔액"}</span>
+                        </td>
+                        <td className={`px-3 py-3 text-right tabular-nums ${tone.text}`}>
+                          <span className="text-xl font-bold">{isFuture ? "~" : ""}{bal.toLocaleString()}</span>
+                          <span className="text-xs ml-0.5">원</span>
+                        </td>
+                        <td colSpan={2} />
+                      </tr>
+                    );
+                  }
+
                   return (
                     <Fragment key={rowKey}>
                       {divider}
@@ -1796,6 +1834,7 @@ export function CashFlowTab({ year, month, onPrevMonth, onNextMonth, onGoToMonth
                         ) : null}
                       </td>
                     </tr>
+                    {monthEndRow}
                     </Fragment>
                   );
                 })}

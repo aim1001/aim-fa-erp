@@ -5,6 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
+import { calcPaymentDate, regenerateCollectionPlan, regenerateInvoicePlan } from "./collection-plan";
 import { pool } from "./db";
 import { insertInquirySchema, insertCompanySchema, insertCustomerSchema, insertVendorSchema, insertSalesInvoiceSchema, insertPurchaseInvoiceSchema, insertRecurringExpenseSchema } from "@shared/schema";
 import {
@@ -5856,6 +5857,14 @@ export async function registerRoutes(
     }
   });
 
+  // 계약조건(금액·비율·시기·계산서방식) 변경 시 수금계획/계산서를 자동 재생성하는 키
+  const CONTRACT_TERM_KEYS = [
+    "totalAmount", "invoicePlan", "deliveryDate",
+    "depositRatio", "depositAmount", "depositTimingType", "depositTimingDays",
+    "midRatio", "midAmount", "midTimingType", "midTimingDays", "midAfterDelivery",
+    "finalRatio", "finalAmount", "finalTimingType", "finalTimingDays", "finalAfterDelivery",
+  ];
+
   app.patch("/api/projects/:id", async (req, res) => {
     try {
       const oldProject = req.body.status ? await storage.getProject(req.params.id) : null;
@@ -5864,7 +5873,20 @@ export async function registerRoutes(
       if (req.body.status && oldProject && req.body.status !== oldProject.status) {
         import("./telegram").then(t => t.notifyProject("상태변경", result)).catch(() => {});
       }
-      res.json(result);
+
+      // 계약조건이 바뀌면 미완료 수금계획·미발행 계산서만 새 조건으로 재생성(완료/발행건은 보존)
+      let regen: { collection?: any; invoice?: any; error?: string } | undefined;
+      if (result.totalAmount && CONTRACT_TERM_KEYS.some(k => k in req.body)) {
+        try {
+          const collection = await regenerateCollectionPlan(result);
+          const invoice = await regenerateInvoicePlan(result);
+          regen = { collection, invoice };
+        } catch (e: any) {
+          regen = { error: e.message };
+        }
+      }
+
+      res.json({ ...result, regen });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -6141,33 +6163,6 @@ export async function registerRoutes(
     }
   });
 
-  function calcPaymentDate(baseDate: string, timingType: string | null, timingDays: number | null): string {
-    const base = new Date(baseDate);
-    if (!timingType) return baseDate;
-    switch (timingType) {
-      case "end_of_next_month": {
-        const d = new Date(base.getFullYear(), base.getMonth() + 2, 0);
-        return d.toISOString().split("T")[0];
-      }
-      case "two_weeks": {
-        const d = new Date(base);
-        d.setDate(d.getDate() + 14);
-        return d.toISOString().split("T")[0];
-      }
-      case "end_of_month": {
-        const d = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-        return d.toISOString().split("T")[0];
-      }
-      case "specific_days": {
-        const d = new Date(base);
-        d.setDate(d.getDate() + (timingDays || 30));
-        return d.toISOString().split("T")[0];
-      }
-      default:
-        return baseDate;
-    }
-  }
-
   app.post("/api/projects/:id/generate-collection-plan", async (req, res) => {
     try {
       const projects = await storage.getProjects();
@@ -6175,101 +6170,14 @@ export async function registerRoutes(
       if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
 
-      // 예정계산서에 거래처/사업자번호를 채워 홈택스 실발행건과 자동 매칭(예정/완료 혼재 방지)
-      const planCustomer = project.customerId ? await storage.getCustomer(project.customerId) : null;
-
       const existingPayments = await storage.getPayments();
-      const projectPayments = existingPayments.filter(p => p.projectId === project.id && p.type === "income");
-      const plannedCount = projectPayments.filter(p => p.status !== "completed").length;
+      const plannedCount = existingPayments.filter(p => p.projectId === project.id && p.type === "income" && p.status !== "completed").length;
 
       if (plannedCount > 0 && !req.body.confirmed) {
         return res.status(409).json({ message: `예정 항목 ${plannedCount}건이 삭제됩니다. 계속하시겠습니까?`, needConfirm: true, plannedCount });
       }
 
-      const deleted = await storage.deletePlannedPaymentsByProject(project.id);
-
-      const completedPayments = projectPayments.filter(p => p.status === "completed");
-      const completedStages = new Set(completedPayments.map(p => p.splitIndex).filter(Boolean));
-
-      const allSalesInvoices = await storage.getSalesInvoices();
-      const projectInvoices = allSalesInvoices.filter(inv => inv.projectId === project.id);
-      const invoiceByStage = new Map<string, any>();
-      projectInvoices.forEach(inv => {
-        if (inv.invoiceStage) invoiceByStage.set(inv.invoiceStage, inv);
-      });
-
-      const baseDate = req.body.baseDate || new Date().toISOString().split("T")[0];
-      const deliveryDate = project.deliveryDate || baseDate;
-      let created = 0;
-      let skipped = 0;
-      const stages: { name: string; ratio: number | null; timingType: string | null; timingDays: number | null; afterDelivery?: string | null }[] = [
-        { name: "계약금", ratio: project.depositRatio, timingType: project.depositTimingType, timingDays: project.depositTimingDays },
-        { name: "중도금", ratio: project.midRatio, timingType: project.midTimingType, timingDays: project.midTimingDays, afterDelivery: project.midAfterDelivery },
-        { name: "잔금", ratio: project.finalRatio, timingType: project.finalTimingType, timingDays: project.finalTimingDays, afterDelivery: project.finalAfterDelivery },
-      ];
-
-      for (let i = 0; i < stages.length; i++) {
-        const stage = stages[i];
-        if (!stage.ratio || stage.ratio <= 0) continue;
-        if (completedStages.has(i + 1)) { skipped++; continue; }
-        const supplyAmt = Math.round((project.totalAmount * stage.ratio) / 100);
-        const tax = Math.round(supplyAmt * 0.1);
-        const amount = supplyAmt + tax;
-        const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
-        const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
-
-        const matchedInvoice = invoiceByStage.get(stage.name);
-        let salesInvoiceId = matchedInvoice?.id || null;
-
-        if (salesInvoiceId) {
-          const existingInvoicePayments = existingPayments.filter(p => p.salesInvoiceId === salesInvoiceId && !p.projectId);
-          for (const dup of existingInvoicePayments) {
-            if (dup.status !== "completed") {
-              await storage.deletePayment(dup.id);
-            }
-          }
-        } else {
-          const existingPlaceholder = projectInvoices.find(inv => inv.invoiceStage === stage.name && !inv.issueDate);
-          if (existingPlaceholder) {
-            salesInvoiceId = existingPlaceholder.id;
-          } else {
-            const newInvoice = await storage.createSalesInvoice({
-              projectId: project.id,
-              customerId: project.customerId || null,
-              companyName: planCustomer?.companyName || project.customerName || "",
-              businessNumber: planCustomer?.businessNumber || null,
-              representative: planCustomer?.representative || null,
-              address: planCustomer?.address || null,
-              issueDate: null,
-              year: project.year || new Date().getFullYear(),
-              item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
-              supplyAmount: supplyAmt,
-              taxAmount: tax,
-              totalAmount: amount,
-              invoiceStage: stage.name,
-              plannedIssueDate: plannedDate,
-              status: "pending",
-            });
-            salesInvoiceId = newInvoice.id;
-          }
-        }
-
-        await storage.createPayment({
-          type: "income",
-          projectId: project.id,
-          salesInvoiceId,
-          companyName: project.customerName || "",
-          description: `${project.projectNumber} ${stage.name}`,
-          amount,
-          plannedDate,
-          paymentMethod: stage.timingType || "end_of_next_month",
-          status: "planned",
-          splitIndex: i + 1,
-          splitTotal: stages.filter(s => s.ratio && s.ratio > 0).length,
-        });
-        created++;
-      }
-
+      const { created, skipped } = await regenerateCollectionPlan(project, req.body.baseDate);
       res.json({ message: `수금 계획 ${created}건 생성 완료${skipped > 0 ? ` (입금완료 ${skipped}건 유지)` : ""}`, created, skipped });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -6283,13 +6191,9 @@ export async function registerRoutes(
       if (!project) return res.status(404).json({ message: "프로젝트를 찾을 수 없습니다" });
       if (!project.totalAmount) return res.status(400).json({ message: "프로젝트 총 금액을 먼저 설정하세요" });
 
-      // 예정계산서에 거래처/사업자번호를 채워 홈택스 실발행건과 자동 매칭(예정/완료 혼재 방지)
-      const planCustomer = project.customerId ? await storage.getCustomer(project.customerId) : null;
-
       const existingSales = (await storage.getSalesInvoices()).filter(i => i.projectId === project.id);
       const issuedInvoices = existingSales.filter(i => !!i.issueDate);
       const placeholderInvoices = existingSales.filter(i => !i.issueDate);
-      const issuedStages = new Set(issuedInvoices.map(i => i.invoiceStage).filter(Boolean));
 
       if (placeholderInvoices.length > 0 && !req.body.confirmed) {
         return res.status(409).json({
@@ -6300,101 +6204,7 @@ export async function registerRoutes(
         });
       }
 
-      const allPayments = await storage.getPayments();
-      const projectPayments = allPayments.filter(p => p.projectId === project.id && p.type === "income");
-
-      if (req.body.confirmed) {
-        const deletedInvoiceIds = new Set<string>();
-        for (const inv of placeholderInvoices) {
-          const linkedPayments = projectPayments.filter(p => p.salesInvoiceId === inv.id);
-          for (const lp of linkedPayments) {
-            await storage.updatePayment(lp.id, { salesInvoiceId: null });
-            (lp as any).salesInvoiceId = null;
-          }
-          await storage.deleteSalesInvoice(inv.id);
-          deletedInvoiceIds.add(inv.id);
-        }
-      }
-
-      const invoicePlan = project.invoicePlan || "split";
-      const today = new Date().toISOString().split("T")[0];
-      const yearNum = project.year || new Date().getFullYear();
-      let created = 0;
-      let skipped = 0;
-
-      const baseDate = req.body.baseDate || today;
-      const deliveryDate = project.deliveryDate || baseDate;
-
-      if (invoicePlan === "bulk") {
-        if (!issuedStages.has("일괄")) {
-          const supply = project.totalAmount;
-          const tax = Math.round(supply * 0.1);
-          const timingType = project.depositTimingType || project.finalTimingType || "end_of_next_month";
-          const timingDays = project.depositTimingDays || project.finalTimingDays || null;
-          const plannedDate = calcPaymentDate(baseDate, timingType, timingDays);
-          const newInv = await storage.createSalesInvoice({
-            projectId: project.id,
-            customerId: project.customerId || null,
-            companyName: planCustomer?.companyName || project.customerName || "",
-            businessNumber: planCustomer?.businessNumber || null,
-            representative: planCustomer?.representative || null,
-            address: planCustomer?.address || null,
-            issueDate: null,
-            year: yearNum,
-            item: `${project.projectNumber || ""} ${project.description || ""}`.trim() || null,
-            supplyAmount: supply,
-            taxAmount: tax,
-            totalAmount: supply + tax,
-            invoiceStage: "일괄",
-            plannedIssueDate: plannedDate,
-            status: "pending",
-          });
-          created++;
-          const matchingPayment = projectPayments.find(p => !p.salesInvoiceId && p.splitIndex === 1);
-          if (matchingPayment) {
-            await storage.updatePayment(matchingPayment.id, { salesInvoiceId: newInv.id });
-          }
-        } else { skipped++; }
-      } else {
-        const stageIndexMap: Record<string, number> = { "계약금": 1, "중도금": 2, "잔금": 3 };
-        const stages = [
-          { name: "계약금", ratio: project.depositRatio || 0, timingType: project.depositTimingType, timingDays: project.depositTimingDays, afterDelivery: null as string | null },
-          { name: "중도금", ratio: project.midRatio || 0, timingType: project.midTimingType, timingDays: project.midTimingDays, afterDelivery: project.midAfterDelivery },
-          { name: "잔금", ratio: project.finalRatio || 0, timingType: project.finalTimingType, timingDays: project.finalTimingDays, afterDelivery: project.finalAfterDelivery },
-        ].filter(s => s.ratio > 0);
-
-        for (const stage of stages) {
-          if (issuedStages.has(stage.name)) { skipped++; continue; }
-          const supply = Math.round((project.totalAmount * stage.ratio) / 100);
-          const tax = Math.round(supply * 0.1);
-          const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
-          const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
-          const newInv = await storage.createSalesInvoice({
-            projectId: project.id,
-            customerId: project.customerId || null,
-            companyName: planCustomer?.companyName || project.customerName || "",
-            businessNumber: planCustomer?.businessNumber || null,
-            representative: planCustomer?.representative || null,
-            address: planCustomer?.address || null,
-            issueDate: null,
-            year: yearNum,
-            item: `${project.projectNumber || ""} ${stage.name}`.trim() || null,
-            supplyAmount: supply,
-            taxAmount: tax,
-            totalAmount: supply + tax,
-            invoiceStage: stage.name,
-            plannedIssueDate: plannedDate,
-            status: "pending",
-          });
-          created++;
-          const idx = stageIndexMap[stage.name] || 0;
-          const matchingPayment = projectPayments.find(p => !p.salesInvoiceId && (p.splitIndex === idx || (p.description && p.description.includes(stage.name))));
-          if (matchingPayment) {
-            await storage.updatePayment(matchingPayment.id, { salesInvoiceId: newInv.id });
-          }
-        }
-      }
-
+      const { created, skipped } = await regenerateInvoicePlan(project, req.body.baseDate);
       res.json({ message: `계산서 ${created}건 생성 완료${skipped > 0 ? ` (발행완료 ${skipped}건 유지)` : ""}`, created, skipped });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
