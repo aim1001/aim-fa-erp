@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon,
-  List, LayoutGrid, Columns, Edit, Trash2, ExternalLink, CheckSquare
+  List, LayoutGrid, Columns, Edit, Trash2, ExternalLink, CheckSquare, AlertTriangle
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
@@ -190,6 +190,22 @@ export default function CalendarPage() {
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Google 캘린더 연결 상태 — calendars 조회가 실패하면(토큰 없음/만료) 연결 끊김으로 판단
+  const { data: gcalHealth } = useQuery<{ connected: boolean }>({
+    queryKey: ["/api/google-calendar/calendars", "health"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/google-calendar/calendars", { credentials: "include" });
+        return { connected: res.ok };
+      } catch {
+        return { connected: false };
+      }
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const gcalDisconnected = gcalHealth ? !gcalHealth.connected : false;
 
   const allEvents = useMemo<CalendarEventItem[]>(() => {
     const mapped: CalendarEventItem[] = personalEventsRaw.map(e => ({
@@ -649,6 +665,24 @@ export default function CalendarPage() {
 
   return (
     <div className="flex flex-col h-full" data-testid="page-calendar">
+      {gcalDisconnected && (
+        <div
+          className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 flex-wrap"
+          data-testid="banner-gcal-disconnected"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-medium">Google 캘린더 연결이 끊겨 개인 일정(심훈·심엽)이 표시되지 않습니다.</span>
+          <span className="text-xs text-amber-700/80 dark:text-amber-400/70 hidden sm:inline">재연결 후 나오는 토큰을 Railway에 등록하세요.</span>
+          <Button
+            size="sm"
+            className="ml-auto h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white border-0"
+            onClick={() => window.open("/api/google/oauth/authorize", "_blank", "noopener")}
+            data-testid="button-gcal-reconnect"
+          >
+            <ExternalLink className="h-3.5 w-3.5 mr-1" />Google 재연결
+          </Button>
+        </div>
+      )}
       <div className="flex items-center justify-between px-4 py-3 border-b gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="flex border rounded-md mr-2">
