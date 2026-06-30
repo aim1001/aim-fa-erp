@@ -176,9 +176,10 @@ export default function ManagementDashboard() {
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ["/api/management-dashboard"],
   });
-  const { data: vat } = useQuery<{ upcoming: VatQuarter | null }>({
+  const { data: vat } = useQuery<{ quarters: VatQuarter[]; upcoming: VatQuarter | null; today: string }>({
     queryKey: ["/api/vat/summary"],
   });
+  const [vatKey, setVatKey] = useState<string | null>(null);
 
   const [showAllInvoices, setShowAllInvoices] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
@@ -209,6 +210,15 @@ export default function ManagementDashboard() {
 
   const displayInvoices = showAllInvoices ? unissuedInvoices : unissuedInvoices.slice(0, 10);
   const displayPayments = showAllPayments ? uncollectedPayments : uncollectedPayments.slice(0, 10);
+
+  // 예상 부가세 — 분기 콤보박스 선택(기본=다음 납부 분기)
+  const keyOf = (q: VatQuarter) => `${q.year}-${q.quarter}`;
+  const vatQuarters = vat?.quarters ?? [];
+  const vatDefaultKey = vat?.upcoming
+    ? keyOf(vat.upcoming)
+    : (vatQuarters.length ? keyOf(vatQuarters[vatQuarters.length - 1]) : null);
+  const vatActiveKey = vatKey ?? vatDefaultKey;
+  const vatActive = vatQuarters.find(q => keyOf(q) === vatActiveKey) ?? vat?.upcoming ?? null;
 
   return (
     <div className="h-full overflow-auto p-4 space-y-4" data-testid="page-management-dashboard">
@@ -268,20 +278,40 @@ export default function ManagementDashboard() {
         </Card>
       </div>
 
-      {vat?.upcoming && (
+      {vatActive && (
         <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/10">
           <CardContent className="p-3 flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               <Receipt className="h-4 w-4 text-amber-600" />
-              <span className="text-sm font-medium">예상 부가세 — {vat.upcoming.label}</span>
+              <span className="text-sm font-medium">예상 부가세</span>
             </div>
-            <span className={`text-lg font-bold ${vat.upcoming.vat < 0 ? "text-blue-600" : "text-amber-700 dark:text-amber-400"}`}>
-              {vat.upcoming.vat < 0 ? "환급 " : ""}{fmtComma(Math.abs(vat.upcoming.vat))}원
+            <Select value={vatActiveKey ?? undefined} onValueChange={setVatKey}>
+              <SelectTrigger className="h-8 w-[230px] text-xs" data-testid="select-vat-quarter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {vatQuarters.map(q => {
+                  const isUpcoming = vat?.upcoming && keyOf(q) === keyOf(vat.upcoming);
+                  return (
+                    <SelectItem key={keyOf(q)} value={keyOf(q)} data-testid={`vat-option-${keyOf(q)}`}>
+                      {q.year} {q.label} · {q.vat < 0 ? "환급 " : ""}{fmtComma(Math.abs(q.vat))}원{isUpcoming ? " (다음 납부)" : ""}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            <span className={`text-lg font-bold ${vatActive.vat < 0 ? "text-blue-600" : "text-amber-700 dark:text-amber-400"}`}>
+              {vatActive.vat < 0 ? "환급 " : ""}{fmtComma(Math.abs(vatActive.vat))}원
             </span>
             <span className="text-xs text-muted-foreground">
-              매출세액 {fmtComma(vat.upcoming.salesTax)} − 매입세액 {fmtComma(vat.upcoming.purchaseTax)}
+              매출세액 {fmtComma(vatActive.salesTax)} − 매입세액 {fmtComma(vatActive.purchaseTax)}
             </span>
-            <span className="ml-auto text-xs text-muted-foreground">납부 예정일 {vat.upcoming.paymentDate}</span>
+            <span className="ml-auto text-xs text-muted-foreground">
+              납부 예정일 {vatActive.paymentDate}
+              {vat?.upcoming && keyOf(vatActive) === keyOf(vat.upcoming) && (
+                <span className="ml-1 text-amber-600 font-medium">· 다음 납부</span>
+              )}
+            </span>
           </CardContent>
         </Card>
       )}
