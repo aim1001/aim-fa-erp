@@ -2653,6 +2653,8 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
   });
 
   const ratioSum = contractRatio + midRatio + finalRatio;
+  // 중도금·잔금이 '납품후' 기준이면 전환 시 납품예정일이 필수 (서버 게이트와 동일 조건)
+  const needDelivery = (midAfterDelivery && midRatio > 0) || (finalAfterDelivery && finalRatio > 0);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -2794,6 +2796,15 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
                   </div>
                 </div>
               ))}
+              <div className="flex items-center gap-2 flex-wrap border rounded p-3 bg-muted/10" data-testid="contract-delivery-date-row">
+                <span className="text-xs font-medium w-16">납품예정일</span>
+                <InlineDateInput value={inquiry.deliveryDate || ""} field="deliveryDate" inquiryId={inquiryId} />
+                {needDelivery && !inquiry.deliveryDate ? (
+                  <span className="text-[10px] text-destructive">중도금·잔금이 "납품후" 기준이라 전환 전 필수입니다</span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">중도금·잔금을 "납품후"로 두면 이 날짜가 필요합니다</span>
+                )}
+              </div>
               {ratioSum !== 100 && (
                 <div className="text-[10px] text-destructive">비율 합계: {ratioSum}% (100%가 되어야 합니다)</div>
               )}
