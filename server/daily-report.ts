@@ -53,6 +53,19 @@ export async function buildDailyReport(): Promise<string> {
   const today = kstDateStr();
   const invoices = await storage.getSalesInvoices();
   const payments = await storage.getPayments();
+  const projects = await storage.getProjects();
+
+  // 계산서 → 프로젝트번호 태그. 프로젝트 연결이 없으면 품목 앞의 번호(예: "26-18 중도금")로 보완.
+  const projNoById = new Map(projects.map(p => [p.id, p.projectNumber || ""]));
+  const projTag = (i: { projectId?: string | null; item?: string | null }): string => {
+    const pn = i.projectId ? projNoById.get(i.projectId) : null;
+    if (pn) return pn;
+    const m = (i.item || "").match(/^\d{2}-\d+/);
+    return m ? m[0] : "-";
+  };
+  // 표시 금액은 공급가(VAT 별도). 공급가가 비면 총액에서 VAT(10%)를 역산.
+  const supplyOf = (i: { supplyAmount?: number | null; totalAmount?: number | null }): number =>
+    i.supplyAmount ?? Math.round((i.totalAmount || 0) / 1.1);
 
   // 계산서별 실수금액(완료 결제 합계)
   const collectedByInvoice = new Map<string, number>();
@@ -67,18 +80,22 @@ export async function buildDailyReport(): Promise<string> {
 
   // 미발행: 발급일자(issueDate) 없음
   const unissued = invoices.filter(i => !i.issueDate);
-  const unissuedTotal = unissued.reduce((s, i) => s + (i.totalAmount || 0), 0);
+  const unissuedTotal = unissued.reduce((s, i) => s + supplyOf(i), 0);
   const overdue = unissued
     .filter(i => i.plannedIssueDate && i.plannedIssueDate < today)
     .sort((a, b) => (a.plannedIssueDate || "").localeCompare(b.plannedIssueDate || ""));
 
   // 미수금: 발행됨 + status≠paid + (총액 − 실수금) > 0  (미수금 화면과 동일 기준)
+  // 표시는 공급가(VAT 별도) 기준: 미수 공급가 = 미수(총액기준) ÷ 1.1
   const receivables = invoices
     .filter(i => i.issueDate && i.status !== "paid")
-    .map(i => ({ inv: i, outstanding: (i.totalAmount || 0) - (collectedByInvoice.get(i.id) || 0) }))
+    .map(i => {
+      const outstanding = (i.totalAmount || 0) - (collectedByInvoice.get(i.id) || 0);
+      return { inv: i, outstanding, outstandingSupply: Math.round(outstanding / 1.1) };
+    })
     .filter(r => r.outstanding > 0)
     .sort((a, b) => b.outstanding - a.outstanding);
-  const receivableTotal = receivables.reduce((s, r) => s + r.outstanding, 0);
+  const receivableTotal = receivables.reduce((s, r) => s + r.outstandingSupply, 0);
 
   const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const lines: string[] = [];
@@ -101,7 +118,7 @@ export async function buildDailyReport(): Promise<string> {
     for (const i of listed) {
       const mark = overdueIds.has(i.id) ? "⚠️ " : "· ";
       const due = i.plannedIssueDate ? ` (예정 ${i.plannedIssueDate})` : "";
-      lines.push(`     ${mark}${esc(i.companyName || "-")} ${won(i.totalAmount || 0)}원${due}`);
+      lines.push(`     ${mark}[${projTag(i)}] ${esc(i.companyName || "-")} ${won(supplyOf(i))}원${due}`);
     }
     if (unissued.length > 10) lines.push(`     · 외 ${unissued.length - 10}건`);
   }
@@ -111,12 +128,15 @@ export async function buildDailyReport(): Promise<string> {
   lines.push(`💰 <b>미수금</b> ${receivables.length}건 / ${won(receivableTotal)}원`);
   if (receivables.length > 0) {
     receivables.slice(0, 5).forEach(r => {
-      lines.push(`  · ${esc(r.inv.companyName || "-")} ${won(r.outstanding)}원`);
+      lines.push(`  · [${projTag(r.inv)}] ${esc(r.inv.companyName || "-")} ${won(r.outstandingSupply)}원`);
     });
     if (receivables.length > 5) lines.push(`  · 외 ${receivables.length - 5}건`);
   } else {
     lines.push("  └ 없음 ✅");
   }
+
+  lines.push("");
+  lines.push("<i>※ 금액은 모두 공급가(VAT 별도) 기준</i>");
 
   return lines.join("\n");
 }
