@@ -149,15 +149,29 @@ export async function parseExcelCustomerInfo(folderId: string): Promise<ExcelCus
 export interface TaxInvoiceRow {
   writeDate: string;
   issueDate: string;
+  approvalNumber: string; // 국세청 승인번호(24자리, 건마다 고유) — 중복 판정 기준
   businessNumber: string;
   companyName: string;
   representative: string;
   address: string;
+  item: string; // 품목(대표 품명)
   supplyAmount: number | null;
   taxAmount: number | null;
   totalAmount: number | null;
   email1: string;
   email2: string;
+}
+
+// 헤더 영역(상단 몇 행)에서 라벨로 컬럼 위치를 찾는다. 못 찾으면 -1.
+function findColumnByHeader(sheet: XLSX.WorkSheet, labels: string[], maxRow = 5, maxCol = 40): number {
+  for (let r = 0; r <= maxRow; r++) {
+    for (let c = 0; c <= maxCol; c++) {
+      const v = getCellValue(sheet, c, r).replace(/\s+/g, "");
+      if (!v) continue;
+      if (labels.some(l => v === l || v.includes(l))) return c;
+    }
+  }
+  return -1;
 }
 
 function parseAmount(val: string): number | null {
@@ -166,7 +180,7 @@ function parseAmount(val: string): number | null {
   return isNaN(num) ? null : num;
 }
 
-function parseSalesInvoiceRow(sheet: XLSX.WorkSheet, row: number): TaxInvoiceRow | null {
+function parseSalesInvoiceRow(sheet: XLSX.WorkSheet, row: number, itemCol = -1): TaxInvoiceRow | null {
   const writeDate = getCellValue(sheet, 0, row);
   const issueDate = getCellValue(sheet, 2, row);
   if (!writeDate && !issueDate) return null;
@@ -174,10 +188,12 @@ function parseSalesInvoiceRow(sheet: XLSX.WorkSheet, row: number): TaxInvoiceRow
   return {
     writeDate,
     issueDate,
+    approvalNumber: getCellValue(sheet, 1, row), // 작성일자(0)·발급일자(2) 사이 → 승인번호
     businessNumber: getCellValue(sheet, 9, row),
     companyName: getCellValue(sheet, 11, row),
     representative: getCellValue(sheet, 12, row),
     address: getCellValue(sheet, 13, row),
+    item: itemCol >= 0 ? getCellValue(sheet, itemCol, row) : "",
     totalAmount: parseAmount(getCellValue(sheet, 14, row)),
     supplyAmount: parseAmount(getCellValue(sheet, 15, row)),
     taxAmount: parseAmount(getCellValue(sheet, 16, row)),
@@ -186,7 +202,7 @@ function parseSalesInvoiceRow(sheet: XLSX.WorkSheet, row: number): TaxInvoiceRow
   };
 }
 
-function parsePurchaseInvoiceRow(sheet: XLSX.WorkSheet, row: number): TaxInvoiceRow | null {
+function parsePurchaseInvoiceRow(sheet: XLSX.WorkSheet, row: number, itemCol = -1): TaxInvoiceRow | null {
   const writeDate = getCellValue(sheet, 0, row);
   const issueDate = getCellValue(sheet, 2, row);
   if (!writeDate && !issueDate) return null;
@@ -194,10 +210,12 @@ function parsePurchaseInvoiceRow(sheet: XLSX.WorkSheet, row: number): TaxInvoice
   return {
     writeDate,
     issueDate,
+    approvalNumber: getCellValue(sheet, 1, row), // 작성일자(0)·발급일자(2) 사이 → 승인번호
     businessNumber: getCellValue(sheet, 4, row),
     companyName: getCellValue(sheet, 6, row),
     representative: getCellValue(sheet, 7, row),
     address: getCellValue(sheet, 8, row),
+    item: itemCol >= 0 ? getCellValue(sheet, itemCol, row) : "",
     totalAmount: parseAmount(getCellValue(sheet, 14, row)),
     supplyAmount: parseAmount(getCellValue(sheet, 15, row)),
     taxAmount: parseAmount(getCellValue(sheet, 16, row)),
@@ -208,17 +226,20 @@ function parsePurchaseInvoiceRow(sheet: XLSX.WorkSheet, row: number): TaxInvoice
 
 function parseInvoiceSheet(
   buffer: Buffer,
-  rowParser: (sheet: XLSX.WorkSheet, row: number) => TaxInvoiceRow | null
+  rowParser: (sheet: XLSX.WorkSheet, row: number, itemCol: number) => TaxInvoiceRow | null
 ): TaxInvoiceRow[] {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) return [];
 
+  // 품목 컬럼은 양식마다 위치가 달라 헤더에서 탐지(없으면 빈 값)
+  const itemCol = findColumnByHeader(sheet, ["품목", "품명"]);
+
   const results: TaxInvoiceRow[] = [];
   let row = 6;
   let emptyCount = 0;
   while (emptyCount < 3) {
-    const parsed = rowParser(sheet, row);
+    const parsed = rowParser(sheet, row, itemCol);
     if (!parsed) {
       emptyCount++;
       row++;

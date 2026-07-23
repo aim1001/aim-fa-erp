@@ -2054,6 +2054,30 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   });
   const hasBusinessNumber = !!linkedCustomer?.businessNumber?.trim();
 
+  // 프로젝트 전환 게이트 — 서버 routes.ts /convert-to-project와 동일 조건.
+  // 막힌 사유를 모아 버튼 호버(툴팁)·클릭(토스트)에서 안내한다.
+  const convertBlockReasons: string[] = [];
+  if (inquiry) {
+    if (inquiry.customerId && !hasBusinessNumber) {
+      convertBlockReasons.push("거래처에 사업자등록번호가 없습니다 — 거래처에 먼저 등록하세요.");
+    }
+    const convTotal = inquiry.lastQuoteSales ?? 0;
+    if (!convTotal || convTotal <= 0) {
+      convertBlockReasons.push("견적 금액(총액)이 없습니다 — 견적서를 연결/작성하세요.");
+    }
+    const ratioSum = (inquiry.contractRatio || 0) + (inquiry.midRatio || 0) + (inquiry.finalRatio || 0);
+    if (ratioSum !== 100) {
+      convertBlockReasons.push(`수금·계산서 비율 합계가 ${ratioSum}%입니다 — 계약금+중도금+잔금 = 100%로 설정하세요.`);
+    }
+    const needDelivery =
+      (inquiry.midAfterDelivery === "true" && (inquiry.midRatio || 0) > 0) ||
+      (inquiry.finalAfterDelivery === "true" && (inquiry.finalRatio || 0) > 0);
+    if (needDelivery && !inquiry.deliveryDate) {
+      convertBlockReasons.push("납품예정일이 없습니다 — 납품 기준 수금 타이밍 계산에 필요합니다.");
+    }
+  }
+  const canConvert = convertBlockReasons.length === 0;
+
   const { data: staffList } = useQuery<any[]>({
     queryKey: ["/api/staff"],
   });
@@ -2092,39 +2116,60 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
                 프로젝트 보기 ({linkedProject.projectNumber})
               </Button>
             </Link>
-          ) : (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => {
-                if (!inquiry.customerId) {
-                  setShowUnregisteredWarning(true);
-                  return;
-                }
-                if (!hasBusinessNumber) {
-                  toast({
-                    title: "프로젝트 전환 불가",
-                    description: "사업자등록번호가 등록된 거래처만 전환할 수 있습니다. 거래처에 사업자등록번호를 먼저 등록해 주세요.",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-                const amountText = inquiry.lastQuoteSales
-                  ? `\n최종 공급가액: ${inquiry.lastQuoteSales.toLocaleString()}원`
-                  : "\n금액 정보 없음";
-                const msg = inquiry.status === "won"
-                  ? `프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다.${amountText}`
-                  : `아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?${amountText}`;
-                if (confirm(msg)) convertMutation.mutate();
-              }}
-              disabled={convertMutation.isPending || (!!inquiry.customerId && !hasBusinessNumber)}
-              title={!!inquiry.customerId && !hasBusinessNumber ? "사업자등록번호 등록 후 전환 가능합니다" : undefined}
-              data-testid="button-convert-to-project"
-            >
-              {convertMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FolderOpen className="h-4 w-4 mr-1" />}
-              프로젝트 전환
-            </Button>
-          )}
+          ) : (() => {
+            const convertBtn = (
+              <Button
+                variant={canConvert ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  if (!inquiry.customerId) {
+                    setShowUnregisteredWarning(true);
+                    return;
+                  }
+                  if (!canConvert) {
+                    toast({
+                      title: "프로젝트 전환 불가",
+                      description: (
+                        <div className="whitespace-pre-line">
+                          {convertBlockReasons.map((r) => `· ${r}`).join("\n")}
+                        </div>
+                      ),
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  const amountText = inquiry.lastQuoteSales
+                    ? `\n최종 공급가액: ${inquiry.lastQuoteSales.toLocaleString()}원`
+                    : "\n금액 정보 없음";
+                  const msg = inquiry.status === "won"
+                    ? `프로젝트로 전환하시겠습니까? 최종 견적서의 품목이 복사됩니다.${amountText}`
+                    : `아직 수주 상태가 아닙니다. 그래도 프로젝트로 전환하시겠습니까?${amountText}`;
+                  if (confirm(msg)) convertMutation.mutate();
+                }}
+                disabled={convertMutation.isPending}
+                data-testid="button-convert-to-project"
+              >
+                {convertMutation.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FolderOpen className="h-4 w-4 mr-1" />}
+                프로젝트 전환
+                {!canConvert && (
+                  <span className="ml-1 text-[10px] opacity-80">· {convertBlockReasons.length}건 미충족</span>
+                )}
+              </Button>
+            );
+            return canConvert ? convertBtn : (
+              <Tooltip>
+                <TooltipTrigger asChild>{convertBtn}</TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="font-medium mb-1">전환하려면 먼저 해결하세요</p>
+                  <ul className="list-disc pl-4 space-y-0.5 text-xs">
+                    {convertBlockReasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </TooltipContent>
+              </Tooltip>
+            );
+          })()}
           <Button
             variant="destructive"
             size="sm"

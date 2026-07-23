@@ -25,6 +25,7 @@ import {
 } from "./onedrive";
 import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, parseSalesTaxInvoicesFromBuffer, parsePurchaseTaxInvoicesFromBuffer, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive, parseKBBankStatementFromBuffer, parseKBBankAccountInfo } from "./excel-parser";
 import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema, insertProjectItemSchema } from "@shared/schema";
+import { normalizeCompanyName } from "@shared/company-name";
 
 declare module "express-session" {
   interface SessionData {
@@ -2611,6 +2612,21 @@ export async function registerRoutes(
     }
   });
 
+  // 견적 할인(금액/비율 + 절사단위)을 반영한 최종 공급가액. 공급가 합계(items 합)를 입력으로 받는다.
+  // 프로젝트 전환 총액 · 인콰이어리 판매가(lastQuoteSales) 표시의 단일 기준.
+  function applyQuoteDiscount(
+    supply: number,
+    quotation: { discountType?: string | null; discountValue?: number | null; discountTruncUnit?: string | null },
+  ) {
+    const dType = quotation.discountType || "amount";
+    const dVal = quotation.discountValue || 0;
+    const dAmt = dVal > 0 ? (dType === "percent" ? Math.round(supply * dVal / 100) : dVal) : 0;
+    const dUnit = parseInt((quotation.discountTruncUnit as string) || "0") || 0;
+    let afterDiscount = supply - dAmt;
+    if (dUnit > 0 && dAmt > 0) afterDiscount = Math.floor(afterDiscount / dUnit) * dUnit;
+    return afterDiscount;
+  }
+
   async function syncQuotationTotalsToInquiry(quotationId: string) {
     const result = await storage.getQuotationWithItems(quotationId);
     if (!result) return null;
@@ -2618,7 +2634,9 @@ export async function registerRoutes(
     const adjustmentItems = result.items.filter(i => i.isAdjustment);
     const regularSales = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
     const adjustmentSales = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
-    const totalSales = regularSales + adjustmentSales;
+    // lastQuoteSales/Margin은 견적 할인을 반영한 최종 금액으로 저장 → 전환 시 프로젝트 총액과 일치.
+    const supplyBeforeDiscount = regularSales + adjustmentSales;
+    const totalSales = applyQuoteDiscount(supplyBeforeDiscount, result.quotation);
     const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * (i.quantity || 1)), 0);
     const totalMargin = totalSales - totalCost;
     await storage.updateInquiry(result.quotation.inquiryId, {
@@ -4218,9 +4236,14 @@ export async function registerRoutes(
 
       const customerByBizNum = new Map<string, string>();
       const customerByName = new Map<string, string>();
+      const customerByNameNorm = new Map<string, string>();
       for (const c of allCustomers) {
         if (c.businessNumber) customerByBizNum.set(c.businessNumber.replace(/-/g, ""), c.id);
-        if (c.companyName) customerByName.set(c.companyName.trim().toLowerCase(), c.id);
+        if (c.companyName) {
+          customerByName.set(c.companyName.trim().toLowerCase(), c.id);
+          const norm = normalizeCompanyName(c.companyName);
+          if (norm && !customerByNameNorm.has(norm)) customerByNameNorm.set(norm, c.id);
+        }
       }
 
       const projectsByCustomerId = new Map<string, string[]>();
@@ -4242,6 +4265,11 @@ export async function registerRoutes(
 
         let customerId = bizClean ? (customerByBizNum.get(bizClean) || null) : null;
         if (!customerId && nameLower) customerId = customerByName.get(nameLower) || null;
+        // 법인격·공백 차이 무시 매칭: "(주)두드림" ↔ "두드림"
+        if (!customerId) {
+          const norm = normalizeCompanyName(inv.companyName);
+          if (norm) customerId = customerByNameNorm.get(norm) || null;
+        }
         // Fuzzy/partial name match: "오토런" ↔ "주식회사 오토런 시스템"
         if (!customerId && nameLower && nameLower.length >= 2) {
           for (const [custName, custId] of customerByName.entries()) {
@@ -4705,8 +4733,11 @@ export async function registerRoutes(
       const rows = parseSalesTaxInvoicesFromBuffer(req.file.buffer);
       const allInvoices = await storage.getSalesInvoices();
 
+      // 승인번호(계산서번호) 기준 식별 맵 — 건마다 고유라 같은 날·금액 계산서도 구분됨
+      const existingByApproval = new Map<string, typeof allInvoices[0]>();
       const exactKeyMap = new Map<string, typeof allInvoices[0]>();
       for (const e of allInvoices) {
+        if (e.invoiceNumber) existingByApproval.set(e.invoiceNumber.trim(), e);
         if (e.issueDate) {
           const key = `${e.issueDate}|${(e.businessNumber || "").replace(/-/g, "")}|${e.supplyAmount}`;
           exactKeyMap.set(key, e);
@@ -4725,11 +4756,13 @@ export async function registerRoutes(
           customerByBizNum.set(c.businessNumber.replace(/-/g, ""), c.id);
         }
         if (c.companyName) {
-          const nameKey = c.companyName.toLowerCase().trim();
-          if (customerByCompanyName.has(nameKey)) {
-            ambiguousCompanyNames.add(nameKey);
-          } else {
-            customerByCompanyName.set(nameKey, c.id);
+          const nameKey = normalizeCompanyName(c.companyName);
+          if (nameKey) {
+            if (customerByCompanyName.has(nameKey)) {
+              ambiguousCompanyNames.add(nameKey);
+            } else {
+              customerByCompanyName.set(nameKey, c.id);
+            }
           }
         }
         customerById.set(c.id, c);
@@ -4756,25 +4789,39 @@ export async function registerRoutes(
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
 
+        const approval = (row.approvalNumber || "").trim();
         const rowBizClean = (row.businessNumber || "").replace(/-/g, "");
         const exactKey = `${row.issueDate}|${rowBizClean}|${row.supplyAmount}`;
 
-        if (processedKeys.has(exactKey)) { skipped++; continue; }
-        processedKeys.add(exactKey);
+        // 파일 내 중복: 승인번호가 있으면 승인번호로, 없으면 발급일+사업자+공급가액으로 판정
+        const dedupKey = approval || exactKey;
+        if (processedKeys.has(dedupKey)) { skipped++; continue; }
+        processedKeys.add(dedupKey);
 
-        const exactMatch = exactKeyMap.get(exactKey);
-        if (exactMatch && !matchedIds.has(exactMatch.id)) {
-          matchedIds.add(exactMatch.id);
+        // 이미 등록된 계산서면 건너뜀(승인번호 우선, 없으면 금액키 폴백)
+        let existing = approval ? existingByApproval.get(approval) : undefined;
+        if (!existing) {
+          // 금액키 폴백은 '승인번호가 비어있는 레거시 레코드'에만 적용
+          // (승인번호가 다른 별개 건을 오중복 처리하지 않도록)
+          const byAmount = exactKeyMap.get(exactKey);
+          if (byAmount && !byAmount.invoiceNumber) existing = byAmount;
+        }
+        if (existing && !matchedIds.has(existing.id)) {
+          matchedIds.add(existing.id);
+          // 승인번호가 비어있던 기존 레코드면 채워 다음부터 정확히 매칭되게 함
+          if (approval && !existing.invoiceNumber) {
+            await storage.updateSalesInvoice(existing.id, { invoiceNumber: approval });
+          }
           skipped++;
           continue;
         }
 
-        const rowCompanyLower = (row.companyName || "").toLowerCase().trim();
+        const rowCompanyNorm = normalizeCompanyName(row.companyName);
 
         const pendingCandidates = pendingInvoices.filter(p => {
           if (matchedIds.has(p.id)) return false;
           const pBizClean = (p.businessNumber || "").replace(/-/g, "");
-          const pCompanyLower = (p.companyName || "").toLowerCase().trim();
+          const pCompanyNorm = normalizeCompanyName(p.companyName);
 
           let custBizClean = "";
           if (p.customerId) {
@@ -4783,7 +4830,7 @@ export async function registerRoutes(
           }
 
           const bizMatch = rowBizClean && (pBizClean === rowBizClean || custBizClean === rowBizClean);
-          const nameMatch = rowCompanyLower && pCompanyLower && pCompanyLower === rowCompanyLower;
+          const nameMatch = !!rowCompanyNorm && !!pCompanyNorm && pCompanyNorm === rowCompanyNorm;
           if (!bizMatch && !nameMatch) return false;
 
           const amountDiff = Math.abs((p.supplyAmount || 0) - row.supplyAmount);
@@ -4803,10 +4850,12 @@ export async function registerRoutes(
           await storage.updateSalesInvoice(best.id, {
             issueDate: row.issueDate || null,
             writeDate: row.writeDate || null,
+            invoiceNumber: approval || best.invoiceNumber || null,
             businessNumber: row.businessNumber || null,
             companyName: row.companyName || null,
             representative: row.representative || null,
             address: row.address || null,
+            item: row.item || best.item || null,
             email1: row.email1 || null,
             email2: row.email2 || null,
             supplyAmount: row.supplyAmount,
@@ -4818,8 +4867,8 @@ export async function registerRoutes(
         }
 
         let customerId = rowBizClean ? customerByBizNum.get(rowBizClean) || null : null;
-        if (!customerId && rowCompanyLower && !ambiguousCompanyNames.has(rowCompanyLower)) {
-          customerId = customerByCompanyName.get(rowCompanyLower) || null;
+        if (!customerId && rowCompanyNorm && !ambiguousCompanyNames.has(rowCompanyNorm)) {
+          customerId = customerByCompanyName.get(rowCompanyNorm) || null;
         }
         // 고객사가 없으면 엑셀 데이터로 자동 생성
         if (!customerId && row.companyName) {
@@ -4832,7 +4881,7 @@ export async function registerRoutes(
           customerId = newCustomer.id;
           // 새로 만든 고객사를 맵에도 추가 (같은 업체 중복 생성 방지)
           if (rowBizClean) customerByBizNum.set(rowBizClean, customerId);
-          if (rowCompanyLower) customerByCompanyName.set(rowCompanyLower, customerId);
+          if (rowCompanyNorm) customerByCompanyName.set(rowCompanyNorm, customerId);
         }
         const year = row.issueDate ? parseInt(row.issueDate.substring(0, 4)) : null;
 
@@ -4850,10 +4899,12 @@ export async function registerRoutes(
           projectId: autoProjectId || undefined,
           issueDate: row.issueDate || null,
           writeDate: row.writeDate || null,
+          invoiceNumber: approval || null,
           businessNumber: row.businessNumber || null,
           companyName: row.companyName || null,
           representative: row.representative || null,
           address: row.address || null,
+          item: row.item || null,
           email1: row.email1 || null,
           email2: row.email2 || null,
           year: year || undefined,
@@ -5052,8 +5103,11 @@ export async function registerRoutes(
       const rows = parsePurchaseTaxInvoicesFromBuffer(req.file.buffer);
       const allInvoices = await storage.getPurchaseInvoices();
 
+      // 승인번호(계산서번호) 기준 식별 맵 — 건마다 고유라 같은 날·금액 계산서도 구분됨
+      const existingByApproval = new Map<string, typeof allInvoices[0]>();
       const exactKeyMap = new Map<string, typeof allInvoices[0]>();
       for (const e of allInvoices) {
+        if (e.invoiceNumber) existingByApproval.set(e.invoiceNumber.trim(), e);
         if (e.issueDate) {
           const key = `${e.issueDate}|${(e.businessNumber || "").replace(/-/g, "")}|${e.supplyAmount}`;
           exactKeyMap.set(key, e);
@@ -5068,7 +5122,8 @@ export async function registerRoutes(
           vendorByBizNum.set(v.businessNumber.replace(/-/g, ""), v.id);
         }
         if (v.companyName) {
-          vendorByCompanyName.set(v.companyName.toLowerCase().trim(), v.id);
+          const nameKey = normalizeCompanyName(v.companyName);
+          if (nameKey && !vendorByCompanyName.has(nameKey)) vendorByCompanyName.set(nameKey, v.id);
         }
       }
 
@@ -5080,16 +5135,33 @@ export async function registerRoutes(
       for (const row of rows) {
         if (!row.supplyAmount && row.supplyAmount !== 0) { skipped++; continue; }
 
+        const approval = (row.approvalNumber || "").trim();
         const bizNumClean = (row.businessNumber || "").replace(/-/g, "");
         const exactKey = `${row.issueDate}|${bizNumClean}|${row.supplyAmount}`;
-        if (processedKeys.has(exactKey)) { skipped++; continue; }
-        processedKeys.add(exactKey);
 
-        if (exactKeyMap.has(exactKey)) { skipped++; continue; }
+        // 파일 내 중복: 승인번호가 있으면 승인번호로, 없으면 발급일+사업자+공급가액으로 판정
+        const dedupKey = approval || exactKey;
+        if (processedKeys.has(dedupKey)) { skipped++; continue; }
+        processedKeys.add(dedupKey);
 
-        const companyLower = (row.companyName || "").toLowerCase().trim();
+        // 이미 등록된 계산서면 건너뜀(승인번호 우선, 없으면 금액키 폴백)
+        let existing = approval ? existingByApproval.get(approval) : undefined;
+        if (!existing) {
+          // 금액키 폴백은 '승인번호가 비어있는 레거시 레코드'에만 적용
+          const byAmount = exactKeyMap.get(exactKey);
+          if (byAmount && !byAmount.invoiceNumber) existing = byAmount;
+        }
+        if (existing) {
+          if (approval && !existing.invoiceNumber) {
+            await storage.updatePurchaseInvoice(existing.id, { invoiceNumber: approval });
+          }
+          skipped++;
+          continue;
+        }
+
+        const companyNorm = normalizeCompanyName(row.companyName);
         let vendorId = bizNumClean ? vendorByBizNum.get(bizNumClean) || null : null;
-        if (!vendorId && companyLower) vendorId = vendorByCompanyName.get(companyLower) || null;
+        if (!vendorId && companyNorm) vendorId = vendorByCompanyName.get(companyNorm) || null;
 
         // 업체가 없으면 자동 생성
         if (!vendorId && row.companyName) {
@@ -5102,7 +5174,7 @@ export async function registerRoutes(
           });
           vendorId = newVendor.id;
           if (bizNumClean) vendorByBizNum.set(bizNumClean, newVendor.id);
-          if (companyLower) vendorByCompanyName.set(companyLower, newVendor.id);
+          if (companyNorm) vendorByCompanyName.set(companyNorm, newVendor.id);
           vendorsCreated++;
         }
 
@@ -5112,10 +5184,12 @@ export async function registerRoutes(
           vendorId,
           issueDate: row.issueDate || null,
           writeDate: row.writeDate || null,
+          invoiceNumber: approval || null,
           businessNumber: row.businessNumber || null,
           companyName: row.companyName || null,
           representative: row.representative || null,
           address: row.address || null,
+          item: row.item || null,
           email1: row.email1 || null,
           year: year || undefined,
           supplyAmount: row.supplyAmount,
@@ -5980,14 +6054,7 @@ export async function registerRoutes(
           const quotData0 = await storage.getQuotationWithItems(quots0[quots0.length - 1].id);
           if (quotData0 && quotData0.items.length > 0) {
             const supply = quotData0.items.reduce((s, i) => s + (i.amount || 0), 0);
-            const q = quotData0.quotation;
-            const dType = q.discountType || "amount";
-            const dVal = q.discountValue || 0;
-            const dAmt = dVal > 0 ? (dType === "percent" ? Math.round(supply * dVal / 100) : dVal) : 0;
-            const dUnit = parseInt((q.discountTruncUnit as string) || "0") || 0;
-            let afterDiscount = supply - dAmt;
-            if (dUnit > 0 && dAmt > 0) afterDiscount = Math.floor(afterDiscount / dUnit) * dUnit;
-            latestQuoteTotalAmount = afterDiscount;
+            latestQuoteTotalAmount = applyQuoteDiscount(supply, quotData0.quotation);
           }
         }
       } catch (calcErr: any) {
@@ -9080,8 +9147,8 @@ export async function registerRoutes(
   const bankUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
   // Auto-match helper: match unmatched credit transactions to sales invoices by company name
-  // 업체명 정규화: 주식회사/(주)/(유) 등 제거, 공백 제거, 소문자
-  function normalizeCompanyName(s: string): string {
+  // 업체명 정규화(은행 입금자명 ↔ 계산서 상호 매칭 전용): 주식회사/(주)/(유) 등 제거, 공백 제거, 소문자
+  function normalizeForBankMatch(s: string): string {
     return s.replace(/주식회사|유한회사|\(주\)|\(유\)|\s/g, "").toLowerCase();
   }
 
@@ -9109,12 +9176,12 @@ export async function registerRoutes(
 
     let matched = 0;
     for (const tx of txResult.rows) {
-      const cpNorm = normalizeCompanyName((tx.counterparty as string).trim());
+      const cpNorm = normalizeForBankMatch((tx.counterparty as string).trim());
       const txAmount = Number(tx.credit_amount);
 
       // 업체명 매칭 후보 추출 (정규화된 이름 포함 여부)
       const nameCandidates = invoiceResult.rows.filter((inv: any) => {
-        const cnNorm = normalizeCompanyName((inv.company_name as string).trim());
+        const cnNorm = normalizeForBankMatch((inv.company_name as string).trim());
         return cnNorm && (cpNorm.includes(cnNorm) || cnNorm.includes(cpNorm));
       });
       if (nameCandidates.length === 0) continue;

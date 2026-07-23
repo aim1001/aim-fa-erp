@@ -1,8 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus, RefreshCw, Search, Trash2, UserPlus, Users, Check, X, FileText, Star, Link2 } from "lucide-react";
-import { useState, useCallback, useMemo } from "react";
+import { Building2, Plus, RefreshCw, Search, Trash2, UserPlus, Users, Check, X, FileText, Star, Link2, Upload, ScanLine } from "lucide-react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -539,6 +539,12 @@ export default function CustomerList() {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newBizNum, setNewBizNum] = useState("");
+  const [newRep, setNewRep] = useState("");
+  const [newAddr, setNewAddr] = useState("");
+  const [newBizType, setNewBizType] = useState("");
+  const [newBizCat, setNewBizCat] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const certInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [tab, setTab] = useState<FilterTab>("traded");
@@ -666,8 +672,12 @@ export default function CustomerList() {
     },
   });
 
+  const resetAddForm = () => {
+    setNewName(""); setNewBizNum(""); setNewRep(""); setNewAddr(""); setNewBizType(""); setNewBizCat("");
+  };
+
   const createMutation = useMutation({
-    mutationFn: async (data: { companyName: string; businessNumber?: string }) => {
+    mutationFn: async (data: Record<string, any>) => {
       const res = await apiRequest("POST", "/api/customers", data);
       return res.json();
     },
@@ -675,14 +685,39 @@ export default function CustomerList() {
       queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       setShowAdd(false);
-      setNewName("");
-      setNewBizNum("");
+      resetAddForm();
       toast({ title: "고객사가 등록되었습니다" });
     },
     onError: (err: Error) => {
       toast({ title: "등록 실패", description: err.message, variant: "destructive" });
     },
   });
+
+  // 사업자등록증 업로드 → Claude 비전으로 자동입력
+  const handleCertUpload = async (file: File) => {
+    setExtracting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/customers/extract-business-cert", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "추출 실패");
+      }
+      const d = await res.json();
+      if (d.companyName) setNewName(d.companyName);
+      if (d.businessNumber) setNewBizNum(d.businessNumber);
+      if (d.representative) setNewRep(d.representative);
+      if (d.address) setNewAddr(d.address);
+      if (d.businessType) setNewBizType(d.businessType);
+      if (d.businessCategory) setNewBizCat(d.businessCategory);
+      toast({ title: "자동입력 완료", description: "추출된 내용을 확인 후 등록하세요." });
+    } catch (e: any) {
+      toast({ title: "자동입력 실패", description: e.message, variant: "destructive" });
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const tabs: { key: FilterTab; label: string; count: number }[] = [
     { key: "traded", label: "거래", count: tabCounts.traded },
@@ -898,31 +933,65 @@ export default function CustomerList() {
             <DialogTitle>고객사 추가</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>상호명 *</Label>
-              <Input
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder="회사명을 입력하세요"
-                data-testid="input-new-customer-name"
-              />
-            </div>
-            <div>
-              <Label>사업자등록번호</Label>
-              <Input
-                value={newBizNum}
-                onChange={e => setNewBizNum(e.target.value)}
-                placeholder="000-00-00000"
-                data-testid="input-new-customer-biznum"
-              />
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              ref={certInputRef}
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleCertUpload(f); e.target.value = ""; }}
+              data-testid="input-cert-upload"
+            />
+            <Button
+              variant="outline"
+              className="w-full border-dashed"
+              onClick={() => certInputRef.current?.click()}
+              disabled={extracting}
+              data-testid="button-cert-upload"
+            >
+              {extracting
+                ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />사업자등록증 인식 중...</>
+                : <><ScanLine className="h-4 w-4 mr-2" />사업자등록증 업로드 (자동입력)</>}
+            </Button>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label>상호명 *</Label>
+                <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="회사명을 입력하세요" data-testid="input-new-customer-name" />
+              </div>
+              <div>
+                <Label>사업자등록번호</Label>
+                <Input value={newBizNum} onChange={e => setNewBizNum(e.target.value)} placeholder="000-00-00000" data-testid="input-new-customer-biznum" />
+              </div>
+              <div>
+                <Label>대표자</Label>
+                <Input value={newRep} onChange={e => setNewRep(e.target.value)} placeholder="대표자명" data-testid="input-new-customer-rep" />
+              </div>
+              <div className="col-span-2">
+                <Label>주소</Label>
+                <Input value={newAddr} onChange={e => setNewAddr(e.target.value)} placeholder="사업장 소재지" data-testid="input-new-customer-addr" />
+              </div>
+              <div>
+                <Label>업태</Label>
+                <Input value={newBizType} onChange={e => setNewBizType(e.target.value)} placeholder="업태" data-testid="input-new-customer-biztype" />
+              </div>
+              <div>
+                <Label>종목</Label>
+                <Input value={newBizCat} onChange={e => setNewBizCat(e.target.value)} placeholder="종목" data-testid="input-new-customer-bizcat" />
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setShowAdd(false)} data-testid="button-cancel-add">
+            <Button variant="secondary" onClick={() => { setShowAdd(false); resetAddForm(); }} data-testid="button-cancel-add">
               취소
             </Button>
             <Button
-              onClick={() => createMutation.mutate({ companyName: newName, businessNumber: newBizNum || undefined })}
+              onClick={() => createMutation.mutate({
+                companyName: newName,
+                businessNumber: newBizNum || undefined,
+                representative: newRep || undefined,
+                address: newAddr || undefined,
+                businessType: newBizType || undefined,
+                businessCategory: newBizCat || undefined,
+              })}
               disabled={!newName.trim() || createMutation.isPending}
               data-testid="button-confirm-add"
             >
