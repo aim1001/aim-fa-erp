@@ -1232,7 +1232,14 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
                 { name: "잔금", ratio: project.finalRatio || 0 },
               ].filter(s => s.ratio > 0);
 
-          const linkedTotal = project.salesInvoices.reduce((s, i) => s + (i.supplyAmount || 0), 0);
+          // 스테이지별로 발행완료가 있으면 placeholder는 제외 (이중 계산 방지)
+          const issuedByStage = new Set(
+            project.salesInvoices.filter(i => !!i.issueDate && i.invoiceStage).map(i => i.invoiceStage)
+          );
+          const deduped = project.salesInvoices.filter(i =>
+            i.issueDate || !i.invoiceStage || !issuedByStage.has(i.invoiceStage)
+          );
+          const linkedTotal = deduped.reduce((s, i) => s + (i.supplyAmount || 0), 0);
           const plannedTotal = project.totalAmount!;
           const totalDiff = plannedTotal - linkedTotal;
           const stageNames = new Set(stages.map(s => s.name));

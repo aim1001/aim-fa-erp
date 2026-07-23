@@ -44,7 +44,7 @@ import {
   calendarEvents, monthlyBalances, bankAccounts, bankTransactions,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, ilike, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, or, ilike, gte, lte, asc, desc, sql } from "drizzle-orm";
 
 function naturalSort(a: string, b: string): number {
   const ax: (string | number)[] = [];
@@ -1650,7 +1650,14 @@ export class DatabaseStorage implements IStorage {
 
     return db.select().from(bankTransactions)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(bankTransactions.txDate), desc(bankTransactions.createdAt))
+      // 계좌별로 묶고, 계좌 안에서는 날짜+거래시각 순(=은행 엑셀 명세서 순서)으로.
+      // 전 계좌를 날짜로만 정렬하면 두 계좌가 뒤죽박죽 섞이므로 accountId를 1순위로.
+      .orderBy(
+        asc(bankTransactions.accountId),
+        desc(bankTransactions.txDate),
+        sql`${bankTransactions.txTime} DESC NULLS LAST`,
+        desc(bankTransactions.createdAt),
+      )
       .limit(filters?.limit ?? 100000)
       .offset(filters?.offset ?? 0);
   }
