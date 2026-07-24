@@ -643,16 +643,44 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [showInvoiceRegenConfirm, setShowInvoiceRegenConfirm] = useState(false);
 
-  const [editingInvoiceDateId, setEditingInvoiceDateId] = useState<string | null>(null);
-  const [editInvoiceDate, setEditInvoiceDate] = useState("");
-  const updateInvoiceDateMutation = useMutation({
-    mutationFn: async ({ id, plannedIssueDate }: { id: string; plannedIssueDate: string | null }) => {
-      const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, { plannedIssueDate });
+  // 미발행 계산서 인라인 수정 (예정일·내용·공급가). 수금계획과 실제 발행이 다를 수 있어 계산서를 직접 조정.
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [editInv, setEditInv] = useState<{ plannedIssueDate: string; item: string; supplyAmount: string }>({
+    plannedIssueDate: "", item: "", supplyAmount: "",
+  });
+  const startEditInvoice = (inv: SalesInvoice) => {
+    setEditingInvoiceId(inv.id);
+    setEditInv({
+      plannedIssueDate: inv.plannedIssueDate || "",
+      item: inv.item || "",
+      supplyAmount: String(inv.supplyAmount ?? ""),
+    });
+  };
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async ({ id, fields }: { id: string; fields: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/sales-invoices/${id}`, fields);
       return res.json();
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] }); },
-    onError: (err: Error) => toast({ title: "예정일 변경 실패", description: err.message, variant: "destructive" }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] }); toast({ title: "계산서 수정 완료" }); },
+    onError: (err: Error) => toast({ title: "계산서 수정 실패", description: err.message, variant: "destructive" }),
   });
+  const saveEditInvoice = (inv: SalesInvoice) => {
+    const supply = parseInt(editInv.supplyAmount.replace(/[^0-9-]/g, ""), 10) || 0;
+    // 세액은 기존 계산서의 과세비율을 유지(면세=0, 과세=10%) → 공급가만 바꿔도 총액 일관.
+    const ratio = inv.supplyAmount && inv.supplyAmount !== 0 ? (inv.taxAmount || 0) / inv.supplyAmount : 0.1;
+    const tax = Math.round(supply * ratio);
+    updateInvoiceMutation.mutate({
+      id: inv.id,
+      fields: {
+        plannedIssueDate: editInv.plannedIssueDate || null,
+        item: editInv.item.trim() || null,
+        supplyAmount: supply,
+        taxAmount: tax,
+        totalAmount: supply + tax,
+      },
+    });
+    setEditingInvoiceId(null);
+  };
 
   const [showPurchasePicker, setShowPurchasePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -1353,7 +1381,25 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
                     {stageInvoices.map(inv => {
                       const isIssued = !!inv.issueDate;
                       const isPastDue = !isIssued && inv.plannedIssueDate && inv.plannedIssueDate < today;
-                      const isEditingDate = editingInvoiceDateId === inv.id;
+                      const isEditing = editingInvoiceId === inv.id && !isIssued;
+                      if (isEditing) {
+                        return (
+                          <div key={inv.id} className="text-[10px] py-1.5 px-4 border-t bg-orange-50/60 dark:bg-orange-900/20">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="px-1 py-0.5 rounded text-[9px] font-medium whitespace-nowrap bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">미발행</span>
+                              <Input type="date" value={editInv.plannedIssueDate} onChange={e => setEditInv(s => ({ ...s, plannedIssueDate: e.target.value }))} className="h-6 text-[10px] w-[120px] px-1" data-testid={`input-invoice-date-${inv.id}`} />
+                              <Input type="text" placeholder="내용" value={editInv.item} onChange={e => setEditInv(s => ({ ...s, item: e.target.value }))} className="h-6 text-[10px] flex-1 min-w-[80px] px-1" data-testid={`input-invoice-item-${inv.id}`} />
+                              <div className="flex items-center gap-0.5">
+                                <span className="text-muted-foreground">공급</span>
+                                <Input type="number" value={editInv.supplyAmount} onChange={e => setEditInv(s => ({ ...s, supplyAmount: e.target.value }))} className="h-6 text-[10px] w-[100px] px-1 text-right" data-testid={`input-invoice-supply-${inv.id}`} />
+                                <span className="text-muted-foreground">원</span>
+                              </div>
+                              <Button size="sm" variant="ghost" className="h-6 w-6 p-0" disabled={updateInvoiceMutation.isPending} onClick={() => saveEditInvoice(inv)} data-testid={`button-save-invoice-${inv.id}`}><Check className="h-3 w-3" /></Button>
+                              <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingInvoiceId(null)} data-testid={`button-cancel-invoice-${inv.id}`}><X className="h-3 w-3" /></Button>
+                            </div>
+                          </div>
+                        );
+                      }
                       return (
                         <div key={inv.id} className={`text-[10px] py-1.5 px-4 border-t flex items-center justify-between gap-2 ${isIssued ? "bg-green-50/40 dark:bg-green-900/10" : isPastDue ? "bg-red-50/40 dark:bg-red-900/10" : "bg-white/20 dark:bg-white/5"}`}>
                           <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -1362,14 +1408,8 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
                             </span>
                             {isIssued ? (
                               <span className="text-green-700 dark:text-green-400 whitespace-nowrap">{inv.issueDate}</span>
-                            ) : isEditingDate ? (
-                              <div className="flex items-center gap-1">
-                                <Input type="date" value={editInvoiceDate} onChange={e => setEditInvoiceDate(e.target.value)} className="h-5 text-[10px] w-[110px] px-1" data-testid={`input-invoice-date-${inv.id}`} />
-                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-save-invoice-date-${inv.id}`} onClick={() => { updateInvoiceDateMutation.mutate({ id: inv.id, plannedIssueDate: editInvoiceDate || null }); setEditingInvoiceDateId(null); }}><Check className="h-2.5 w-2.5" /></Button>
-                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => setEditingInvoiceDateId(null)} data-testid={`button-cancel-invoice-date-${inv.id}`}><X className="h-2.5 w-2.5" /></Button>
-                              </div>
                             ) : (
-                              <span className={`cursor-pointer hover:underline whitespace-nowrap ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`} onClick={() => { setEditingInvoiceDateId(inv.id); setEditInvoiceDate(inv.plannedIssueDate || ""); }} data-testid={`text-invoice-date-${inv.id}`}>
+                              <span className={`cursor-pointer hover:underline whitespace-nowrap ${isPastDue ? "text-red-600 dark:text-red-400 font-medium" : inv.plannedIssueDate ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`} onClick={() => startEditInvoice(inv)} data-testid={`text-invoice-date-${inv.id}`}>
                                 {inv.plannedIssueDate ? `예정 ${inv.plannedIssueDate}` : "예정일 미정"}
                               </span>
                             )}
@@ -1378,6 +1418,11 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-blue-600 dark:text-blue-400 font-medium whitespace-nowrap">공급 {fmtComma(inv.supplyAmount || 0)}원</span>
+                            {!isIssued && (
+                              <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={() => startEditInvoice(inv)} data-testid={`button-edit-invoice-${inv.id}`}>
+                                <Pencil className="h-2.5 w-2.5 text-muted-foreground" />
+                              </Button>
+                            )}
                             <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={() => linkMutation.mutate({ type: "sales", invoiceId: inv.id, link: false })} data-testid={`unlink-stage-${inv.id}`}>
                               <X className="h-2.5 w-2.5 text-muted-foreground" />
                             </Button>
