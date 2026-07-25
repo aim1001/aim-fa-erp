@@ -5,7 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { calcPaymentDate, regenerateCollectionPlan, regenerateInvoicePlan } from "./collection-plan";
+import { calcStageDates, regenerateCollectionPlan, regenerateInvoicePlan } from "./collection-plan";
 import { pool } from "./db";
 import { insertInquirySchema, insertCompanySchema, insertCustomerSchema, insertVendorSchema, insertSalesInvoiceSchema, insertPurchaseInvoiceSchema, insertRecurringExpenseSchema } from "@shared/schema";
 import {
@@ -6184,8 +6184,7 @@ export async function registerRoutes(
           const supplyAmt = Math.round((genTotal * stage.ratio) / 100);
           const tax = Math.round(supplyAmt * 0.1);
           const amount = supplyAmt + tax;
-          const refDate = stage.afterDelivery === "true" ? genDelivery : baseDate;
-          const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
+          const { issueDate, collectDate } = calcStageDates(baseDate, genDelivery, stage.timingType, stage.timingDays, stage.afterDelivery);
           const inv = await storage.createSalesInvoice({
             projectId: project.id,
             customerId: project.customerId || null,
@@ -6200,7 +6199,7 @@ export async function registerRoutes(
             taxAmount: tax,
             totalAmount: amount,
             invoiceStage: stage.name,
-            plannedIssueDate: plannedDate,
+            plannedIssueDate: issueDate,
             status: "pending",
           });
           await storage.createPayment({
@@ -6210,7 +6209,7 @@ export async function registerRoutes(
             companyName: project.customerName || "",
             description: `${project.projectNumber} ${stage.name}`,
             amount,
-            plannedDate,
+            plannedDate: collectDate,
             paymentMethod: stage.timingType || "end_of_next_month",
             status: "planned",
             splitIndex: stage.idx,

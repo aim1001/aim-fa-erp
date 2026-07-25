@@ -2,30 +2,39 @@ import { storage } from "./storage";
 
 // 계약조건(단계별 시기) → 예정일 계산
 export function calcPaymentDate(baseDate: string, timingType: string | null, timingDays: number | null): string {
-  const base = new Date(baseDate);
+  // UTC 고정으로 계산 (로컬 TZ에서 월말이 하루 밀리는 off-by-one 방지).
+  const base = new Date(baseDate + "T00:00:00Z");
   if (!timingType) return baseDate;
+  const iso = (d: Date) => d.toISOString().split("T")[0];
+  const addDays = (n: number) => { const d = new Date(base); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
   switch (timingType) {
-    case "end_of_next_month": {
-      const d = new Date(base.getFullYear(), base.getMonth() + 2, 0);
-      return d.toISOString().split("T")[0];
-    }
-    case "two_weeks": {
-      const d = new Date(base);
-      d.setDate(d.getDate() + 14);
-      return d.toISOString().split("T")[0];
-    }
-    case "end_of_month": {
-      const d = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-      return d.toISOString().split("T")[0];
-    }
-    case "specific_days": {
-      const d = new Date(base);
-      d.setDate(d.getDate() + (timingDays || 30));
-      return d.toISOString().split("T")[0];
-    }
+    case "end_of_next_month": // 익월말
+      return iso(new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 2, 0)));
+    case "end_of_month": // 월말
+      return iso(new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)));
+    case "two_weeks": // 2주이내
+      return addDays(14);
+    case "specific_days": // 일자지정 (기본 30일)
+      return addDays(timingDays || 30);
+    case "within_days": // N일이내
+      return addDays(timingDays || 0);
     default:
       return baseDate;
   }
+}
+
+// 단계별 두 날짜를 함께 계산 (계산서 발행일 ≠ 수금일).
+// - 계산서 발행예정일 = 공급시기(refDate): 납품후면 납품일, 아니면 계약/전환일(baseDate)
+// - 수금 예정일       = 공급시기 + 결제조건(timing)
+export function calcStageDates(
+  baseDate: string,
+  deliveryDate: string,
+  timingType: string | null,
+  timingDays: number | null,
+  afterDelivery: string | null,
+): { issueDate: string; collectDate: string } {
+  const refDate = afterDelivery === "true" ? deliveryDate : baseDate;
+  return { issueDate: refDate, collectDate: calcPaymentDate(refDate, timingType, timingDays) };
 }
 
 // 단계별 공급가액(VAT별도): 금액이 지정되면 금액 우선, 없으면 비율로 환산
@@ -85,8 +94,7 @@ export async function regenerateCollectionPlan(project: any, baseDateInput?: str
     if (lockedStages.has(i + 1)) { skipped++; continue; }
     const tax = Math.round(supplyAmt * 0.1);
     const amount = supplyAmt + tax;
-    const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
-    const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
+    const { issueDate, collectDate } = calcStageDates(baseDate, deliveryDate, stage.timingType, stage.timingDays, stage.afterDelivery);
 
     const matchedInvoice = invoiceByStage.get(stage.name);
     let salesInvoiceId: string | null = matchedInvoice?.id || null;
@@ -95,7 +103,7 @@ export async function regenerateCollectionPlan(project: any, baseDateInput?: str
       // 미발행 예정계산서면 새 금액으로 갱신(수금계획과 금액 불일치/중복 방지). 발행완료면 손대지 않음.
       if (matchedInvoice && !matchedInvoice.issueDate) {
         await storage.updateSalesInvoice(salesInvoiceId, {
-          supplyAmount: supplyAmt, taxAmount: tax, totalAmount: amount, plannedIssueDate: plannedDate,
+          supplyAmount: supplyAmt, taxAmount: tax, totalAmount: amount, plannedIssueDate: issueDate,
         });
       }
       const existingInvoicePayments = existingPayments.filter(p => p.salesInvoiceId === salesInvoiceId && !p.projectId);
@@ -117,7 +125,7 @@ export async function regenerateCollectionPlan(project: any, baseDateInput?: str
         taxAmount: tax,
         totalAmount: amount,
         invoiceStage: stage.name,
-        plannedIssueDate: plannedDate,
+        plannedIssueDate: issueDate,
         status: "pending",
       });
       salesInvoiceId = newInvoice.id;
@@ -130,7 +138,7 @@ export async function regenerateCollectionPlan(project: any, baseDateInput?: str
       companyName: project.customerName || "",
       description: `${project.projectNumber} ${stage.name}`,
       amount,
-      plannedDate,
+      plannedDate: collectDate,
       paymentMethod: stage.timingType || "end_of_next_month",
       status: "planned",
       splitIndex: i + 1,
@@ -175,9 +183,7 @@ export async function regenerateInvoicePlan(project: any, baseDateInput?: string
     if (!issuedStages.has("일괄")) {
       const supply = project.totalAmount;
       const tax = Math.round(supply * 0.1);
-      const timingType = project.depositTimingType || project.finalTimingType || "end_of_next_month";
-      const timingDays = project.depositTimingDays || project.finalTimingDays || null;
-      const plannedDate = calcPaymentDate(baseDate, timingType, timingDays);
+      // 일괄 계산서 발행일 = 공급시기(납품일). 수금 예정일은 수금계획(regenerateCollectionPlan)에서 별도 계산.
       const newInv = await storage.createSalesInvoice({
         projectId: project.id,
         customerId: project.customerId || null,
@@ -192,7 +198,7 @@ export async function regenerateInvoicePlan(project: any, baseDateInput?: string
         taxAmount: tax,
         totalAmount: supply + tax,
         invoiceStage: "일괄",
-        plannedIssueDate: plannedDate,
+        plannedIssueDate: deliveryDate,
         status: "pending",
       });
       created++;
@@ -209,8 +215,7 @@ export async function regenerateInvoicePlan(project: any, baseDateInput?: string
       if (issuedStages.has(stage.name)) { skipped++; continue; }
       const supply = stage.supply;
       const tax = Math.round(supply * 0.1);
-      const refDate = stage.afterDelivery === "true" ? deliveryDate : baseDate;
-      const plannedDate = calcPaymentDate(refDate, stage.timingType, stage.timingDays);
+      const { issueDate } = calcStageDates(baseDate, deliveryDate, stage.timingType, stage.timingDays, stage.afterDelivery);
       const newInv = await storage.createSalesInvoice({
         projectId: project.id,
         customerId: project.customerId || null,
@@ -225,7 +230,7 @@ export async function regenerateInvoicePlan(project: any, baseDateInput?: string
         taxAmount: tax,
         totalAmount: supply + tax,
         invoiceStage: stage.name,
-        plannedIssueDate: plannedDate,
+        plannedIssueDate: issueDate,
         status: "pending",
       });
       created++;
