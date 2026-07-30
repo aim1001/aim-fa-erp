@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -228,7 +227,7 @@ function ItemSearchPopover({ onSelect, disabled }: {
             </div>
           )}
         </div>
-        <ScrollArea className="max-h-[400px]">
+        <div className="max-h-[400px] overflow-y-auto overscroll-contain">
           {filtered.length === 0 && (
             <div className="px-3 py-4 text-xs text-center text-muted-foreground">검색 결과 없음</div>
           )}
@@ -278,7 +277,7 @@ function ItemSearchPopover({ onSelect, disabled }: {
               </div>
             );
           })}
-        </ScrollArea>
+        </div>
       </PopoverContent>
     </Popover>
     </div>
