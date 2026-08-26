@@ -6076,7 +6076,10 @@ export async function registerRoutes(
         return res.status(400).json({ message: "계산서·수금 계획을 먼저 설정해야 전환할 수 있습니다:\n· " + planErrors.join("\n· "), planErrors });
       }
 
-      const year = inquiry.year || new Date().getFullYear();
+      // 프로젝트 채번은 수주일(=전환일) 기준. 영업(인콰이어리)이 전년도에 시작됐어도
+      // 수주한 해의 번호로 나가야 순서가 맞는다. KST 기준 날짜 사용.
+      const registrationDate = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const year = Number(registrationDate.slice(0, 4));
       const prefix = String(year).slice(-2);
       const yearProjects = allProjects.filter(p => p.year === year && p.projectNumber);
       let maxSeq = 0;
@@ -6140,7 +6143,7 @@ export async function registerRoutes(
         inquiryId: inquiry.id,
         warrantyTerms: inquiry.warrantyTerms || null,
         contractClauses: inquiry.contractClauses || null,
-        registrationDate: new Date().toISOString().split("T")[0],
+        registrationDate,
       });
 
       const quots = await storage.getQuotationsByInquiry(inquiry.id);
