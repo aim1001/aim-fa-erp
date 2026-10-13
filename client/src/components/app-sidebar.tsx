@@ -32,7 +32,7 @@ export function AppSidebar() {
   const isSalesDashboard = location === "/sales-dashboard";
   const isOpticsCalculator = location === "/optics-calculator";
   const isSalesSection = isSalesDashboard || isInquiryPage || isOverseasInquiryPage || location === "/customers" || location === "/overseas/customers" || location === "/items";
-  const isProjectSection = isProjectPage || location === "/sales-invoices" || location === "/receivables" || location === "/customer-ledger";
+  const isProjectSection = isProjectPage || location === "/overseas/projects" || location === "/sales-invoices" || location === "/receivables" || location === "/customer-ledger";
   const isFinanceSection = ["/management", "/payment-plan"].includes(location);
   const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors", "/purchase-invoices", "/payables"].includes(location);
 
@@ -189,6 +189,18 @@ export function AppSidebar() {
                       data-testid="nav-projects-all"
                     >
                       <Link href="/projects"><span>전체보기</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/overseas/projects"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-overseas-projects"
+                    >
+                      <Link href="/overseas/projects"><span>해외 프로젝트</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
 

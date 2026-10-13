@@ -29,6 +29,7 @@ import { normalizeCompanyName } from "@shared/company-name";
 import { num, calcAppliedRate, krwToUsd, usdLineAmount, usdToKrw, toNumericStr, DEFAULT_SAFETY_MARGIN } from "@shared/fx";
 import type { Quotation, QuotationItem } from "@shared/schema";
 import { DEFAULT_LEAD_TIME, DEFAULT_INCOTERMS, DEFAULT_PAYMENT_TERMS_EN } from "@shared/quotation-en";
+import { regenerateExportPlan, nextExportProjectNumber } from "./export-plan";
 
 declare module "express-session" {
   interface SessionData {
@@ -4422,7 +4423,21 @@ export async function registerRoutes(
 
         return res.json(invoice);
       }
-      const data = insertSalesInvoiceSchema.partial().parse(body);
+      // numeric 컬럼(USD 금액·환율)은 문자열로 검증
+      for (const k of ["amountFx", "fxRate"]) if (typeof body[k] === "number") body[k] = String(body[k]);
+      const data: any = insertSalesInvoiceSchema.partial().parse(body);
+      const cur = await storage.getSalesInvoice(req.params.id);
+      if (cur?.currency === "USD") {
+        const amountFx = data.amountFx != null ? num(data.amountFx) : num(cur.amountFx);
+        const fxRate = data.fxRate != null ? num(data.fxRate) : num(cur.fxRate);
+        if (data.amountFx != null) data.amountFx = toNumericStr(amountFx);
+        if (data.fxRate != null) data.fxRate = fxRate > 0 ? toNumericStr(fxRate) : null;
+        if (amountFx > 0 && fxRate > 0) {
+          data.supplyAmount = usdToKrw(amountFx, fxRate);
+          data.taxAmount = 0;
+          data.totalAmount = data.supplyAmount;
+        }
+      }
       const invoice = await storage.updateSalesInvoice(req.params.id, data);
       if (!invoice) return res.status(404).json({ message: "매출계산서를 찾을 수 없습니다" });
       res.json(invoice);
@@ -6130,12 +6145,17 @@ export async function registerRoutes(
 
       // 사업자등록번호가 없는 거래처는 프로젝트로 전환할 수 없음 (예정/완료 계산서 혼재 방지)
       const convertCustomer = inquiry.customerId ? await storage.getCustomer(inquiry.customerId) : null;
-      if (!convertCustomer || !convertCustomer.businessNumber || !convertCustomer.businessNumber.trim()) {
+      const overseas = inquiry.region === "overseas";
+      if (overseas && !convertCustomer) {
+        return res.status(400).json({ message: "거래처가 연결된 인콰이어리만 프로젝트로 전환할 수 있습니다." });
+      }
+      if (!overseas && (!convertCustomer || !convertCustomer.businessNumber || !convertCustomer.businessNumber.trim())) {
         return res.status(400).json({ message: "사업자등록번호가 등록된 거래처만 프로젝트로 전환할 수 있습니다. 거래처에 사업자등록번호를 먼저 등록해 주세요." });
       }
 
       // 견적 최종 금액(할인 반영) 계산 — 게이트와 프로젝트 총액에 사용
       let latestQuoteTotalAmount: number | null = null;
+      let latestQuoteFx: { totalFx: number; baseRate: number } | null = null;
       try {
         const quots0 = await storage.getQuotationsByInquiry(inquiry.id);
         if (quots0.length > 0) {
@@ -6143,6 +6163,12 @@ export async function registerRoutes(
           if (quotData0 && quotData0.items.length > 0) {
             const supply = quotData0.items.reduce((s, i) => s + (i.amount || 0), 0);
             latestQuoteTotalAmount = applyQuoteDiscount(supply, quotData0.quotation);
+            if (quotData0.quotation.currency === "USD") {
+              latestQuoteFx = {
+                totalFx: Math.round(quotData0.items.reduce((s, i) => s + num(i.amountFx), 0) * 100) / 100,
+                baseRate: num(quotData0.quotation.baseRate),
+              };
+            }
           }
         }
       } catch (calcErr: any) {
@@ -6158,6 +6184,9 @@ export async function registerRoutes(
         (inquiry.finalAfterDelivery === "true" && (inquiry.finalRatio || 0) > 0);
       const planErrors: string[] = [];
       if (!convTotal || convTotal <= 0) planErrors.push("견적 금액(총액)이 없습니다 — 견적서를 연결/작성하세요.");
+      if (overseas && !(latestQuoteFx && latestQuoteFx.totalFx > 0 && latestQuoteFx.baseRate > 0)) {
+        planErrors.push("USD 견적(금액·기준 환율)이 없습니다 — 해외 견적서에 기준 환율과 품목을 입력하세요.");
+      }
       if (ratioSum !== 100) planErrors.push(`수금·계산서 비율 합계가 ${ratioSum}%입니다 — 계약금+중도금+잔금 = 100%로 설정하세요.`);
       if (needDelivery && !inquiry.deliveryDate) planErrors.push("납품예정일이 없습니다 — 납품 기준 수금 타이밍 계산에 필요합니다.");
       if (planErrors.length > 0) {
@@ -6178,7 +6207,7 @@ export async function registerRoutes(
           if (seq > maxSeq) maxSeq = seq;
         }
       }
-      const projectNumber = `${prefix}-${maxSeq + 1}`;
+      const projectNumber = overseas ? nextExportProjectNumber(allProjects, year) : `${prefix}-${maxSeq + 1}`;
 
       const customerName = inquiry.customerName || "";
       const description = inquiry.productInfo || "";
@@ -6188,7 +6217,7 @@ export async function registerRoutes(
       let onedriveWebUrl: string | null = null;
       try {
         const { ensureFolderByPath } = await import("./onedrive");
-        const folderPath = `2.공사/${year}/${safeName}`;
+        const folderPath = overseas ? `2.공사/해외/${year}/${safeName}` : `2.공사/${year}/${safeName}`;
         onedriveFolderId = await ensureFolderByPath(folderPath);
         if (onedriveFolderId) {
           const { getAccessToken, DRIVE_ID } = await import("./onedrive");
@@ -6232,6 +6261,12 @@ export async function registerRoutes(
         warrantyTerms: inquiry.warrantyTerms || null,
         contractClauses: inquiry.contractClauses || null,
         registrationDate,
+        ...(overseas && latestQuoteFx ? {
+          region: "overseas",
+          currency: "USD",
+          contractAmountFx: toNumericStr(latestQuoteFx.totalFx),
+          quoteRate: toNumericStr(latestQuoteFx.baseRate),
+        } : {}),
       });
 
       const quots = await storage.getQuotationsByInquiry(inquiry.id);
@@ -6262,6 +6297,10 @@ export async function registerRoutes(
       // 전환 시 계산서 발행계획 + 수금계획 자동 생성 (게이트를 통과했으므로 비율·금액 유효).
       // 단계별로 미발행 계산서(placeholder) + 예정 수금(payment)을 한 번에 생성.
       try {
+        if (overseas) {
+          // 해외: USD 기준 계획 (세액 0, 매출 인식 시 선적일 환율로 원화 확정)
+          await regenerateExportPlan(project);
+        } else {
         const genTotal = project.totalAmount || 0;
         const baseDate = new Date().toISOString().split("T")[0];
         const genDelivery = project.deliveryDate || baseDate;
@@ -6307,6 +6346,7 @@ export async function registerRoutes(
             splitTotal,
           });
         }
+        }
       } catch (genErr: any) {
         console.log(`전환 시 계획 자동생성 실패: ${genErr.message}`);
       }
@@ -6334,7 +6374,9 @@ export async function registerRoutes(
         return res.status(409).json({ message: `예정 항목 ${plannedCount}건이 삭제됩니다. 계속하시겠습니까?`, needConfirm: true, plannedCount });
       }
 
-      const { created, skipped } = await regenerateCollectionPlan(project, req.body.baseDate);
+      const { created, skipped } = project.currency === "USD"
+        ? await regenerateExportPlan(project, req.body.baseDate)
+        : await regenerateCollectionPlan(project, req.body.baseDate);
       res.json({ message: `수금 계획 ${created}건 생성 완료${skipped > 0 ? ` (입금완료 ${skipped}건 유지)` : ""}`, created, skipped });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -6361,7 +6403,9 @@ export async function registerRoutes(
         });
       }
 
-      const { created, skipped } = await regenerateInvoicePlan(project, req.body.baseDate);
+      const { created, skipped } = project.currency === "USD"
+        ? await regenerateExportPlan(project, req.body.baseDate)
+        : await regenerateInvoicePlan(project, req.body.baseDate);
       res.json({ message: `계산서 ${created}건 생성 완료${skipped > 0 ? ` (발행완료 ${skipped}건 유지)` : ""}`, created, skipped });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

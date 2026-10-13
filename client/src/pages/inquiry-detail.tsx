@@ -2058,7 +2058,8 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   // 막힌 사유를 모아 버튼 호버(툴팁)·클릭(토스트)에서 안내한다.
   const convertBlockReasons: string[] = [];
   if (inquiry) {
-    if (inquiry.customerId && !hasBusinessNumber) {
+    // 해외 거래처는 사업자등록번호가 없으므로 게이트에서 제외 (서버와 동일)
+    if (inquiry.region !== "overseas" && inquiry.customerId && !hasBusinessNumber) {
       convertBlockReasons.push("거래처에 사업자등록번호가 없습니다 — 거래처에 먼저 등록하세요.");
     }
     const convTotal = inquiry.lastQuoteSales ?? 0;
@@ -2110,7 +2111,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
         <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
         <div className="flex items-center gap-1.5">
           {linkedProject ? (
-            <Link href={`/projects?id=${linkedProject.id}`}>
+            <Link href={`${inquiry.region === "overseas" ? "/overseas/projects" : "/projects"}?id=${linkedProject.id}`}>
               <Button variant="outline" size="sm" data-testid="button-view-project">
                 <FolderOpen className="h-4 w-4 mr-1" />
                 프로젝트 보기 ({linkedProject.projectNumber})

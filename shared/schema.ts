@@ -168,6 +168,10 @@ export const salesInvoices = pgTable("sales_invoices", {
   status: text("status").default("pending"),
   invoiceStage: text("invoice_stage"),
   plannedIssueDate: text("planned_issue_date"),
+  // 수출(USD) 매출: 원화 금액 = amountFx × fxRate(매출 인식일=선적일 환율), 영세율이라 세액 0
+  currency: text("currency").default("KRW"),
+  amountFx: numeric("amount_fx", { precision: 14, scale: 2 }),
+  fxRate: numeric("fx_rate", { precision: 10, scale: 2 }),
 });
 
 export const purchaseInvoices = pgTable("purchase_invoices", {
@@ -211,6 +215,9 @@ export const payments = pgTable("payments", {
   splitTotal: integer("split_total").default(1),
   category: text("category"),
   recurringExpenseId: varchar("recurring_expense_id"),
+  // 수출 수금: amountFx(USD) 예정, actualAmount는 실제 원화 입금액 → 매출 원화와의 차액이 환차손익
+  currency: text("currency").default("KRW"),
+  amountFx: numeric("amount_fx", { precision: 14, scale: 2 }),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({
@@ -302,6 +309,11 @@ export const projects = pgTable("projects", {
   inquiryId: varchar("inquiry_id"),
   warrantyTerms: text("warranty_terms"),
   contractClauses: text("contract_clauses"),
+  // 해외 프로젝트: 계약은 USD. totalAmount(원화)는 견적 기준환율 환산 추정액
+  region: text("region").default("domestic"),
+  currency: text("currency").default("KRW"),
+  contractAmountFx: numeric("contract_amount_fx", { precision: 14, scale: 2 }),
+  quoteRate: numeric("quote_rate", { precision: 10, scale: 2 }),
 });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
