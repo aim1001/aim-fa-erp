@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo, InquiryTask, ContractTemplate } from "@shared/schema";
+import { DEFAULT_CONTRACT_EN } from "@shared/quotation-en";
 import { QuotationSection } from "@/components/quotation-section";
 import OpticsCalculator from "@/components/OpticsCalculator";
 
@@ -2697,6 +2698,10 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
   const { data: templates = [] } = useQuery<ContractTemplate[]>({
     queryKey: ["/api/contract-templates"],
   });
+  // 해외 인콰이어리: 영문 기본 계약내용(EXW·고객 특송계정 픽업)을 템플릿 목록 맨 위에 둔다
+  const isOverseas = inquiry.region === "overseas";
+  const { data: companySettings } = useQuery<any>({ queryKey: ["/api/company-settings"], enabled: isOverseas });
+  const englishDefaultClauses = companySettings?.quotationTermsEn || DEFAULT_CONTRACT_EN;
 
   const ratioSum = contractRatio + midRatio + finalRatio;
   // 중도금·잔금이 '납품후' 기준이면 전환 시 납품예정일이 필수 (서버 게이트와 동일 조건)
@@ -2874,7 +2879,23 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
                   <span className="text-xs font-medium">템플릿 선택</span>
                 </div>
                 <ScrollArea className="max-h-[200px]">
-                  {templates.length === 0 && (
+                  {isOverseas && (
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b flex items-center gap-1.5"
+                      onClick={() => {
+                        setClauses(englishDefaultClauses);
+                        setShowClauses(true);
+                        toast({ title: "영문 기본 계약내용 적용됨" });
+                      }}
+                      data-testid="button-template-english-default"
+                    >
+                      <FileText className="h-3 w-3 text-muted-foreground" />
+                      <span className="font-medium">영문 기본 (EXW)</span>
+                      <Badge variant="secondary" className="text-[9px] px-1">해외</Badge>
+                    </button>
+                  )}
+                  {templates.length === 0 && !isOverseas && (
                     <div className="px-3 py-4 text-xs text-center text-muted-foreground">등록된 템플릿이 없습니다</div>
                   )}
                   {templates.map(t => (

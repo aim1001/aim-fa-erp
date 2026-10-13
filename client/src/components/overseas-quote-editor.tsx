@@ -1,17 +1,14 @@
-// 해외(USD) 견적 전용 부품 — 품목 표는 국내 견적 화면(ItemsTab)을 그대로 쓰고,
-// 여기서는 환율·조건 입력줄과 USD 합계만 담당한다.
+// 해외(USD) 견적 전용 부품 — 품목 표·가격(네고·절사·납기·비고)은 국내 견적 화면을 그대로 쓰고,
+// 여기서는 환율·안전율 입력줄만 담당한다. 결제조건·계약내용은 인콰이어리 계약조건을 번역해 쓴다.
 // USD 단가 = 원화 기준가 ÷ 적용환율(기준환율 × (1 − 안전율)), 센트 미만 절사
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Quotation, QuotationItem } from "@shared/schema";
-import { num, fmtUsd, calcAppliedRate } from "@shared/fx";
+import type { Quotation } from "@shared/schema";
+import { num, calcAppliedRate } from "@shared/fx";
 
-function fmtKrw(n: number) {
-  return Math.round(n).toLocaleString("ko-KR");
-}
 
 // 포커스를 잃거나 Enter일 때만 저장하는 입력칸
 function CellInput({ value, onCommit, disabled, align = "right", placeholder }: {
@@ -82,45 +79,6 @@ export function UsdRateBar({ quotation, isLocked }: { quotation: Quotation; isLo
       {!baseRate && (
         <div className="text-xs text-amber-700 dark:text-amber-400">기준 환율을 먼저 입력하세요. 환율이 없으면 USD 단가가 자동 계산되지 않습니다.</div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-        <div className="space-y-1">
-          <div className="text-muted-foreground">Lead time</div>
-          <CellInput align="left" value={quotation.leadTime || ""} placeholder="6 weeks" disabled={isLocked}
-            onCommit={v => patchQuote.mutate({ leadTime: v || null })} />
-        </div>
-        <div className="space-y-1">
-          <div className="text-muted-foreground" title="EXW면 고객 특송계정 픽업 문구가 견적서에 자동으로 들어갑니다">Delivery (Incoterms)</div>
-          <CellInput align="left" value={quotation.incoterms || ""} placeholder="EXW Hwaseong, Korea (buyer's courier account)" disabled={isLocked}
-            onCommit={v => patchQuote.mutate({ incoterms: v || null })} />
-        </div>
-        <div className="space-y-1">
-          <div className="text-muted-foreground">Payment term</div>
-          <CellInput align="left" value={quotation.paymentTermsEn || ""} placeholder="30% down payment, 70% before shipping" disabled={isLocked}
-            onCommit={v => patchQuote.mutate({ paymentTermsEn: v || null })} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// 국내 견적의 공급가액/부가세/합계 자리에 해당하는 USD 합계
-export function UsdTotals({ items }: { items: QuotationItem[] }) {
-  const subtotal = Math.round(items.reduce((s, i) => s + num(i.amountFx), 0) * 100) / 100;
-  const krwTotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-  const costTotal = items.filter(i => !i.isAdjustment).reduce((s, i) => s + (i.costPrice || 0) * i.quantity, 0);
-  const marginPct = krwTotal > 0 ? Math.round(((krwTotal - costTotal) / krwTotal) * 100) : 0;
-  return (
-    <div className="border rounded-md p-4 space-y-1.5 text-sm">
-      <div className="flex justify-between"><span>Subtotal</span><span className="font-medium">$ {fmtUsd(subtotal)}</span></div>
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>원가 {fmtKrw(costTotal)}원 · 원화 환산(기준환율) {fmtKrw(krwTotal)}원</span>
-        <span>마진 {fmtKrw(krwTotal - costTotal)}원 ({marginPct}%)</span>
-      </div>
-      <div className="flex justify-between text-muted-foreground"><span>Tax (수출 영세)</span><span>$ -</span></div>
-      <div className="flex justify-between border-t pt-2">
-        <span className="font-semibold">Total (USD)</span>
-        <span className="font-bold text-xl" data-testid="text-usd-total">$ {fmtUsd(subtotal)}</span>
-      </div>
     </div>
   );
 }

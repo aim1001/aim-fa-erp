@@ -20,7 +20,7 @@ export async function generateQuotationExcelEn(quotationId: string, inquiry: any
     { header: "Description", key: "desc", width: 40 },
     { header: "Price (USD)", key: "price", width: 14 },
     { header: "Qty", key: "qty", width: 8 },
-    { header: "Discount (%)", key: "disc", width: 12 },
+    { header: "", key: "label", width: 14 },
     { header: "Total (USD)", key: "total", width: 14 },
     { header: "KRW base", key: "krw", width: 14 },
   ];
@@ -31,16 +31,19 @@ export async function generateQuotationExcelEn(quotationId: string, inquiry: any
       desc: it.spec || "",
       price: num(it.unitPriceFx),
       qty: it.quantity,
-      disc: num(it.discountRate),
       total: num(it.amountFx),
       krw: it.unitPrice,
     });
   }
   ws.addRow({});
-  ws.addRow({ disc: "Subtotal", total: subtotal });
-  ws.addRow({ disc: "Total (USD)", total: subtotal }).font = { bold: true };
+  const discount = num(quotation.discountValueFx);
+  const total = Math.round((subtotal - discount) * 100) / 100;
+  ws.addRow({ label: "Subtotal", total: subtotal });
+  if (discount > 0) ws.addRow({ label: "Discount", total: -discount });
+  ws.addRow({ label: "Total (USD)", total }).font = { bold: true };
   ws.addRow({});
   ws.addRow({ name: "Quote No", desc: quotation.quoteNumber });
+  ws.addRow({ name: "Lead time (days)", desc: quotation.deliveryDays || "" });
   ws.addRow({ name: "Base rate (KRW/USD)", desc: num(quotation.baseRate) || "" });
   ws.addRow({ name: "Safety margin (%)", desc: num(quotation.safetyMargin) });
   ws.addRow({ name: "Applied rate", desc: num(quotation.appliedRate) || "" });

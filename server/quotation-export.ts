@@ -7,7 +7,7 @@ import { uploadFileToFolder } from "./onedrive";
 import type { QuotationItem } from "@shared/schema";
 import { generateQuotationExcelEn } from "./quotation-export-en";
 import { num, fmtUsd } from "@shared/fx";
-import { DEFAULT_HEADER_EN, DEFAULT_TERMS_EN, deliveryTermsEn } from "@shared/quotation-en";
+import { DEFAULT_HEADER_EN, DEFAULT_CONTRACT_EN, paymentTimingEn, leadTimeEn } from "@shared/quotation-en";
 
 const FONT_DIR = path.join(process.cwd(), "server", "fonts");
 const FONT_REGULAR = path.join(FONT_DIR, "Pretendard-Regular.otf");
@@ -38,16 +38,18 @@ const LABELS_KO = {
   customer: "고객사", other: "기타", additional: "추가", subtotal: "소계",
   detHeaders: ["No", "품목", "규격", "수량", "단가", "금액", "비고"], sumHeaders: ["No", "카테고리", "수량", "금액"],
   paymentBox: "결재조건 (현금)", supply: "공급가액:", tax: "부가세(10%):", total: "합계:",
+  discount: "할인:", finalSupply: "최종 공급가액:", stages: ["계약금", "중도금", "잔금"],
   exclusions: "■ 제외사항", support: "■ 기술지원", remarks: "■ 비고",
   termsLeft: "■ 지급 및 납기", termsRight: "■ 보증 및 책임 범위", detailTitle: "품목 상세",
 };
 const LABELS_EN: typeof LABELS_KO = {
   title: "QUOTATION", quoteNo: "Quote No", date: "Date", validLabel: "Validity", validity: "30 days from date of issue", delivery: "Lead time",
   customer: "Customer", other: "Others", additional: "Additional", subtotal: "Subtotal",
-  detHeaders: ["No", "Item", "Description", "Qty", "Unit Price", "Amount", "Discount"], sumHeaders: ["No", "Category", "Qty", "Amount"],
-  paymentBox: "Terms (USD, T/T)", supply: "Subtotal:", tax: "Tax (export, 0%):", total: "Total (USD):",
+  detHeaders: ["No", "Item", "Description", "Qty", "Unit Price", "Amount", "Remarks"], sumHeaders: ["No", "Category", "Qty", "Amount"],
+  paymentBox: "Payment Terms (T/T)", supply: "Subtotal:", tax: "Tax (export, 0%):", total: "Total (USD):",
+  discount: "Discount:", finalSupply: "Final amount:", stages: ["Down payment", "Interim", "Balance"],
   exclusions: "■ Exclusions", support: "■ Technical support", remarks: "■ Remarks",
-  termsLeft: "■ Delivery & Payment", termsRight: "■ Acceptance", detailTitle: "Item Details",
+  termsLeft: "■ Delivery & Payment", termsRight: "■ Warranty & Liability", detailTitle: "Item Details",
 };
 
 export async function generateQuotationPDF(quotationId: string, inquiry: any): Promise<Buffer> {
@@ -74,12 +76,12 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
   const supplyAmount = en ? Math.round((regularSubtotal + adjTotal) * 100) / 100 : regularSubtotal + adjTotal;
 
   const discountType = quotation.discountType || "amount";
-  const discountValue = en ? 0 : (quotation.discountValue || 0);
-  const discountTruncUnit = parseInt((quotation.discountTruncUnit as string) || "0") || 0;
+  const discountValue = en ? num(quotation.discountValueFx) : (quotation.discountValue || 0);
+  const discountTruncUnit = en ? 0 : parseInt((quotation.discountTruncUnit as string) || "0") || 0;
   const discountAmount = discountValue > 0
     ? (discountType === "percent" ? Math.round(supplyAmount * discountValue / 100) : discountValue)
     : 0;
-  let afterDiscount = supplyAmount - discountAmount;
+  let afterDiscount = en ? Math.round((supplyAmount - discountAmount) * 100) / 100 : supplyAmount - discountAmount;
   if (discountTruncUnit > 0 && discountAmount > 0) afterDiscount = Math.floor(afterDiscount / discountTruncUnit) * discountTruncUnit;
   const actualDiscount = supplyAmount - afterDiscount;
   const truncLabel = discountTruncUnit === 1000000 ? "백만원절사" : discountTruncUnit === 100000 ? "십만원절사" : discountTruncUnit === 10000 ? "만원절사" : discountTruncUnit === 1000 ? "천원절사" : "";
@@ -172,7 +174,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     const validText = quotation.validUntil ? T.validity : "-";
 
     doc.font("Regular").fontSize(8).fillColor("#333");
-    const metaDeliveryText = en ? (quotation.leadTime || "-") : quotation.deliveryDays ? `${quotation.deliveryDays}일` : "-";
+    const metaDeliveryText = en ? leadTimeEn(quotation.deliveryDays) : quotation.deliveryDays ? `${quotation.deliveryDays}일` : "-";
     const metaRows = [
       { label: T.quoteNo, value: quotation.quoteNumber },
       { label: T.date, value: fmtDate(quotation.quoteDate) },
@@ -261,8 +263,12 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     let isTemplateNotes = false;
     if (quotation.notes) {
       notesText = quotation.notes as string;
-      const excludeMatch = notesText.match(/\[제외사항\]\s*([\s\S]*?)(?=\[기술지원\]|$)/);
-      const supportMatch = notesText.match(/\[기술지원\]\s*([\s\S]*?)$/);
+      const excludeMatch = en
+        ? notesText.match(/\[Exclusions\]\s*([\s\S]*?)(?=\[Technical support\]|$)/i)
+        : notesText.match(/\[제외사항\]\s*([\s\S]*?)(?=\[기술지원\]|$)/);
+      const supportMatch = en
+        ? notesText.match(/\[Technical support\]\s*([\s\S]*?)$/i)
+        : notesText.match(/\[기술지원\]\s*([\s\S]*?)$/);
       if (excludeMatch && supportMatch) {
         excludeContent = excludeMatch[1].trim();
         supportContent = supportMatch[1].trim();
@@ -271,13 +277,11 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
 
     let deliveryText = "";
-    let warrantyText = en ? "" : (inquiry.warrantyTerms || "");
-    if (en) {
-      deliveryText = deliveryTermsEn(quotation).join("\n");
-      warrantyText = (companyInfo?.quotationTermsEn || DEFAULT_TERMS_EN);
-    } else if (inquiry.contractClauses) {
-      const raw = inquiry.contractClauses as string;
-      const splitPattern = /■\s*보증\s*(및|&)\s*책임\s*범위/;
+    let warrantyText = inquiry.warrantyTerms || "";
+    const clausesRaw = (inquiry.contractClauses as string) || (en ? (companyInfo?.quotationTermsEn || DEFAULT_CONTRACT_EN) : "");
+    if (clausesRaw) {
+      const raw = clausesRaw;
+      const splitPattern = en ? /■\s*Warranty/i : /■\s*보증\s*(및|&)\s*책임\s*범위/;
       const splitMatch = raw.match(splitPattern);
       if (splitMatch && splitMatch.index != null && !warrantyText.trim()) {
         deliveryText = raw.substring(0, splitMatch.index).trim();
@@ -289,8 +293,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     const bulletize = (text: string) => text
       .split("\n").map(l => l.trim()).filter(l => l.length > 0)
       .map(l => /^([-*·•]|[a-z]\.)/.test(l) ? l : `- ${l}`).join("\n");
-    const deliveryClean = bulletize(deliveryText.replace(/^■\s*지급\s*(및|&)\s*납기\s*\n*/i, "").trim());
-    const warrantyClean = bulletize(warrantyText.replace(/^■\s*보증\s*(및|&)\s*책임\s*범위\s*\n*/i, "").trim());
+    const deliveryClean = bulletize(deliveryText.replace(/^■\s*(지급\s*(및|&)\s*납기|Delivery\s*&\s*Payment)[^\n]*\n*/i, "").trim());
+    const warrantyClean = bulletize(warrantyText.replace(/^■\s*(보증\s*(및|&)\s*책임\s*범위|Warranty[^\n]*)\s*\n*/i, "").trim());
 
     let notesBlockH = 0;
     if (isTemplateNotes) {
@@ -342,7 +346,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
 
     const signTotalH = signHeaderH + signBoxH + 8;
-    const ptSectionH = 15 + 3 * 15 + (en ? 25 : quotation.deliveryDays ? 17 : 0);
+    const ptSectionH = 15 + 3 * 15 + (quotation.deliveryDays ? 17 : 0) + (en ? 20 : 0);
     const totalsSectionH = 15 + (actualDiscount > 0 ? 33 : 0) + 17 + 18;
     const paymentAreaH = Math.max(ptSectionH, totalsSectionH) + 20;
     const bottomAnchorH = signTotalH + notesBlockH + termsBlockH + footerBarH + 10;
@@ -381,7 +385,6 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
           doc.text(fmtNum(item.quantity), detColX[3], y, { width: detColW[3], align: "right" });
           doc.text(cell(unit(item)), detColX[4], y, { width: detColW[4], align: "right" });
           doc.text(cell(amt(item)), detColX[5], y, { width: detColW[5], align: "right" });
-          if (en && num(item.discountRate) > 0) doc.text(`-${num(item.discountRate)}%`, detColX[6], y, { width: detColW[6], align: "right" });
           y += rowH;
         }
 
@@ -413,7 +416,6 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
           doc.text(fmtNum(item.quantity), detColX[3], y, { width: detColW[3], align: "right" });
           doc.text(cell(unit(item)), detColX[4], y, { width: detColW[4], align: "right" });
           doc.text(cell(amt(item)), detColX[5], y, { width: detColW[5], align: "right" });
-          if (en && num(item.discountRate) > 0) doc.text(`-${num(item.discountRate)}%`, detColX[6], y, { width: detColW[6], align: "right" });
           y += rowH;
         }
         const adjSubtotal = sumAmt(adjustmentItems);
@@ -496,18 +498,15 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.text(T.paymentBox, ptX + 2, ptY + 3, { width: ptTableW - 4, align: "center" });
     ptY += ptRowH;
 
-    const contractTiming = formatTiming(inquiry.contractTimingType, inquiry.contractTimingDays);
-    const midTiming = formatTiming(inquiry.midTimingType, inquiry.midTimingDays, inquiry.midAfterDelivery);
-    const finalTiming = formatTiming(inquiry.finalTimingType, inquiry.finalTimingDays, inquiry.finalAfterDelivery);
+    const timing = en ? paymentTimingEn : formatTiming;
+    const contractTiming = timing(inquiry.contractTimingType, inquiry.contractTimingDays);
+    const midTiming = timing(inquiry.midTimingType, inquiry.midTimingDays, inquiry.midAfterDelivery);
+    const finalTiming = timing(inquiry.finalTimingType, inquiry.finalTimingDays, inquiry.finalAfterDelivery);
 
-    const ptRows = en ? [
-      { label: "Payment", value: quotation.paymentTermsEn || "-" },
-      { label: "Delivery", value: quotation.incoterms || "-" },
-      { label: "Lead time", value: quotation.leadTime || "-" },
-    ] : [
-      { label: "계약금", value: inquiry.contractRatio ? `${inquiry.contractRatio}%${contractTiming ? ` (${contractTiming})` : ""}` : "-" },
-      { label: "중도금", value: inquiry.midRatio ? `${inquiry.midRatio}%${midTiming ? ` (${midTiming})` : ""}` : "-" },
-      { label: "잔금", value: inquiry.finalRatio ? `${inquiry.finalRatio}%${finalTiming ? ` (${finalTiming})` : ""}` : "-" },
+    const ptRows = [
+      { label: T.stages[0], value: inquiry.contractRatio ? `${inquiry.contractRatio}%${contractTiming ? ` (${contractTiming})` : ""}` : "-" },
+      { label: T.stages[1], value: inquiry.midRatio ? `${inquiry.midRatio}%${midTiming ? ` (${midTiming})` : ""}` : "-" },
+      { label: T.stages[2], value: inquiry.finalRatio ? `${inquiry.finalRatio}%${finalTiming ? ` (${finalTiming})` : ""}` : "-" },
     ];
 
     doc.font("Regular").fontSize(7.5);
@@ -526,10 +525,10 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.moveTo(ptX + ptTableW, sumStartY).lineTo(ptX + ptTableW, ptY).lineWidth(0.5).stroke("#999");
     doc.moveTo(ptX, sumStartY).lineTo(ptX + ptTableW, sumStartY).lineWidth(0.5).stroke("#999");
 
-    if (!en && quotation.deliveryDays) {
+    if (quotation.deliveryDays) {
       ptY += 5;
       doc.font("Bold").fontSize(7.5).fillColor("#000");
-      doc.text(`납기: ${quotation.deliveryDays}일`, ptX + 2, ptY);
+      doc.text(en ? `Lead time: ${leadTimeEn(quotation.deliveryDays)}` : `납기: ${quotation.deliveryDays}일`, ptX + 2, ptY);
       ptY += 12;
     }
 
@@ -540,15 +539,15 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     if (actualDiscount > 0) {
       const discPct = supplyAmount > 0 ? ((actualDiscount / supplyAmount) * 100).toFixed(1) : "0";
-      doc.text(`할인:`, 360, sY, { width: 100, align: "right" });
-      doc.text(`-${fmtNum(actualDiscount)}원 (${discPct}%)`, 465, sY, { width: 80, align: "right" });
+      doc.text(T.discount, 330, sY, { width: 130, align: "right" });
+      doc.text(`-${money(actualDiscount)} (${discPct}%)`, 405, sY, { width: 140, align: "right" });
       sY += 15;
 
       const hlX = 355; const hlW = 195; const hlH = 16;
       doc.rect(hlX, sY - 2, hlW, hlH).fill("#000");
       doc.font("Bold").fontSize(9).fillColor("#fff");
-      doc.text(`최종 공급가액:`, hlX + 5, sY, { width: 100, align: "right" });
-      doc.text(`${fmtNum(afterDiscount)}원`, 465, sY, { width: 80, align: "right" });
+      doc.text(T.finalSupply, hlX + 5, sY, { width: 100, align: "right" });
+      doc.text(money(afterDiscount), 445, sY, { width: 100, align: "right" });
       doc.fillColor("#000").font("Regular").fontSize(9);
       sY += 18;
     }
@@ -723,7 +722,6 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
         doc.text(fmtNum(item.quantity), detColX[3], dy, { width: detColW[3], align: "right" });
         doc.text(cell(unit(item)), detColX[4], dy, { width: detColW[4], align: "right" });
         doc.text(cell(amt(item)), detColX[5], dy, { width: detColW[5], align: "right" });
-        if (en && num(item.discountRate) > 0) doc.text(`-${num(item.discountRate)}%`, detColX[6], dy, { width: detColW[6], align: "right" });
         dy += rowH;
       };
 

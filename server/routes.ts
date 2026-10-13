@@ -28,7 +28,6 @@ import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSc
 import { normalizeCompanyName } from "@shared/company-name";
 import { num, calcAppliedRate, krwToUsd, usdLineAmount, usdToKrw, toNumericStr, DEFAULT_SAFETY_MARGIN } from "@shared/fx";
 import type { Quotation, QuotationItem } from "@shared/schema";
-import { DEFAULT_LEAD_TIME, DEFAULT_INCOTERMS, DEFAULT_PAYMENT_TERMS_EN } from "@shared/quotation-en";
 import { regenerateExportPlan, nextExportProjectNumber } from "./export-plan";
 import { calcExportRevenue } from "@shared/export-revenue";
 
@@ -2552,9 +2551,7 @@ export async function registerRoutes(
         ...(overseas ? {
           currency: "USD",
           safetyMargin: toNumericStr(DEFAULT_SAFETY_MARGIN),
-          leadTime: DEFAULT_LEAD_TIME,
-          incoterms: DEFAULT_INCOTERMS,
-          paymentTermsEn: DEFAULT_PAYMENT_TERMS_EN,
+          discountTruncUnit: "10", // USD 절사 기본 $10
         } : {}),
         createdAt: now,
       });
@@ -2595,6 +2592,7 @@ export async function registerRoutes(
         }
       }
       const body = { ...req.body };
+      if (body.discountValueFx !== undefined) body.discountValueFx = body.discountValueFx == null ? null : toNumericStr(num(body.discountValueFx));
       const rateChanged = existing.quotation.currency === "USD" && (body.baseRate !== undefined || body.safetyMargin !== undefined);
       if (rateChanged) {
         const baseRate = body.baseRate !== undefined ? num(body.baseRate) : num(existing.quotation.baseRate);
@@ -2677,8 +2675,9 @@ export async function registerRoutes(
   // 프로젝트 전환 총액 · 인콰이어리 판매가(lastQuoteSales) 표시의 단일 기준.
   function applyQuoteDiscount(
     supply: number,
-    quotation: { discountType?: string | null; discountValue?: number | null; discountTruncUnit?: string | null },
+    quotation: { discountType?: string | null; discountValue?: number | null; discountTruncUnit?: string | null; currency?: string | null },
   ) {
+    if (quotation.currency === "USD") return supply - (quotation.discountValue || 0);
     const dType = quotation.discountType || "amount";
     const dVal = quotation.discountValue || 0;
     const dAmt = dVal > 0 ? (dType === "percent" ? Math.round(supply * dVal / 100) : dVal) : 0;
@@ -6158,7 +6157,7 @@ export async function registerRoutes(
             latestQuoteTotalAmount = applyQuoteDiscount(supply, quotData0.quotation);
             if (quotData0.quotation.currency === "USD") {
               latestQuoteFx = {
-                totalFx: Math.round(quotData0.items.reduce((s, i) => s + num(i.amountFx), 0) * 100) / 100,
+                totalFx: Math.round((quotData0.items.reduce((s, i) => s + num(i.amountFx), 0) - num(quotData0.quotation.discountValueFx)) * 100) / 100,
                 baseRate: num(quotData0.quotation.baseRate),
               };
             }
@@ -7046,7 +7045,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, quotationHeaderEn, quotationTermsEn, salesDefaultStaffId, projectDefaultStaffId, poDefaultStaffId, financeDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId, emailSubjectTemplate } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, quotationHeaderEn, quotationTermsEn, quotationNotesTemplateEn, salesDefaultStaffId, projectDefaultStaffId, poDefaultStaffId, financeDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId, emailSubjectTemplate } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -7080,6 +7079,7 @@ export async function registerRoutes(
         quotationNotesTemplate: quotationNotesTemplate === undefined ? undefined : (quotationNotesTemplate || null),
         quotationHeaderEn: quotationHeaderEn === undefined ? undefined : (quotationHeaderEn || null),
         quotationTermsEn: quotationTermsEn === undefined ? undefined : (quotationTermsEn || null),
+        quotationNotesTemplateEn: quotationNotesTemplateEn === undefined ? undefined : (quotationNotesTemplateEn || null),
         salesDefaultStaffId: salesDefaultStaffId === undefined ? undefined : (salesDefaultStaffId || null),
         projectDefaultStaffId: projectDefaultStaffId === undefined ? undefined : (projectDefaultStaffId || null),
         poDefaultStaffId: poDefaultStaffId === undefined ? undefined : (poDefaultStaffId || null),

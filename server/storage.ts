@@ -1201,9 +1201,7 @@ export class DatabaseStorage implements IStorage {
       baseRate: source.quotation.baseRate,
       safetyMargin: source.quotation.safetyMargin,
       appliedRate: source.quotation.appliedRate,
-      leadTime: source.quotation.leadTime,
-      incoterms: source.quotation.incoterms,
-      paymentTermsEn: source.quotation.paymentTermsEn,
+      discountValueFx: source.quotation.discountValueFx,
       createdAt: now,
     });
     for (const item of source.items) {

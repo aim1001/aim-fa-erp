@@ -605,9 +605,8 @@ export const quotations = pgTable("quotations", {
   baseRate: numeric("base_rate", { precision: 10, scale: 2 }),
   safetyMargin: numeric("safety_margin", { precision: 5, scale: 2 }),
   appliedRate: numeric("applied_rate", { precision: 12, scale: 4 }),
-  leadTime: text("lead_time"),
-  incoterms: text("incoterms"),
-  paymentTermsEn: text("payment_terms_en"),
+  // USD 견적의 네고 할인액(USD). discountValue(정수)에는 기준환율 원화 환산액을 둔다
+  discountValueFx: numeric("discount_value_fx", { precision: 14, scale: 2 }),
   createdAt: text("created_at").notNull(),
 });
 
@@ -681,7 +680,8 @@ export const companySettings = pgTable("company_settings", {
   emailSubjectTemplate: text("email_subject_template"),
   quotationCategoryOrder: text("quotation_category_order"), // JSON: ["VISION SYSTEM","FEEDER","ROBOT","SERVICE"]
   quotationHeaderEn: text("quotation_header_en"), // 영문 견적서 좌상단 회사 정보 (여러 줄)
-  quotationTermsEn: text("quotation_terms_en"), // 영문 견적서 하단 계약 조건 문구
+  quotationTermsEn: text("quotation_terms_en"), // 해외 인콰이어리 계약내용 기본값 (영문)
+  quotationNotesTemplateEn: text("quotation_notes_template_en"), // 해외 견적 비고 기본값 ([Exclusions]/[Technical support])
   createdAt: timestamp("created_at").defaultNow(),
 });
 
