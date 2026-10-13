@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, date, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, numeric, date, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -587,6 +587,14 @@ export const quotations = pgTable("quotations", {
   discountTruncUnit: text("discount_trunc_unit").default("1000"),
   categoryDiscounts: text("category_discounts"), // JSON: {"ROBOT": 5, "FEEDER": 10}
   deliveryDays: integer("delivery_days"),
+  // 해외(USD) 견적: 원화 기준가 ÷ 적용환율(기준환율 × (1 − 안전율%)) → 센트 미만 절사
+  currency: text("currency").default("KRW"), // KRW | USD
+  baseRate: numeric("base_rate", { precision: 10, scale: 2 }),
+  safetyMargin: numeric("safety_margin", { precision: 5, scale: 2 }),
+  appliedRate: numeric("applied_rate", { precision: 12, scale: 4 }),
+  leadTime: text("lead_time"),
+  incoterms: text("incoterms"),
+  paymentTermsEn: text("payment_terms_en"),
   createdAt: text("created_at").notNull(),
 });
 
@@ -608,6 +616,10 @@ export const quotationItems = pgTable("quotation_items", {
   category2: text("category2"),
   sortOrder: integer("sort_order").default(0),
   isAdjustment: boolean("is_adjustment").default(false),
+  // USD 견적용. unitPrice/amount(정수)는 원화 기준가·원화 환산액으로 계속 사용
+  unitPriceFx: numeric("unit_price_fx", { precision: 14, scale: 2 }),
+  discountRate: numeric("discount_rate", { precision: 5, scale: 2 }),
+  amountFx: numeric("amount_fx", { precision: 14, scale: 2 }),
 });
 
 export const insertQuotationItemSchema = createInsertSchema(quotationItems).omit({ id: true });
@@ -655,6 +667,8 @@ export const companySettings = pgTable("company_settings", {
   website: text("website"),
   emailSubjectTemplate: text("email_subject_template"),
   quotationCategoryOrder: text("quotation_category_order"), // JSON: ["VISION SYSTEM","FEEDER","ROBOT","SERVICE"]
+  quotationHeaderEn: text("quotation_header_en"), // 영문 견적서 좌상단 회사 정보 (여러 줄)
+  quotationTermsEn: text("quotation_terms_en"), // 영문 견적서 하단 계약 조건 문구
   createdAt: timestamp("created_at").defaultNow(),
 });
 

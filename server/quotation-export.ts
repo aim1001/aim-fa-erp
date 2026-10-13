@@ -5,6 +5,9 @@ import fs from "fs";
 import { storage } from "./storage";
 import { uploadFileToFolder } from "./onedrive";
 import type { QuotationItem } from "@shared/schema";
+import { generateQuotationExcelEn } from "./quotation-export-en";
+import { num, fmtUsd } from "@shared/fx";
+import { DEFAULT_HEADER_EN, DEFAULT_TERMS_EN, deliveryTermsEn } from "@shared/quotation-en";
 
 const FONT_DIR = path.join(process.cwd(), "server", "fonts");
 const FONT_REGULAR = path.join(FONT_DIR, "Pretendard-Regular.otf");
@@ -20,32 +23,58 @@ function fmtDate(d: string | null | undefined): string {
   return d.length > 10 ? d.substring(0, 10) : d;
 }
 
-function groupByCategory(items: QuotationItem[]): Map<string, QuotationItem[]> {
+function groupByCategory(items: QuotationItem[], otherLabel = "기타"): Map<string, QuotationItem[]> {
   const map = new Map<string, QuotationItem[]>();
   for (const item of items) {
-    const cat = item.category1 || item.category2 || "기타";
+    const cat = item.category1 || item.category2 || otherLabel;
     if (!map.has(cat)) map.set(cat, []);
     map.get(cat)!.push(item);
   }
   return map;
 }
 
+const LABELS_KO = {
+  title: "견 적 서", quoteNo: "견 적 No", date: "제출일자", validLabel: "견적 유효기간", validity: "제출일로 부터 30일", delivery: "납기",
+  customer: "고객사", other: "기타", additional: "추가", subtotal: "소계",
+  detHeaders: ["No", "품목", "규격", "수량", "단가", "금액", "비고"], sumHeaders: ["No", "카테고리", "수량", "금액"],
+  paymentBox: "결재조건 (현금)", supply: "공급가액:", tax: "부가세(10%):", total: "합계:",
+  exclusions: "■ 제외사항", support: "■ 기술지원", remarks: "■ 비고",
+  termsLeft: "■ 지급 및 납기", termsRight: "■ 보증 및 책임 범위", detailTitle: "품목 상세",
+};
+const LABELS_EN: typeof LABELS_KO = {
+  title: "QUOTATION", quoteNo: "Quote No", date: "Date", validLabel: "Validity", validity: "30 days from date of issue", delivery: "Lead time",
+  customer: "Customer", other: "Others", additional: "Additional", subtotal: "Subtotal",
+  detHeaders: ["No", "Item", "Description", "Qty", "Unit Price", "Amount", "Discount"], sumHeaders: ["No", "Category", "Qty", "Amount"],
+  paymentBox: "Terms (USD, T/T)", supply: "Subtotal:", tax: "Tax (export, 0%):", total: "Total (USD):",
+  exclusions: "■ Exclusions", support: "■ Technical support", remarks: "■ Remarks",
+  termsLeft: "■ Delivery & Payment", termsRight: "■ Acceptance", detailTitle: "Item Details",
+};
+
 export async function generateQuotationPDF(quotationId: string, inquiry: any): Promise<Buffer> {
   const result = await storage.getQuotationWithItems(quotationId);
   if (!result) throw new Error("견적서를 찾을 수 없습니다");
   const { quotation, items } = result;
+  // USD 견적: 같은 양식을 영문·달러로 (국내 견적서의 번역본). 할인은 품목별 할인율만 쓰고 부가세 없음.
+  const en = quotation.currency === "USD";
+  const T = en ? LABELS_EN : LABELS_KO;
+  const amt = (i: QuotationItem) => en ? num(i.amountFx) : (i.amount || 0);
+  const unit = (i: QuotationItem) => en ? num(i.unitPriceFx) : i.unitPrice;
+  const cell = (n: number) => en ? fmtUsd(n) : fmtNum(n);
+  const money = (n: number) => en ? `$ ${fmtUsd(n)}` : `${fmtNum(n)}원`;
+  const sumAmt = (list: QuotationItem[]) => en ? Math.round(list.reduce((s, i) => s + amt(i), 0) * 100) / 100 : list.reduce((s, i) => s + amt(i), 0);
 
   const companyInfo = await storage.getCompanySettings();
+  const customer = en && inquiry.customerId ? await storage.getCustomer(inquiry.customerId) : undefined;
 
   const regularItems = items.filter(i => !i.isAdjustment);
   const adjustmentItems = items.filter(i => i.isAdjustment);
 
-  const regularSubtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
-  const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
-  const supplyAmount = regularSubtotal + adjTotal;
+  const regularSubtotal = sumAmt(regularItems);
+  const adjTotal = sumAmt(adjustmentItems);
+  const supplyAmount = en ? Math.round((regularSubtotal + adjTotal) * 100) / 100 : regularSubtotal + adjTotal;
 
   const discountType = quotation.discountType || "amount";
-  const discountValue = quotation.discountValue || 0;
+  const discountValue = en ? 0 : (quotation.discountValue || 0);
   const discountTruncUnit = parseInt((quotation.discountTruncUnit as string) || "0") || 0;
   const discountAmount = discountValue > 0
     ? (discountType === "percent" ? Math.round(supplyAmount * discountValue / 100) : discountValue)
@@ -55,9 +84,9 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
   const actualDiscount = supplyAmount - afterDiscount;
   const truncLabel = discountTruncUnit === 1000000 ? "백만원절사" : discountTruncUnit === 100000 ? "십만원절사" : discountTruncUnit === 10000 ? "만원절사" : discountTruncUnit === 1000 ? "천원절사" : "";
 
-  const tax = Math.round(afterDiscount * 0.1);
+  const tax = en ? 0 : Math.round(afterDiscount * 0.1);
   const total = afterDiscount + tax;
-  const grouped = groupByCategory(regularItems);
+  const grouped = groupByCategory(regularItems, T.other);
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 50 });
@@ -74,7 +103,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     const PAGE_WIDTH = PAGE_RIGHT - PAGE_LEFT;
     const headerTop = 40;
 
-    doc.font("Bold").fontSize(22).fillColor("#000").text("견 적 서", PAGE_LEFT, headerTop);
+    doc.font("Bold").fontSize(22).fillColor("#000").text(T.title, PAGE_LEFT, headerTop);
 
     if (quotation.quoteName) {
       doc.font("Regular").fontSize(11).fillColor("#555").text(quotation.quoteName, PAGE_LEFT, headerTop + 28);
@@ -107,34 +136,48 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
         } catch (e) {}
       }
 
-      if (companyInfo.companyName) {
+      if (en) {
+        const lines = (companyInfo.quotationHeaderEn || DEFAULT_HEADER_EN).split(/\r?\n/).filter(Boolean);
+        lines.forEach((line, idx) => {
+          if (idx === 0) {
+            doc.font("Bold").fontSize(11).fillColor("#000").text(line, rightBlockX, rY, { width: rightTextW, align: "right" });
+            rY += 16;
+          } else {
+            doc.font("Regular").fontSize(7.5).fillColor("#444").text(line, rightBlockX, rY, { width: rightTextW, align: "right" });
+            rY += 11;
+          }
+        });
+      }
+
+      if (!en && companyInfo.companyName) {
         doc.font("Bold").fontSize(11).fillColor("#000");
         doc.text(companyInfo.companyName, rightBlockX, rY, { width: rightTextW, align: "right" });
         rY += 16;
       }
 
       doc.font("Regular").fontSize(7.5).fillColor("#444");
-      if (companyInfo.address) { doc.text(companyInfo.address, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      if (!en && companyInfo.address) { doc.text(companyInfo.address, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
       const telFax = [companyInfo.phone ? `Tel ${companyInfo.phone}` : "", companyInfo.fax ? `Fax ${companyInfo.fax}` : ""].filter(Boolean).join("  ");
-      if (telFax) { doc.text(telFax, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
-      if (companyInfo.representative) { doc.text(`대표이사 ${companyInfo.representative}  010-3199-0309`, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
-      if (companyInfo.email) { doc.text(companyInfo.email, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      if (!en && telFax) { doc.text(telFax, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      if (!en && companyInfo.representative) { doc.text(`대표이사 ${companyInfo.representative}  010-3199-0309`, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
+      if (!en && companyInfo.email) { doc.text(companyInfo.email, rightBlockX, rY, { width: rightTextW, align: "right" }); rY += 11; }
 
       rightBlockBottom = rY;
     }
 
-    const metaTop = headerTop + 34;
+    // 사양명이 있으면 제목 아래 한 줄을 차지하므로 메타 정보를 그만큼 내린다
+    const metaTop = headerTop + (quotation.quoteName ? 46 : 34);
     const metaLabelW = 75;
     const metaValX = PAGE_LEFT + metaLabelW;
-    const validText = quotation.validUntil ? `제출일로 부터 30일` : "-";
+    const validText = quotation.validUntil ? T.validity : "-";
 
     doc.font("Regular").fontSize(8).fillColor("#333");
-    const metaDeliveryText = quotation.deliveryDays ? `${quotation.deliveryDays}일` : "-";
+    const metaDeliveryText = en ? (quotation.leadTime || "-") : quotation.deliveryDays ? `${quotation.deliveryDays}일` : "-";
     const metaRows = [
-      { label: "견 적 No", value: quotation.quoteNumber },
-      { label: "제출일자", value: fmtDate(quotation.quoteDate) },
-      { label: "견적 유효기간", value: validText },
-      { label: "납기", value: metaDeliveryText },
+      { label: T.quoteNo, value: quotation.quoteNumber },
+      { label: T.date, value: fmtDate(quotation.quoteDate) },
+      { label: T.validLabel, value: validText },
+      { label: T.delivery, value: metaDeliveryText },
     ];
     let mY = metaTop;
     for (const row of metaRows) {
@@ -160,7 +203,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       },
       {
         leftLabel: "",
-        leftVal: inquiry.snapshotAddress || "-",
+        leftVal: [inquiry.snapshotAddress, customer?.country].filter(Boolean).join(", ") || "-",
         rightLabel: "E-mail :",
         rightVal: inquiry.snapshotEmail || "-",
         rightLabelW: 85,
@@ -176,7 +219,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     doc.rect(PAGE_LEFT, custTop + 1, custLabelW, custRows.length * custRowH).fill(custLabelBg);
     doc.fillColor("#333").font("Bold").fontSize(8);
-    doc.text("고객사", PAGE_LEFT + 4, custTop + 4, { width: custLabelW - 8 });
+    doc.text(T.customer, PAGE_LEFT + 4, custTop + 4, { width: custLabelW - 8 });
 
     let cY = custTop + 2;
     doc.font("Regular").fontSize(8).fillColor("#000");
@@ -228,8 +271,11 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
 
     let deliveryText = "";
-    let warrantyText = inquiry.warrantyTerms || "";
-    if (inquiry.contractClauses) {
+    let warrantyText = en ? "" : (inquiry.warrantyTerms || "");
+    if (en) {
+      deliveryText = deliveryTermsEn(quotation).join("\n");
+      warrantyText = (companyInfo?.quotationTermsEn || DEFAULT_TERMS_EN);
+    } else if (inquiry.contractClauses) {
       const raw = inquiry.contractClauses as string;
       const splitPattern = /■\s*보증\s*(및|&)\s*책임\s*범위/;
       const splitMatch = raw.match(splitPattern);
@@ -242,14 +288,14 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
     const bulletize = (text: string) => text
       .split("\n").map(l => l.trim()).filter(l => l.length > 0)
-      .map(l => /^[-*·•]/.test(l) ? l : `- ${l}`).join("\n");
+      .map(l => /^([-*·•]|[a-z]\.)/.test(l) ? l : `- ${l}`).join("\n");
     const deliveryClean = bulletize(deliveryText.replace(/^■\s*지급\s*(및|&)\s*납기\s*\n*/i, "").trim());
     const warrantyClean = bulletize(warrantyText.replace(/^■\s*보증\s*(및|&)\s*책임\s*범위\s*\n*/i, "").trim());
 
     let notesBlockH = 0;
     if (isTemplateNotes) {
       doc.font("Bold").fontSize(7);
-      const labelH = doc.heightOfString("■ 제외사항", { width: halfColW });
+      const labelH = doc.heightOfString(T.exclusions, { width: halfColW });
       doc.font("Regular").fontSize(6.5);
       const leftH = excludeContent ? labelH + 2 + doc.heightOfString(excludeContent, { width: halfColW, lineGap: 0.5 }) : 0;
       const rightH = supportContent ? labelH + 2 + doc.heightOfString(supportContent, { width: halfColW, lineGap: 0.5 }) : 0;
@@ -263,7 +309,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     let termsBlockH = 0;
     if (deliveryClean || warrantyClean) {
       doc.font("Bold").fontSize(7);
-      const tLabelH = doc.heightOfString("■ 지급 및 납기", { width: halfColW });
+      const tLabelH = doc.heightOfString(T.termsLeft, { width: halfColW });
       doc.font("Regular").fontSize(6.5);
       const tLeftH = deliveryClean ? tLabelH + 2 + doc.heightOfString(deliveryClean, { width: halfColW, lineGap: 0.5 }) : 0;
       const tRightH = warrantyClean ? tLabelH + 2 + doc.heightOfString(warrantyClean, { width: halfColW, lineGap: 0.5 }) : 0;
@@ -272,7 +318,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     const detColX = [50, 75, 165, 310, 355, 410, 470];
     const detColW = [25, 90, 145, 45, 55, 60, 75];
-    const detHeaders = ["No", "품목", "규격", "수량", "단가", "금액", "비고"];
+    const detHeaders = T.detHeaders;
 
     let detailTableH = 20;
     doc.font("Regular").fontSize(8);
@@ -296,7 +342,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
 
     const signTotalH = signHeaderH + signBoxH + 8;
-    const ptSectionH = 15 + 3 * 15 + (quotation.deliveryDays ? 17 : 0);
+    const ptSectionH = 15 + 3 * 15 + (en ? 25 : quotation.deliveryDays ? 17 : 0);
     const totalsSectionH = 15 + (actualDiscount > 0 ? 33 : 0) + 17 + 18;
     const paymentAreaH = Math.max(ptSectionH, totalsSectionH) + 20;
     const bottomAnchorH = signTotalH + notesBlockH + termsBlockH + footerBarH + 10;
@@ -333,15 +379,16 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
           doc.text(item.itemName || "-", detColX[1], y, { width: detColW[1] });
           if (specText) doc.text(specText, detColX[2], y, { width: detColW[2] - 4 });
           doc.text(fmtNum(item.quantity), detColX[3], y, { width: detColW[3], align: "right" });
-          doc.text(fmtNum(item.unitPrice), detColX[4], y, { width: detColW[4], align: "right" });
-          doc.text(fmtNum(item.amount), detColX[5], y, { width: detColW[5], align: "right" });
+          doc.text(cell(unit(item)), detColX[4], y, { width: detColW[4], align: "right" });
+          doc.text(cell(amt(item)), detColX[5], y, { width: detColW[5], align: "right" });
+          if (en && num(item.discountRate) > 0) doc.text(`-${num(item.discountRate)}%`, detColX[6], y, { width: detColW[6], align: "right" });
           y += rowH;
         }
 
-        const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
+        const catSubtotal = sumAmt(catItems);
         doc.font("Bold").fontSize(8).fillColor("#000");
-        doc.text(`소계`, 310, y, { width: 110, align: "right" });
-        doc.text(`${fmtNum(catSubtotal)}원`, 420, y, { width: 125, align: "right" });
+        doc.text(T.subtotal, 310, y, { width: 110, align: "right" });
+        doc.text(money(catSubtotal), 420, y, { width: 125, align: "right" });
         y += 18;
         doc.font("Regular").fontSize(8);
       }
@@ -349,7 +396,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       if (adjustmentItems.length > 0) {
         doc.rect(50, y - 2, 495, 16).fill("#F0F4F8");
         doc.fillColor("#333").font("Bold").fontSize(8);
-        doc.text("추가", 55, y, { width: 300 });
+        doc.text(T.additional, 55, y, { width: 300 });
         y += 18;
         let adjDetIdx = detIdx;
         for (const item of adjustmentItems) {
@@ -364,20 +411,21 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
           doc.text(item.itemName || "-", detColX[1], y, { width: detColW[1] });
           if (specText) doc.text(specText, detColX[2], y, { width: detColW[2] - 4 });
           doc.text(fmtNum(item.quantity), detColX[3], y, { width: detColW[3], align: "right" });
-          doc.text(fmtNum(item.unitPrice), detColX[4], y, { width: detColW[4], align: "right" });
-          doc.text(fmtNum(item.amount), detColX[5], y, { width: detColW[5], align: "right" });
+          doc.text(cell(unit(item)), detColX[4], y, { width: detColW[4], align: "right" });
+          doc.text(cell(amt(item)), detColX[5], y, { width: detColW[5], align: "right" });
+          if (en && num(item.discountRate) > 0) doc.text(`-${num(item.discountRate)}%`, detColX[6], y, { width: detColW[6], align: "right" });
           y += rowH;
         }
-        const adjSubtotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+        const adjSubtotal = sumAmt(adjustmentItems);
         doc.font("Bold").fontSize(8).fillColor("#000");
-        doc.text(`소계`, 310, y, { width: 110, align: "right" });
-        doc.text(`${fmtNum(adjSubtotal)}원`, 420, y, { width: 125, align: "right" });
+        doc.text(T.subtotal, 310, y, { width: 110, align: "right" });
+        doc.text(money(adjSubtotal), 420, y, { width: 125, align: "right" });
         y += 18;
       }
     } else {
       const sumColX = [50, 75, 310, 410];
       const sumColW = [25, 235, 100, 135];
-      const sumHeaders = ["No", "카테고리", "수량", "금액"];
+      const sumHeaders = T.sumHeaders;
 
       doc.rect(50, y, 495, 20).fill("#E8E8E8");
       doc.fillColor("#000").font("Bold").fontSize(8);
@@ -390,28 +438,28 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       for (const [cat, catItems] of grouped) {
         catIdx++;
         const catQty = catItems.reduce((s, i) => s + (i.quantity || 0), 0);
-        const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
+        const catSubtotal = sumAmt(catItems);
         const rowH = 16;
         if (catIdx % 2 === 0) doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
         doc.fillColor("#000").font("Regular").fontSize(8);
         doc.text(String(catIdx), sumColX[0], y, { width: sumColW[0] });
         doc.text(cat, sumColX[1], y, { width: sumColW[1] });
         doc.text(fmtNum(catQty), sumColX[2], y, { width: sumColW[2], align: "right" });
-        doc.text(`${fmtNum(catSubtotal)}원`, sumColX[3], y, { width: sumColW[3], align: "right" });
+        doc.text(money(catSubtotal), sumColX[3], y, { width: sumColW[3], align: "right" });
         y += rowH;
       }
 
       if (adjustmentItems.length > 0) {
         catIdx++;
         const adjQty = adjustmentItems.reduce((s, i) => s + (i.quantity || 0), 0);
-        const adjSubtotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+        const adjSubtotal = sumAmt(adjustmentItems);
         const rowH = 16;
         if (catIdx % 2 === 0) doc.rect(50, y - 2, 495, rowH).fill("#FAFAFA");
         doc.fillColor("#000").font("Regular").fontSize(8);
         doc.text(String(catIdx), sumColX[0], y, { width: sumColW[0] });
-        doc.text("추가", sumColX[1], y, { width: sumColW[1] });
+        doc.text(T.additional, sumColX[1], y, { width: sumColW[1] });
         doc.text(fmtNum(adjQty), sumColX[2], y, { width: sumColW[2], align: "right" });
-        doc.text(`${fmtNum(adjSubtotal)}원`, sumColX[3], y, { width: sumColW[3], align: "right" });
+        doc.text(money(adjSubtotal), sumColX[3], y, { width: sumColW[3], align: "right" });
         y += rowH;
       }
     }
@@ -445,14 +493,18 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     doc.rect(ptX, ptY, ptTableW, ptRowH).fill("#E8E8E8");
     doc.fillColor("#333").font("Bold").fontSize(7.5);
-    doc.text("결재조건 (현금)", ptX + 2, ptY + 3, { width: ptTableW - 4, align: "center" });
+    doc.text(T.paymentBox, ptX + 2, ptY + 3, { width: ptTableW - 4, align: "center" });
     ptY += ptRowH;
 
     const contractTiming = formatTiming(inquiry.contractTimingType, inquiry.contractTimingDays);
     const midTiming = formatTiming(inquiry.midTimingType, inquiry.midTimingDays, inquiry.midAfterDelivery);
     const finalTiming = formatTiming(inquiry.finalTimingType, inquiry.finalTimingDays, inquiry.finalAfterDelivery);
 
-    const ptRows = [
+    const ptRows = en ? [
+      { label: "Payment", value: quotation.paymentTermsEn || "-" },
+      { label: "Delivery", value: quotation.incoterms || "-" },
+      { label: "Lead time", value: quotation.leadTime || "-" },
+    ] : [
       { label: "계약금", value: inquiry.contractRatio ? `${inquiry.contractRatio}%${contractTiming ? ` (${contractTiming})` : ""}` : "-" },
       { label: "중도금", value: inquiry.midRatio ? `${inquiry.midRatio}%${midTiming ? ` (${midTiming})` : ""}` : "-" },
       { label: "잔금", value: inquiry.finalRatio ? `${inquiry.finalRatio}%${finalTiming ? ` (${finalTiming})` : ""}` : "-" },
@@ -460,19 +512,21 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
 
     doc.font("Regular").fontSize(7.5);
     for (const row of ptRows) {
-      doc.rect(ptX, ptY, ptLabelW, ptRowH).fill("#F5F5F5");
+      // 영문 결제조건은 길어서 줄바꿈 높이만큼 행을 늘린다
+      const rowH = Math.max(ptRowH, doc.font("Regular").fontSize(7.5).heightOfString(row.value, { width: ptValW }) + 6);
+      doc.rect(ptX, ptY, ptLabelW, rowH).fill("#F5F5F5");
       doc.fillColor("#333").font("Bold").fontSize(7);
       doc.text(row.label, ptX + 3, ptY + 3, { width: ptLabelW - 6 });
       doc.font("Regular").fontSize(7.5).fillColor("#000");
       doc.text(row.value, ptX + ptLabelW + 3, ptY + 3, { width: ptValW });
-      doc.moveTo(ptX, ptY + ptRowH).lineTo(ptX + ptTableW, ptY + ptRowH).lineWidth(0.3).stroke("#ccc");
-      ptY += ptRowH;
+      doc.moveTo(ptX, ptY + rowH).lineTo(ptX + ptTableW, ptY + rowH).lineWidth(0.3).stroke("#ccc");
+      ptY += rowH;
     }
     doc.moveTo(ptX, sumStartY).lineTo(ptX, ptY).lineWidth(0.5).stroke("#999");
     doc.moveTo(ptX + ptTableW, sumStartY).lineTo(ptX + ptTableW, ptY).lineWidth(0.5).stroke("#999");
     doc.moveTo(ptX, sumStartY).lineTo(ptX + ptTableW, sumStartY).lineWidth(0.5).stroke("#999");
 
-    if (quotation.deliveryDays) {
+    if (!en && quotation.deliveryDays) {
       ptY += 5;
       doc.font("Bold").fontSize(7.5).fillColor("#000");
       doc.text(`납기: ${quotation.deliveryDays}일`, ptX + 2, ptY);
@@ -480,8 +534,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     }
 
     doc.font("Regular").fontSize(9).fillColor("#000");
-    doc.text(`공급가액:`, 360, sumStartY, { width: 100, align: "right" });
-    doc.text(`${fmtNum(supplyAmount)}원`, 465, sumStartY, { width: 80, align: "right" });
+    doc.text(T.supply, 330, sumStartY, { width: 130, align: "right" });
+    doc.text(money(supplyAmount), 465, sumStartY, { width: 80, align: "right" });
     let sY = sumStartY + 15;
 
     if (actualDiscount > 0) {
@@ -499,13 +553,13 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       sY += 18;
     }
 
-    doc.text(`부가세(10%):`, 360, sY, { width: 100, align: "right" });
-    doc.text(`${fmtNum(tax)}원`, 465, sY, { width: 80, align: "right" });
+    doc.text(T.tax, 330, sY, { width: 130, align: "right" });
+    doc.text(en ? "$ -" : money(tax), 465, sY, { width: 80, align: "right" });
     sY += 17;
 
     doc.font("Bold").fontSize(10).fillColor("#000");
-    doc.text(`합계:`, 360, sY, { width: 100, align: "right" });
-    doc.text(`${fmtNum(total)}원`, 465, sY, { width: 80, align: "right" });
+    doc.text(T.total, 330, sY, { width: 130, align: "right" });
+    doc.text(money(total), 445, sY, { width: 100, align: "right" });
 
     y = Math.max(ptY, sY + 18) + 5;
 
@@ -521,7 +575,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     doc.font("Bold").fontSize(7).fillColor("#000");
     doc.text("Buyer (Sign)", signLeftX, bY + 3, { width: signW, align: "center", lineBreak: false });
     doc.rect(signRightX, bY, signW, signHeaderH).fill("#E8E8E8");
-    doc.text("Seller (Sign)", signRightX, bY + 3, { width: signW, align: "center", lineBreak: false });
+    doc.fillColor("#000").text("Seller (Sign)", signRightX, bY + 3, { width: signW, align: "center", lineBreak: false });
 
     const signBodyY = bY + signHeaderH;
     doc.rect(signLeftX, signBodyY, signW, signBoxH).lineWidth(0.5).stroke("#999");
@@ -530,7 +584,8 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
     if (companyInfo) {
       const sellerName = companyInfo.companyName ? `${companyInfo.companyName}` : "";
       const sellerRep = companyInfo.representative ? `대표이사 ${companyInfo.representative}` : "";
-      const sellerLine = [sellerName, sellerRep].filter(Boolean).join(" ");
+      const enName = (companyInfo.quotationHeaderEn || DEFAULT_HEADER_EN).split(/\r?\n/)[0];
+      const sellerLine = en ? `${enName} C.E.O` : [sellerName, sellerRep].filter(Boolean).join(" ");
       if (sellerLine) {
         doc.font("Regular").fontSize(6.5).fillColor("#000");
         doc.text(sellerLine, signRightX + 4, signBodyY + 3, { width: signW - 8, align: "center", lineBreak: false });
@@ -564,12 +619,12 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       bY += 6;
       const nRightColX = PAGE_LEFT + halfColW + colGap;
       doc.font("Bold").fontSize(7).fillColor("#000");
-      const nLabelH = doc.heightOfString("■ 제외사항", { width: halfColW });
-      doc.text("■ 제외사항", PAGE_LEFT, bY, { width: halfColW, lineBreak: false });
+      const nLabelH = doc.heightOfString(T.exclusions, { width: halfColW });
+      doc.text(T.exclusions, PAGE_LEFT, bY, { width: halfColW, lineBreak: false });
       doc.font("Regular").fontSize(6.5).fillColor("#333");
       doc.text(excludeContent, PAGE_LEFT, bY + nLabelH + 2, { width: halfColW, lineGap: 0.5, height: notesBlockH });
       doc.font("Bold").fontSize(7).fillColor("#000");
-      doc.text("■ 기술지원", nRightColX, bY, { width: halfColW, lineBreak: false });
+      doc.text(T.support, nRightColX, bY, { width: halfColW, lineBreak: false });
       doc.font("Regular").fontSize(6.5).fillColor("#333");
       doc.text(supportContent, nRightColX, bY + nLabelH + 2, { width: halfColW, lineGap: 0.5, height: notesBlockH });
       bY += notesBlockH - 8 + 2;
@@ -577,7 +632,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       doc.moveTo(PAGE_LEFT, bY).lineTo(PAGE_RIGHT, bY).lineWidth(0.5).stroke("#ccc");
       bY += 6;
       doc.font("Bold").fontSize(7).fillColor("#000");
-      doc.text("■ 비고", PAGE_LEFT, bY, { lineBreak: false });
+      doc.text(T.remarks, PAGE_LEFT, bY, { lineBreak: false });
       bY += 10;
       doc.font("Regular").fontSize(6.5).fillColor("#333");
       doc.text(notesText, PAGE_LEFT, bY, { width: PAGE_WIDTH, lineGap: 0.5, height: notesBlockH });
@@ -589,16 +644,16 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       bY += 6;
       const rightColX = PAGE_LEFT + halfColW + colGap;
       doc.font("Bold").fontSize(7);
-      const tLabelH = doc.heightOfString("■ 지급 및 납기", { width: halfColW });
+      const tLabelH = doc.heightOfString(T.termsLeft, { width: halfColW });
       if (deliveryClean) {
         doc.font("Bold").fontSize(7).fillColor("#000");
-        doc.text("■ 지급 및 납기", PAGE_LEFT, bY, { width: halfColW, lineBreak: false });
+        doc.text(T.termsLeft, PAGE_LEFT, bY, { width: halfColW, lineBreak: false });
         doc.font("Regular").fontSize(6.5).fillColor("#333");
         doc.text(deliveryClean, PAGE_LEFT, bY + tLabelH + 2, { width: halfColW, lineGap: 0.5, height: termsBlockH });
       }
       if (warrantyClean) {
         doc.font("Bold").fontSize(7).fillColor("#000");
-        doc.text("■ 보증 및 책임 범위", rightColX, bY, { width: halfColW, lineBreak: false });
+        doc.text(T.termsRight, rightColX, bY, { width: halfColW, lineBreak: false });
         doc.font("Regular").fontSize(6.5).fillColor("#333");
         doc.text(warrantyClean, rightColX, bY + tLabelH + 2, { width: halfColW, lineGap: 0.5, height: termsBlockH });
       }
@@ -619,7 +674,7 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
       const renderDetailPageHeader = () => {
         doc.addPage();
         doc.font("Bold").fontSize(14).fillColor("#000");
-        doc.text("품목 상세", PAGE_LEFT, 40);
+        doc.text(T.detailTitle, PAGE_LEFT, 40);
         doc.font("Regular").fontSize(8).fillColor("#555");
         doc.text(`${quotation.quoteNumber}`, PAGE_LEFT + 120, 44);
         dy = 65;
@@ -666,8 +721,9 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
           doc.text(specText, detColX[2], dy, { width: detColW[2] - 4 });
         }
         doc.text(fmtNum(item.quantity), detColX[3], dy, { width: detColW[3], align: "right" });
-        doc.text(fmtNum(item.unitPrice), detColX[4], dy, { width: detColW[4], align: "right" });
-        doc.text(fmtNum(item.amount), detColX[5], dy, { width: detColW[5], align: "right" });
+        doc.text(cell(unit(item)), detColX[4], dy, { width: detColW[4], align: "right" });
+        doc.text(cell(amt(item)), detColX[5], dy, { width: detColW[5], align: "right" });
+        if (en && num(item.discountRate) > 0) doc.text(`-${num(item.discountRate)}%`, detColX[6], dy, { width: detColW[6], align: "right" });
         dy += rowH;
       };
 
@@ -682,11 +738,11 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
           renderDetailRow(item);
         }
 
-        const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
+        const catSubtotal = sumAmt(catItems);
         checkDetailPageBreak(18);
         doc.font("Bold").fontSize(8).fillColor("#000");
-        doc.text(`소계`, 310, dy, { width: 110, align: "right" });
-        doc.text(`${fmtNum(catSubtotal)}원`, 420, dy, { width: 125, align: "right" });
+        doc.text(T.subtotal, 310, dy, { width: 110, align: "right" });
+        doc.text(money(catSubtotal), 420, dy, { width: 125, align: "right" });
         dy += 18;
         doc.font("Regular").fontSize(8);
       }
@@ -695,18 +751,18 @@ export async function generateQuotationPDF(quotationId: string, inquiry: any): P
         checkDetailPageBreak(16);
         doc.rect(50, dy - 2, 495, 16).fill("#F0F4F8");
         doc.fillColor("#333").font("Bold").fontSize(8);
-        doc.text("추가", 55, dy, { width: 300 });
+        doc.text(T.additional, 55, dy, { width: 300 });
         dy += 18;
 
         for (const item of adjustmentItems) {
           renderDetailRow(item);
         }
 
-        const adjSubtotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
+        const adjSubtotal = sumAmt(adjustmentItems);
         checkDetailPageBreak(18);
         doc.font("Bold").fontSize(8).fillColor("#000");
-        doc.text(`소계`, 310, dy, { width: 110, align: "right" });
-        doc.text(`${fmtNum(adjSubtotal)}원`, 420, dy, { width: 125, align: "right" });
+        doc.text(T.subtotal, 310, dy, { width: 110, align: "right" });
+        doc.text(money(adjSubtotal), 420, dy, { width: 125, align: "right" });
         dy += 18;
       }
     }
@@ -719,6 +775,7 @@ export async function generateQuotationExcel(quotationId: string, inquiry: any):
   const result = await storage.getQuotationWithItems(quotationId);
   if (!result) throw new Error("견적서를 찾을 수 없습니다");
   const { quotation, items } = result;
+  if (quotation.currency === "USD") return generateQuotationExcelEn(quotationId, inquiry);
 
   const regularItems = items.filter(i => !i.isAdjustment);
   const adjustmentItems = items.filter(i => i.isAdjustment);
@@ -889,8 +946,8 @@ export async function exportQuotationToOneDrive(quotationId: string, inquiryId: 
     generateQuotationExcel(quotationId, inquiry),
   ]);
 
-  const pdfName = `견적서_${safeNumber}_${date}.pdf`;
-  const xlsxName = `견적서_${safeNumber}_${date}.xlsx`;
+  const pdfName = `${result.quotation.currency === "USD" ? "Quotation" : "견적서"}_${safeNumber}_${date}.pdf`;
+  const xlsxName = `${result.quotation.currency === "USD" ? "Quotation" : "견적서"}_${safeNumber}_${date}.xlsx`;
 
   await Promise.all([
     uploadFileToFolder(inquiry.onedriveFolderId, pdfName, pdfBuf),

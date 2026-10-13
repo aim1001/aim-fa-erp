@@ -1197,6 +1197,13 @@ export class DatabaseStorage implements IStorage {
       discountTruncUnit: source.quotation.discountTruncUnit,
       categoryDiscounts: (source.quotation as any).categoryDiscounts,
       deliveryDays: source.quotation.deliveryDays,
+      currency: source.quotation.currency,
+      baseRate: source.quotation.baseRate,
+      safetyMargin: source.quotation.safetyMargin,
+      appliedRate: source.quotation.appliedRate,
+      leadTime: source.quotation.leadTime,
+      incoterms: source.quotation.incoterms,
+      paymentTermsEn: source.quotation.paymentTermsEn,
       createdAt: now,
     });
     for (const item of source.items) {
@@ -1213,6 +1220,9 @@ export class DatabaseStorage implements IStorage {
         category2: item.category2,
         sortOrder: item.sortOrder,
         isAdjustment: item.isAdjustment,
+        unitPriceFx: item.unitPriceFx,
+        discountRate: item.discountRate,
+        amountFx: item.amountFx,
       });
     }
     return newQ;

@@ -26,6 +26,9 @@ import {
 import { parseExcelCustomerInfo, parseCustomerListFromOneDrive, parseSalesTaxInvoices, parsePurchaseTaxInvoices, parseSalesTaxInvoicesFromBuffer, parsePurchaseTaxInvoicesFromBuffer, getAvailableInvoiceYears, parseListPriceFromOneDrive, writeListPriceToOneDrive, parsePurchaseListFromOneDrive, writePurchaseListToOneDrive, parseKBBankStatementFromBuffer, parseKBBankAccountInfo } from "./excel-parser";
 import { insertItemMasterSchema, insertItemInventorySchema, insertPurchaseItemSchema, insertProjectItemSchema } from "@shared/schema";
 import { normalizeCompanyName } from "@shared/company-name";
+import { num, calcAppliedRate, krwToUsd, usdLineAmount, usdToKrw, toNumericStr, DEFAULT_SAFETY_MARGIN } from "@shared/fx";
+import type { Quotation, QuotationItem } from "@shared/schema";
+import { DEFAULT_LEAD_TIME, DEFAULT_INCOTERMS, DEFAULT_PAYMENT_TERMS_EN } from "@shared/quotation-en";
 
 declare module "express-session" {
   interface SessionData {
@@ -2535,6 +2538,8 @@ export async function registerRoutes(
     try {
       const { quoteNumber, quoteDate, validUntil, notes } = req.body;
       const now = new Date().toISOString();
+      const inquiry = await storage.getInquiry(req.params.id);
+      const overseas = inquiry?.region === "overseas";
       const q = await storage.createQuotation({
         inquiryId: req.params.id,
         quoteNumber: quoteNumber || "",
@@ -2542,6 +2547,13 @@ export async function registerRoutes(
         validUntil: validUntil || null,
         notes: notes || null,
         status: "draft",
+        ...(overseas ? {
+          currency: "USD",
+          safetyMargin: toNumericStr(DEFAULT_SAFETY_MARGIN),
+          leadTime: DEFAULT_LEAD_TIME,
+          incoterms: DEFAULT_INCOTERMS,
+          paymentTermsEn: DEFAULT_PAYMENT_TERMS_EN,
+        } : {}),
         createdAt: now,
       });
       res.status(201).json(q);
@@ -2580,12 +2592,51 @@ export async function registerRoutes(
           }
         }
       }
-      const q = await storage.updateQuotation(req.params.id, req.body);
+      const body = { ...req.body };
+      const rateChanged = existing.quotation.currency === "USD" && (body.baseRate !== undefined || body.safetyMargin !== undefined);
+      if (rateChanged) {
+        const baseRate = body.baseRate !== undefined ? num(body.baseRate) : num(existing.quotation.baseRate);
+        const safety = body.safetyMargin !== undefined ? num(body.safetyMargin) : num(existing.quotation.safetyMargin);
+        body.baseRate = baseRate > 0 ? toNumericStr(baseRate) : null;
+        body.safetyMargin = toNumericStr(safety);
+        body.appliedRate = baseRate > 0 ? toNumericStr(calcAppliedRate(baseRate, safety), 4) : null;
+      }
+      const q = await storage.updateQuotation(req.params.id, body);
+      if (rateChanged && q) await recalcUsdItems(q, existing.items);
       res.json(q);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
   });
+
+  // USD 품목 금액 계산. unitPrice(원화 기준가)에서 USD 단가를 만들고, amount(원화)는 기준환율 환산액으로 맞춘다.
+  function computeUsdItem(
+    q: Pick<Quotation, "baseRate" | "appliedRate">,
+    item: { quantity: number; unitPrice: number; unitPriceFx: number; discountRate: number },
+  ) {
+    const amountFx = usdLineAmount(item.unitPriceFx, item.quantity, item.discountRate);
+    const baseRate = num(q.baseRate);
+    return {
+      unitPriceFx: toNumericStr(item.unitPriceFx),
+      discountRate: toNumericStr(item.discountRate),
+      amountFx: toNumericStr(amountFx),
+      amount: baseRate > 0 ? usdToKrw(amountFx, baseRate) : item.quantity * item.unitPrice,
+    };
+  }
+
+  // 환율 변경 시 전 품목 USD 단가를 원화 기준가에서 다시 환산 (원화 기준가가 없는 품목은 USD 단가 유지)
+  async function recalcUsdItems(q: Quotation, items: QuotationItem[]) {
+    const applied = num(q.appliedRate);
+    for (const it of items) {
+      const unitPriceFx = it.unitPrice > 0 && applied > 0 ? krwToUsd(it.unitPrice, applied) : num(it.unitPriceFx);
+      await storage.updateQuotationItem(it.id, computeUsdItem(q, {
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        unitPriceFx,
+        discountRate: num(it.discountRate),
+      }));
+    }
+  }
 
   app.delete("/api/quotations/:id", async (req, res) => {
     try {
@@ -2686,6 +2737,14 @@ export async function registerRoutes(
           if (!finalCategory2) finalCategory2 = masterItem.category2 || null;
         }
       }
+      const usdFields = parentQ.quotation.currency === "USD"
+        ? computeUsdItem(parentQ.quotation, {
+            quantity: qty,
+            unitPrice: price,
+            unitPriceFx: req.body.unitPriceFx != null ? num(req.body.unitPriceFx) : krwToUsd(price, num(parentQ.quotation.appliedRate)),
+            discountRate: num(req.body.discountRate),
+          })
+        : {};
       const item = await storage.createQuotationItem({
         quotationId: req.params.id,
         itemCode: itemCode || null,
@@ -2699,6 +2758,7 @@ export async function registerRoutes(
         category2: finalCategory2,
         sortOrder: sortOrder || 0,
         isAdjustment: isAdjustment || false,
+        ...usdFields,
       });
       res.status(201).json(item);
     } catch (err: any) {
@@ -2715,6 +2775,15 @@ export async function registerRoutes(
     return result.rows[0].status;
   }
 
+  async function getUsdParent(itemId: string): Promise<{ quotation: Quotation; item: QuotationItem } | null> {
+    const r = await pool.query(`SELECT quotation_id FROM quotation_items WHERE id = $1`, [itemId]);
+    if (r.rows.length === 0) return null;
+    const parent = await storage.getQuotationWithItems(r.rows[0].quotation_id);
+    if (!parent || parent.quotation.currency !== "USD") return null;
+    const item = parent.items.find(i => i.id === itemId);
+    return item ? { quotation: parent.quotation, item } : null;
+  }
+
   app.patch("/api/quotation-items/:id", async (req, res) => {
     try {
       const parentStatus = await checkQuotationItemLock(req.params.id);
@@ -2723,7 +2792,18 @@ export async function registerRoutes(
         return res.status(403).json({ message: "발송/수주 상태의 견적서 품목은 수정할 수 없습니다" });
       }
       const data = { ...req.body };
-      if (data.quantity != null || data.unitPrice != null) {
+      const usdParent = await getUsdParent(req.params.id);
+      if (usdParent) {
+        const { quotation: pq, item: cur } = usdParent;
+        const quantity = data.quantity ?? cur.quantity;
+        const unitPrice = data.unitPrice ?? cur.unitPrice;
+        // 원화 기준가만 바뀌면 USD 단가를 다시 환산, USD 단가를 직접 넣으면 그 값을 쓴다
+        const unitPriceFx = data.unitPriceFx != null
+          ? num(data.unitPriceFx)
+          : data.unitPrice != null ? krwToUsd(unitPrice, num(pq.appliedRate)) : num(cur.unitPriceFx);
+        const discountRate = data.discountRate != null ? num(data.discountRate) : num(cur.discountRate);
+        Object.assign(data, computeUsdItem(pq, { quantity, unitPrice, unitPriceFx, discountRate }));
+      } else if (data.quantity != null || data.unitPrice != null) {
         const qty = data.quantity ?? 0;
         const price = data.unitPrice ?? 0;
         data.amount = qty * price;
@@ -2787,7 +2867,7 @@ export async function registerRoutes(
       const safeName = result.quotation.quoteName
         ? `_${result.quotation.quoteName.replace(/[/\\:*?"<>|]/g, "_")}`
         : "";
-      const pdfFilename = `견적서_${safeNumber}${safeName}.pdf`;
+      const pdfFilename = `${result.quotation.currency === "USD" ? "Quotation" : "견적서"}_${safeNumber}${safeName}.pdf`;
 
       if (inquiry.onedriveFolderId) {
         try {
@@ -2899,7 +2979,7 @@ export async function registerRoutes(
         const safeName = result.quotation.quoteName
           ? `_${result.quotation.quoteName.replace(/[/\\:*?"<>|]/g, "_")}`
           : "";
-        const filename = `견적서_${safeNumber}${safeName}.pdf`;
+        const filename = `${result.quotation.currency === "USD" ? "Quotation" : "견적서"}_${safeNumber}${safeName}.pdf`;
         attachments.push({ filename, content: pdfBuf });
         processedQuotations.push(qid);
 
@@ -3001,7 +3081,7 @@ export async function registerRoutes(
       const safeNamePart = result.quotation.quoteName
         ? `_${result.quotation.quoteName.replace(/[/\\:*?"<>|]/g, "_")}`
         : "";
-      const pdfDisplayName = `견적서_${safeNumber}${safeNamePart}.pdf`;
+      const pdfDisplayName = `${result.quotation.currency === "USD" ? "Quotation" : "견적서"}_${safeNumber}${safeNamePart}.pdf`;
       res.setHeader("Content-Type", "application/pdf");
       const disposition = req.query.inline === "1" ? "inline" : "attachment";
       res.setHeader("Content-Disposition", `${disposition}; filename="quotation_${safeNumber}${safeNamePart}.pdf"; filename*=UTF-8''${encodeURIComponent(pdfDisplayName)}`);
@@ -6930,7 +7010,7 @@ export async function registerRoutes(
 
   app.put("/api/company-settings", requireAuth, async (req, res) => {
     try {
-      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, salesDefaultStaffId, projectDefaultStaffId, poDefaultStaffId, financeDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId, emailSubjectTemplate } = req.body;
+      const { companyName, businessNumber, representative, address, phone, fax, email, website, logoUrl, signatureUrl, logoData, signatureData, bankInfo, autoCc, emailTemplate, quotationNotesTemplate, quotationHeaderEn, quotationTermsEn, salesDefaultStaffId, projectDefaultStaffId, poDefaultStaffId, financeDefaultStaffId, poDefaultPaymentTerms, poDefaultWarrantyTerms, poAutoCc, poEmailTemplate, poCalendarId, emailSubjectTemplate } = req.body;
       if (logoUrl === null) {
         const existing = await storage.getCompanySettings();
         if (existing?.logoUrl) {
@@ -6962,6 +7042,8 @@ export async function registerRoutes(
         autoCc: autoCc || null,
         emailTemplate: emailTemplate || null,
         quotationNotesTemplate: quotationNotesTemplate === undefined ? undefined : (quotationNotesTemplate || null),
+        quotationHeaderEn: quotationHeaderEn === undefined ? undefined : (quotationHeaderEn || null),
+        quotationTermsEn: quotationTermsEn === undefined ? undefined : (quotationTermsEn || null),
         salesDefaultStaffId: salesDefaultStaffId === undefined ? undefined : (salesDefaultStaffId || null),
         projectDefaultStaffId: projectDefaultStaffId === undefined ? undefined : (projectDefaultStaffId || null),
         poDefaultStaffId: poDefaultStaffId === undefined ? undefined : (poDefaultStaffId || null),
