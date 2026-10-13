@@ -987,7 +987,7 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
         </TabsContent>
         <TabsContent value="conditions" className="mt-2 space-y-3">
           <p className="text-xs text-muted-foreground">
-            단계 비율과 시기만 사용합니다(금액은 USD 계약금액을 비율로 나눔). 저장 후 수출 매출·수금 탭에서 "계획 다시 만들기"를 누르세요.
+            단계 비율과 시기만 사용합니다(금액은 USD 계약금액을 비율로 나눔). 저장하면 USD 수금 계획이 다시 만들어지고, 입금 완료 단계는 유지됩니다. 수출은 세금계산서를 발행하지 않습니다.
           </p>
           <CollectionConditionsEditor project={project} onSave={() => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] })} />
         </TabsContent>

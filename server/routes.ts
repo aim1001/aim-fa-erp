@@ -30,6 +30,7 @@ import { num, calcAppliedRate, krwToUsd, usdLineAmount, usdToKrw, toNumericStr, 
 import type { Quotation, QuotationItem } from "@shared/schema";
 import { DEFAULT_LEAD_TIME, DEFAULT_INCOTERMS, DEFAULT_PAYMENT_TERMS_EN } from "@shared/quotation-en";
 import { regenerateExportPlan, nextExportProjectNumber } from "./export-plan";
+import { calcExportRevenue } from "@shared/export-revenue";
 
 declare module "express-session" {
   interface SessionData {
@@ -4423,21 +4424,7 @@ export async function registerRoutes(
 
         return res.json(invoice);
       }
-      // numeric 컬럼(USD 금액·환율)은 문자열로 검증
-      for (const k of ["amountFx", "fxRate"]) if (typeof body[k] === "number") body[k] = String(body[k]);
-      const data: any = insertSalesInvoiceSchema.partial().parse(body);
-      const cur = await storage.getSalesInvoice(req.params.id);
-      if (cur?.currency === "USD") {
-        const amountFx = data.amountFx != null ? num(data.amountFx) : num(cur.amountFx);
-        const fxRate = data.fxRate != null ? num(data.fxRate) : num(cur.fxRate);
-        if (data.amountFx != null) data.amountFx = toNumericStr(amountFx);
-        if (data.fxRate != null) data.fxRate = fxRate > 0 ? toNumericStr(fxRate) : null;
-        if (amountFx > 0 && fxRate > 0) {
-          data.supplyAmount = usdToKrw(amountFx, fxRate);
-          data.taxAmount = 0;
-          data.totalAmount = data.supplyAmount;
-        }
-      }
+      const data = insertSalesInvoiceSchema.partial().parse(body);
       const invoice = await storage.updateSalesInvoice(req.params.id, data);
       if (!invoice) return res.status(404).json({ message: "매출계산서를 찾을 수 없습니다" });
       res.json(invoice);
@@ -5725,10 +5712,11 @@ export async function registerRoutes(
         const projectPayments = allPayments.filter(pay => pay.projectId === p.id);
 
         const issuedSales = sales.filter(i => !!i.issueDate);
-        const salesTotal = issuedSales.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
-        const salesSupplyTotal = issuedSales.reduce((sum, i) => sum + (i.supplyAmount || 0), 0);
+        const exportRev = p.currency === "USD" ? calcExportRevenue(p, projectPayments) : null;
+        const salesTotal = exportRev ? exportRev.revenueKrw : issuedSales.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
+        const salesSupplyTotal = exportRev ? exportRev.revenueKrw : issuedSales.reduce((sum, i) => sum + (i.supplyAmount || 0), 0);
         const purchaseTotal = purchases.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
-        const profit = salesTotal - purchaseTotal;
+        const profit = salesTotal + (exportRev?.fxGain || 0) - purchaseTotal;
 
         const paidIncome = projectPayments.filter(pay => pay.type === "income" && pay.status === "completed")
           .reduce((sum, pay) => sum + (pay.actualAmount || pay.amount || 0), 0);
@@ -6045,6 +6033,7 @@ export async function registerRoutes(
   app.patch("/api/projects/:id", async (req, res) => {
     try {
       const oldProject = req.body.status ? await storage.getProject(req.params.id) : null;
+      if (req.body.shipRate !== undefined) req.body.shipRate = num(req.body.shipRate) > 0 ? toNumericStr(num(req.body.shipRate)) : null;
       const result = await storage.updateProject(req.params.id, req.body);
       if (!result) return res.status(404).json({ message: "Not found" });
       if (req.body.status && oldProject && req.body.status !== oldProject.status) {
@@ -6055,9 +6044,13 @@ export async function registerRoutes(
       let regen: { collection?: any; invoice?: any; error?: string } | undefined;
       if (result.totalAmount && CONTRACT_TERM_KEYS.some(k => k in req.body)) {
         try {
+          if (result.currency === "USD") {
+            regen = { collection: await regenerateExportPlan(result) };
+          } else {
           const collection = await regenerateCollectionPlan(result);
           const invoice = await regenerateInvoicePlan(result);
           regen = { collection, invoice };
+          }
         } catch (e: any) {
           regen = { error: e.message };
         }
@@ -6403,9 +6396,8 @@ export async function registerRoutes(
         });
       }
 
-      const { created, skipped } = project.currency === "USD"
-        ? await regenerateExportPlan(project, req.body.baseDate)
-        : await regenerateInvoicePlan(project, req.body.baseDate);
+      if (project.currency === "USD") return res.status(400).json({ message: "해외(수출) 프로젝트는 세금계산서를 발행하지 않습니다. 선적 정보로 매출을 확정하세요." });
+      const { created, skipped } = await regenerateInvoicePlan(project, req.body.baseDate);
       res.json({ message: `계산서 ${created}건 생성 완료${skipped > 0 ? ` (발행완료 ${skipped}건 유지)` : ""}`, created, skipped });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

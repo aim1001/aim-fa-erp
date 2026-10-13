@@ -33,9 +33,10 @@ async function runAutoMigrations() {
     `ALTER TABLE projects ADD COLUMN IF NOT EXISTS currency text DEFAULT 'KRW'`,
     `ALTER TABLE projects ADD COLUMN IF NOT EXISTS contract_amount_fx numeric(14,2)`,
     `ALTER TABLE projects ADD COLUMN IF NOT EXISTS quote_rate numeric(10,2)`,
-    `ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS currency text DEFAULT 'KRW'`,
-    `ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS amount_fx numeric(14,2)`,
-    `ALTER TABLE sales_invoices ADD COLUMN IF NOT EXISTS fx_rate numeric(10,2)`,
+    `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ship_date text`,
+    `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ship_rate numeric(10,2)`,
+    `ALTER TABLE projects ADD COLUMN IF NOT EXISTS export_decl_no text`,
+    `ALTER TABLE projects ADD COLUMN IF NOT EXISTS commercial_invoice_no text`,
     `ALTER TABLE payments ADD COLUMN IF NOT EXISTS currency text DEFAULT 'KRW'`,
     `ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_fx numeric(14,2)`,
     `CREATE TABLE IF NOT EXISTS purchase_order_invoice_links (
