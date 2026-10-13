@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "AIM ERP Dev Server",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["cross-env", "NODE_ENV=development", "node", "--env-file=.env", "--import", "tsx", "server/index.ts"],
+      "port": 5000
+    }
+  ]
+}

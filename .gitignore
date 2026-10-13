@@ -11,3 +11,4 @@ replit.nix
 .cache
 .config
 .upm
+.claude/settings.local.json
