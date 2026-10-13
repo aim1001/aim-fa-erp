@@ -615,6 +615,8 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
   const amt = (i: QuotationItem) => usd ? num(i.amountFx) : (i.amount || 0);
   const money = (n: number) => usd ? `$ ${fmtUsd(n)}` : `${fmtNum(n)}원`;
   const toKrw = (n: number) => usd ? Math.round(n * baseRate) : n;
+  // USD 금액 옆 원화 환산 (기준환율)
+  const krwOf = (n: number) => usd && baseRate > 0 ? <span className="text-xs text-muted-foreground font-normal ml-1.5">({fmtNum(toKrw(n))}원)</span> : null;
   const parsePrice = (v: string) => usd ? (parseFloat(v) || 0) : parseInt(v);
 
   const notesTemplate = usd ? companySettings?.quotationNotesTemplateEn : companySettings?.quotationNotesTemplate;
@@ -636,7 +638,9 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [discountType, setDiscountType] = useState<string>("amount");
   const [discountValue, setDiscountValue] = useState(quotation.discountValue || 0);
-  const [discountTruncUnit, setDiscountTruncUnit] = useState<string>(quotation.discountTruncUnit || "none");
+  const [discountTruncUnit, setDiscountTruncUnit] = useState<string>(
+    usd && quotation.discountValueFx == null ? "10" : (quotation.discountTruncUnit || "none"),
+  );
   const [deliveryDays, setDeliveryDays] = useState<number | null>(quotation.deliveryDays ?? null);
   const [deliveryAutoCalculated, setDeliveryAutoCalculated] = useState(!quotation.deliveryDays);
 
@@ -915,15 +919,22 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
       </div>
 
       <div className="bg-muted/20 rounded-lg p-4 space-y-3">
+        {usd && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground border-b pb-2" data-testid="text-pricing-rates">
+            <span>기준환율 <span className="font-medium text-foreground">{baseRate ? baseRate.toLocaleString("ko-KR") : "-"}원</span></span>
+            <span>적용환율 <span className="font-medium text-foreground">{num(quotation.appliedRate) ? num(quotation.appliedRate).toLocaleString("ko-KR", { maximumFractionDigits: 2 }) : "-"}원</span> (안전율 {num(quotation.safetyMargin)}%)</span>
+            <span className="ml-auto">괄호 안 원화 = 기준환율 환산</span>
+          </div>
+        )}
         <div className="text-sm space-y-1">
           <div className="flex items-center justify-between">
             <span className="font-medium">공급가액 (품목{adjTotal !== 0 ? "+추가" : ""} 합계)</span>
-            <span className="font-medium">{money(supplyAmount)}</span>
+            <span className="font-medium">{money(supplyAmount)}{krwOf(supplyAmount)}</span>
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground pl-2">
             {usd && <span>원화 환산 {fmtNum(toKrw(supplyAmount))}</span>}
-            <span>원가 {fmtNum(totalCost)}</span>
-            <span>마진 {fmtNum(toKrw(supplyAmount) - totalCost)}</span>
+            <span>원가 {fmtNum(totalCost)}원</span>
+            <span>마진 {fmtNum(toKrw(supplyAmount) - totalCost)}원</span>
             <span>마진율 {supplyAmount > 0 ? (((toKrw(supplyAmount) - totalCost) / toKrw(supplyAmount)) * 100).toFixed(1) : "0.0"}%</span>
           </div>
         </div>
@@ -934,7 +945,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
           {categoryNegoTotal > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium text-sm text-foreground">카테고리 네고</span>
-              <span className="text-red-500 font-medium">-{money(categoryNegoTotal)}</span>
+              <span className="text-red-500 font-medium">-{money(categoryNegoTotal)}{krwOf(categoryNegoTotal)}</span>
               <span className="text-[10px]">({supplyAmount > 0 ? ((categoryNegoTotal / supplyAmount) * 100).toFixed(1) : "0"}%)</span>
             </div>
           )}
@@ -946,7 +957,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
           totalNegoAmt > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium text-sm text-foreground">전체 네고</span>
-              <span className="text-red-500 font-medium">-{money(totalNegoAmt)}</span>
+              <span className="text-red-500 font-medium">-{money(totalNegoAmt)}{krwOf(totalNegoAmt)}</span>
               {totalNegoType === "pct"
                 ? <span className="text-[10px]">({totalNegoValue}%)</span>
                 : <span className="text-[10px]">(금액)</span>
@@ -979,7 +990,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
             />
             <span className="text-xs text-muted-foreground">{totalNegoType === "pct" ? "%" : usd ? "$" : "원"}</span>
             {totalNegoAmt > 0 && (
-              <span className="text-xs text-red-500 font-medium">→ -{money(totalNegoAmt)}</span>
+              <span className="text-xs text-red-500 font-medium">→ -{money(totalNegoAmt)}{krwOf(totalNegoAmt)}</span>
             )}
           </div>
         )}
@@ -1018,7 +1029,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
             <span className="text-muted-foreground">할인</span>
             {(() => {
               const d = actualDiscount > 0 ? actualDiscount : (usd ? num(quotation.discountValueFx) : (quotation.discountValue || 0));
-              return <span className="text-red-500">-{money(d)} ({supplyAmount > 0 ? ((d / supplyAmount) * 100).toFixed(1) : "0"}%)</span>;
+              return <span className="text-red-500">-{money(d)} ({supplyAmount > 0 ? ((d / supplyAmount) * 100).toFixed(1) : "0"}%){krwOf(d)}</span>;
             })()}
           </div>
         )}
@@ -1027,10 +1038,10 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
           <div className="bg-primary/10 rounded-md px-3 py-2 -mx-1 space-y-1">
             <div className="flex items-center justify-between text-sm">
               <span className="font-semibold">최종 공급가액</span>
-              <span className="font-semibold">{money(afterDiscount)}</span>
+              <span className="font-semibold">{money(afterDiscount)}{krwOf(afterDiscount)}</span>
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground pl-2">
-              <span>마진 {fmtNum(toKrw(afterDiscount) - totalCost)}</span>
+              <span>마진 {fmtNum(toKrw(afterDiscount) - totalCost)}원</span>
               <span>마진율 {afterDiscount > 0 ? (((toKrw(afterDiscount) - totalCost) / toKrw(afterDiscount)) * 100).toFixed(1) : "0.0"}%</span>
             </div>
           </div>
@@ -1042,7 +1053,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
         </div>
         <div className="flex items-center justify-between border-t pt-3">
           <span className="font-bold text-base">{usd ? "전체 금액 (USD)" : "전체 금액"}</span>
-          <span className="font-bold text-xl" data-testid="text-quote-total">{money(total)}</span>
+          <span className="font-bold text-xl" data-testid="text-quote-total">{money(total)}{krwOf(total)}</span>
         </div>
       </div>
 
