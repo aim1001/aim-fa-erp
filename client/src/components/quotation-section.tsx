@@ -378,9 +378,9 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
             <thead className="bg-muted/50">
               <tr>
                 <th className="px-2 py-1.5 text-left w-8">No</th>
-                <th className="px-2 py-1.5 text-left w-20">품목코드</th>
-                <th className="px-2 py-1.5 text-left">품목명</th>
-                <th className="px-2 py-1.5 text-left w-24">사양</th>
+                <th className="px-2 py-1.5 text-left w-28">품목코드</th>
+                <th className="px-2 py-1.5 text-left w-40">품목명</th>
+                <th className="px-2 py-1.5 text-left w-64">사양</th>
                 <th className="px-2 py-1.5 text-right w-14">수량</th>
                 <th className="px-2 py-1.5 text-right w-20">원가</th>
                 <th className="px-2 py-1.5 text-right w-20">판매단가</th>
@@ -461,9 +461,9 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
                   rows.push(
                     <tr key={item.id} className="border-t hover:bg-muted/20" data-testid={`quotation-item-row-${item.id}`}>
                       <td className="px-2 py-1.5 w-8">{globalIdx}</td>
-                      <td className="px-2 py-1.5 w-20 text-muted-foreground">{item.itemCode || "-"}</td>
-                      <td className="px-2 py-1.5 font-medium">{item.itemName}</td>
-                      <td className="px-2 py-1.5 w-24 text-muted-foreground">{item.spec || "-"}</td>
+                      <td className="px-2 py-1.5 w-28 text-muted-foreground">{item.itemCode || "-"}</td>
+                      <td className="px-2 py-1.5 w-40 font-medium break-words">{item.itemName}</td>
+                      <td className="px-2 py-1.5 w-64 text-muted-foreground break-words leading-snug">{item.spec || "-"}</td>
                       {isEditing && !isLocked ? (
                         <>
                           <td className="px-1 py-1 w-14">
