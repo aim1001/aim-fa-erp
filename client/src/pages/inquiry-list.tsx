@@ -289,7 +289,11 @@ const stageLabels: Record<number, string> = {
 };
 
 export default function InquiryList() {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  // /overseas/inquiries = 해외 인콰이어리 (같은 화면, region 필터만 다름)
+  const overseas = location.startsWith("/overseas");
+  const basePath = overseas ? "/overseas/inquiries" : "/inquiries";
+  const region = overseas ? "overseas" : "domestic";
   const searchString = useSearch();
   const [search, setSearch] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -312,7 +316,7 @@ export default function InquiryList() {
         const params = new URLSearchParams(searchString);
         params.delete("detail");
         const qs = params.toString();
-        navigate(qs ? `/inquiries?${qs}` : "/inquiries", { replace: true });
+        navigate(qs ? `${basePath}?${qs}` : basePath, { replace: true });
       }
     }
   }, [detailParam, searchString, navigate]);
@@ -389,7 +393,7 @@ export default function InquiryList() {
       }
     }
     const qs = params.toString();
-    navigate(qs ? `/inquiries?${qs}` : "/inquiries?view=all");
+    navigate(qs ? `${basePath}?${qs}` : `${basePath}?view=all`);
   };
 
   const handleStatusChange = (value: string) => {
@@ -401,7 +405,7 @@ export default function InquiryList() {
       params.set("status", value);
     }
     const qs = params.toString();
-    navigate(qs ? `/inquiries?${qs}` : "/inquiries?view=all");
+    navigate(qs ? `${basePath}?${qs}` : `${basePath}?view=all`);
   };
 
   const handleCustomerFilterChange = (value: string) => {
@@ -413,22 +417,22 @@ export default function InquiryList() {
       params.set("customer", value);
     }
     const qs = params.toString();
-    navigate(qs ? `/inquiries?${qs}` : "/inquiries?view=all");
+    navigate(qs ? `${basePath}?${qs}` : `${basePath}?view=all`);
   };
 
   const handleQuickView = (view: string) => {
     if (view === "all") {
-      navigate("/inquiries?view=all");
+      navigate(`${basePath}?view=all`);
     } else if (view === "6m") {
-      navigate("/inquiries?view=6m");
+      navigate(`${basePath}?view=6m`);
     } else if (view === "1y") {
-      navigate("/inquiries?view=1y");
+      navigate(`${basePath}?view=1y`);
     } else if (view === "webInquiry") {
-      navigate("/inquiries?customer=webInquiry");
+      navigate(`${basePath}?customer=webInquiry`);
     } else if (view === "bookmarked") {
-      navigate("/inquiries?customer=bookmarked");
+      navigate(`${basePath}?customer=bookmarked`);
     } else {
-      navigate(`/inquiries?status=${view}`);
+      navigate(`${basePath}?status=${view}`);
     }
   };
 
@@ -450,7 +454,7 @@ export default function InquiryList() {
       params.set("expectedMonth", offset);
     }
     const qs = params.toString();
-    navigate(qs ? `/inquiries?${qs}` : "/inquiries");
+    navigate(qs ? `${basePath}?${qs}` : basePath);
   };
 
   const { data: years } = useQuery<number[]>({
@@ -464,6 +468,7 @@ export default function InquiryList() {
   const activeYearSelectValue = periodFilter || yearFilter;
 
   const queryParams = new URLSearchParams();
+  queryParams.set("region", region);
   if (yearFilter !== "all" && !periodFilter) queryParams.set("year", yearFilter);
   if (statusFilter !== "all") queryParams.set("status", statusFilter);
   const queryString = queryParams.toString();
@@ -750,9 +755,10 @@ export default function InquiryList() {
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-semibold" data-testid="text-inquiry-list-title">인콰이어리 목록</h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-inquiry-list-title">{overseas ? "해외 인콰이어리" : "인콰이어리 목록"}</h1>
         <div className="flex gap-2">
-          <Select
+          {/* OneDrive 동기화는 국내 "YYYY 영업" 폴더 기준 */}
+          {!overseas && <Select
             onValueChange={(v) => {
               if (v === "all") {
                 syncMutation.mutate(undefined);
@@ -781,7 +787,7 @@ export default function InquiryList() {
                 <SelectItem key={y} value={String(y)}>{y}년 동기화</SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select>}
           <Button onClick={() => setShowAddDialog(true)} data-testid="button-add-inquiry">
             <Plus />
             <span>추가</span>
@@ -955,7 +961,7 @@ export default function InquiryList() {
                 {filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
-                      {search ? "검색 결과가 없습니다" : "인콰이어리가 없습니다. OneDrive를 동기화하거나 새로 추가하세요."}
+                      {search ? "검색 결과가 없습니다" : overseas ? "해외 인콰이어리가 없습니다. 추가 버튼으로 새로 등록하세요." : "인콰이어리가 없습니다. OneDrive를 동기화하거나 새로 추가하세요."}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -987,7 +993,7 @@ export default function InquiryList() {
         )}
       </div>
 
-      <InquiryFormDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
+      <InquiryFormDialog open={showAddDialog} onOpenChange={setShowAddDialog} region={region} />
       <InquiryDetailDialog
         inquiryId={selectedInquiryId}
         open={!!selectedInquiryId}

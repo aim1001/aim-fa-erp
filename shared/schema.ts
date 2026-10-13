@@ -24,6 +24,8 @@ export const customers = pgTable("customers", {
   notes: text("notes"),
   primaryContact: text("primary_contact"),
   registrationDate: text("registration_date"),
+  region: text("region").default("domestic"), // domestic | overseas
+  country: text("country"),
 });
 
 export const companies = pgTable("companies", {
@@ -90,6 +92,7 @@ export const inquiries = pgTable("inquiries", {
   lastQuoteSales: integer("last_quote_sales"),
   lastQuoteCost: integer("last_quote_cost"),
   lastQuoteMargin: integer("last_quote_margin"),
+  region: text("region").default("domestic"), // domestic | overseas
   createdAt: timestamp("created_at").defaultNow(),
 });
 

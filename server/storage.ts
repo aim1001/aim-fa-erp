@@ -44,7 +44,7 @@ import {
   calendarEvents, monthlyBalances, bankAccounts, bankTransactions,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, ilike, gte, lte, asc, desc, sql } from "drizzle-orm";
+import { eq, ne, isNull, and, or, ilike, gte, lte, asc, desc, sql } from "drizzle-orm";
 
 function naturalSort(a: string, b: string): number {
   const ax: (string | number)[] = [];
@@ -71,6 +71,7 @@ export interface IStorage {
     status?: string;
     minProbability?: number;
     maxProbability?: number;
+    region?: string;
   }): Promise<Inquiry[]>;
   getInquiry(id: string): Promise<Inquiry | undefined>;
   getInquiryByFolderId(folderId: string): Promise<Inquiry | undefined>;
@@ -149,7 +150,7 @@ export interface IStorage {
   deletePaymentsByInvoice(type: string, invoiceId: string): Promise<void>;
   deletePlannedPaymentsByProject(projectId: string): Promise<number>;
 
-  getNextInquiryNumber(year: number): Promise<string>;
+  getNextInquiryNumber(year: number, region?: string): Promise<string>;
   getNextOrderNumber(year: number): Promise<string>;
   getYears(): Promise<number[]>;
   getDashboardStats(years?: number[]): Promise<{
@@ -317,6 +318,7 @@ export class DatabaseStorage implements IStorage {
     status?: string;
     minProbability?: number;
     maxProbability?: number;
+    region?: string;
   }): Promise<Inquiry[]> {
     const conditions = [];
 
@@ -334,6 +336,11 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.maxProbability !== undefined) {
       conditions.push(lte(inquiries.probability, filters.maxProbability));
+    }
+    if (filters?.region === "overseas") {
+      conditions.push(eq(inquiries.region, "overseas"));
+    } else if (filters?.region === "domestic") {
+      conditions.push(or(isNull(inquiries.region), ne(inquiries.region, "overseas"))!);
     }
 
     let results;
@@ -606,22 +613,25 @@ export class DatabaseStorage implements IStorage {
     return result.length;
   }
 
-  async getNextInquiryNumber(year: number): Promise<string> {
+  // 국내: 26-123, 해외: 26-E1 — 순번은 각각 따로
+  async getNextInquiryNumber(year: number, region: string = "domestic"): Promise<string> {
     const prefix = String(year).slice(-2);
     const yearInquiries = await db.select({ inquiryNumber: inquiries.inquiryNumber })
       .from(inquiries)
       .where(eq(inquiries.year, year));
 
+    const overseas = region === "overseas";
+    const pattern = overseas ? /^\d+-E(\d+)$/ : /^\d+-(\d+)$/;
     let maxSeq = 0;
     for (const row of yearInquiries) {
-      const match = row.inquiryNumber.match(/^\d+-(\d+)$/);
+      const match = row.inquiryNumber.match(pattern);
       if (match) {
         const seq = parseInt(match[1]);
         if (seq > maxSeq) maxSeq = seq;
       }
     }
 
-    return `${prefix}-${maxSeq + 1}`;
+    return `${prefix}-${overseas ? "E" : ""}${maxSeq + 1}`;
   }
 
   async getNextOrderNumber(year: number): Promise<string> {

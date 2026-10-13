@@ -265,8 +265,9 @@ export async function registerRoutes(
 
   app.get("/api/inquiries", async (req, res) => {
     try {
-      const { year, search, status, minProbability, maxProbability } = req.query;
+      const { year, search, status, minProbability, maxProbability, region } = req.query;
       const inquiries = await storage.getInquiries({
+        region: region as string | undefined,
         year: year ? parseInt(year as string) : undefined,
         search: search as string,
         status: status as string,
@@ -392,7 +393,7 @@ export async function registerRoutes(
     try {
       const year = parseInt(req.params.year);
       if (isNaN(year)) return res.status(400).json({ message: "유효하지 않은 연도" });
-      const nextNumber = await storage.getNextInquiryNumber(year);
+      const nextNumber = await storage.getNextInquiryNumber(year, req.query.region === "overseas" ? "overseas" : "domestic");
       res.json({ nextNumber });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -411,11 +412,18 @@ export async function registerRoutes(
         data.status = "none";
       }
 
-      const nextNumber = await storage.getNextInquiryNumber(data.year);
+      // 해외 고객을 고르면 해외 인콰이어리로 — 번호 체계와 OneDrive 폴더가 달라짐
+      if (data.customerId) {
+        const cust = await storage.getCustomer(data.customerId);
+        if (cust?.region === "overseas") data.region = "overseas";
+      }
+      data.region = data.region === "overseas" ? "overseas" : "domestic";
+
+      const nextNumber = await storage.getNextInquiryNumber(data.year, data.region);
       data.inquiryNumber = nextNumber;
 
       try {
-        const yearFolderName = `${data.year} 영업`;
+        const yearFolderName = data.region === "overseas" ? `해외영업/${data.year}` : `${data.year} 영업`;
         const folderName = `${nextNumber}_${data.customerName}_${data.productInfo || ''}`.replace(/\/$/, '');
         const folder = await createInquiryFolder(yearFolderName, folderName);
         data.source = "onedrive";
@@ -438,7 +446,7 @@ export async function registerRoutes(
             });
           }
           if (!matched) {
-            matched = await storage.createCustomer({ companyName: data.customerName });
+            matched = await storage.createCustomer({ companyName: data.customerName, region: data.region });
           }
           data.customerId = matched.id;
         } catch (linkErr: any) {

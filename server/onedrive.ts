@@ -392,8 +392,27 @@ export async function listYearFolders(yearFolderName: string): Promise<OneDriveF
     }));
 }
 
+// 1.영업 아래 경로(예: "해외영업/2026")를 한 단계씩 만든다. 이미 있으면 그대로 둔다.
+async function ensureSalesFolderPath(relPath: string): Promise<void> {
+  let parent = '';
+  for (const name of relPath.split('/').filter(Boolean)) {
+    try {
+      await graphCallWithRetry(
+        (token) => graphFetchDirect(`/me/drive/root:/1.영업${parent}:/children`, token, {
+          method: 'POST',
+          body: { name, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' },
+        }),
+        'ensureSalesFolderPath'
+      );
+    } catch (err: any) {
+      if (err.statusCode !== 409) throw err;
+    }
+    parent += `/${name}`;
+  }
+}
+
 export async function createInquiryFolder(yearFolderName: string, folderName: string): Promise<OneDriveFolder> {
-  const result = await graphCallWithRetry(
+  const create = () => graphCallWithRetry(
     (token) => graphFetchDirect(`/me/drive/root:/1.영업/${yearFolderName}:/children`, token, {
       method: 'POST',
       body: {
@@ -404,6 +423,16 @@ export async function createInquiryFolder(yearFolderName: string, folderName: st
     }),
     'createInquiryFolder'
   );
+
+  let result: any;
+  try {
+    result = await create();
+  } catch (err: any) {
+    // 연도 폴더가 아직 없으면(새해 첫 해외 건 등) 만들고 다시 시도
+    if (err.statusCode !== 404) throw err;
+    await ensureSalesFolderPath(yearFolderName);
+    result = await create();
+  }
 
   return {
     id: result.id,

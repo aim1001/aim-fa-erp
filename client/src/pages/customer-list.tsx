@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Building2, Plus, RefreshCw, Search, Trash2, UserPlus, Users, Check, X, FileText, Star, Link2, Upload, ScanLine } from "lucide-react";
+import { Building2, Plus, RefreshCw, Search, Trash2, UserPlus, Users, Check, X, FileText, Star, Link2, Upload, ScanLine, Globe } from "lucide-react";
 import { useState, useCallback, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -17,6 +17,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useLocation } from "wouter";
 
 function InlineField({ value, field, entityId, entityType, placeholder }: {
   value: string;
@@ -247,6 +248,23 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
     },
   });
 
+  const isOverseas = customer?.region === "overseas";
+  const regionMutation = useMutation({
+    mutationFn: async (region: string) => {
+      const res = await apiRequest("PATCH", `/api/customers/${customerId}`, { region });
+      return res.json();
+    },
+    onSuccess: (_d, region) => {
+      toast({ title: region === "overseas" ? "해외 고객으로 전환했습니다" : "국내 고객으로 전환했습니다" });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers-with-stats"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/customers/${customerId}`] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "전환 실패", description: err.message, variant: "destructive" });
+    },
+  });
+
   const addContactMutation = useMutation({
     mutationFn: async (data: { contactName: string; email?: string; phone?: string }) => {
       const res = await apiRequest("POST", "/api/companies", {
@@ -291,6 +309,19 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
             {customer.companyName}
           </DialogTitle>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const next = isOverseas ? "domestic" : "overseas";
+                if (confirm(next === "overseas" ? "해외 고객으로 전환할까요? 이후 새 인콰이어리는 26-E# 번호로 생성됩니다." : "국내 고객으로 전환할까요?")) regionMutation.mutate(next);
+              }}
+              disabled={regionMutation.isPending}
+              data-testid="button-toggle-region"
+            >
+              <Globe className="h-4 w-4" />
+              <span>{isOverseas ? "국내로 전환" : "해외로 전환"}</span>
+            </Button>
             {isUntraded && (
               <Button
                 variant="secondary"
@@ -323,22 +354,35 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
       <div className="space-y-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">사업자 정보</CardTitle>
+            <CardTitle className="text-sm flex items-center gap-2">
+              {isOverseas ? "회사 정보" : "사업자 정보"}
+              {isOverseas && <Badge variant="secondary" className="text-[10px]">해외</Badge>}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-[100px_1fr] gap-y-2 gap-x-2 text-sm items-center">
-              <span className="text-muted-foreground">상호명</span>
+              <span className="text-muted-foreground">{isOverseas ? "Company name" : "상호명"}</span>
               <InlineField value={customer.companyName} field="companyName" entityId={customerId} entityType="customer" />
-              <span className="text-muted-foreground">사업자등록번호</span>
+              {isOverseas && (
+                <>
+                  <span className="text-muted-foreground">국가</span>
+                  <InlineField value={customer.country || ""} field="country" entityId={customerId} entityType="customer" placeholder="France, USA ..." />
+                </>
+              )}
+              <span className="text-muted-foreground">{isOverseas ? "Tax ID / VAT" : "사업자등록번호"}</span>
               <InlineField value={customer.businessNumber || ""} field="businessNumber" entityId={customerId} entityType="customer" placeholder="클릭하여 입력" />
               <span className="text-muted-foreground">대표자</span>
               <InlineField value={customer.representative || ""} field="representative" entityId={customerId} entityType="customer" placeholder="클릭하여 입력" />
-              <span className="text-muted-foreground">사업장 주소</span>
+              <span className="text-muted-foreground">{isOverseas ? "Address" : "사업장 주소"}</span>
               <InlineField value={customer.address || ""} field="address" entityId={customerId} entityType="customer" placeholder="클릭하여 입력" />
-              <span className="text-muted-foreground">업태</span>
-              <InlineField value={customer.businessType || ""} field="businessType" entityId={customerId} entityType="customer" placeholder="클릭하여 입력" />
-              <span className="text-muted-foreground">종목</span>
-              <InlineField value={customer.businessCategory || ""} field="businessCategory" entityId={customerId} entityType="customer" placeholder="클릭하여 입력" />
+              {!isOverseas && (
+                <>
+                  <span className="text-muted-foreground">업태</span>
+                  <InlineField value={customer.businessType || ""} field="businessType" entityId={customerId} entityType="customer" placeholder="클릭하여 입력" />
+                  <span className="text-muted-foreground">종목</span>
+                  <InlineField value={customer.businessCategory || ""} field="businessCategory" entityId={customerId} entityType="customer" placeholder="클릭하여 입력" />
+                </>
+              )}
               <span className="text-muted-foreground">전화번호</span>
               <InlineField value={customer.phone || ""} field="phone" entityId={customerId} entityType="customer" placeholder="클릭하여 입력" />
               <span className="text-muted-foreground">팩스</span>
@@ -536,6 +580,9 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
 
 export default function CustomerList() {
   const { toast } = useToast();
+  const [location] = useLocation();
+  const overseas = location.startsWith("/overseas");
+  const [newCountry, setNewCountry] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newBizNum, setNewBizNum] = useState("");
@@ -584,9 +631,15 @@ export default function CustomerList() {
     enabled: tab === "untraded",
   });
 
+  // 국내/해외 메뉴별로 고객을 나눈다 (region 미지정 = 국내)
+  const regionCustomers = useMemo(
+    () => (customers || []).filter(c => (c.region === "overseas") === overseas),
+    [customers, overseas],
+  );
+
   const filtered = useMemo(() => {
     if (!customers) return [];
-    let list = customers;
+    let list = regionCustomers;
 
     if (tab === "traded") {
       list = list.filter(c => c.lastTransactionDate != null || (c.businessNumber && c.businessNumber.trim() !== ""));
@@ -601,7 +654,8 @@ export default function CustomerList() {
       list = list.filter(c =>
         c.companyName.toLowerCase().includes(s) ||
         (c.businessNumber && c.businessNumber.toLowerCase().includes(s)) ||
-        (c.representative && c.representative.toLowerCase().includes(s))
+        (c.representative && c.representative.toLowerCase().includes(s)) ||
+        (c.country && c.country.toLowerCase().includes(s))
       );
     }
 
@@ -610,10 +664,10 @@ export default function CustomerList() {
       if (!a.isFavorite && b.isFavorite) return 1;
       return a.companyName.localeCompare(b.companyName);
     });
-  }, [customers, search, tab]);
+  }, [customers, regionCustomers, search, tab]);
 
   const filteredTemp = useMemo(() => {
-    if (tab !== "untraded" || !tempCompanies) return [];
+    if (overseas || tab !== "untraded" || !tempCompanies) return [];
     if (!search) return tempCompanies;
     const s = search.toLowerCase();
     return tempCompanies.filter(c =>
@@ -621,7 +675,7 @@ export default function CustomerList() {
       (c.contactName && c.contactName.toLowerCase().includes(s)) ||
       (c.email && c.email.toLowerCase().includes(s))
     );
-  }, [tempCompanies, search, tab]);
+  }, [tempCompanies, search, tab, overseas]);
 
   const { data: unlinkedData } = useQuery<{ count: number }>({
     queryKey: ["/api/companies/unlinked-count"],
@@ -629,14 +683,16 @@ export default function CustomerList() {
   const unlinkedCount = unlinkedData?.count || 0;
 
   const tabCounts = useMemo(() => {
-    if (!customers) return { traded: 0, untraded: unlinkedCount, bookmarked: 0 };
-    const untradedCustomers = customers.filter(c => c.lastTransactionDate == null && (!c.businessNumber || c.businessNumber.trim() === "")).length;
+    const extra = overseas ? 0 : unlinkedCount;
+    if (!customers) return { traded: 0, untraded: extra, bookmarked: 0 };
+    const list = regionCustomers;
+    const untradedCustomers = list.filter(c => c.lastTransactionDate == null && (!c.businessNumber || c.businessNumber.trim() === "")).length;
     return {
-      traded: customers.filter(c => c.lastTransactionDate != null || (c.businessNumber && c.businessNumber.trim() !== "")).length,
-      untraded: untradedCustomers + unlinkedCount,
-      bookmarked: customers.filter(c => c.isFavorite).length,
+      traded: list.filter(c => c.lastTransactionDate != null || (c.businessNumber && c.businessNumber.trim() !== "")).length,
+      untraded: untradedCustomers + extra,
+      bookmarked: list.filter(c => c.isFavorite).length,
     };
-  }, [customers, unlinkedCount]);
+  }, [customers, regionCustomers, unlinkedCount, overseas]);
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -673,7 +729,7 @@ export default function CustomerList() {
   });
 
   const resetAddForm = () => {
-    setNewName(""); setNewBizNum(""); setNewRep(""); setNewAddr(""); setNewBizType(""); setNewBizCat("");
+    setNewName(""); setNewBizNum(""); setNewRep(""); setNewAddr(""); setNewBizType(""); setNewBizCat(""); setNewCountry("");
   };
 
   const createMutation = useMutation({
@@ -728,9 +784,9 @@ export default function CustomerList() {
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="text-customer-list-title">고객사 목록</h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-customer-list-title">{overseas ? "해외 고객사 목록" : "고객사 목록"}</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button
+          {!overseas && <Button
             size="sm"
             variant="secondary"
             onClick={() => syncMutation.mutate()}
@@ -739,7 +795,7 @@ export default function CustomerList() {
           >
             <RefreshCw className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
             {syncMutation.isPending ? "동기화 중..." : "OneDrive에서 갱신"}
-          </Button>
+          </Button>}
           <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-customer">
             <Plus className="h-4 w-4 mr-1" />
             고객사 추가
@@ -772,7 +828,7 @@ export default function CustomerList() {
           <Input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="상호명, 사업자번호, 대표자 검색"
+            placeholder={overseas ? "회사명, 국가, Tax ID 검색" : "상호명, 사업자번호, 대표자 검색"}
             className="pl-9"
             data-testid="input-search-customers"
           />
@@ -792,7 +848,8 @@ export default function CustomerList() {
                   <tr className="border-b bg-muted/50">
                     <th className="w-10 py-2.5 px-2"></th>
                     <th className="text-left py-2.5 px-4 font-medium">상호명</th>
-                    <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">사업자등록번호</th>
+                    {overseas && <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">국가</th>}
+                    <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">{overseas ? "Tax ID / VAT" : "사업자등록번호"}</th>
                     <th className="text-left py-2.5 px-4 font-medium hidden md:table-cell">대표자</th>
                     <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">전화번호</th>
                     <th className="text-left py-2.5 px-4 font-medium hidden lg:table-cell">최근 거래일</th>
@@ -828,6 +885,7 @@ export default function CustomerList() {
                           <span className="font-medium">{customer.companyName}</span>
                         </div>
                       </td>
+                      {overseas && <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.country || "-"}</td>}
                       <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.businessNumber || "-"}</td>
                       <td className="py-2.5 px-4 text-muted-foreground hidden md:table-cell">{customer.representative || "-"}</td>
                       <td className="py-2.5 px-4 text-muted-foreground hidden lg:table-cell">{customer.phone || "-"}</td>
@@ -930,8 +988,32 @@ export default function CustomerList() {
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>고객사 추가</DialogTitle>
+            <DialogTitle>{overseas ? "해외 고객사 추가" : "고객사 추가"}</DialogTitle>
           </DialogHeader>
+          {overseas ? (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Label>Company name *</Label>
+              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="MATSPE" data-testid="input-new-customer-name" />
+            </div>
+            <div>
+              <Label>국가</Label>
+              <Input value={newCountry} onChange={e => setNewCountry(e.target.value)} placeholder="France" data-testid="input-new-customer-country" />
+            </div>
+            <div>
+              <Label>Tax ID / VAT no.</Label>
+              <Input value={newBizNum} onChange={e => setNewBizNum(e.target.value)} placeholder="선택" data-testid="input-new-customer-biznum" />
+            </div>
+            <div className="col-span-2">
+              <Label>Address</Label>
+              <Input value={newAddr} onChange={e => setNewAddr(e.target.value)} placeholder="Z.I. Le Pradon 01130 NANTUA" data-testid="input-new-customer-addr" />
+            </div>
+            <div>
+              <Label>대표자</Label>
+              <Input value={newRep} onChange={e => setNewRep(e.target.value)} placeholder="선택" data-testid="input-new-customer-rep" />
+            </div>
+          </div>
+          ) : (
           <div className="space-y-4">
             <input
               type="file"
@@ -979,6 +1061,7 @@ export default function CustomerList() {
               </div>
             </div>
           </div>
+          )}
           <DialogFooter>
             <Button variant="secondary" onClick={() => { setShowAdd(false); resetAddForm(); }} data-testid="button-cancel-add">
               취소
@@ -991,6 +1074,7 @@ export default function CustomerList() {
                 address: newAddr || undefined,
                 businessType: newBizType || undefined,
                 businessCategory: newBizCat || undefined,
+                ...(overseas ? { region: "overseas", country: newCountry || undefined } : {}),
               })}
               disabled={!newName.trim() || createMutation.isPending}
               data-testid="button-confirm-add"

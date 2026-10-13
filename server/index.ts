@@ -14,6 +14,9 @@ async function runAutoMigrations() {
     `ALTER TABLE vendors ADD COLUMN IF NOT EXISTS default_payment_terms text`,
     `ALTER TABLE quotations ADD COLUMN IF NOT EXISTS category_discounts text`,
     `ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS quotation_category_order text`,
+    `ALTER TABLE customers ADD COLUMN IF NOT EXISTS region text DEFAULT 'domestic'`,
+    `ALTER TABLE customers ADD COLUMN IF NOT EXISTS country text`,
+    `ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS region text DEFAULT 'domestic'`,
     `CREATE TABLE IF NOT EXISTS purchase_order_invoice_links (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
       purchase_order_id varchar NOT NULL,

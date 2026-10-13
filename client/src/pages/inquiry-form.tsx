@@ -53,16 +53,16 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-export function InquiryFormDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function InquiryFormDialog({ open, onOpenChange, region = "domestic" }: { open: boolean; onOpenChange: (open: boolean) => void; region?: "domestic" | "overseas" }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-2">
-          <DialogTitle data-testid="text-form-title">인콰이어리 추가</DialogTitle>
+          <DialogTitle data-testid="text-form-title">{region === "overseas" ? "해외 인콰이어리 추가" : "인콰이어리 추가"}</DialogTitle>
         </DialogHeader>
         <ScrollArea className="max-h-[calc(90vh-80px)]">
           <div className="px-6 pb-6">
-            <InquiryFormContent onSuccess={() => onOpenChange(false)} />
+            <InquiryFormContent region={region} onSuccess={() => onOpenChange(false)} />
           </div>
         </ScrollArea>
       </DialogContent>
@@ -70,7 +70,7 @@ export function InquiryFormDialog({ open, onOpenChange }: { open: boolean; onOpe
   );
 }
 
-function InquiryFormContent({ onSuccess }: { onSuccess: () => void }) {
+function InquiryFormContent({ region, onSuccess }: { region: "domestic" | "overseas"; onSuccess: () => void }) {
   const { toast } = useToast();
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -158,7 +158,7 @@ function InquiryFormContent({ onSuccess }: { onSuccess: () => void }) {
 
   const watchYear = form.watch("year");
   const nextNumberQuery = useQuery<{ nextNumber: string }>({
-    queryKey: [`/api/next-inquiry-number/${watchYear}`],
+    queryKey: [`/api/next-inquiry-number/${watchYear}?region=${region}`],
     enabled: !!watchYear,
   });
 
@@ -167,6 +167,7 @@ function InquiryFormContent({ onSuccess }: { onSuccess: () => void }) {
       const res = await apiRequest("POST", "/api/inquiries", {
         ...values,
         inquiryNumber: "",
+        region,
         customerId: selectedCustomer?.id || null,
         companyId: selectedCompany?.id || null,
         _contactName: contactName || null,
