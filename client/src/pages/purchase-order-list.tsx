@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, Upload, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
 import {
   AlertDialog,
@@ -44,6 +44,36 @@ import {
 function formatAmount(amount: number | null | undefined) {
   if (!amount && amount !== 0) return "-";
   return amount.toLocaleString() + "원";
+}
+
+// 마감월 기준일: 입고일 → 납품예정일 → 발주일 (월마감은 실제 입고된 달 기준)
+function closingDate(o: PurchaseOrder) {
+  return o.actualDeliveryDate || o.expectedDeliveryDate || o.orderDate || "";
+}
+
+// 공급가액 미입력(구 동기화분·수입건) 발주는 합계÷1.1로 추정
+function orderAmounts(o: PurchaseOrder) {
+  const total = o.totalAmount ?? (o.supplyAmount != null ? o.supplyAmount + (o.taxAmount ?? 0) : null);
+  const supplyEstimated = o.supplyAmount == null && total != null;
+  const supply = o.supplyAmount ?? (total != null ? Math.round(total / 1.1) : null);
+  return { supply, total, supplyEstimated };
+}
+
+function sumAmounts(list: PurchaseOrder[]) {
+  let supply = 0, total = 0, estimated = 0;
+  for (const o of list) {
+    const a = orderAmounts(o);
+    supply += a.supply ?? 0;
+    total += a.total ?? 0;
+    if (a.supplyEstimated) estimated++;
+  }
+  return { supply, total, estimated };
+}
+
+function shiftMonth(ym: string, delta: number) {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function ReceivingBadge({ status, actualDeliveryDate }: { status: string; actualDeliveryDate?: string | null }) {
@@ -224,8 +254,10 @@ export default function PurchaseOrderList() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [sortField, setSortField] = useState<"orderNumber" | "vendor" | "expectedDeliveryDate" | null>("orderNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [monthFrom, setMonthFrom] = useState("");
+  const [monthTo, setMonthTo] = useState("");
+  const thisMonth = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  const setMonthRange = (from: string, to: string) => { setMonthFrom(from); setMonthTo(to); };
 
   const toggleSort = (field: "orderNumber" | "vendor" | "expectedDeliveryDate") => {
     if (sortField === field) {
@@ -236,7 +268,7 @@ export default function PurchaseOrderList() {
     }
   };
 
-  const useAllYears = !!(dateFrom || dateTo);
+  const useAllYears = !!(monthFrom || monthTo);
   const { data: orders, isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ["/api/purchase-orders", useAllYears ? "all" : selectedYear],
     queryFn: async () => {
@@ -245,6 +277,9 @@ export default function PurchaseOrderList() {
       return res.json();
     },
   });
+  // 연도별/전체(마감월 조회) 목록 캐시를 함께 갱신 — 발주별 files/items 쿼리는 제외
+  const invalidateOrderLists = () =>
+    queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders"], predicate: q => q.queryKey.length <= 2 });
 
   const { data: invoices } = useQuery<PurchaseInvoice[]>({
     queryKey: ["/api/purchase-invoices"],
@@ -264,7 +299,7 @@ export default function PurchaseOrderList() {
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      invalidateOrderLists();
       toast({ title: "동기화 완료", description: data.message });
     },
     onError: (err: Error) => {
@@ -278,7 +313,7 @@ export default function PurchaseOrderList() {
       return res.json();
     },
     onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      invalidateOrderLists();
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       if (selectedOrder && selectedOrder.id === variables.id) {
         setSelectedOrder({ ...selectedOrder, ...variables.data } as PurchaseOrder);
@@ -295,7 +330,7 @@ export default function PurchaseOrderList() {
       await apiRequest("DELETE", `/api/purchase-orders/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      invalidateOrderLists();
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       setSelectedOrder(null);
       toast({ title: "발주가 삭제되었습니다" });
@@ -311,7 +346,7 @@ export default function PurchaseOrderList() {
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", selectedYear] });
+      invalidateOrderLists();
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       setShowCreateForm(false);
       toast({ title: "발주가 등록되었습니다", description: data.payment ? "자금계획 생성됨" : undefined });
@@ -331,7 +366,7 @@ export default function PurchaseOrderList() {
       return targets.length;
     },
     onSuccess: (count) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchase-orders", useAllYears ? "all" : selectedYear] });
+      invalidateOrderLists();
       toast({ title: `업체 연결 완료`, description: count > 1 ? `동일 업체명 ${count}건 일괄 처리` : undefined });
     },
     onError: (err: Error) => {
@@ -339,17 +374,25 @@ export default function PurchaseOrderList() {
     },
   });
 
+  // 마감월 범위 적용분 — 상태 카운트·목록 모두 이 범위 기준
+  const inRange = useMemo(() => {
+    if (!orders) return [];
+    if (!monthFrom && !monthTo) return orders;
+    return orders.filter(o => {
+      const ym = closingDate(o).slice(0, 7);
+      if (!ym) return false;
+      if (monthFrom && ym < monthFrom) return false;
+      if (monthTo && ym > monthTo) return false;
+      return true;
+    });
+  }, [orders, monthFrom, monthTo]);
+
   const unlinkedVendorCount = useMemo(() =>
-    (orders || []).filter(o => !o.vendorId && o.vendor).length,
-  [orders]);
+    inRange.filter(o => !o.vendorId && o.vendor).length,
+  [inRange]);
 
   const filtered = useMemo(() => {
-    if (!orders) return [];
-    let list = [...orders];
-    if (dateFrom || dateTo) {
-      if (dateFrom) list = list.filter(o => o.expectedDeliveryDate && o.expectedDeliveryDate >= dateFrom);
-      if (dateTo) list = list.filter(o => o.expectedDeliveryDate && o.expectedDeliveryDate <= dateTo);
-    }
+    let list = [...inRange];
     if (statusFilter === "미연결") {
       list = list.filter(o => !o.vendorId && o.vendor);
     } else if (statusFilter === "입고완료") {
@@ -386,17 +429,30 @@ export default function PurchaseOrderList() {
       });
     }
     return list;
-  }, [orders, statusFilter, search, sortField, sortDir, dateFrom, dateTo]);
+  }, [inRange, statusFilter, search, sortField, sortDir]);
 
-  const statusCounts = useMemo(() => {
-    if (!orders) return { all: 0, "일반": 0, "수입": 0, "입고완료": 0 };
-    return {
-      all: orders.length,
-      "일반": orders.filter(o => !o.actualDeliveryDate && o.status === "일반").length,
-      "수입": orders.filter(o => !o.actualDeliveryDate && o.status === "수입").length,
-      "입고완료": orders.filter(o => !!o.actualDeliveryDate).length,
-    };
-  }, [orders]);
+  // 마감월 조회 시 월별로 묶어 소계 표시 (월 오름차순, 월 안에서는 현재 정렬 유지)
+  const monthGroups = useMemo(() => {
+    if (!useAllYears) return null;
+    const map = new Map<string, PurchaseOrder[]>();
+    for (const o of filtered) {
+      const ym = closingDate(o).slice(0, 7);
+      if (!map.has(ym)) map.set(ym, []);
+      map.get(ym)!.push(o);
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([ym, list]) => ({ ym, list, sums: sumAmounts(list) }));
+  }, [filtered, useAllYears]);
+
+  const totals = useMemo(() => sumAmounts(filtered), [filtered]);
+
+  const statusCounts = useMemo(() => ({
+    all: inRange.length,
+    "일반": inRange.filter(o => !o.actualDeliveryDate && o.status === "일반").length,
+    "수입": inRange.filter(o => !o.actualDeliveryDate && o.status === "수입").length,
+    "입고완료": inRange.filter(o => !!o.actualDeliveryDate).length,
+  }), [inRange]);
 
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
@@ -413,7 +469,7 @@ export default function PurchaseOrderList() {
                 variant={!useAllYears && selectedYear === y ? "default" : "ghost"}
                 size="sm"
                 className="h-7 text-xs px-2"
-                onClick={() => { setSelectedYear(y); setDateFrom(""); setDateTo(""); }}
+                onClick={() => { setSelectedYear(y); setMonthRange("", ""); }}
                 data-testid={`button-year-${y}`}
               >
                 {y}
@@ -421,12 +477,15 @@ export default function PurchaseOrderList() {
             ))}
           </div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground ml-2">
-            <span>기간</span>
-            <Input type="date" className="h-7 w-[120px] text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} data-testid="input-date-from-orders" />
+            <span title="입고일 기준 (입고 전이면 납품예정일, 둘 다 없으면 발주일)">마감월</span>
+            <Input type="month" className="h-7 w-[130px] text-xs" value={monthFrom} onChange={e => setMonthFrom(e.target.value)} data-testid="input-month-from-orders" />
             <span>~</span>
-            <Input type="date" className="h-7 w-[120px] text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} data-testid="input-date-to-orders" />
-            {(dateFrom || dateTo) && (
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setDateFrom(""); setDateTo(""); }} data-testid="button-clear-date-orders">
+            <Input type="month" className="h-7 w-[130px] text-xs" value={monthTo} onChange={e => setMonthTo(e.target.value)} data-testid="input-month-to-orders" />
+            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => setMonthRange(shiftMonth(thisMonth, -1), shiftMonth(thisMonth, -1))} data-testid="button-month-prev">지난달</Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => setMonthRange(thisMonth, thisMonth)} data-testid="button-month-this">이번달</Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => setMonthRange(`${currentYear}-01`, thisMonth)} data-testid="button-month-ytd">올해</Button>
+            {useAllYears && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setMonthRange("", "")} data-testid="button-clear-month-orders">
                 <X className="h-3 w-3" />
               </Button>
             )}
@@ -518,7 +577,8 @@ export default function PurchaseOrderList() {
                   <span className="inline-flex items-center gap-1">구매처 {sortField === "vendor" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
                 </th>
                 <th className="text-left px-4 py-2 font-medium">내용</th>
-                <th className="text-right px-4 py-2 font-medium">금액</th>
+                <th className="text-right px-4 py-2 font-medium">공급가액</th>
+                <th className="text-right px-4 py-2 font-medium">합계(VAT포함)</th>
                 <th className="text-center px-4 py-2 font-medium cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("expectedDeliveryDate")} data-testid="sort-deliveryDate">
                   <span className="inline-flex items-center gap-1">납품예정일 {sortField === "expectedDeliveryDate" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-30" />}</span>
                 </th>
@@ -530,148 +590,180 @@ export default function PurchaseOrderList() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(order => {
-                const linkedInvoice = invoices?.find(inv => inv.id === order.purchaseInvoiceId);
-                const linkedPayment = payments?.find(p => p.id === order.paymentId);
-                const invoicePayments = linkedInvoice
-                  ? payments?.filter(p => p.purchaseInvoiceId === linkedInvoice.id) || []
-                  : [];
-                const hasInvoicePayments = invoicePayments.length > 0;
-                const allInvoicePaymentsCompleted = hasInvoicePayments && invoicePayments.every(p => p.status === "completed");
-                const someInvoicePaymentsCompleted = hasInvoicePayments && invoicePayments.some(p => p.status === "completed");
-                const nextInvoicePayment = hasInvoicePayments
-                  ? invoicePayments.filter(p => p.status !== "completed").sort((a, b) => (a.plannedDate || "").localeCompare(b.plannedDate || ""))[0]
-                  : null;
-
-                return (
-                  <tr
-                    key={order.id}
-                    className="border-b hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => setSelectedOrder(order)}
-                    data-testid={`row-order-${order.id}`}
-                  >
-                    <td className="px-4 py-2 font-medium" data-testid={`text-order-number-${order.id}`}>
-                      {order.orderNumber || "-"}
-                    </td>
-                    <td className="px-4 py-2" data-testid={`text-vendor-${order.id}`}>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 group/vendor">
-                          <span>{order.vendor || "-"}</span>
-                          {!order.vendorId && order.vendor && (
-                            <Badge className="bg-orange-100 text-orange-600 border-0 text-[10px] px-1 py-0 h-4 shrink-0">미연결</Badge>
-                          )}
-                          {order.vendor && (
-                            <button
-                              type="button"
-                              onClick={e => { e.stopPropagation(); }}
-                              className="opacity-0 group-hover/vendor:opacity-100 text-[10px] text-muted-foreground hover:text-foreground transition-opacity"
-                              title="업체 변경"
-                            >
-                              <VendorReassignPopover
+              {(monthGroups ?? [{ ym: "", list: filtered, sums: null }]).map(group => (
+                <Fragment key={group.ym || "all"}>
+                  {group.sums && (
+                    <tr className="bg-muted/60 border-b" data-testid={`row-month-${group.ym}`}>
+                      <td colSpan={3} className="px-4 py-1.5 text-xs font-semibold">
+                        {group.ym.slice(0, 4)}년 {Number(group.ym.slice(5))}월 마감
+                        <span className="ml-2 font-normal text-muted-foreground">{group.list.length}건</span>
+                      </td>
+                      <td className="px-4 py-1.5 text-right text-xs font-semibold" data-testid={`text-month-supply-${group.ym}`}>
+                        {group.sums.supply.toLocaleString()}원
+                      </td>
+                      <td className="px-4 py-1.5 text-right text-xs font-semibold" data-testid={`text-month-total-${group.ym}`}>
+                        {group.sums.total.toLocaleString()}원
+                      </td>
+                      <td colSpan={6} />
+                    </tr>
+                  )}
+                  {group.list.map(order => {
+                    const amounts = orderAmounts(order);
+                    const linkedInvoice = invoices?.find(inv => inv.id === order.purchaseInvoiceId);
+                    const linkedPayment = payments?.find(p => p.id === order.paymentId);
+                    const invoicePayments = linkedInvoice
+                      ? payments?.filter(p => p.purchaseInvoiceId === linkedInvoice.id) || []
+                      : [];
+                    const hasInvoicePayments = invoicePayments.length > 0;
+                    const allInvoicePaymentsCompleted = hasInvoicePayments && invoicePayments.every(p => p.status === "completed");
+                    const someInvoicePaymentsCompleted = hasInvoicePayments && invoicePayments.some(p => p.status === "completed");
+                    const nextInvoicePayment = hasInvoicePayments
+                      ? invoicePayments.filter(p => p.status !== "completed").sort((a, b) => (a.plannedDate || "").localeCompare(b.plannedDate || ""))[0]
+                      : null;
+    
+                    return (
+                      <tr
+                        key={order.id}
+                        className="border-b hover:bg-muted/50 cursor-pointer transition-colors"
+                        onClick={() => setSelectedOrder(order)}
+                        data-testid={`row-order-${order.id}`}
+                      >
+                        <td className="px-4 py-2 font-medium" data-testid={`text-order-number-${order.id}`}>
+                          {order.orderNumber || "-"}
+                        </td>
+                        <td className="px-4 py-2" data-testid={`text-vendor-${order.id}`}>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 group/vendor">
+                              <span>{order.vendor || "-"}</span>
+                              {!order.vendorId && order.vendor && (
+                                <Badge className="bg-orange-100 text-orange-600 border-0 text-[10px] px-1 py-0 h-4 shrink-0">미연결</Badge>
+                              )}
+                              {order.vendor && (
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); }}
+                                  className="opacity-0 group-hover/vendor:opacity-100 text-[10px] text-muted-foreground hover:text-foreground transition-opacity"
+                                  title="업체 변경"
+                                >
+                                  <VendorReassignPopover
+                                    vendors={vendors}
+                                    isPending={assignVendorMutation.isPending}
+                                    onAssign={(vendorId) => assignVendorMutation.mutate({ vendorName: order.vendor!, vendorId })}
+                                  />
+                                </button>
+                              )}
+                            </div>
+                            {!order.vendorId && order.vendor && (
+                              <VendorSmartMatch
+                                orderVendorName={order.vendor}
                                 vendors={vendors}
-                                isPending={assignVendorMutation.isPending}
                                 onAssign={(vendorId) => assignVendorMutation.mutate({ vendorName: order.vendor!, vendorId })}
+                                isPending={assignVendorMutation.isPending}
                               />
-                            </button>
-                          )}
-                        </div>
-                        {!order.vendorId && order.vendor && (
-                          <VendorSmartMatch
-                            orderVendorName={order.vendor}
-                            vendors={vendors}
-                            onAssign={(vendorId) => assignVendorMutation.mutate({ vendorName: order.vendor!, vendorId })}
-                            isPending={assignVendorMutation.isPending}
-                          />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground max-w-[200px] truncate" data-testid={`text-description-${order.id}`}>
-                      {order.description || "-"}
-                    </td>
-                    <td className="px-4 py-2 text-right font-medium" data-testid={`text-amount-${order.id}`}>
-                      {formatAmount(order.totalAmount)}
-                    </td>
-                    <td className="px-4 py-2 text-center text-xs" data-testid={`text-expected-date-${order.id}`}>
-                      {order.expectedDeliveryDate || "-"}
-                    </td>
-                    <td className="px-4 py-2 text-center text-xs" data-testid={`text-actual-date-${order.id}`}>
-                      {order.actualDeliveryDate || "-"}
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <ReceivingBadge status={order.status || "일반"} actualDeliveryDate={order.actualDeliveryDate} />
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      {linkedInvoice ? (
-                        <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0" data-testid={`badge-invoice-linked-${order.id}`}>
-                          <FileText className="h-3 w-3 mr-1" />연결됨
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-invoice-none-${order.id}`}>
-                          미연결
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      {linkedInvoice ? (
-                        hasInvoicePayments ? (
-                          allInvoicePaymentsCompleted ? (
-                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-done-${order.id}`}>
-                              <Check className="h-3 w-3 mr-1" />완료
-                            </Badge>
-                          ) : someInvoicePaymentsCompleted ? (
-                            <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border-0" data-testid={`badge-payment-partial-${order.id}`}>
-                              부분완료
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 text-muted-foreground max-w-[200px] truncate" data-testid={`text-description-${order.id}`}>
+                          {order.description || "-"}
+                        </td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap" data-testid={`text-supply-${order.id}`}>
+                          {amounts.supplyEstimated ? (
+                            <span className="text-muted-foreground" title="공급가액 미입력 — 합계÷1.1 추정">≈{formatAmount(amounts.supply)}</span>
+                          ) : formatAmount(amounts.supply)}
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium whitespace-nowrap" data-testid={`text-amount-${order.id}`}>
+                          {formatAmount(amounts.total)}
+                        </td>
+                        <td className="px-4 py-2 text-center text-xs" data-testid={`text-expected-date-${order.id}`}>
+                          {order.expectedDeliveryDate || "-"}
+                        </td>
+                        <td className="px-4 py-2 text-center text-xs" data-testid={`text-actual-date-${order.id}`}>
+                          {order.actualDeliveryDate || "-"}
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <ReceivingBadge status={order.status || "일반"} actualDeliveryDate={order.actualDeliveryDate} />
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          {linkedInvoice ? (
+                            <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0" data-testid={`badge-invoice-linked-${order.id}`}>
+                              <FileText className="h-3 w-3 mr-1" />연결됨
                             </Badge>
                           ) : (
-                            <span className="text-xs text-muted-foreground" data-testid={`text-payment-planned-${order.id}`}>
-                              {nextInvoicePayment?.plannedDate ? nextInvoicePayment.plannedDate.slice(5).replace("-", "/") + " 예정" : "예정"}
-                            </span>
-                          )
-                        ) : (
-                          <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-payment-none-${order.id}`}>
-                            미설정
-                          </Badge>
-                        )
-                      ) : linkedPayment ? (
-                        linkedPayment.status === "completed" ? (
-                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-done-${order.id}`}>
-                            <Check className="h-3 w-3 mr-1" />완료
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground" data-testid={`text-payment-planned-${order.id}`}>
-                            {linkedPayment.plannedDate ? linkedPayment.plannedDate.slice(5).replace("-", "/") + " 예정" : "예정"}
-                          </span>
-                        )
-                      ) : (
-                        <span className="text-xs text-muted-foreground" data-testid={`text-payment-none-${order.id}`}>-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      {order.onedriveWebUrl && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={e => {
-                            e.stopPropagation();
-                            window.open(order.onedriveWebUrl!, "_blank");
-                          }}
-                          data-testid={`button-open-folder-${order.id}`}
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                            <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-invoice-none-${order.id}`}>
+                              미연결
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          {linkedInvoice ? (
+                            hasInvoicePayments ? (
+                              allInvoicePaymentsCompleted ? (
+                                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-done-${order.id}`}>
+                                  <Check className="h-3 w-3 mr-1" />완료
+                                </Badge>
+                              ) : someInvoicePaymentsCompleted ? (
+                                <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border-0" data-testid={`badge-payment-partial-${order.id}`}>
+                                  부분완료
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground" data-testid={`text-payment-planned-${order.id}`}>
+                                  {nextInvoicePayment?.plannedDate ? nextInvoicePayment.plannedDate.slice(5).replace("-", "/") + " 예정" : "예정"}
+                                </span>
+                              )
+                            ) : (
+                              <Badge variant="outline" className="text-muted-foreground" data-testid={`badge-payment-none-${order.id}`}>
+                                미설정
+                              </Badge>
+                            )
+                          ) : linkedPayment ? (
+                            linkedPayment.status === "completed" ? (
+                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0" data-testid={`badge-payment-done-${order.id}`}>
+                                <Check className="h-3 w-3 mr-1" />완료
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground" data-testid={`text-payment-planned-${order.id}`}>
+                                {linkedPayment.plannedDate ? linkedPayment.plannedDate.slice(5).replace("-", "/") + " 예정" : "예정"}
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-xs text-muted-foreground" data-testid={`text-payment-none-${order.id}`}>-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          {order.onedriveWebUrl && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={e => {
+                                e.stopPropagation();
+                                window.open(order.onedriveWebUrl!, "_blank");
+                              }}
+                              data-testid={`button-open-folder-${order.id}`}
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         )}
       </div>
 
-      <div className="border-t px-4 py-1.5 text-xs text-muted-foreground flex-shrink-0" data-testid="text-footer-count">
-        총 {filtered.length}건 {statusFilter !== "all" ? `(필터: ${statusFilter})` : ""}
+      <div className="border-t px-4 py-1.5 text-xs text-muted-foreground flex-shrink-0 flex items-center gap-4" data-testid="text-footer-count">
+        <span>총 {filtered.length}건 {statusFilter !== "all" ? `(필터: ${statusFilter})` : ""}</span>
+        <span className="ml-auto">
+          공급가액 <span className="font-semibold text-foreground" data-testid="text-footer-supply">{totals.supply.toLocaleString()}원</span>
+          {totals.estimated > 0 && <span className="ml-1" title="공급가액 미입력 발주는 합계÷1.1로 추정">(추정 {totals.estimated}건 포함)</span>}
+        </span>
+        <span>
+          합계(VAT포함) <span className="font-semibold text-foreground" data-testid="text-footer-total">{totals.total.toLocaleString()}원</span>
+        </span>
       </div>
 
       {showCreateForm && (
