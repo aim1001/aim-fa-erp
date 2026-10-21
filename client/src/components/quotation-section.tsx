@@ -17,6 +17,9 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Quotation, QuotationItem, Inquiry, ItemMaster, CompanySettings } from "@shared/schema";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
+import { UsdRateBar, parseNum } from "@/components/overseas-quote-editor";
+import { num, fmtUsd } from "@shared/fx";
+import { DEFAULT_NOTES_EN } from "@shared/quotation-en";
 
 function ContactCcPicker({ customerId, currentEmail, onSelect }: {
   customerId: string;
@@ -295,6 +298,10 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
   const { toast } = useToast();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ quantity: 0, unitPrice: 0 });
+  // USD 견적: 같은 표에 원화 기준가 → USD 단가 · USD 금액 칸이 붙는다. 네고는 국내와 같이 카테고리/전체 네고.
+  const usd = quotation.currency === "USD";
+  const [usdForm, setUsdForm] = useState({ unitPriceFx: "" });
+  const colCount = usd ? 11 : 10;
 
   const { data: companySettings } = useQuery<any>({ queryKey: ["/api/company-settings"] });
   const categoryOrder: string[] = useMemo(() => {
@@ -356,6 +363,14 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
     });
   };
 
+  const usdEditPayload = (item: QuotationItem) => {
+    const body: Record<string, any> = { id: item.id, quantity: editForm.quantity };
+    const fx = parseNum(usdForm.unitPriceFx);
+    if (Math.abs(fx - num(item.unitPriceFx)) >= 0.005) body.unitPriceFx = fx;
+    else if (editForm.unitPrice !== item.unitPrice) body.unitPrice = editForm.unitPrice;
+    return body;
+  };
+
   const subtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
   const totalCost = regularItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
   const overallMargin = subtotal > 0 && totalCost > 0 ? Math.round(((subtotal - totalCost) / subtotal) * 100) : 0;
@@ -383,8 +398,9 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
                 <th className="px-2 py-1.5 text-left w-64">사양</th>
                 <th className="px-2 py-1.5 text-right w-14">수량</th>
                 <th className="px-2 py-1.5 text-right w-20">원가</th>
-                <th className="px-2 py-1.5 text-right w-20">판매단가</th>
-                <th className="px-2 py-1.5 text-right w-24">금액</th>
+                <th className="px-2 py-1.5 text-right w-20">{usd ? "원화 기준가" : "판매단가"}</th>
+                {usd && <th className="px-2 py-1.5 text-right w-20">단가($)</th>}
+                <th className="px-2 py-1.5 text-right w-24">{usd ? "금액($)" : "금액"}</th>
                 <th className="px-2 py-1.5 text-center w-14">마진</th>
                 <th className="px-2 py-1.5 w-10"></th>
               </tr>
@@ -392,6 +408,7 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
             <tbody>
               {Array.from(grouped).flatMap(([cat, catItems]) => {
                 const catSubtotal = catItems.reduce((s, i) => s + (i.amount || 0), 0);
+                const catSubtotalUsd = Math.round(catItems.reduce((s, i) => s + num(i.amountFx), 0) * 100) / 100;
                 const catCostTotal = catItems.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
                 const catProfit = catSubtotal - catCostTotal;
                 const catMargin = catSubtotal > 0 && catCostTotal > 0
@@ -405,7 +422,7 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
                 const rows = [];
                 rows.push(
                   <tr key={`cat-header-${cat}`} className="bg-blue-50 dark:bg-blue-950/30">
-                    <td colSpan={10} className="px-3 py-2">
+                    <td colSpan={colCount} className="px-3 py-2">
                       {/* 1줄: 카테고리명 + 네고율 입력 */}
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="font-bold text-sm">{cat}</span>
@@ -432,7 +449,7 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
                       <div className="flex items-center gap-4 text-xs">
                         <span className="text-muted-foreground">원가 <span className="font-medium text-foreground">{fmtNum(catCostTotal)}</span></span>
                         <span className="text-muted-foreground">│</span>
-                        <span className="text-muted-foreground">소계 <span className="font-medium text-foreground">{fmtNum(catSubtotal)}</span></span>
+                        <span className="text-muted-foreground">소계 <span className="font-medium text-foreground">{usd ? `$ ${fmtUsd(catSubtotalUsd)}` : fmtNum(catSubtotal)}</span>{usd && <span className="text-[10px]"> (≈{fmtNum(catSubtotal)}원)</span>}</span>
                         <span className="text-muted-foreground">│</span>
                         <span className="text-muted-foreground">이윤 <span className={`font-medium ${catProfit >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>{fmtNum(catProfit)}</span></span>
                         <span className="text-muted-foreground">│</span>
@@ -442,7 +459,7 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
                       {negoPct > 0 && (
                         <div className="flex items-center gap-4 text-xs mt-1 pt-1 border-t border-blue-200/60 dark:border-blue-800/40">
                           <span className="text-muted-foreground text-[10px]">네고후</span>
-                          <span className="text-muted-foreground">합계 <span className="font-medium text-orange-600 dark:text-orange-400">{fmtNum(catAfterNego)}</span></span>
+                          <span className="text-muted-foreground">합계 <span className="font-medium text-orange-600 dark:text-orange-400">{usd ? `$ ${fmtUsd(Math.round(catSubtotalUsd * (100 - negoPct)) / 100)}` : fmtNum(catAfterNego)}</span></span>
                           <span className="text-muted-foreground">│</span>
                           <span className="text-muted-foreground">이윤 <span className={`font-medium ${catAfterProfit >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-500"}`}>{fmtNum(catAfterProfit)}</span></span>
                           <span className="text-muted-foreground">│</span>
@@ -455,7 +472,9 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
 
                 for (const item of catItems) {
                   globalIdx++;
-                  const margin = calcMarginRate(item.unitPrice, item.costPrice || 0);
+                  const margin = usd
+                    ? calcMarginRate(item.quantity ? Math.round((item.amount || 0) / item.quantity) : 0, item.costPrice || 0)
+                    : calcMarginRate(item.unitPrice, item.costPrice || 0);
                   const isEditing = editingItemId === item.id;
 
                   rows.push(
@@ -485,15 +504,27 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
                               data-testid={`input-edit-price-${item.id}`}
                             />
                           </td>
-                          <td className="px-2 py-1.5 w-24 text-right">{fmtNum(editForm.quantity * editForm.unitPrice)}</td>
+                          {usd && (
+                            <>
+                              <td className="px-1 py-1 w-20">
+                                <Input
+                                  value={usdForm.unitPriceFx}
+                                  onChange={e => setUsdForm(f => ({ ...f, unitPriceFx: e.target.value }))}
+                                  className="text-xs text-right"
+                                  data-testid={`input-edit-price-usd-${item.id}`}
+                                />
+                              </td>
+                            </>
+                          )}
+                          <td className="px-2 py-1.5 w-24 text-right">{usd ? "-" : fmtNum(editForm.quantity * editForm.unitPrice)}</td>
                           <td className="px-2 py-1.5 w-14 text-center">
-                            <MarginBadge rate={calcMarginRate(editForm.unitPrice, item.costPrice || 0)} />
+                            {usd ? <span className="text-muted-foreground">-</span> : <MarginBadge rate={calcMarginRate(editForm.unitPrice, item.costPrice || 0)} />}
                           </td>
                           <td className="px-1 py-1 w-10">
                             <div className="flex gap-0.5">
                               <Button size="sm" variant="ghost" className="h-5 w-5 p-0"
                                 data-testid={`button-confirm-edit-${item.id}`}
-                                onClick={() => updateItemMut.mutate({ id: item.id, quantity: editForm.quantity, unitPrice: editForm.unitPrice })}>
+                                onClick={() => updateItemMut.mutate(usd ? usdEditPayload(item) : { id: item.id, quantity: editForm.quantity, unitPrice: editForm.unitPrice })}>
                                 <Check className="h-3 w-3" />
                               </Button>
                               <Button size="sm" variant="ghost" className="h-5 w-5 p-0"
@@ -508,15 +539,20 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
                         <>
                           <td className="px-2 py-1.5 w-14 text-right">{fmtNum(item.quantity)}</td>
                           <td className="px-2 py-1.5 w-20 text-right text-muted-foreground">{fmtNum(item.costPrice)}</td>
-                          <td className="px-2 py-1.5 w-20 text-right">{fmtNum(item.unitPrice)}</td>
-                          <td className="px-2 py-1.5 w-24 text-right font-medium">{fmtNum(item.amount)}</td>
+                          <td className={`px-2 py-1.5 w-20 text-right ${usd ? "text-muted-foreground" : ""}`}>{fmtNum(item.unitPrice)}</td>
+                          {usd && <td className="px-2 py-1.5 w-20 text-right">{fmtUsd(num(item.unitPriceFx))}</td>}
+                          <td className="px-2 py-1.5 w-24 text-right font-medium">{usd ? fmtUsd(num(item.amountFx)) : fmtNum(item.amount)}</td>
                           <td className="px-2 py-1.5 w-14 text-center"><MarginBadge rate={margin} /></td>
                           <td className="px-1 py-1 w-10">
                             {!isLocked && (
                             <div className="flex gap-0.5">
                               <Button size="sm" variant="ghost" className="h-5 w-5 p-0"
                                 data-testid={`button-edit-item-${item.id}`}
-                                onClick={() => { setEditingItemId(item.id); setEditForm({ quantity: item.quantity, unitPrice: item.unitPrice }); }}>
+                                onClick={() => {
+                                  setEditingItemId(item.id);
+                                  setEditForm({ quantity: item.quantity, unitPrice: item.unitPrice });
+                                  setUsdForm({ unitPriceFx: num(item.unitPriceFx).toFixed(2) });
+                                }}>
                                 <Pencil className="h-3 w-3" />
                               </Button>
                               <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-destructive"
@@ -536,7 +572,7 @@ function ItemsTab({ quotation, items, onRefresh, isLocked, categoryDiscounts, on
                 return rows;
               })}
               {items.length === 0 && (
-                <tr><td colSpan={10} className="px-2 py-8 text-center text-muted-foreground">품목을 추가하세요</td></tr>
+                <tr><td colSpan={colCount} className="px-2 py-8 text-center text-muted-foreground">품목을 추가하세요</td></tr>
               )}
             </tbody>
           </table>
@@ -572,25 +608,39 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
     queryKey: ["/api/company-settings"],
   });
 
-  const defaultNotes = companySettings?.quotationNotesTemplate || FALLBACK_NOTES;
+  // USD 견적: 같은 화면을 쓰되 금액·네고·절사는 USD(센트)로 계산하고 부가세 없음. 원가·마진은 기준환율 원화 환산으로 비교.
+  const usd = quotation.currency === "USD";
+  const baseRate = num(quotation.baseRate);
+  const rnd = (n: number) => usd ? Math.round(n * 100) / 100 : Math.round(n);
+  const amt = (i: QuotationItem) => usd ? num(i.amountFx) : (i.amount || 0);
+  const money = (n: number) => usd ? `$ ${fmtUsd(n)}` : `${fmtNum(n)}원`;
+  const toKrw = (n: number) => usd ? Math.round(n * baseRate) : n;
+  // USD 금액 옆 원화 환산 (기준환율)
+  const krwOf = (n: number) => usd && baseRate > 0 ? <span className="text-xs text-muted-foreground font-normal ml-1.5">({fmtNum(toKrw(n))}원)</span> : null;
+  const parsePrice = (v: string) => usd ? (parseFloat(v) || 0) : parseInt(v);
+
+  const notesTemplate = usd ? companySettings?.quotationNotesTemplateEn : companySettings?.quotationNotesTemplate;
+  const defaultNotes = notesTemplate || (usd ? DEFAULT_NOTES_EN : FALLBACK_NOTES);
 
   const { toast } = useToast();
   const [notes, setNotes] = useState(quotation.notes || defaultNotes);
   const [notesInitialized, setNotesInitialized] = useState(!!quotation.notes);
 
   useEffect(() => {
-    if (!notesInitialized && !quotation.notes && companySettings?.quotationNotesTemplate) {
-      setNotes(companySettings.quotationNotesTemplate);
+    if (!notesInitialized && !quotation.notes && notesTemplate) {
+      setNotes(notesTemplate);
       setNotesInitialized(true);
     }
-  }, [companySettings?.quotationNotesTemplate, quotation.notes, notesInitialized]);
+  }, [notesTemplate, quotation.notes, notesInitialized]);
 
   const [newAdj, setNewAdj] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [editingAdjId, setEditingAdjId] = useState<string | null>(null);
   const [editAdjForm, setEditAdjForm] = useState({ itemName: "", spec: "", quantity: 1, costPrice: 0, unitPrice: 0 });
   const [discountType, setDiscountType] = useState<string>("amount");
   const [discountValue, setDiscountValue] = useState(quotation.discountValue || 0);
-  const [discountTruncUnit, setDiscountTruncUnit] = useState<string>(quotation.discountTruncUnit || "none");
+  const [discountTruncUnit, setDiscountTruncUnit] = useState<string>(
+    usd && quotation.discountValueFx == null ? "10" : (quotation.discountTruncUnit || "none"),
+  );
   const [deliveryDays, setDeliveryDays] = useState<number | null>(quotation.deliveryDays ?? null);
   const [deliveryAutoCalculated, setDeliveryAutoCalculated] = useState(!quotation.deliveryDays);
 
@@ -599,10 +649,10 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
   const regularItems = useMemo(() => items.filter(i => !i.isAdjustment), [items]);
   const adjustmentItems = useMemo(() => items.filter(i => i.isAdjustment), [items]);
 
-  const regularSubtotal = regularItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const regularSubtotal = rnd(regularItems.reduce((s, i) => s + amt(i), 0));
   const totalCost = items.reduce((s, i) => s + ((i.costPrice || 0) * i.quantity), 0);
-  const adjTotal = adjustmentItems.reduce((s, i) => s + (i.amount || 0), 0);
-  const supplyAmount = regularSubtotal + adjTotal;
+  const adjTotal = rnd(adjustmentItems.reduce((s, i) => s + amt(i), 0));
+  const supplyAmount = rnd(regularSubtotal + adjTotal);
 
   const pricingGrouped = useMemo(() => {
     const map = new Map<string, typeof regularItems>();
@@ -619,19 +669,19 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
     for (const [cat, catItems] of Array.from(pricingGrouped.entries())) {
       const pct = categoryDiscounts[cat] || 0;
       if (pct > 0) {
-        const catSubtotal = catItems.reduce((s: number, i: any) => s + (i.amount || 0), 0);
-        total += Math.round(catSubtotal * pct / 100);
+        const catSubtotal = catItems.reduce((s: number, i: any) => s + amt(i), 0);
+        total += rnd(catSubtotal * pct / 100);
       }
     }
-    return total;
+    return rnd(total);
   }, [pricingGrouped, categoryDiscounts]);
 
-  const afterCategoryNego = supplyAmount - categoryNegoTotal;
+  const afterCategoryNego = rnd(supplyAmount - categoryNegoTotal);
 
   const totalNegoAmt = useMemo(() => {
     if (totalNegoValue <= 0) return 0;
-    if (totalNegoType === "pct") return Math.round(afterCategoryNego * totalNegoValue / 100);
-    return totalNegoValue;
+    if (totalNegoType === "pct") return rnd(afterCategoryNego * totalNegoValue / 100);
+    return rnd(totalNegoValue);
   }, [afterCategoryNego, totalNegoType, totalNegoValue]);
 
   // 레거시 견적 할인 복원: 신규 모델은 항상 discountType="amount"로 저장하므로
@@ -645,17 +695,17 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
     return Math.round(supplyAmount * pct / 100);
   }, [quotation.discountType, quotation.discountValue, categoryNegoTotal, totalNegoAmt, supplyAmount]);
 
-  const afterAllNego = afterCategoryNego - totalNegoAmt - legacyDiscountAmt;
+  const afterAllNego = rnd(afterCategoryNego - totalNegoAmt - legacyDiscountAmt);
 
   const afterDiscount = useMemo(() => {
     const unit = parseInt(discountTruncUnit);
-    if (unit > 0) return Math.floor(afterAllNego / unit) * unit;
+    if (unit > 0) return Math.floor((afterAllNego + 1e-9) / unit) * unit;
     return afterAllNego;
   }, [afterAllNego, discountTruncUnit]);
 
-  const actualDiscount = supplyAmount - afterDiscount;
+  const actualDiscount = rnd(supplyAmount - afterDiscount);
   const discountAmount = actualDiscount;
-  const tax = Math.round(afterDiscount * 0.1);
+  const tax = usd ? 0 : Math.round(afterDiscount * 0.1);
   const total = afterDiscount + tax;
 
   const autoDeliveryDays = useMemo(() => {
@@ -712,14 +762,16 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
     const allDiscounts = totalNegoValue > 0
       ? { ...categoryDiscounts, ...(totalNegoType === "pct" ? { __total_pct__: totalNegoValue } : { __total_amt__: totalNegoValue }) }
       : { ...categoryDiscounts };
+    const discountKrw = toKrw(actualDiscount); // USD 견적은 원화 환산액 (인콰이어리 판매가·프로젝트 전환용)
     updateMut.mutate({
       notes,
       discountType: "amount",
-      discountValue: actualDiscount,
+      discountValue: discountKrw,
+      ...(usd ? { discountValueFx: actualDiscount } : {}),
       discountTruncUnit,
       categoryDiscounts: JSON.stringify(allDiscounts),
       deliveryDays: deliveryDays || null,
-      adjustmentAmount: -actualDiscount,
+      adjustmentAmount: -discountKrw,
     });
   };
 
@@ -733,7 +785,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
       spec: newAdj.spec,
       quantity: newAdj.quantity,
       costPrice: newAdj.costPrice,
-      unitPrice: newAdj.unitPrice,
+      ...(usd ? { unitPrice: 0, unitPriceFx: newAdj.unitPrice } : { unitPrice: newAdj.unitPrice }),
       category1: "추가",
       category2: "",
       sortOrder: items.length,
@@ -756,15 +808,15 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
                 <th className="px-2 py-1.5 text-left w-24">사양</th>
                 <th className="px-2 py-1.5 text-right w-14">수량</th>
                 <th className="px-2 py-1.5 text-right w-20">원가</th>
-                <th className="px-2 py-1.5 text-right w-20">단가</th>
-                <th className="px-2 py-1.5 text-right w-24">금액</th>
+                <th className="px-2 py-1.5 text-right w-20">{usd ? "단가($)" : "단가"}</th>
+                <th className="px-2 py-1.5 text-right w-24">{usd ? "금액($)" : "금액"}</th>
                 <th className="px-2 py-1.5 text-center w-14">마진</th>
                 <th className="px-2 py-1.5 w-10"></th>
               </tr>
             </thead>
             <tbody>
               {adjustmentItems.map(item => {
-                const margin = calcMarginRate(item.unitPrice, item.costPrice || 0);
+                const margin = calcMarginRate(usd ? (item.quantity ? Math.round((item.amount || 0) / item.quantity) : 0) : item.unitPrice, item.costPrice || 0);
                 const isEditing = editingAdjId === item.id;
                 return (
                   <tr key={item.id} className="border-t hover:bg-muted/20" data-testid={`adj-item-row-${item.id}`}>
@@ -783,14 +835,14 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
                           <Input type="number" value={editAdjForm.costPrice} onChange={e => setEditAdjForm(f => ({ ...f, costPrice: parseInt(e.target.value) || 0 }))} className="text-xs text-right h-7" data-testid={`input-edit-adj-cost-${item.id}`} />
                         </td>
                         <td className="px-1 py-1 w-20">
-                          <Input type="number" value={editAdjForm.unitPrice} onChange={e => setEditAdjForm(f => ({ ...f, unitPrice: e.target.value === "" || e.target.value === "-" ? 0 : parseInt(e.target.value) }))} className="text-xs text-right h-7" data-testid={`input-edit-adj-price-${item.id}`} />
+                          <Input type="number" value={editAdjForm.unitPrice} onChange={e => setEditAdjForm(f => ({ ...f, unitPrice: e.target.value === "" || e.target.value === "-" ? 0 : parsePrice(e.target.value) }))} className="text-xs text-right h-7" data-testid={`input-edit-adj-price-${item.id}`} />
                         </td>
-                        <td className="px-2 py-1.5 w-24 text-right">{fmtNum(editAdjForm.quantity * editAdjForm.unitPrice)}</td>
-                        <td className="px-2 py-1.5 w-14 text-center"><MarginBadge rate={calcMarginRate(editAdjForm.unitPrice, editAdjForm.costPrice)} /></td>
+                        <td className="px-2 py-1.5 w-24 text-right">{usd ? fmtUsd(editAdjForm.quantity * editAdjForm.unitPrice) : fmtNum(editAdjForm.quantity * editAdjForm.unitPrice)}</td>
+                        <td className="px-2 py-1.5 w-14 text-center"><MarginBadge rate={calcMarginRate(toKrw(editAdjForm.unitPrice), editAdjForm.costPrice)} /></td>
                         <td className="px-1 py-1 w-10">
                           <div className="flex gap-0.5">
                             <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-confirm-edit-adj-${item.id}`}
-                              onClick={() => updateAdjMut.mutate({ id: item.id, itemName: editAdjForm.itemName, spec: editAdjForm.spec, quantity: editAdjForm.quantity, costPrice: editAdjForm.costPrice, unitPrice: editAdjForm.unitPrice })}>
+                              onClick={() => updateAdjMut.mutate({ id: item.id, itemName: editAdjForm.itemName, spec: editAdjForm.spec, quantity: editAdjForm.quantity, costPrice: editAdjForm.costPrice, ...(usd ? { unitPriceFx: editAdjForm.unitPrice } : { unitPrice: editAdjForm.unitPrice }) })}>
                               <Check className="h-3 w-3" />
                             </Button>
                             <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-cancel-edit-adj-${item.id}`}
@@ -806,14 +858,14 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
                         <td className="px-2 py-1.5 w-24 text-muted-foreground">{item.spec || "-"}</td>
                         <td className="px-2 py-1.5 w-14 text-right">{fmtNum(item.quantity)}</td>
                         <td className="px-2 py-1.5 w-20 text-right text-muted-foreground">{fmtNum(item.costPrice)}</td>
-                        <td className="px-2 py-1.5 w-20 text-right">{fmtNum(item.unitPrice)}</td>
-                        <td className="px-2 py-1.5 w-24 text-right font-medium">{fmtNum(item.amount)}</td>
+                        <td className="px-2 py-1.5 w-20 text-right">{usd ? fmtUsd(num(item.unitPriceFx)) : fmtNum(item.unitPrice)}</td>
+                        <td className="px-2 py-1.5 w-24 text-right font-medium">{usd ? fmtUsd(num(item.amountFx)) : fmtNum(item.amount)}</td>
                         <td className="px-2 py-1.5 w-14 text-center"><MarginBadge rate={margin} /></td>
                         <td className="px-1 py-1 w-10">
                           {!isLocked && (
                           <div className="flex gap-0.5">
                             <Button size="sm" variant="ghost" className="h-5 w-5 p-0" data-testid={`button-edit-adj-${item.id}`}
-                              onClick={() => { setEditingAdjId(item.id); setEditAdjForm({ itemName: item.itemName, spec: item.spec || "", quantity: item.quantity, costPrice: item.costPrice || 0, unitPrice: item.unitPrice }); }}>
+                              onClick={() => { setEditingAdjId(item.id); setEditAdjForm({ itemName: item.itemName, spec: item.spec || "", quantity: item.quantity, costPrice: item.costPrice || 0, unitPrice: usd ? num(item.unitPriceFx) : item.unitPrice }); }}>
                               <Pencil className="h-3 w-3" />
                             </Button>
                             <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-destructive" data-testid={`button-delete-adj-${item.id}`}
@@ -843,9 +895,9 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
                   <Input type="number" value={newAdj.costPrice || ""} onChange={e => setNewAdj(f => ({ ...f, costPrice: parseInt(e.target.value) || 0 }))} placeholder="원가" className="text-xs text-right h-7" data-testid="input-new-adj-cost" />
                 </td>
                 <td className="px-1 py-1 w-20">
-                  <Input type="number" value={newAdj.unitPrice || ""} onChange={e => setNewAdj(f => ({ ...f, unitPrice: e.target.value === "" || e.target.value === "-" ? 0 : parseInt(e.target.value) }))} placeholder="단가 (음수=할인)" className="text-xs text-right h-7" data-testid="input-new-adj-price" />
+                  <Input type="number" value={newAdj.unitPrice || ""} onChange={e => setNewAdj(f => ({ ...f, unitPrice: e.target.value === "" || e.target.value === "-" ? 0 : parsePrice(e.target.value) }))} placeholder={usd ? "단가$ (음수=할인)" : "단가 (음수=할인)"} className="text-xs text-right h-7" data-testid="input-new-adj-price" />
                 </td>
-                <td className="px-2 py-1.5 w-24 text-right text-muted-foreground">{fmtNum(newAdj.quantity * newAdj.unitPrice)}</td>
+                <td className="px-2 py-1.5 w-24 text-right text-muted-foreground">{usd ? fmtUsd(newAdj.quantity * newAdj.unitPrice) : fmtNum(newAdj.quantity * newAdj.unitPrice)}</td>
                 <td className="px-2 py-1.5 w-14"></td>
                 <td className="px-1 py-1 w-10">
                   <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={handleAddAdj} disabled={addAdjMut.isPending} data-testid="button-add-adj">
@@ -857,7 +909,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
               {adjustmentItems.length > 0 && (
                 <tr className="border-t bg-muted/30">
                   <td colSpan={5} className="px-2 py-1.5 text-right font-semibold">추가 항목 소계</td>
-                  <td className="px-2 py-1.5 w-24 text-right font-semibold">{fmtNum(adjTotal)}원</td>
+                  <td className="px-2 py-1.5 w-24 text-right font-semibold">{money(adjTotal)}</td>
                   <td colSpan={2}></td>
                 </tr>
               )}
@@ -867,15 +919,23 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
       </div>
 
       <div className="bg-muted/20 rounded-lg p-4 space-y-3">
+        {usd && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground border-b pb-2" data-testid="text-pricing-rates">
+            <span>기준환율 <span className="font-medium text-foreground">{baseRate ? baseRate.toLocaleString("ko-KR") : "-"}원</span></span>
+            <span>적용환율 <span className="font-medium text-foreground">{num(quotation.appliedRate) ? num(quotation.appliedRate).toLocaleString("ko-KR", { maximumFractionDigits: 2 }) : "-"}원</span> (안전율 {num(quotation.safetyMargin)}%)</span>
+            <span className="ml-auto">괄호 안 원화 = 기준환율 환산</span>
+          </div>
+        )}
         <div className="text-sm space-y-1">
           <div className="flex items-center justify-between">
             <span className="font-medium">공급가액 (품목{adjTotal !== 0 ? "+추가" : ""} 합계)</span>
-            <span className="font-medium">{fmtNum(supplyAmount)}원</span>
+            <span className="font-medium">{money(supplyAmount)}{krwOf(supplyAmount)}</span>
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground pl-2">
-            <span>원가 {fmtNum(totalCost)}</span>
-            <span>마진 {fmtNum(supplyAmount - totalCost)}</span>
-            <span>마진율 {supplyAmount > 0 ? (((supplyAmount - totalCost) / supplyAmount) * 100).toFixed(1) : "0.0"}%</span>
+            {usd && <span>원화 환산 {fmtNum(toKrw(supplyAmount))}</span>}
+            <span>원가 {fmtNum(totalCost)}원</span>
+            <span>마진 {fmtNum(toKrw(supplyAmount) - totalCost)}원</span>
+            <span>마진율 {supplyAmount > 0 ? (((toKrw(supplyAmount) - totalCost) / toKrw(supplyAmount)) * 100).toFixed(1) : "0.0"}%</span>
           </div>
         </div>
 
@@ -885,7 +945,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
           {categoryNegoTotal > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium text-sm text-foreground">카테고리 네고</span>
-              <span className="text-red-500 font-medium">-{fmtNum(categoryNegoTotal)}원</span>
+              <span className="text-red-500 font-medium">-{money(categoryNegoTotal)}{krwOf(categoryNegoTotal)}</span>
               <span className="text-[10px]">({supplyAmount > 0 ? ((categoryNegoTotal / supplyAmount) * 100).toFixed(1) : "0"}%)</span>
             </div>
           )}
@@ -897,7 +957,7 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
           totalNegoAmt > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium text-sm text-foreground">전체 네고</span>
-              <span className="text-red-500 font-medium">-{fmtNum(totalNegoAmt)}원</span>
+              <span className="text-red-500 font-medium">-{money(totalNegoAmt)}{krwOf(totalNegoAmt)}</span>
               {totalNegoType === "pct"
                 ? <span className="text-[10px]">({totalNegoValue}%)</span>
                 : <span className="text-[10px]">(금액)</span>
@@ -928,9 +988,9 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
               placeholder="0"
               className="w-24 h-7 text-xs text-right border rounded px-2"
             />
-            <span className="text-xs text-muted-foreground">{totalNegoType === "pct" ? "%" : "원"}</span>
+            <span className="text-xs text-muted-foreground">{totalNegoType === "pct" ? "%" : usd ? "$" : "원"}</span>
             {totalNegoAmt > 0 && (
-              <span className="text-xs text-red-500 font-medium">→ -{fmtNum(totalNegoAmt)}원</span>
+              <span className="text-xs text-red-500 font-medium">→ -{money(totalNegoAmt)}{krwOf(totalNegoAmt)}</span>
             )}
           </div>
         )}
@@ -942,6 +1002,15 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
             <SelectTrigger className="w-28 h-7 text-xs" data-testid="select-discount-trunc-unit">
               <SelectValue />
             </SelectTrigger>
+            {usd ? (
+            <SelectContent>
+              <SelectItem value="none">절사 없음</SelectItem>
+              <SelectItem value="1">$1 절사</SelectItem>
+              <SelectItem value="10">$10 절사</SelectItem>
+              <SelectItem value="100">$100 절사</SelectItem>
+              <SelectItem value="1000">$1,000 절사</SelectItem>
+            </SelectContent>
+            ) : (
             <SelectContent>
               <SelectItem value="none">절사 없음</SelectItem>
               <SelectItem value="1000">천원 절사</SelectItem>
@@ -949,17 +1018,18 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
               <SelectItem value="100000">십만원 절사</SelectItem>
               <SelectItem value="1000000">백만원 절사</SelectItem>
             </SelectContent>
+            )}
           </Select>
         </div>
         )}
 
         {/* 할인 표시 — 카테고리 네고 or 저장된 discountValue 둘 다 커버 */}
-        {(actualDiscount > 0 || (isLocked && (quotation.discountValue || 0) > 0)) && (
+        {(actualDiscount > 0 || (isLocked && (usd ? num(quotation.discountValueFx) : (quotation.discountValue || 0)) > 0)) && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">할인</span>
             {(() => {
-              const d = actualDiscount > 0 ? actualDiscount : (quotation.discountValue || 0);
-              return <span className="text-red-500">-{fmtNum(d)}원 ({supplyAmount > 0 ? ((d / supplyAmount) * 100).toFixed(1) : "0"}%)</span>;
+              const d = actualDiscount > 0 ? actualDiscount : (usd ? num(quotation.discountValueFx) : (quotation.discountValue || 0));
+              return <span className="text-red-500">-{money(d)} ({supplyAmount > 0 ? ((d / supplyAmount) * 100).toFixed(1) : "0"}%){krwOf(d)}</span>;
             })()}
           </div>
         )}
@@ -968,22 +1038,22 @@ function PricingTab({ quotation, items, inquiryId, onRefresh, isLocked, category
           <div className="bg-primary/10 rounded-md px-3 py-2 -mx-1 space-y-1">
             <div className="flex items-center justify-between text-sm">
               <span className="font-semibold">최종 공급가액</span>
-              <span className="font-semibold">{fmtNum(afterDiscount)}원</span>
+              <span className="font-semibold">{money(afterDiscount)}{krwOf(afterDiscount)}</span>
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground pl-2">
-              <span>마진 {fmtNum(afterDiscount - totalCost)}</span>
-              <span>마진율 {afterDiscount > 0 ? (((afterDiscount - totalCost) / afterDiscount) * 100).toFixed(1) : "0.0"}%</span>
+              <span>마진 {fmtNum(toKrw(afterDiscount) - totalCost)}원</span>
+              <span>마진율 {afterDiscount > 0 ? (((toKrw(afterDiscount) - totalCost) / toKrw(afterDiscount)) * 100).toFixed(1) : "0.0"}%</span>
             </div>
           </div>
         )}
 
         <div className="flex items-center justify-between text-sm border-t pt-2">
-          <span>부가세 (10%)</span>
-          <span>{fmtNum(tax)}원</span>
+          <span>{usd ? "부가세 (수출 영세율)" : "부가세 (10%)"}</span>
+          <span>{usd ? "$ -" : `${fmtNum(tax)}원`}</span>
         </div>
         <div className="flex items-center justify-between border-t pt-3">
-          <span className="font-bold text-base">전체 금액</span>
-          <span className="font-bold text-xl">{fmtNum(total)}원</span>
+          <span className="font-bold text-base">{usd ? "전체 금액 (USD)" : "전체 금액"}</span>
+          <span className="font-bold text-xl" data-testid="text-quote-total">{money(total)}{krwOf(total)}</span>
         </div>
       </div>
 
@@ -1144,6 +1214,17 @@ function QuotationHeaderBar({ quotation, items, inquiry, inquiryId, isLocked }: 
       }
     } catch {}
     setEmailTo(latestEmail);
+    if (quotation.currency === "USD") {
+      try {
+        const settingsRes = await fetch("/api/company-settings");
+        if (settingsRes.ok) setEmailCc((await settingsRes.json()).autoCc || "");
+      } catch {}
+      setEmailSubject(`[AIM company] Quotation ${quotation.quoteNumber}${quotation.quoteName ? ` - ${quotation.quoteName}` : ""}`);
+      setEmailBody(`Dear ${latestContactName || latestCompanyName},\n\nThank you for your inquiry.\nPlease find attached our quotation ${quotation.quoteNumber}.\n\nIf you have any questions, please feel free to contact us.\n\nBest regards,\nAIM company`);
+      setPdfPreviewUrl(`/api/quotations/${quotation.id}/download/pdf?inline=1&t=${Date.now()}`);
+      setEmailOpen(true);
+      return;
+    }
     setEmailSubject(`[에이아이엠-견적서] ${quotation.quoteNumber}`);
     const defaultBody = `안녕하세요, ${latestCompanyName}님.\n\n요청하신 견적서를 첨부드립니다.\n\n견적번호: ${quotation.quoteNumber}\n\n검토 후 궁금하신 사항이 있으시면 언제든 연락 주시기 바랍니다.\n\n감사합니다.`;
     try {
@@ -1484,6 +1565,8 @@ function QuotationDetailInline({ quotationId, inquiryId, inquiry }: {
       )}
       <QuotationHeaderBar quotation={quotation} items={items} inquiry={inquiry} inquiryId={inquiryId} isLocked={isLocked} />
 
+      {quotation.currency === "USD" && <UsdRateBar quotation={quotation} isLocked={isLocked} />}
+
       <div className="border-2 border-primary/20 rounded-lg p-3 bg-background">
         <ItemsTab
           quotation={quotation}
@@ -1541,9 +1624,13 @@ function BatchEmailDialog({ inquiryId, inquiry, quotationList, open, onOpenChang
   });
 
   const quotationTotals = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, string>();
     if (quotationDetails) {
       for (const detail of quotationDetails) {
+        if (detail.quotation.currency === "USD") {
+          map.set(detail.quotation.id, `$ ${fmtUsd(detail.items.reduce((s, i) => s + num(i.amountFx), 0))}`);
+          continue;
+        }
         const regularItems = detail.items.filter(i => !i.isAdjustment);
         const adjItems = detail.items.filter(i => i.isAdjustment);
         const supply = regularItems.reduce((s, i) => s + (i.amount || 0), 0)
@@ -1554,7 +1641,7 @@ function BatchEmailDialog({ inquiryId, inquiry, quotationList, open, onOpenChang
         const dUnit = parseInt((detail.quotation.discountTruncUnit as string) || "0") || 0;
         let afterDiscount = supply - dAmt;
         if (dUnit > 0 && dAmt > 0) afterDiscount = Math.floor(afterDiscount / dUnit) * dUnit;
-        map.set(detail.quotation.id, afterDiscount + Math.round(afterDiscount * 0.1));
+        map.set(detail.quotation.id, `${fmtNum(afterDiscount + Math.round(afterDiscount * 0.1))}원`);
       }
     }
     return map;
@@ -1659,7 +1746,7 @@ function BatchEmailDialog({ inquiryId, inquiry, quotationList, open, onOpenChang
                       {q.quoteName && <span className="text-muted-foreground"> · {q.quoteName}</span>}
                     </span>
                     {total != null && (
-                      <span className="text-muted-foreground text-[10px]">{fmtNum(total)}원</span>
+                      <span className="text-muted-foreground text-[10px]">{total}</span>
                     )}
                     <Badge variant="secondary" className="text-[9px] px-1">
                       {statusLabel[q.status || "draft"] || q.status}
@@ -1739,7 +1826,7 @@ export function QuotationSection({ inquiryId, inquiry }: { inquiryId: string; in
   const createMut = useMutation({
     mutationFn: async () => {
       const year = String(inquiry.year).slice(-2);
-      const inqNum = inquiry.inquiryNumber?.replace(/^.*?(\d+)$/, "$1") || "0";
+      const inqNum = inquiry.inquiryNumber?.replace(/^.*?(E?\d+)$/, "$1") || "0";
       const base = `Q-${year}-${inqNum}`;
       let quoteNumber: string;
       if (quotationList.length === 0) {

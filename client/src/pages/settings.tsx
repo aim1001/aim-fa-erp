@@ -13,6 +13,7 @@ import { Settings, Upload, Trash2, Save, Building2, FileText, Mail, ShoppingCart
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import type { CompanySettings, Staff } from "@shared/schema";
+import { DEFAULT_HEADER_EN, DEFAULT_CONTRACT_EN, DEFAULT_NOTES_EN } from "@shared/quotation-en";
 import StaffSearchPopover from "@/components/staff-search-popover";
 
 const DEFAULT_QUOTATION_NOTES = `[제외사항]
@@ -83,6 +84,9 @@ export default function SettingsPage() {
     autoCc: "",
     emailTemplate: "",
     quotationNotesTemplate: "",
+    quotationHeaderEn: "",
+    quotationTermsEn: "",
+    quotationNotesTemplateEn: "",
     salesDefaultStaffId: "" as string | null,
     projectDefaultStaffId: "" as string | null,
     poDefaultStaffId: "" as string | null,
@@ -117,6 +121,9 @@ export default function SettingsPage() {
         autoCc: settings.autoCc || "",
         emailTemplate: settings.emailTemplate || "",
         quotationNotesTemplate: settings.quotationNotesTemplate || DEFAULT_QUOTATION_NOTES,
+        quotationHeaderEn: settings.quotationHeaderEn || DEFAULT_HEADER_EN,
+        quotationTermsEn: settings.quotationTermsEn || DEFAULT_CONTRACT_EN,
+        quotationNotesTemplateEn: settings.quotationNotesTemplateEn || DEFAULT_NOTES_EN,
         salesDefaultStaffId: settings.salesDefaultStaffId || null,
         projectDefaultStaffId: settings.projectDefaultStaffId || null,
         poDefaultStaffId: settings.poDefaultStaffId || null,
@@ -524,6 +531,50 @@ export default function SettingsPage() {
                     기본값으로 초기화
                   </button>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <FileText className="h-4 w-4" />
+                  영문(USD) 견적서
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm">좌상단 회사 정보 (첫 줄은 굵게 표시)</Label>
+                  <Textarea
+                    value={form.quotationHeaderEn}
+                    onChange={(e) => updateField("quotationHeaderEn", e.target.value)}
+                    rows={7}
+                    className="font-mono text-sm"
+                    data-testid="input-quotationHeaderEn"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">해외 계약내용 기본값 (■ Delivery &amp; Payment / ■ Warranty &amp; Liability)</Label>
+                  <Textarea
+                    value={form.quotationTermsEn}
+                    onChange={(e) => updateField("quotationTermsEn", e.target.value)}
+                    rows={8}
+                    className="font-mono text-sm"
+                    data-testid="input-quotationTermsEn"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">해외 견적 비고 기본값 ([Exclusions] / [Technical support])</Label>
+                  <Textarea
+                    value={form.quotationNotesTemplateEn}
+                    onChange={(e) => updateField("quotationNotesTemplateEn", e.target.value)}
+                    rows={7}
+                    className="font-mono text-sm"
+                    data-testid="input-quotationNotesTemplateEn"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  결제조건·납기는 국내와 같이 인콰이어리 계약조건과 견적 납기 일수를 영어로 바꿔 출력합니다. 해외 인콰이어리에 계약내용이 비어 있으면 위 계약내용 기본값(EXW, 고객 특송계정 픽업)이 들어갑니다.
+                </p>
               </CardContent>
             </Card>
 

@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { OverseasProjectSummary, OverseasStagesPanel } from "@/components/overseas-project-panel";
+import { num, fmtUsd } from "@shared/fx";
 
 type EnrichedProject = Project & {
   salesTotal: number;
@@ -894,7 +896,9 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
         )}
       </div>
 
-      {hasConditions ? (
+      {project.currency === "USD" ? (
+        <OverseasProjectSummary project={project} />
+      ) : hasConditions ? (
         <div className="border rounded-lg p-3 mt-2 space-y-2">
           <div className="grid grid-cols-3 gap-3">
             <div>
@@ -965,6 +969,33 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
         </Button>
       )}
 
+      {project.currency === "USD" ? (
+      <Tabs defaultValue="export" className="mt-2">
+        <TabsList className="w-full grid grid-cols-3 h-8">
+          <TabsTrigger value="export" className="text-xs" data-testid="tab-export">
+            <CalendarClock className="h-3 w-3 mr-1" />수출 매출·수금
+          </TabsTrigger>
+          <TabsTrigger value="conditions" className="text-xs" data-testid="tab-conditions">
+            <Settings className="h-3 w-3 mr-1" />단계 비율·시기
+          </TabsTrigger>
+          <TabsTrigger value="items" className="text-xs" data-testid="tab-items">
+            <Package className="h-3 w-3 mr-1" />품목
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="export" className="mt-2">
+          <OverseasStagesPanel project={project} />
+        </TabsContent>
+        <TabsContent value="conditions" className="mt-2 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            단계 비율과 시기만 사용합니다(금액은 USD 계약금액을 비율로 나눔). 저장하면 USD 수금 계획이 다시 만들어지고, 입금 완료 단계는 유지됩니다. 수출은 세금계산서를 발행하지 않습니다.
+          </p>
+          <CollectionConditionsEditor project={project} onSave={() => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] })} />
+        </TabsContent>
+        <TabsContent value="items" className="mt-2">
+          <ProjectItemsTab projectId={projectId} />
+        </TabsContent>
+      </Tabs>
+      ) : (
       <Tabs defaultValue="conditions" className="mt-2">
         <TabsList className="w-full grid grid-cols-4 h-8">
           <TabsTrigger value="conditions" className="text-xs" data-testid="tab-conditions">
@@ -1562,6 +1593,7 @@ export function ProjectDetailModal({ projectId, onClose }: { projectId: string; 
         )}
         </TabsContent>
       </Tabs>
+      )}
 
       <ProjectTaskSection projectId={projectId} />
     </DialogContent>
@@ -2056,7 +2088,10 @@ function BulkMatchDialog({ open, onClose }: { open: boolean; onClose: () => void
 
 export default function ProjectList() {
   const { toast } = useToast();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  // /overseas/projects = 해외 프로젝트 (같은 화면, region 필터만 다름)
+  const overseas = location.startsWith("/overseas");
+  const basePath = overseas ? "/overseas/projects" : "/projects";
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
 
@@ -2089,13 +2124,13 @@ export default function ProjectList() {
 
   const handleQuickView = (view: string) => {
     if (view === "current") {
-      navigate("/projects?view=current");
+      navigate(`${basePath}?view=current`);
     } else if (view === "all") {
-      navigate("/projects?view=all");
+      navigate(`${basePath}?view=all`);
     } else if (view === "active") {
-      navigate("/projects?view=all&status=active");
+      navigate(`${basePath}?view=all&status=active`);
     } else if (view === "completed") {
-      navigate("/projects?view=all&status=completed");
+      navigate(`${basePath}?view=all&status=completed`);
     }
   };
 
@@ -2107,7 +2142,7 @@ export default function ProjectList() {
       params.set("year", value);
     }
     if (statusFilter !== "all") params.set("status", statusFilter);
-    navigate(`/projects?${params.toString()}`);
+    navigate(`${basePath}?${params.toString()}`);
   };
 
   const handleStatusChange = (value: string) => {
@@ -2119,7 +2154,7 @@ export default function ProjectList() {
     } else {
       params.set("status", value);
     }
-    navigate(`/projects?${params.toString()}`);
+    navigate(`${basePath}?${params.toString()}`);
   };
 
   const activeQuickView = useMemo(() => {
@@ -2172,7 +2207,7 @@ export default function ProjectList() {
 
   const filteredProjects = useMemo(() => {
     if (!projects) return [];
-    let result = projects;
+    let result = projects.filter(p => (p.region === "overseas") === overseas);
     if (statusFilter !== "all") {
       result = result.filter(p => (p.status || "active") === statusFilter);
     }
@@ -2191,14 +2226,16 @@ export default function ProjectList() {
       return dateB.localeCompare(dateA);
     });
     return result;
-  }, [projects, statusFilter, search]);
+  }, [projects, statusFilter, search, overseas]);
+
+  const regionCount = projects ? projects.filter(p => (p.region === "overseas") === overseas).length : 0;
 
   const totals = useMemo(() => {
     if (!filteredProjects.length) return { contract: 0, issued: 0, collected: 0, purchase: 0, profit: 0 };
     return {
       contract: filteredProjects.reduce((s, p) => s + (p.totalAmount || 0), 0),
       issued: filteredProjects.reduce((s, p) => s + (p.salesSupplyTotal || 0), 0),
-      collected: filteredProjects.reduce((s, p) => s + Math.round((p.paidIncome || 0) / 1.1), 0),
+      collected: filteredProjects.reduce((s, p) => s + Math.round((p.paidIncome || 0) / (p.currency === "USD" ? 1 : 1.1)), 0),
       purchase: filteredProjects.reduce((s, p) => s + p.purchaseTotal, 0),
       profit: filteredProjects.reduce((s, p) => s + p.profit, 0),
     };
@@ -2207,8 +2244,10 @@ export default function ProjectList() {
   return (
     <div className="p-6 space-y-4 overflow-auto h-full">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="text-project-list-title">프로젝트</h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-project-list-title">{overseas ? "해외 프로젝트" : "프로젝트"}</h1>
         <div className="flex items-center gap-2">
+          {/* 거래처 매칭은 OneDrive에서 가져온 국내 프로젝트용 */}
+          {!overseas && <>
           <Button
             size="sm"
             variant="outline"
@@ -2228,7 +2267,9 @@ export default function ProjectList() {
             <Users className={`h-4 w-4 mr-1 ${autoMatchMutation.isPending ? "animate-spin" : ""}`} />
             자동 매칭
           </Button>
-          <Button
+          </>}
+          {/* OneDrive 동기화는 국내 2.공사/YYYY 폴더 기준 */}
+          {!overseas && <Button
             size="sm"
             variant="outline"
             onClick={() => syncMutation.mutate()}
@@ -2237,7 +2278,7 @@ export default function ProjectList() {
           >
             <RefreshCw className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
             {syncYear}년 동기화
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -2384,7 +2425,9 @@ export default function ProjectList() {
                       <span className="text-xs text-muted-foreground" data-testid={`text-project-regdate-${p.id}`}>{p.registrationDate || "-"}</span>
                     </td>
                     <td className="py-2 px-3 text-right hidden md:table-cell">
-                      {(p.totalAmount || 0) > 0 ? (
+                      {p.currency === "USD" && num(p.contractAmountFx) > 0 ? (
+                        <span className="text-xs font-medium" title={`≈ ${(p.totalAmount || 0).toLocaleString()}원 (견적환율)`}>$ {fmtUsd(num(p.contractAmountFx))}</span>
+                      ) : (p.totalAmount || 0) > 0 ? (
                         <span className="text-xs font-medium">{(p.totalAmount || 0).toLocaleString()}</span>
                       ) : <span className="text-xs text-muted-foreground">-</span>}
                     </td>
@@ -2395,7 +2438,7 @@ export default function ProjectList() {
                     </td>
                     <td className="py-2 px-3 text-right hidden md:table-cell">
                       {(p.paidIncome || 0) > 0 ? (
-                        <span className="text-xs font-medium text-green-600">{Math.round((p.paidIncome || 0) / 1.1).toLocaleString()}</span>
+                        <span className="text-xs font-medium text-green-600">{Math.round((p.paidIncome || 0) / (p.currency === "USD" ? 1 : 1.1)).toLocaleString()}</span>
                       ) : <span className="text-xs text-muted-foreground">-</span>}
                     </td>
                     <td className="py-2 px-3 text-center">
@@ -2427,12 +2470,12 @@ export default function ProjectList() {
       ) : (
         <div className="text-center py-12 text-muted-foreground">
           <FolderOpen className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>{search ? "검색 결과가 없습니다" : "프로젝트가 없습니다. \"동기화\" 버튼을 눌러 OneDrive에서 가져오세요."}</p>
+          <p>{search ? "검색 결과가 없습니다" : overseas ? "해외 프로젝트가 없습니다. 해외 인콰이어리에서 프로젝트로 전환하면 여기에 나옵니다." : "프로젝트가 없습니다. \"동기화\" 버튼을 눌러 OneDrive에서 가져오세요."}</p>
         </div>
       )}
 
       <div className="text-xs text-muted-foreground">
-        {filteredProjects.length > 0 && `${filteredProjects.length}건${projects && filteredProjects.length !== projects.length ? ` (전체 ${projects.length}건)` : ""}`}
+        {filteredProjects.length > 0 && `${filteredProjects.length}건${regionCount && filteredProjects.length !== regionCount ? ` (전체 ${regionCount}건)` : ""}`}
       </div>
 
       <Dialog open={!!selectedId} onOpenChange={open => { if (!open) setSelectedId(null); }}>

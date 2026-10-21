@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, date, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, numeric, date, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -24,6 +24,8 @@ export const customers = pgTable("customers", {
   notes: text("notes"),
   primaryContact: text("primary_contact"),
   registrationDate: text("registration_date"),
+  region: text("region").default("domestic"), // domestic | overseas
+  country: text("country"),
 });
 
 export const companies = pgTable("companies", {
@@ -90,6 +92,7 @@ export const inquiries = pgTable("inquiries", {
   lastQuoteSales: integer("last_quote_sales"),
   lastQuoteCost: integer("last_quote_cost"),
   lastQuoteMargin: integer("last_quote_margin"),
+  region: text("region").default("domestic"), // domestic | overseas
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -208,6 +211,9 @@ export const payments = pgTable("payments", {
   splitTotal: integer("split_total").default(1),
   category: text("category"),
   recurringExpenseId: varchar("recurring_expense_id"),
+  // 수출 수금: amountFx(USD) 예정, actualAmount는 실제 원화 입금액 (환차손익은 shared/export-revenue.ts)
+  currency: text("currency").default("KRW"),
+  amountFx: numeric("amount_fx", { precision: 14, scale: 2 }),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({
@@ -299,6 +305,16 @@ export const projects = pgTable("projects", {
   inquiryId: varchar("inquiry_id"),
   warrantyTerms: text("warranty_terms"),
   contractClauses: text("contract_clauses"),
+  // 해외 프로젝트: 계약은 USD. totalAmount(원화)는 견적 기준환율 환산 추정액.
+  // 세금계산서 없이 선적(수출 매출) 1건으로 매출 확정 — 원화 매출·환차손익은 shared/export-revenue.ts에서 계산
+  region: text("region").default("domestic"),
+  currency: text("currency").default("KRW"),
+  contractAmountFx: numeric("contract_amount_fx", { precision: 14, scale: 2 }),
+  quoteRate: numeric("quote_rate", { precision: 10, scale: 2 }),
+  shipDate: text("ship_date"), // 선적일 = 공급시기
+  shipRate: numeric("ship_rate", { precision: 10, scale: 2 }), // 선적일 기준환율
+  exportDeclNo: text("export_decl_no"), // 수출신고번호
+  commercialInvoiceNo: text("commercial_invoice_no"),
 });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
@@ -584,6 +600,13 @@ export const quotations = pgTable("quotations", {
   discountTruncUnit: text("discount_trunc_unit").default("1000"),
   categoryDiscounts: text("category_discounts"), // JSON: {"ROBOT": 5, "FEEDER": 10}
   deliveryDays: integer("delivery_days"),
+  // 해외(USD) 견적: 원화 기준가 ÷ 적용환율(기준환율 × (1 − 안전율%)) → 센트 미만 절사
+  currency: text("currency").default("KRW"), // KRW | USD
+  baseRate: numeric("base_rate", { precision: 10, scale: 2 }),
+  safetyMargin: numeric("safety_margin", { precision: 5, scale: 2 }),
+  appliedRate: numeric("applied_rate", { precision: 12, scale: 4 }),
+  // USD 견적의 네고 할인액(USD). discountValue(정수)에는 기준환율 원화 환산액을 둔다
+  discountValueFx: numeric("discount_value_fx", { precision: 14, scale: 2 }),
   createdAt: text("created_at").notNull(),
 });
 
@@ -605,6 +628,10 @@ export const quotationItems = pgTable("quotation_items", {
   category2: text("category2"),
   sortOrder: integer("sort_order").default(0),
   isAdjustment: boolean("is_adjustment").default(false),
+  // USD 견적용. unitPrice/amount(정수)는 원화 기준가·원화 환산액으로 계속 사용
+  unitPriceFx: numeric("unit_price_fx", { precision: 14, scale: 2 }),
+  discountRate: numeric("discount_rate", { precision: 5, scale: 2 }),
+  amountFx: numeric("amount_fx", { precision: 14, scale: 2 }),
 });
 
 export const insertQuotationItemSchema = createInsertSchema(quotationItems).omit({ id: true });
@@ -652,6 +679,9 @@ export const companySettings = pgTable("company_settings", {
   website: text("website"),
   emailSubjectTemplate: text("email_subject_template"),
   quotationCategoryOrder: text("quotation_category_order"), // JSON: ["VISION SYSTEM","FEEDER","ROBOT","SERVICE"]
+  quotationHeaderEn: text("quotation_header_en"), // 영문 견적서 좌상단 회사 정보 (여러 줄)
+  quotationTermsEn: text("quotation_terms_en"), // 해외 인콰이어리 계약내용 기본값 (영문)
+  quotationNotesTemplateEn: text("quotation_notes_template_en"), // 해외 견적 비고 기본값 ([Exclusions]/[Technical support])
   createdAt: timestamp("created_at").defaultNow(),
 });
 

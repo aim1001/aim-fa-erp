@@ -27,11 +27,12 @@ export function AppSidebar() {
   const params = new URLSearchParams(searchString);
 
   const isInquiryPage = location === "/inquiries";
+  const isOverseasInquiryPage = location === "/overseas/inquiries";
   const isProjectPage = location === "/projects";
   const isSalesDashboard = location === "/sales-dashboard";
   const isOpticsCalculator = location === "/optics-calculator";
-  const isSalesSection = isSalesDashboard || isInquiryPage || location === "/customers" || location === "/items";
-  const isProjectSection = isProjectPage || location === "/sales-invoices" || location === "/receivables" || location === "/customer-ledger";
+  const isSalesSection = isSalesDashboard || isInquiryPage || isOverseasInquiryPage || location === "/customers" || location === "/overseas/customers" || location === "/items";
+  const isProjectSection = isProjectPage || location === "/overseas/projects" || location === "/sales-invoices" || location === "/receivables" || location === "/customer-ledger";
   const isFinanceSection = ["/management", "/payment-plan"].includes(location);
   const isPurchaseSection = ["/purchase-items", "/purchase-orders", "/vendor-ledger", "/vendors", "/purchase-invoices", "/payables"].includes(location);
 
@@ -113,7 +114,18 @@ export function AppSidebar() {
                       className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
                       data-testid="nav-inquiries"
                     >
-                      <Link href="/inquiries"><span>인콰이어리</span></Link>
+                      <Link href="/inquiries"><span>인콰이어리 · 국내</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={isOverseasInquiryPage}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-overseas-inquiries"
+                    >
+                      <Link href="/overseas/inquiries"><span>인콰이어리 · 해외</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
@@ -124,7 +136,18 @@ export function AppSidebar() {
                       className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
                       data-testid="nav-customers"
                     >
-                      <Link href="/customers"><span>고객사</span></Link>
+                      <Link href="/customers"><span>고객사 · 국내</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/overseas/customers"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-overseas-customers"
+                    >
+                      <Link href="/overseas/customers"><span>고객사 · 해외</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
@@ -166,6 +189,18 @@ export function AppSidebar() {
                       data-testid="nav-projects-all"
                     >
                       <Link href="/projects"><span>전체보기</span></Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      size="sm"
+                      data-active={location === "/overseas/projects"}
+                      className="pl-8 data-[active=true]:bg-sidebar-primary/10 data-[active=true]:text-sidebar-primary"
+                      data-testid="nav-overseas-projects"
+                    >
+                      <Link href="/overseas/projects"><span>해외 프로젝트</span></Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
 

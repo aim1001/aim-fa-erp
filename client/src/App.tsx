@@ -44,7 +44,9 @@ function Router() {
       <Route path="/" component={MainDashboard} />
       <Route path="/sales-dashboard" component={Dashboard} />
       <Route path="/inquiries" component={InquiryList} />
+      <Route path="/overseas/inquiries" component={InquiryList} />
       <Route path="/customers" component={CustomerList} />
+      <Route path="/overseas/customers" component={CustomerList} />
       <Route path="/customers/:id" component={CustomerDetail} />
       <Route path="/companies" component={CompanyList} />
       <Route path="/companies/:id" component={CompanyDetail} />
@@ -55,6 +57,7 @@ function Router() {
       <Route path="/payables" component={() => <FinanceGuard><Payables /></FinanceGuard>} />
       <Route path="/payment-plan" component={() => <FinanceGuard><PaymentPlan /></FinanceGuard>} />
       <Route path="/projects" component={ProjectList} />
+      <Route path="/overseas/projects" component={ProjectList} />
       <Route path="/management" component={() => <FinanceGuard><ManagementDashboard /></FinanceGuard>} />
       <Route path="/items" component={ItemList} />
       <Route path="/purchase-items" component={PurchaseItemList} />

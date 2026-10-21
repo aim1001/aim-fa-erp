@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { Inquiry, InquiryFile, Company, ProductImage, Customer, InquiryMemo, InquiryTask, ContractTemplate } from "@shared/schema";
+import { DEFAULT_CONTRACT_EN } from "@shared/quotation-en";
 import { QuotationSection } from "@/components/quotation-section";
 import OpticsCalculator from "@/components/OpticsCalculator";
 
@@ -2058,7 +2059,8 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
   // 막힌 사유를 모아 버튼 호버(툴팁)·클릭(토스트)에서 안내한다.
   const convertBlockReasons: string[] = [];
   if (inquiry) {
-    if (inquiry.customerId && !hasBusinessNumber) {
+    // 해외 거래처는 사업자등록번호가 없으므로 게이트에서 제외 (서버와 동일)
+    if (inquiry.region !== "overseas" && inquiry.customerId && !hasBusinessNumber) {
       convertBlockReasons.push("거래처에 사업자등록번호가 없습니다 — 거래처에 먼저 등록하세요.");
     }
     const convTotal = inquiry.lastQuoteSales ?? 0;
@@ -2110,7 +2112,7 @@ function InquiryDetailContent({ inquiryId, onClose, onDeleted }: {
         <p className="text-xs text-muted-foreground">각 항목을 클릭하면 바로 수정할 수 있습니다</p>
         <div className="flex items-center gap-1.5">
           {linkedProject ? (
-            <Link href={`/projects?id=${linkedProject.id}`}>
+            <Link href={`${inquiry.region === "overseas" ? "/overseas/projects" : "/projects"}?id=${linkedProject.id}`}>
               <Button variant="outline" size="sm" data-testid="button-view-project">
                 <FolderOpen className="h-4 w-4 mr-1" />
                 프로젝트 보기 ({linkedProject.projectNumber})
@@ -2696,6 +2698,10 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
   const { data: templates = [] } = useQuery<ContractTemplate[]>({
     queryKey: ["/api/contract-templates"],
   });
+  // 해외 인콰이어리: 영문 기본 계약내용(EXW·고객 특송계정 픽업)을 템플릿 목록 맨 위에 둔다
+  const isOverseas = inquiry.region === "overseas";
+  const { data: companySettings } = useQuery<any>({ queryKey: ["/api/company-settings"], enabled: isOverseas });
+  const englishDefaultClauses = companySettings?.quotationTermsEn || DEFAULT_CONTRACT_EN;
 
   const ratioSum = contractRatio + midRatio + finalRatio;
   // 중도금·잔금이 '납품후' 기준이면 전환 시 납품예정일이 필수 (서버 게이트와 동일 조건)
@@ -2873,7 +2879,23 @@ function ContractConditionsTab({ inquiryId, inquiry }: { inquiryId: string; inqu
                   <span className="text-xs font-medium">템플릿 선택</span>
                 </div>
                 <ScrollArea className="max-h-[200px]">
-                  {templates.length === 0 && (
+                  {isOverseas && (
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b flex items-center gap-1.5"
+                      onClick={() => {
+                        setClauses(englishDefaultClauses);
+                        setShowClauses(true);
+                        toast({ title: "영문 기본 계약내용 적용됨" });
+                      }}
+                      data-testid="button-template-english-default"
+                    >
+                      <FileText className="h-3 w-3 text-muted-foreground" />
+                      <span className="font-medium">영문 기본 (EXW)</span>
+                      <Badge variant="secondary" className="text-[9px] px-1">해외</Badge>
+                    </button>
+                  )}
+                  {templates.length === 0 && !isOverseas && (
                     <div className="px-3 py-4 text-xs text-center text-muted-foreground">등록된 템플릿이 없습니다</div>
                   )}
                   {templates.map(t => (
