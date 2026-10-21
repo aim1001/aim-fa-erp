@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { PhoneLink, EmailLink } from "@/components/contact-links";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, Upload, BookOpen } from "lucide-react";
+import { ClipboardCheck, Search, RefreshCw, ExternalLink, Check, Package, Ship, Truck, X, Save, FileText, Wallet, Download, XCircle, Trash2, Plus, Star, ChevronDown, ChevronRight, Mail, Send, Loader2, ArrowUpDown, ArrowUp, ArrowDown, UserPlus, Upload, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Fragment, useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useDialogContainer } from "@/hooks/use-dialog-container";
@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PurchaseOrder, PurchaseInvoice, Payment, PurchaseItem, PurchaseOrderItem, Vendor, VendorContact, Staff, CompanySettings } from "@shared/schema";
+import { normalizeCompanyName } from "@shared/company-name";
 import StaffSearchPopover from "@/components/staff-search-popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -254,6 +255,7 @@ export default function PurchaseOrderList() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [sortField, setSortField] = useState<"orderNumber" | "vendor" | "expectedDeliveryDate" | null>("orderNumber");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [view, setView] = useState<"list" | "vendor">("list");
   const [monthFrom, setMonthFrom] = useState("");
   const [monthTo, setMonthTo] = useState("");
   const thisMonth = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
@@ -543,7 +545,21 @@ export default function PurchaseOrderList() {
             </Button>
           )}
         </div>
-        <div className="relative flex-1 max-w-xs ml-auto">
+        <div className="flex items-center rounded-md border p-0.5 ml-auto">
+          {([["list", "발주 목록"], ["vendor", "업체별 마감"]] as const).map(([v, label]) => (
+            <Button
+              key={v}
+              variant={view === v ? "default" : "ghost"}
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={() => setView(v)}
+              data-testid={`button-view-${v}`}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+        <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="발주번호, 구매처, 내용 검색..."
@@ -566,6 +582,8 @@ export default function PurchaseOrderList() {
             <p className="text-sm">발주서가 없습니다</p>
             <p className="text-xs mt-1">OneDrive 동기화를 실행해주세요</p>
           </div>
+        ) : view === "vendor" ? (
+          <VendorClosingView orders={filtered} vendors={vendors} onSelectOrder={setSelectedOrder} />
         ) : (
           <table className="w-full text-sm" data-testid="table-orders">
             <thead className="sticky top-0 bg-background border-b">
@@ -786,6 +804,134 @@ export default function PurchaseOrderList() {
         />
       )}
     </div>
+  );
+}
+
+// 업체별 마감: 마감월 → 업체별로 발주를 모아 월마감 금액 확인 (행 클릭 시 발주 펼침)
+function VendorClosingView({ orders, vendors, onSelectOrder }: {
+  orders: PurchaseOrder[];
+  vendors: Vendor[];
+  onSelectOrder: (order: PurchaseOrder) => void;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const months = useMemo(() => {
+    const vendorName = new Map(vendors.map(v => [v.id, v.companyName]));
+    const byMonth = new Map<string, Map<string, PurchaseOrder[]>>();
+    for (const o of orders) {
+      const ym = closingDate(o).slice(0, 7);
+      const key = o.vendorId || `name:${normalizeCompanyName(o.vendor)}`;
+      if (!byMonth.has(ym)) byMonth.set(ym, new Map());
+      const vm = byMonth.get(ym)!;
+      if (!vm.has(key)) vm.set(key, []);
+      vm.get(key)!.push(o);
+    }
+    return Array.from(byMonth.entries())
+      .sort(([a], [b]) => (!a ? 1 : !b ? -1 : a.localeCompare(b)))
+      .map(([ym, vm]) => {
+        const rows = Array.from(vm.entries()).map(([key, list]) => {
+          const linked = list.find(o => o.vendorId);
+          return {
+            key: `${ym}|${key}`,
+            name: (linked && vendorName.get(linked.vendorId!)) || list[0].vendor || "(업체 없음)",
+            unlinked: !linked,
+            list: [...list].sort((a, b) => closingDate(a).localeCompare(closingDate(b))),
+            sums: sumAmounts(list),
+          };
+        }).sort((a, b) => b.sums.total - a.sums.total);
+        return { ym, rows, count: rows.reduce((n, r) => n + r.list.length, 0), sums: sumAmounts(rows.flatMap(r => r.list)) };
+      });
+  }, [orders, vendors]);
+
+  const allKeys = months.flatMap(m => m.rows.map(r => r.key));
+  const allOpen = allKeys.length > 0 && allKeys.every(k => expanded.has(k));
+  const toggle = (key: string) => setExpanded(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
+
+  return (
+    <table className="w-full text-sm" data-testid="table-vendor-closing">
+      <thead className="sticky top-0 bg-background border-b z-10">
+        <tr className="text-xs text-muted-foreground">
+          <th className="text-left px-4 py-2 font-medium">
+            <span className="inline-flex items-center gap-2">
+              업체
+              <button type="button" className="text-[10px] underline-offset-2 hover:underline hover:text-foreground" onClick={() => setExpanded(allOpen ? new Set() : new Set(allKeys))} data-testid="button-toggle-all-vendors">
+                {allOpen ? "모두 접기" : "모두 펼치기"}
+              </button>
+            </span>
+          </th>
+          <th className="text-right px-4 py-2 font-medium w-[70px]">건수</th>
+          <th className="text-right px-4 py-2 font-medium w-[140px]">공급가액</th>
+          <th className="text-right px-4 py-2 font-medium w-[150px]">합계(VAT포함)</th>
+          <th className="text-left px-4 py-2 font-medium">발주번호</th>
+        </tr>
+      </thead>
+      <tbody>
+        {months.map(m => (
+          <Fragment key={m.ym || "none"}>
+            <tr className="bg-muted/60 border-b" data-testid={`row-closing-month-${m.ym || "none"}`}>
+              <td className="px-4 py-1.5 text-xs font-semibold">
+                {m.ym ? `${m.ym.slice(0, 4)}년 ${Number(m.ym.slice(5))}월 마감` : "날짜 없음"}
+                <span className="ml-2 font-normal text-muted-foreground">{m.rows.length}개 업체</span>
+              </td>
+              <td className="px-4 py-1.5 text-right text-xs font-semibold">{m.count}건</td>
+              <td className="px-4 py-1.5 text-right text-xs font-semibold whitespace-nowrap">{m.sums.supply.toLocaleString()}원</td>
+              <td className="px-4 py-1.5 text-right text-xs font-semibold whitespace-nowrap">{m.sums.total.toLocaleString()}원</td>
+              <td />
+            </tr>
+            {m.rows.map(r => {
+              const open = expanded.has(r.key);
+              return (
+                <Fragment key={r.key}>
+                  <tr className="border-b hover:bg-muted/50 cursor-pointer" onClick={() => toggle(r.key)} data-testid={`row-closing-vendor-${r.key}`}>
+                    <td className="px-4 py-2">
+                      <span className="inline-flex items-center gap-1.5">
+                        <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} />
+                        <span className="font-medium">{r.name}</span>
+                        {r.unlinked && <Badge className="bg-orange-100 text-orange-600 border-0 text-[10px] px-1 py-0 h-4 shrink-0">미연결</Badge>}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right text-xs">{r.list.length}건</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      {r.sums.estimated > 0 ? (
+                        <span title={`공급가액 미입력 ${r.sums.estimated}건 — 합계÷1.1 추정`}>≈{r.sums.supply.toLocaleString()}원</span>
+                      ) : `${r.sums.supply.toLocaleString()}원`}
+                    </td>
+                    <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{r.sums.total.toLocaleString()}원</td>
+                    <td className="px-4 py-2 text-xs text-muted-foreground max-w-[260px] truncate" title={r.list.map(o => o.orderNumber || "-").join(", ")}>
+                      {r.list.map(o => o.orderNumber || "-").join(", ")}
+                    </td>
+                  </tr>
+                  {open && r.list.map(o => {
+                    const a = orderAmounts(o);
+                    return (
+                      <tr key={o.id} className="border-b bg-muted/20 hover:bg-muted/40 cursor-pointer text-xs" onClick={() => onSelectOrder(o)} data-testid={`row-closing-order-${o.id}`}>
+                        <td className="pl-10 pr-4 py-1.5">
+                          <span className="font-medium mr-2">{o.orderNumber || "-"}</span>
+                          <span className="text-muted-foreground mr-2 whitespace-nowrap">
+                            {o.actualDeliveryDate ? `입고 ${o.actualDeliveryDate.slice(5)}` : o.expectedDeliveryDate ? `예정 ${o.expectedDeliveryDate.slice(5)}` : o.orderDate ? `발주 ${o.orderDate.slice(5)}` : ""}
+                          </span>
+                          <span className="text-muted-foreground">{o.description || ""}</span>
+                        </td>
+                        <td />
+                        <td className="px-4 py-1.5 text-right whitespace-nowrap">
+                          {a.supplyEstimated ? <span className="text-muted-foreground" title="공급가액 미입력 — 합계÷1.1 추정">≈{formatAmount(a.supply)}</span> : formatAmount(a.supply)}
+                        </td>
+                        <td className="px-4 py-1.5 text-right whitespace-nowrap">{formatAmount(a.total)}</td>
+                        <td />
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
+          </Fragment>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
